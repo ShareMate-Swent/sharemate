@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "694271493315",
+    "project_id": "sharemate-swent",
+    "storage_bucket": "sharemate-swent.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:694271493315:android:3ec445b6ced9d95ad3ce76",
+        "android_client_info": {
+          "package_name": "com.android.sharemate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjB8zc6EEtDNQxZqK4-prrlHVL-u54xLk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
