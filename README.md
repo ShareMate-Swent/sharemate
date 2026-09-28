@@ -1,2 +1,2 @@
-# sharemate
-SwEnt App of our group
+# ShareMate
+There can be a lot of problems when sharing a flat with roommates such as managing the purchase of consumables, planning the cleaning, organizing evenings with friends or even ensuring that the accommodation remains clean. Most of us are familiar with these problems given that the majority of students live in shared accommodation. In order to respond to all these issues, we would like to implement in particular a virtual fridge functionality (in order to share food between roommates), a chat between roommates, the possibility of reporting incidents with photos, a shared calendar, an inventory of common objects (garbage bags, toilet paper, etc.) as well as push notifications to warn roommates of an incident or a message from the chat.
