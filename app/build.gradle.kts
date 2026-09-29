@@ -176,7 +176,8 @@ tasks.withType<Test> {
 }
 
 tasks.register("jacocoTestReport", JacocoReport::class) {
-    mustRunAfter("testDebugUnitTest", "connectedDebugAndroidTest")
+    dependsOn("compileDebugKotlin", "testDebugUnitTest")
+    mustRunAfter("connectedDebugAndroidTest")
 
     reports {
         xml.required = true
