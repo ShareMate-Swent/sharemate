@@ -1,4 +1,3 @@
-
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
@@ -6,6 +5,10 @@ plugins {
     alias(libs.plugins.sonar)
     id("jacoco")
     id("com.google.gms.google-services")
+}
+
+dependencyLocking {
+    lockAllConfigurations()
 }
 
 android {
