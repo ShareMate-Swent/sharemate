@@ -3,10 +3,12 @@ There can be a lot of problems when sharing a flat with roommates such as managi
 ## Figma 
 [ShareMate-Mockups](https://www.figma.com/design/uMFTyLKhCPxhzw0zugspWH/ShareMate-%E2%80%93-Mockups)
 
-Good Code review process : https://github.com/swent-epfl/public/blob/main/project/README.md#reviewing-code
+## Good Code review process :
+https://github.com/swent-epfl/public/blob/main/project/README.md#reviewing-code
 
 ## How to make a good PR : 
 
+```
 #### Description
 Add / edit of ...
 
@@ -18,11 +20,12 @@ Add / edit of ...
 
 #### Screenshots / Demonstration (if applicable)
 
-## Checklist
+#### Checklist
 - [ ] The code formatting is correct. (./gradlew ktfmtCheck)
 - [ ] The tests pass locally.
 - [ ] I verified that there are no warnings or errors in the console.
+```
 
 ## Naming convention of branches : 
 
-feature/feature-name, bugfix/issue-number
+feature/feature-name, bugfix/issue-number, documentation/issue-number, etc...
