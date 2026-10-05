@@ -18,7 +18,7 @@ data class Item(
     val householdId: String? = null,
     val expirationDate: Date? = null
 ) {
-    /** Helper pour déterminer facilement si un item est partagé ou privé côté UI. */
-    val isShared: Boolean
-        get() = householdId != null
+  /** Helper pour déterminer facilement si un item est partagé ou privé côté UI. */
+  val isShared: Boolean
+    get() = householdId != null
 }

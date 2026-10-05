@@ -22,6 +22,6 @@ data class Receipt(
     val ownerId: String = "",
     val householdId: String? = null
 ) {
-    val isShared: Boolean
-        get() = householdId != null
+  val isShared: Boolean
+    get() = householdId != null
 }
