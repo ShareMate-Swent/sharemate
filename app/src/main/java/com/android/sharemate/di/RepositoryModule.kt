@@ -15,19 +15,15 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object RepositoryModule {
 
-    @Provides
-    @Singleton
-    fun provideItemRepository(
-        firestore: FirebaseFirestore
-    ): ItemRepository {
-        return ItemRepositoryFirestore(firestore)
-    }
+  @Provides
+  @Singleton
+  fun provideItemRepository(firestore: FirebaseFirestore): ItemRepository {
+    return ItemRepositoryFirestore(firestore)
+  }
 
-    @Provides
-    @Singleton
-    fun provideReceiptRepository(
-        firestore: FirebaseFirestore
-    ): ReceiptRepository {
-        return ReceiptRepositoryFirestore(firestore)
-    }
+  @Provides
+  @Singleton
+  fun provideReceiptRepository(firestore: FirebaseFirestore): ReceiptRepository {
+    return ReceiptRepositoryFirestore(firestore)
+  }
 }

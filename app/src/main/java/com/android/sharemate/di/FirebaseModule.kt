@@ -12,20 +12,22 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object FirebaseModule {
 
-    @Provides
-    @Singleton
-    fun provideFirebaseFirestore(): FirebaseFirestore {
-        val firestore = FirebaseFirestore.getInstance()
-        
-        // Configuration explicite du cache hors ligne
-        val settings = FirebaseFirestoreSettings.Builder()
+  @Provides
+  @Singleton
+  fun provideFirebaseFirestore(): FirebaseFirestore {
+    val firestore = FirebaseFirestore.getInstance()
+
+    // Configuration explicite du cache hors ligne
+    val settings =
+        FirebaseFirestoreSettings.Builder()
             // Active la persistance locale (activée par défaut sur Android, mais bien de le forcer)
             .setPersistenceEnabled(true)
-            // Fixe la taille limite du cache à 100 MB. Si dépassée, Firestore supprime les vieux documents.
+            // Fixe la taille limite du cache à 100 MB. Si dépassée, Firestore supprime les vieux
+            // documents.
             .setCacheSizeBytes(FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED)
             .build()
-            
-        firestore.firestoreSettings = settings
-        return firestore
-    }
+
+    firestore.firestoreSettings = settings
+    return firestore
+  }
 }
