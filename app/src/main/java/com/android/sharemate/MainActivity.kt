@@ -30,8 +30,8 @@ import com.android.sharemate.resources.C
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.navigation.NavigationViewModel
 import com.android.sharemate.ui.navigation.TopLevelDestination
-import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.receipts.ReceiptsScreen
+import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.theme.SampleAppTheme
 
@@ -57,9 +57,12 @@ class MainActivity : ComponentActivity() {
                             icon = {
                               when (destination) {
                                 TopLevelDestination.FRIDGE -> Icon(Icons.Filled.Kitchen, "Fridge")
-                                TopLevelDestination.RECIPES -> Icon(Icons.Filled.MenuBook, "Recipes")
-                                TopLevelDestination.RECEIPTS -> Icon(Icons.Filled.ReceiptLong, "Receipts")
-                                TopLevelDestination.SETTINGS -> Icon(Icons.Filled.Settings, "Settings")
+                                TopLevelDestination.RECIPES ->
+                                    Icon(Icons.Filled.MenuBook, "Recipes")
+                                TopLevelDestination.RECEIPTS ->
+                                    Icon(Icons.Filled.ReceiptLong, "Receipts")
+                                TopLevelDestination.SETTINGS ->
+                                    Icon(Icons.Filled.Settings, "Settings")
                               }
                             },
                             label = { Text(destination.textId) },
