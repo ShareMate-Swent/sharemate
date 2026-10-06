@@ -7,8 +7,8 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-dependencyLocking {
-    lockAllConfigurations()
+jacoco {
+    toolVersion = "0.8.12"
 }
 
 android {
@@ -31,6 +31,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -44,7 +45,7 @@ android {
     }
 
     testCoverage {
-        jacocoVersion = "0.8.11"
+        jacocoVersion = "0.8.12"
     }
 
     buildFeatures {
@@ -52,7 +53,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.11"
     }
 
     compileOptions {
