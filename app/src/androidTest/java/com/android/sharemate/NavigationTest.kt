@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.ui.navigation.NavigationTestTags
@@ -32,6 +33,11 @@ class MainActivityTest : TestCase() {
         composeTestRule.onNodeWithTag(testTag).performClick()
         composeTestRule.onNodeWithTag(testTag).assertIsSelected()
         composeTestRule.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals(label)
+        if (label == "Recipes" || label == "Receipts") {
+          composeTestRule.onNodeWithText("Coming soon").assertExists()
+        } else {
+          composeTestRule.onNodeWithText("Coming soon").assertDoesNotExist()
+        }
       }
     }
   }

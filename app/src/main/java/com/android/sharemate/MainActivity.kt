@@ -18,17 +18,18 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.fridge.FridgeScreen
-import com.android.sharemate.ui.navigation.NavigationViewModel
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
@@ -40,8 +41,8 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     setContent {
       SampleAppTheme(dynamicColor = false) {
-        val navigationViewModel: NavigationViewModel = viewModel()
-        val selectedDestination by navigationViewModel.selectedDestination.collectAsState()
+        val navController = rememberNavController()
+        val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
         Surface(
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
@@ -52,8 +53,16 @@ class MainActivity : ComponentActivity() {
                       TopLevelDestination.entries.forEach { destination ->
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
-                            selected = selectedDestination == destination,
-                            onClick = { navigationViewModel.selectDestination(destination) },
+                            selected = currentRoute == destination.route,
+                            onClick = {
+                              navController.navigate(destination.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                  saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                              }
+                            },
                             icon = {
                               when (destination) {
                                 TopLevelDestination.FRIDGE -> Icon(Icons.Filled.Kitchen, "Fridge")
@@ -71,15 +80,30 @@ class MainActivity : ComponentActivity() {
                     }
                   },
               ) { innerPadding ->
-                Box(
+                NavHost(
+                    navController = navController,
+                    startDestination = TopLevelDestination.FRIDGE.route,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
-                    contentAlignment = Alignment.Center,
                 ) {
-                  when (selectedDestination) {
-                    TopLevelDestination.FRIDGE -> FridgeScreen()
-                    TopLevelDestination.RECIPES -> RecipesScreen()
-                    TopLevelDestination.RECEIPTS -> ReceiptsScreen()
-                    TopLevelDestination.SETTINGS -> SettingsScreen()
+                  composable(TopLevelDestination.FRIDGE.route) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                      FridgeScreen()
+                    }
+                  }
+                  composable(TopLevelDestination.RECIPES.route) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                      RecipesScreen()
+                    }
+                  }
+                  composable(TopLevelDestination.RECEIPTS.route) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                      ReceiptsScreen()
+                    }
+                  }
+                  composable(TopLevelDestination.SETTINGS.route) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                      SettingsScreen()
+                    }
                   }
                 }
               }

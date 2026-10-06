@@ -140,6 +140,7 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     // Integration with activities
     implementation(libs.compose.activity)
+    implementation(libs.androidx.navigation.compose)
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
     // Android Studio Preview support
