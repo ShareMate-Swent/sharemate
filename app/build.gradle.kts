@@ -168,6 +168,7 @@ dependencies {
 
     // ----------       Firebase     ------------
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-firestore")
 }
 
 tasks.withType<Test> {
