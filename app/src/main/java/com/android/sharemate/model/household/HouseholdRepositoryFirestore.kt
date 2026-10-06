@@ -4,6 +4,7 @@ package com.android.sharemate.model.household
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -43,10 +44,10 @@ class HouseholdRepositoryFirestore(
       firestore
           .batch()
           .set(householdReference, household)
-          .update(
+          .set(
               firestore.collection(FirestoreCollections.USERS).document(creatorId),
-              HOUSEHOLD_ID_FIELD,
-              household.id)
+              mapOf(HOUSEHOLD_ID_FIELD to household.id),
+              SetOptions.merge())
           .commit()
           .await()
       return household
