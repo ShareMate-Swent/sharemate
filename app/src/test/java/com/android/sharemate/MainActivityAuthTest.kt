@@ -64,8 +64,9 @@ class MainActivityAuthTest {
 
   @Test
   fun loginRevealsApplicationAndSignoutReturnsToProtectedLogin() {
-    compose.onNodeWithTag("auth_submit").assertIsDisplayed()
+    compose.onNodeWithTag("auth_welcome").assertExists()
     compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
+    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -74,7 +75,7 @@ class MainActivityAuthTest {
     verify(auth).signInWithEmailAndPassword("student@example.org", "secret")
     compose.onNodeWithText("Sign out").performClick()
     compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertIsDisplayed()
+    compose.onNodeWithTag("auth_welcome").assertExists()
     verify(auth).signOut()
   }
 }

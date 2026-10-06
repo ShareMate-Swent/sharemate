@@ -18,3 +18,15 @@ For local tests, run `firebase emulators:start --only auth --project demo-sharem
 and `adb reverse tcp:9099 tcp:9099`. Tests use a separate demo Firebase app and
 `127.0.0.1:9099`; production never calls `useEmulator`. Debug builds permit HTTP
 only for localhost. Use stable Android 14/API 34 for instrumented verification.
+
+## Welcome and application integration
+
+The welcome screen follows the supplied Figma design, with the original fridge
+image, a local light theme, and responsive scrolling. Login and account creation
+open the existing email/password forms. Back clears passwords and errors;
+only form visibility is saved across recreation, never credentials. Restored
+sessions bypass welcome; signing out returns to it.
+
+After merging navigation PR #39, place its navigation root inside `AuthGate` in
+`MainActivity`, replacing the greeting. Navigation tests must first supply a
+fake session or use the local Auth emulator, never the live Firebase project.

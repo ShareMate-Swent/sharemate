@@ -44,12 +44,19 @@ fun AuthScreen(
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onSwitchMode: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null
 ) {
   AuthTheme {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
       AuthForm(
-          state, onEmailChange, onPasswordChange, onConfirmPasswordChange, onSubmit, onSwitchMode)
+          state,
+          onEmailChange,
+          onPasswordChange,
+          onConfirmPasswordChange,
+          onSubmit,
+          onSwitchMode,
+          onBack)
     }
   }
 }
@@ -61,7 +68,8 @@ private fun AuthForm(
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onSwitchMode: () -> Unit
+    onSwitchMode: () -> Unit,
+    onBack: (() -> Unit)?
 ) {
   val signingUp = state.mode == AuthMode.SIGN_UP
   Column(
@@ -69,6 +77,14 @@ private fun AuthForm(
           Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp),
       horizontalAlignment = Alignment.CenterHorizontally) {
+        onBack?.let {
+          TextButton(
+              onClick = it,
+              enabled = !state.isLoading,
+              modifier = Modifier.align(Alignment.Start).testTag("auth_back")) {
+                Text(stringResource(R.string.auth_back))
+              }
+        }
         Text(stringResource(R.string.auth_title), style = MaterialTheme.typography.headlineLarge)
         Text(
             stringResource(if (signingUp) R.string.auth_sign_up else R.string.auth_log_in),

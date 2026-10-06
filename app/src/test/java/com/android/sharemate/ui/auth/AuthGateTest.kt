@@ -49,8 +49,10 @@ class AuthGateTest {
       assertTrue(controller.isAppearanceLightNavigationBars)
       repository.session.tryEmit(null)
     }
-    compose.onNodeWithTag("auth_submit").assertExists()
+    compose.onNodeWithTag("auth_welcome").assertExists()
     compose.onNodeWithTag("private_content").assertDoesNotExist()
+    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
+    compose.onNodeWithTag("auth_submit").assertExists()
     compose.runOnIdle { repository.session.tryEmit(AuthSession("user", "student@example.org")) }
     compose.onNodeWithTag("private_content").assertIsDisplayed()
     compose.onNodeWithTag("auth_submit").assertDoesNotExist()
@@ -62,7 +64,7 @@ class AuthGateTest {
       viewModel.signOut()
     }
     compose.onNodeWithTag("private_content").assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertExists()
+    compose.onNodeWithTag("auth_welcome").assertExists()
   }
 
   private class UiRepository : AuthRepository {

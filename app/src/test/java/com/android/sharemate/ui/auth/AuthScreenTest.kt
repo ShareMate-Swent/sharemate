@@ -84,9 +84,17 @@ class AuthScreenTest {
   @Test
   fun loadingDisablesActionsAndShowsFeedback() {
     compose.setContent {
-      AuthScreen(AuthUiState(isLoading = true, isRestoringSession = false), {}, {}, {}, {}, {})
+      AuthScreen(
+          AuthUiState(isLoading = true, isRestoringSession = false),
+          {},
+          {},
+          {},
+          {},
+          {},
+          onBack = {})
     }
     compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithTag("auth_back").assertIsNotEnabled()
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
     compose.onNodeWithTag("auth_email").assertIsNotEnabled()
