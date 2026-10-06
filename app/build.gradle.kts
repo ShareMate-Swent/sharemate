@@ -135,6 +135,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.play.services)
+    testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)
     testImplementation("org.mockito:mockito-core:5.13.0")
