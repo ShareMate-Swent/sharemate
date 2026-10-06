@@ -17,7 +17,7 @@ import java.util.Date
 data class Receipt(
     val id: String = "",
     val storeName: String = "",
-    val totalAmount: Double = 0.0,
+    val totalAmount: Long = 0L,
     val date: Date? = null,
     val ownerId: String = "",
     val householdId: String? = null
