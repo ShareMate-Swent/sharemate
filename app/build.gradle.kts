@@ -8,6 +8,10 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 android {
     namespace = "com.android.sharemate"
     compileSdk = 34
