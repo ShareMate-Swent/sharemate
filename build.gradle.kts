@@ -2,5 +2,6 @@
 plugins {
     alias(libs.plugins.androidApplication) apply false
     alias(libs.plugins.jetbrainsKotlinAndroid) apply false
-    id("com.google.gms.google-services") version "4.5.0" apply false
+    alias(libs.plugins.ktfmt) apply false
+    alias(libs.plugins.gms) apply false
 }
