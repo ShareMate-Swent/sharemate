@@ -19,18 +19,16 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class HouseholdRepositoryFirestoreTest {
-  private lateinit var firestore: FirebaseFirestore
   private lateinit var repository: HouseholdRepositoryFirestore
 
   @Before
   fun setUp() {
-    firestore = FirebaseFirestore.getInstance()
-    firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
     clearEmulatorData()
     repository = HouseholdRepositoryFirestore(firestore)
   }
@@ -188,5 +186,13 @@ class HouseholdRepositoryFirestoreTest {
     const val FIRESTORE_PORT = 8080
     const val UNAVAILABLE_FIRESTORE_PORT = 18080
     const val UNAVAILABLE_APP_NAME = "unavailable-firestore-test"
+    lateinit var firestore: FirebaseFirestore
+
+    @JvmStatic
+    @BeforeClass
+    fun configureFirestoreEmulator() {
+      firestore = FirebaseFirestore.getInstance()
+      firestore.useEmulator(EMULATOR_HOST, FIRESTORE_PORT)
+    }
   }
 }
