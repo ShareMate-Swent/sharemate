@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="auth_title">ShareMate</string>
+    <string name="auth_log_in">Log in</string>
+    <string name="auth_sign_up">Sign up</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_confirm_password">Confirm password</string>
+    <string name="auth_password_hint">Use at least 6 characters.</string>
+    <string name="auth_show_password">Show</string>
+    <string name="auth_hide_password">Hide</string>
+    <string name="auth_need_account">New here? Sign up</string>
+    <string name="auth_have_account">Already have an account? Log in</string>
+    <string name="auth_error_email">Enter a valid email address.</string>
+    <string name="auth_error_password_required">Enter your password.</string>
+    <string name="auth_error_weak_password">Choose a stronger password with at least 6 characters.</string>
+    <string name="auth_error_password_mismatch">The passwords do not match.</string>
+    <string name="auth_error_credentials">Unable to log in. Check your email and password.</string>
+    <string name="auth_error_email_in_use">Unable to create an account with this email. Try logging in instead.</string>
+    <string name="auth_error_network">Check your internet connection and try again.</string>
+    <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
+    <string name="auth_error_provider_disabled">Email sign-in is currently unavailable. Please try again later.</string>
+    <string name="auth_error_unknown">Something went wrong. Please try again.</string>
+</resources>
