@@ -8,7 +8,7 @@ import java.util.Date
  *
  * @property id Identifiant unique du reçu (généré par Firestore).
  * @property storeName Nom du magasin (ex: "Migros").
- * @property totalAmount Montant total du reçu.
+ * @property totalAmountCents Total amount of the receipt, in cents (e.g., 1250 for CHF 12.50).
  * @property date Date de l'achat.
  * @property ownerId L'UID Firebase de l'utilisateur qui a ajouté le reçu.
  * @property householdId L'ID du foyer si le reçu est partagé. Si null, le reçu est strictement
@@ -17,7 +17,7 @@ import java.util.Date
 data class Receipt(
     val id: String = "",
     val storeName: String = "",
-    val totalAmount: Long = 0L,
+    val totalAmountCents: Long = 0L,
     val date: Date? = null,
     val ownerId: String = "",
     val householdId: String? = null
