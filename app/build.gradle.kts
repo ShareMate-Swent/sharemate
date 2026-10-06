@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.ktfmt)
     alias(libs.plugins.sonar)
     id("jacoco")
-    id("com.google.gms.google-services")
+    alias(libs.plugins.gms)
 }
 
 dependencyLocking {
@@ -168,6 +168,7 @@ dependencies {
 
     // ----------       Firebase     ------------
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-firestore")
 }
 
 tasks.withType<Test> {
