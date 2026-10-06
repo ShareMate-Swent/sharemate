@@ -134,8 +134,10 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)
+    testImplementation("org.mockito:mockito-core:5.13.0")
     globalTestImplementation(libs.androidx.junit)
     globalTestImplementation(libs.androidx.espresso.core)
 
@@ -167,7 +169,8 @@ dependencies {
     testImplementation(libs.robolectric)
 
     // ----------       Firebase     ------------
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.8.0"))
+    implementation("com.google.firebase:firebase-auth")
 }
 
 tasks.withType<Test> {
