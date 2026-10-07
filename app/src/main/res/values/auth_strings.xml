@@ -21,4 +21,5 @@
     <string name="auth_error_rate_limit">Too many attempts. Please try again later.</string>
     <string name="auth_error_provider_disabled">Email sign-in is currently unavailable. Please try again later.</string>
     <string name="auth_error_unknown">Something went wrong. Please try again.</string>
+    <string name="auth_sign_out">Sign out</string>
 </resources>
