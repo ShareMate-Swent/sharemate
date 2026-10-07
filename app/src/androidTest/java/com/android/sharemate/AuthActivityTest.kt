@@ -3,7 +3,7 @@ package com.android.sharemate
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sharemate.resources.C
+import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.google.firebase.auth.FirebaseAuth
 import org.junit.Rule
 import org.junit.Test
@@ -23,6 +23,6 @@ class AuthActivityTest {
     compose.onNodeWithTag("auth_email").assertIsDisplayed()
     compose.onNodeWithTag("auth_password").assertIsDisplayed()
     compose.onNodeWithTag("auth_submit").assertIsDisplayed()
-    compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
   }
 }

@@ -12,10 +12,6 @@ afterEvaluate {
     jacoco { toolVersion = "0.8.13" }
 }
 
-dependencyLocking {
-    lockAllConfigurations()
-}
-
 android {
     namespace = "com.android.sharemate"
     compileSdk = 34
@@ -36,6 +32,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -57,7 +54,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.11"
     }
 
     compileOptions {
@@ -144,7 +141,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)
-    testImplementation("org.mockito:mockito-core:5.13.0")
+    testImplementation(libs.mockito.core)
     globalTestImplementation(libs.androidx.junit)
     globalTestImplementation(libs.androidx.espresso.core)
 
@@ -157,8 +154,10 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     // Material Design 3
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
     // Integration with activities
     implementation(libs.compose.activity)
+    implementation(libs.androidx.navigation.compose)
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
     // Android Studio Preview support
@@ -176,8 +175,8 @@ dependencies {
     testImplementation(libs.robolectric)
 
     // ----------       Firebase     ------------
-    implementation(platform("com.google.firebase:firebase-bom:33.8.0"))
-    implementation("com.google.firebase:firebase-auth")
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
 }
 
 tasks.withType<Test> {
