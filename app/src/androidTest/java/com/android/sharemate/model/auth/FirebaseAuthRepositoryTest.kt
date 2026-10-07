@@ -1,6 +1,6 @@
 package com.android.sharemate.model.auth
 
-import androidx.test.core.app.ApplicationProvider
+import androidx.test.core.app.ApplicationProvider.getApplicationContext
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -34,7 +34,7 @@ class FirebaseAuthRepositoryTest {
             .build()
     app =
         FirebaseApp.initializeApp(
-            ApplicationProvider.getApplicationContext(), options, "auth-test-${UUID.randomUUID()}")
+            getApplicationContext(), options, "auth-test-${UUID.randomUUID()}")
     auth = FirebaseAuth.getInstance(app)
     auth.useEmulator("127.0.0.1", 9099)
     auth.signOut()
@@ -67,7 +67,7 @@ class FirebaseAuthRepositoryTest {
       val options = app.options
       val name = app.name
       app.delete()
-      app = FirebaseApp.initializeApp(ApplicationProvider.getApplicationContext(), options, name)
+      app = FirebaseApp.initializeApp(getApplicationContext(), options, name)
       auth = FirebaseAuth.getInstance(app)
       auth.useEmulator("127.0.0.1", 9099)
       val recreated = FirebaseAuthRepository(auth)

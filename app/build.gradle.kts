@@ -175,6 +175,8 @@ dependencies {
     testImplementation(libs.robolectric)
 
     // ----------       Firebase     ------------
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-firestore")
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
 }
@@ -216,4 +218,8 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
         include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
         include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
     })
+}
+
+configurations.configureEach {
+    exclude(group = "com.google.protobuf", module = "protobuf-lite")
 }

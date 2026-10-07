@@ -12,7 +12,9 @@ import org.junit.runner.RunWith
 /** Verifies the real application entry point never reveals content to signed-out users. */
 @RunWith(AndroidJUnit4::class)
 class AuthActivityTest {
-  @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule(signedIn = false)
+
+  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun signedOutStartupDisplaysLogin() {
