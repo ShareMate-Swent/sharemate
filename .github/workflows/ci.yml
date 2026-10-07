@@ -14,7 +14,7 @@ jobs:
   checks:
     name: Tests, lint, formatting and SonarCloud
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repository
@@ -26,8 +26,9 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: "17"
-
+          java-version: |
+            21
+            17
       - name: Configure Android SDK location
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
@@ -40,12 +41,44 @@ jobs:
       - name: Check Kotlin formatting
         run: ./gradlew ktfmtCheck --no-daemon --stacktrace
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Start Firebase emulators
+        run: |
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          firebase emulators:start --only auth,firestore --project sharemate-swent &
+
+      - name: Run instrumented tests
+        timeout-minutes: 40
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest --no-daemon --stacktrace
+
       - name: Generate coverage and debug lint reports
         run: ./gradlew :app:jacocoTestReport :app:lintDebug --no-daemon --stacktrace
-        
+
       - name: Build release APK
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
-        
+
       - name: Set up Java 21 for SonarCloud
         uses: actions/setup-java@v6
         with:
