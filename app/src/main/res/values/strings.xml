@@ -13,4 +13,23 @@
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
     <string name="fridge_empty">Your fridge is empty</string>
+    <string name="household_choice_title">Set up your fridge</string>
+    <string name="create_a_household">Create a household</string>
+    <string name="join_a_household">Join a household</string>
+    <string name="create_household_title">Create a household</string>
+    <string name="create_household_description">Give your household a name. You can change it later.</string>
+    <string name="household_name">Household name</string>
+    <string name="household_name_placeholder">e.g. Rue de Lausanne flat</string>
+    <string name="create_household">Create household</string>
+    <string name="household_ready_title">Your household is ready!</string>
+    <string name="household_ready_description">Share this code with your roommates so they can join.</string>
+    <string name="household_invite_code">Household invite code</string>
+    <string name="copy_invite_code">Copy invite code</string>
+    <string name="go_to_my_fridge">Go to my fridge</string>
+    <string name="join_household_title">Join a household</string>
+    <string name="join_household_description">Enter the 6-character invite code shared by your roommate.</string>
+    <string name="join_household">Join household</string>
+    <string name="invalid_invite_code">This code doesn\'t exist. Check it with your roommate.</string>
+    <string name="household_generic_error">Something went wrong. Please try again.</string>
+    <string name="back">Back</string>
 </resources>
