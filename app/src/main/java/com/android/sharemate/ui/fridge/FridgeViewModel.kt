@@ -3,7 +3,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.item.Item
-import kotlinx.coroutines.CoroutineScope
+import com.android.sharemate.model.item.ItemRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,11 +15,10 @@ enum class FridgeSortOrder {
   NAME,
 }
 
-class FridgeViewModel
-internal constructor(
-    private val testScope: CoroutineScope? = null,
+class FridgeViewModel(
+    itemRepository: ItemRepository,
+    householdId: String,
 ) : ViewModel() {
-  private val inventory = MutableStateFlow<List<Item>>(emptyList())
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
   private val ownerFilterState = MutableStateFlow<String?>(null)
@@ -29,15 +28,16 @@ internal constructor(
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
 
   val visibleItems: StateFlow<List<Item>> =
-      combine(inventory, sortOrderState, categoryFilterState, ownerFilterState) {
-              items,
-              sortOrder,
-              category,
-              ownerId ->
+      combine(
+              itemRepository.getSharedItems(householdId),
+              sortOrderState,
+              categoryFilterState,
+              ownerFilterState,
+          ) { items, sortOrder, category, ownerId ->
             val filteredItems =
                 items.filter { item ->
                   (category == null ||
-                      item.category?.equals(category, ignoreCase = true) == true) &&
+                      item.category?.trim()?.equals(category, ignoreCase = true) == true) &&
                       (ownerId == null || item.ownerId == ownerId)
                 }
 
@@ -50,14 +50,10 @@ internal constructor(
             }
           }
           .stateIn(
-              scope = testScope ?: viewModelScope,
+              scope = viewModelScope,
               started = SharingStarted.WhileSubscribed(5_000),
               initialValue = emptyList(),
           )
-
-  fun updateItems(items: List<Item>) {
-    inventory.value = items.toList()
-  }
 
   fun setSortOrder(sortOrder: FridgeSortOrder) {
     sortOrderState.value = sortOrder
