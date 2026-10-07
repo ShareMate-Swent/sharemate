@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.resources.C
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
@@ -27,10 +29,26 @@ class FridgeScreenTest {
   @get:Rule val composeRule = createComposeRule()
 
   @Test
+  fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
+    composeRule.setContent { MaterialTheme { FridgeScreen() } }
+
+    composeRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
+    composeRule.onNodeWithTag(C.Tag.fridge_empty).assertIsDisplayed()
+    composeRule.onNodeWithText("All").assertIsDisplayed()
+    composeRule.onNodeWithText("Fruits").assertIsDisplayed()
+    composeRule.onNodeWithText("Sort").assertIsDisplayed()
+    composeRule.onNodeWithText("Yours").assertIsDisplayed()
+    composeRule.onNodeWithText("Shared").assertIsDisplayed()
+  }
+
+  @Test
   fun sortAndFilterControlsUpdateViewModel() {
-    val milk = Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1")
-    val repository = FakeItemRepository(listOf(milk))
-    val viewModel = FridgeViewModel(repository, "household")
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1"),
+                Item(id = "bread", name = "Bread", category = "Bakery", ownerId = "owner-2")))
+    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -48,21 +66,20 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun highlightsItemsExpiringWithinThreeDays() {
-    composeRule.setContent { MaterialTheme { FridgeItem(item = itemExpiringIn(3)) } }
+  fun highlightsExpiredAndSoonToExpireItems() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeItem(item = itemExpiringIn(-1))
+        FridgeItem(item = itemExpiringIn(3).copy(id = "soon"))
+      }
+    }
 
+    composeRule.onNodeWithText("Expired on", substring = true).assertIsDisplayed()
     composeRule.onNodeWithText("Expires soon:", substring = true).assertIsDisplayed()
   }
 
   @Test
-  fun highlightsAlreadyExpiredItems() {
-    composeRule.setContent { MaterialTheme { FridgeItem(item = itemExpiringIn(-1)) } }
-
-    composeRule.onNodeWithText("Expired on", substring = true).assertIsDisplayed()
-  }
-
-  @Test
-  fun doesNotHighlightItemsExpiringAfterThreeDays() {
+  fun doesNotMarkItemsExpiringAfterThreeDaysAsSoon() {
     composeRule.setContent { MaterialTheme { FridgeItem(item = itemExpiringIn(4)) } }
 
     composeRule.onNodeWithText("Expires ", substring = true).assertIsDisplayed()
@@ -75,18 +92,22 @@ class FridgeScreenTest {
           name = "Milk",
           expirationDate =
               Date.from(
-                  LocalDate.now().plusDays(days).atStartOfDay(ZoneId.systemDefault()).toInstant()),
-      )
+                  LocalDate.now().plusDays(days).atStartOfDay(ZoneId.systemDefault()).toInstant()))
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
-    private val items = MutableStateFlow(items)
+    private val sharedItems = MutableStateFlow(items)
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> = items
+    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
 
-    override suspend fun addItem(item: Item): String = error("Not used in this test.")
+    override suspend fun addItem(item: Item): String? = error("Not used in this test.")
 
     override suspend fun deleteItem(itemId: String): Boolean = error("Not used in this test.")
+  }
+
+  private companion object {
+    const val USER_ID = "user-1"
+    const val HOUSEHOLD_ID = "household-1"
   }
 }

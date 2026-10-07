@@ -10,13 +10,15 @@ import java.util.Date
  * @property ownerId L'UID Firebase de l'utilisateur qui a créé l'item.
  * @property householdId L'ID du foyer si l'item est partagé. Si null, l'item est strictement privé.
  * @property expirationDate Date de péremption de l'aliment.
+ * @property category Catégorie de l'aliment.
  */
 data class Item(
     val id: String = "",
     val name: String = "",
     val ownerId: String = "",
     val householdId: String? = null,
-    val expirationDate: Date? = null
+    val expirationDate: Date? = null,
+    val category: String? = null,
 ) {
   /** Helper pour déterminer facilement si un item est partagé ou privé côté UI. */
   val isShared: Boolean

@@ -1,22 +1,34 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -24,94 +36,268 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
-import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.resources.C
+import com.android.sharemate.ui.theme.SampleAppTheme
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 @Composable
-fun FridgeScreen() {
-  Text(
-      text = "Fridge",
-      modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
-      style = MaterialTheme.typography.headlineMedium,
-      color = MaterialTheme.colorScheme.primary,
-  )
+fun FridgeScreen(
+    modifier: Modifier = Modifier,
+    uiState: FridgeUiState = FridgeUiState(),
+    onAddItem: (() -> Unit)? = null,
+    onDismissAddItem: () -> Unit = {},
+    onNameChange: (String) -> Unit = {},
+    onCategoryChange: (String) -> Unit = {},
+    onExpirationDateChange: (String) -> Unit = {},
+    onSaveItem: () -> Unit = {},
+    sortOrder: FridgeSortOrder? = null,
+    selectedCategory: String? = null,
+    selectedOwnerId: String? = null,
+    categories: List<String> = emptyList(),
+    ownerIds: List<String> = emptyList(),
+    onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
+    onCategoryFilterChange: ((String?) -> Unit)? = null,
+    onOwnerFilterChange: ((String?) -> Unit)? = null,
+) {
+  val hasFunctionalFilters =
+      sortOrder != null &&
+          onSortOrderChange != null &&
+          onCategoryFilterChange != null &&
+          onOwnerFilterChange != null
+
+  Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
+    Text(
+        text = stringResource(R.string.fridge_title),
+        modifier =
+            Modifier.align(Alignment.CenterHorizontally)
+                .padding(vertical = 24.dp)
+                .testTag(C.Tag.fridge_title),
+        style = MaterialTheme.typography.headlineSmall)
+
+    if (hasFunctionalFilters) {
+      Row(
+          modifier =
+              Modifier.fillMaxWidth()
+                  .horizontalScroll(rememberScrollState())
+                  .padding(horizontal = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        FilterChip(
+            selected = sortOrder == FridgeSortOrder.EXPIRATION_DATE,
+            onClick = { onSortOrderChange?.invoke(FridgeSortOrder.EXPIRATION_DATE) },
+            label = { Text("Expiry date") },
+        )
+        FilterChip(
+            selected = sortOrder == FridgeSortOrder.NAME,
+            onClick = { onSortOrderChange?.invoke(FridgeSortOrder.NAME) },
+            label = { Text("Name") },
+        )
+        ItemFilterChip(
+            label = "Category",
+            selectedValue = selectedCategory,
+            options = categories,
+            onSelected = { onCategoryFilterChange?.invoke(it) },
+        )
+        ItemFilterChip(
+            label = "Owner",
+            selectedValue = selectedOwnerId,
+            options = ownerIds,
+            onSelected = { onOwnerFilterChange?.invoke(it) },
+        )
+      }
+    } else {
+      Row(
+          modifier =
+              Modifier.fillMaxWidth()
+                  .horizontalScroll(rememberScrollState())
+                  .padding(horizontal = 16.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        listOf(
+                R.string.fridge_category_all,
+                R.string.fridge_category_fruits,
+                R.string.fridge_category_vegetables,
+                R.string.fridge_category_canned_goods)
+            .forEachIndexed { index, label ->
+              val isSelected = index == 0
+              Surface(
+                  modifier =
+                      Modifier.semantics(mergeDescendants = true) {
+                        selected = isSelected
+                        disabled()
+                      },
+                  shape = RoundedCornerShape(8.dp),
+                  color =
+                      if (isSelected) MaterialTheme.colorScheme.secondaryContainer
+                      else MaterialTheme.colorScheme.surface,
+                  border =
+                      if (isSelected) null
+                      else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                          if (isSelected) {
+                            Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
+                          }
+                          Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
+                        }
+                  }
+            }
+      }
+      Row(
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
+          verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.semantics(mergeDescendants = true) { disabled() },
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                  Icon(SortIcon, null, tint = MaterialTheme.colorScheme.primary)
+                  Text(
+                      stringResource(R.string.fridge_sort),
+                      color = MaterialTheme.colorScheme.primary,
+                      style = MaterialTheme.typography.labelLarge)
+                }
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.AutoMirrored.Filled.List,
+                stringResource(R.string.fridge_view_options),
+                modifier = Modifier.semantics { disabled() },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+          }
+      Row(
+          modifier = Modifier.padding(horizontal = 24.dp),
+          horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            listOf(R.string.fridge_yours, R.string.fridge_shared).forEach { label ->
+              Row(
+                  modifier = Modifier.semantics(mergeDescendants = true) { disabled() },
+                  horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = false,
+                        onClick = null,
+                        enabled = false,
+                        modifier = Modifier.size(18.dp),
+                        colors =
+                            RadioButtonDefaults.colors(
+                                disabledUnselectedColor =
+                                    MaterialTheme.colorScheme.onSurfaceVariant))
+                    Text(stringResource(label), style = MaterialTheme.typography.labelMedium)
+                  }
+            }
+          }
+    }
+
+    Button(
+        onClick = { onAddItem?.invoke() },
+        enabled = onAddItem != null && !uiState.isSaving,
+        modifier =
+            Modifier.align(Alignment.End)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .testTag(C.Tag.fridge_add_item)) {
+          Text(stringResource(R.string.fridge_add_item))
+        }
+    if (uiState.loadFailed) {
+      Text(
+          stringResource(R.string.fridge_load_failed),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_inventory_error))
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
+        contentAlignment = Alignment.Center) {
+          if (uiState.items.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                  items(uiState.items, key = { it.id }) { item -> FridgeItem(item) }
+                }
+          } else if (uiState.isLoading) {
+            Text(stringResource(R.string.fridge_loading))
+          } else {
+            Text(
+                if (selectedCategory != null || selectedOwnerId != null) {
+                  "No items match the selected filters."
+                } else {
+                  stringResource(R.string.fridge_empty)
+                },
+                modifier = Modifier.testTag(C.Tag.fridge_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge)
+          }
+        }
+  }
+  if (uiState.isAddItemDialogOpen) {
+    AddItemDialog(
+        uiState = uiState,
+        onNameChange = onNameChange,
+        onCategoryChange = onCategoryChange,
+        onExpirationDateChange = onExpirationDateChange,
+        onSave = onSaveItem,
+        onDismiss = onDismissAddItem)
+  }
 }
 
 @Composable
 fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
-  val items by viewModel.visibleItems.collectAsState()
+  val uiState by viewModel.uiState.collectAsState()
+  val visibleItems by viewModel.visibleItems.collectAsState()
   val sortOrder by viewModel.sortOrder.collectAsState()
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
   val categories =
-      remember(items) {
-        items
+      remember(uiState.items) {
+        uiState.items
             .mapNotNull(Item::category)
             .map(String::trim)
             .filter(String::isNotEmpty)
             .distinct()
             .sorted()
       }
-  val owners =
-      remember(items) { items.map(Item::ownerId).filter(String::isNotBlank).distinct().sorted() }
-
-  Column(
-      modifier = modifier.fillMaxSize().testTag(NavigationTestTags.PAGE_CONTENT).padding(16.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Text("Fridge", style = MaterialTheme.typography.headlineMedium)
-
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      FilterChip(
-          selected = sortOrder == FridgeSortOrder.EXPIRATION_DATE,
-          onClick = { viewModel.setSortOrder(FridgeSortOrder.EXPIRATION_DATE) },
-          label = { Text("Expiry date") },
-      )
-      FilterChip(
-          selected = sortOrder == FridgeSortOrder.NAME,
-          onClick = { viewModel.setSortOrder(FridgeSortOrder.NAME) },
-          label = { Text("Name") },
-      )
-      ItemFilterChip(
-          label = "Category",
-          selectedValue = selectedCategory,
-          options = categories,
-          onSelected = viewModel::setCategoryFilter,
-      )
-      ItemFilterChip(
-          label = "Owner",
-          selectedValue = selectedOwnerId,
-          options = owners,
-          onSelected = viewModel::setOwnerFilter,
-      )
-    }
-
-    if (items.isEmpty()) {
-      Text(
-          text = "No items match the selected filters.",
-          style = MaterialTheme.typography.bodyLarge,
-      )
-    } else {
-      LazyColumn(
-          modifier = Modifier.fillMaxSize(),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        items(items, key = Item::id) { item -> FridgeItem(item = item) }
+  val ownerIds =
+      remember(uiState.items) {
+        uiState.items.map(Item::ownerId).filter(String::isNotBlank).distinct().sorted()
       }
-    }
-  }
+
+  FridgeScreen(
+      modifier = modifier,
+      uiState = uiState.copy(items = visibleItems),
+      onAddItem = viewModel::openAddItemDialog,
+      onDismissAddItem = viewModel::dismissAddItemDialog,
+      onNameChange = viewModel::updateName,
+      onCategoryChange = viewModel::updateCategory,
+      onExpirationDateChange = viewModel::updateExpirationDate,
+      onSaveItem = viewModel::saveItem,
+      sortOrder = sortOrder,
+      selectedCategory = selectedCategory,
+      selectedOwnerId = selectedOwnerId,
+      categories = categories,
+      ownerIds = ownerIds,
+      onSortOrderChange = viewModel::setSortOrder,
+      onCategoryFilterChange = viewModel::setCategoryFilter,
+      onOwnerFilterChange = viewModel::setOwnerFilter,
+  )
 }
 
 @Composable
@@ -124,7 +310,7 @@ private fun ItemFilterChip(
   var expanded by remember { mutableStateOf(false) }
   val chipLabel = selectedValue?.let { "$label: $it" } ?: label
 
-  androidx.compose.foundation.layout.Box {
+  Box {
     FilterChip(
         selected = selectedValue != null,
         enabled = options.isNotEmpty() || selectedValue != null,
@@ -170,30 +356,24 @@ fun FridgeItem(item: Item, modifier: Modifier = Modifier) {
         ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
       }
 
-  Card(
+  Surface(
       modifier =
-          modifier.fillMaxWidth().semantics {
+          modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}").semantics {
             contentDescription = buildString {
               append(item.name)
               item.expirationDate?.let { append(", ${it.expiryDescription(expiryStatus)}") }
             }
           },
-      colors = CardDefaults.cardColors(containerColor = containerColor),
-  ) {
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text(item.name, style = MaterialTheme.typography.titleMedium, color = contentColor)
-      item.category?.let {
-        Text(it, style = MaterialTheme.typography.bodyMedium, color = contentColor)
+      shape = RoundedCornerShape(12.dp),
+      color = containerColor,
+      contentColor = contentColor) {
+        Column(
+            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              Text(item.name, style = MaterialTheme.typography.titleMedium)
+              item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
+              item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+            }
       }
-      item.expirationDate?.let { date ->
-        Text(
-            text = date.expiryDescription(expiryStatus),
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor,
-        )
-      }
-    }
-  }
 }
 
 private enum class ExpiryStatus {
@@ -222,4 +402,24 @@ private fun java.util.Date.expiryDescription(status: ExpiryStatus): String {
     ExpiryStatus.SOON -> "Expires soon: $formattedDate"
     ExpiryStatus.NORMAL -> "Expires $formattedDate"
   }
+}
+
+private fun outlineIcon(name: String, pathData: String): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            pathData = PathParser().parsePathString(pathData).toNodes(),
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 1.8f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round)
+        .build()
+
+private val SortIcon =
+    outlineIcon("Sort", "M7,4 V16 M3,8 L7,4 L11,8 M17,8 V20 M13,16 L17,20 L21,16")
+
+@Preview(showBackground = true)
+@Composable
+private fun FridgeScreenPreview() {
+  SampleAppTheme(dynamicColor = false) { FridgeScreen() }
 }

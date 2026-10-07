@@ -1,5 +1,33 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <resources>
     <string name="app_name">SampleApp</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
+    <string name="fridge_title">Fridge</string>
+    <string name="fridge_category_all">All</string>
+    <string name="fridge_category_fruits">Fruits</string>
+    <string name="fridge_category_vegetables">Vegetables</string>
+    <string name="fridge_category_canned_goods">Canned goods</string>
+    <string name="fridge_sort">Sort</string>
+    <string name="fridge_view_options">View options</string>
+    <string name="fridge_yours">Yours</string>
+    <string name="fridge_shared">Shared</string>
+    <string name="fridge_empty">Your fridge is empty</string>
+    <string name="fridge_add_item">Add Item</string>
+    <string name="fridge_item_name">Item name</string>
+    <string name="fridge_item_category_optional">Category (optional)</string>
+    <string name="fridge_item_expiration_optional">Expiration date (optional)</string>
+    <string name="fridge_date_format">YYYY-MM-DD</string>
+    <string name="fridge_name_required">Enter an item name.</string>
+    <string name="fridge_date_invalid">Enter a valid date in YYYY-MM-DD format.</string>
+    <string name="fridge_save_failed">Could not save the item. Please try again.</string>
+    <string name="fridge_load_failed">Could not load fridge items.</string>
+    <string name="fridge_loading">Loading fridge items…</string>
+    <string name="fridge_save">Save</string>
+    <string name="fridge_saving">Saving…</string>
+    <string name="fridge_cancel">Cancel</string>
+    <string name="fridge_item_category">Category: %1$s</string>
+    <string name="fridge_item_expiration">Expires: %1$s</string>
 </resources>
