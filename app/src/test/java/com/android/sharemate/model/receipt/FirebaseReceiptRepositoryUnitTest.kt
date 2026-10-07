@@ -45,219 +45,219 @@ class FirebaseReceiptRepositoryUnitTest {
 
   @Test
   fun getPrivateReceipts_returnsEmptyFlow_whenUserIdIsBlank() =
-    runBlocking<Unit> {
-      val receipts = repository.getPrivateReceipts("   ").first()
-      assertTrue(receipts.isEmpty())
-    }
+      runBlocking<Unit> {
+        val receipts = repository.getPrivateReceipts("   ").first()
+        assertTrue(receipts.isEmpty())
+      }
 
   @Suppress("UNCHECKED_CAST")
   @Test
   fun getPrivateReceipts_emitsOnlyPrivateReceipts() =
-    runBlocking<Unit> {
-      val query = mock(Query::class.java)
-      `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
+      runBlocking<Unit> {
+        val query = mock(Query::class.java)
+        `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
 
-      val listenerCaptor =
-        ArgumentCaptor.forClass(EventListener::class.java)
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
                 as ArgumentCaptor<EventListener<QuerySnapshot>>
-      val registration = mock(ListenerRegistration::class.java)
-      `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
+        val registration = mock(ListenerRegistration::class.java)
+        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
 
-      val emittedLists = mutableListOf<List<Receipt>>()
-      val job =
-        launch(Dispatchers.Unconfined) {
-          repository.getPrivateReceipts("user-1").collect { emittedLists.add(it) }
-        }
+        val emittedLists = mutableListOf<List<Receipt>>()
+        val job =
+            launch(Dispatchers.Unconfined) {
+              repository.getPrivateReceipts("user-1").collect { emittedLists.add(it) }
+            }
 
-      val snapshot = mock(QuerySnapshot::class.java)
+        val snapshot = mock(QuerySnapshot::class.java)
 
-      val privateReceipt = mock(DocumentSnapshot::class.java)
-      `when`(privateReceipt.id).thenReturn("receipt-1")
-      `when`(privateReceipt.getString("storeName")).thenReturn("Migros")
-      `when`(privateReceipt.getString("ownerId")).thenReturn("user-1")
-      `when`(privateReceipt.getString("householdId")).thenReturn(null)
+        val privateReceipt = mock(DocumentSnapshot::class.java)
+        `when`(privateReceipt.id).thenReturn("receipt-1")
+        `when`(privateReceipt.getString("storeName")).thenReturn("Migros")
+        `when`(privateReceipt.getString("ownerId")).thenReturn("user-1")
+        `when`(privateReceipt.getString("householdId")).thenReturn(null)
 
-      val sharedReceipt = mock(DocumentSnapshot::class.java)
-      `when`(sharedReceipt.id).thenReturn("receipt-2")
-      `when`(sharedReceipt.getString("storeName")).thenReturn("Coop")
-      `when`(sharedReceipt.getString("ownerId")).thenReturn("user-1")
-      `when`(sharedReceipt.getString("householdId")).thenReturn("household-1")
+        val sharedReceipt = mock(DocumentSnapshot::class.java)
+        `when`(sharedReceipt.id).thenReturn("receipt-2")
+        `when`(sharedReceipt.getString("storeName")).thenReturn("Coop")
+        `when`(sharedReceipt.getString("ownerId")).thenReturn("user-1")
+        `when`(sharedReceipt.getString("householdId")).thenReturn("household-1")
 
-      val invalidReceipt = mock(DocumentSnapshot::class.java)
-      `when`(invalidReceipt.id).thenReturn("receipt-3")
-      `when`(invalidReceipt.getString("storeName")).thenReturn(" ")
+        val invalidReceipt = mock(DocumentSnapshot::class.java)
+        `when`(invalidReceipt.id).thenReturn("receipt-3")
+        `when`(invalidReceipt.getString("storeName")).thenReturn(" ")
 
-      `when`(snapshot.documents).thenReturn(listOf(privateReceipt, sharedReceipt, invalidReceipt))
+        `when`(snapshot.documents).thenReturn(listOf(privateReceipt, sharedReceipt, invalidReceipt))
 
-      listenerCaptor.value.onEvent(snapshot, null)
+        listenerCaptor.value.onEvent(snapshot, null)
 
-      assertEquals(1, emittedLists.size)
-      assertEquals(listOf("receipt-1"), emittedLists[0].map { it.id })
-      assertEquals("Migros", emittedLists[0][0].storeName)
+        assertEquals(1, emittedLists.size)
+        assertEquals(listOf("receipt-1"), emittedLists[0].map { it.id })
+        assertEquals("Migros", emittedLists[0][0].storeName)
 
-      job.cancel()
-    }
+        job.cancel()
+      }
 
   @Suppress("UNCHECKED_CAST")
   @Test
   fun getPrivateReceipts_handlesError() =
-    runBlocking<Unit> {
-      val query = mock(Query::class.java)
-      `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
+      runBlocking<Unit> {
+        val query = mock(Query::class.java)
+        `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
 
-      val listenerCaptor =
-        ArgumentCaptor.forClass(EventListener::class.java)
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
                 as ArgumentCaptor<EventListener<QuerySnapshot>>
-      val registration = mock(ListenerRegistration::class.java)
-      `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
+        val registration = mock(ListenerRegistration::class.java)
+        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
 
-      var caughtError: Throwable? = null
-      val job =
-        launch(Dispatchers.Unconfined) {
-          try {
-            repository.getPrivateReceipts("user-1").collect {}
-          } catch (e: Exception) {
-            caughtError = e
-          }
-        }
+        var caughtError: Throwable? = null
+        val job =
+            launch(Dispatchers.Unconfined) {
+              try {
+                repository.getPrivateReceipts("user-1").collect {}
+              } catch (e: Exception) {
+                caughtError = e
+              }
+            }
 
-      val exception =
-        FirebaseFirestoreException(
-          "Permission denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
-      listenerCaptor.value.onEvent(null, exception)
+        val exception =
+            FirebaseFirestoreException(
+                "Permission denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        listenerCaptor.value.onEvent(null, exception)
 
-      assertTrue(caughtError is FirebaseFirestoreException)
+        assertTrue(caughtError is FirebaseFirestoreException)
 
-      job.cancel()
-    }
+        job.cancel()
+      }
 
   @Test
   fun getSharedReceipts_returnsEmptyFlow_whenHouseholdIdIsBlank() =
-    runBlocking<Unit> {
-      val receipts = repository.getSharedReceipts("   ").first()
-      assertTrue(receipts.isEmpty())
-    }
+      runBlocking<Unit> {
+        val receipts = repository.getSharedReceipts("   ").first()
+        assertTrue(receipts.isEmpty())
+      }
 
   @Suppress("UNCHECKED_CAST")
   @Test
   fun getSharedReceipts_emitsOnlyValidSharedReceipts() =
-    runBlocking<Unit> {
-      val query = mock(Query::class.java)
-      `when`(collection.whereEqualTo("householdId", "household-1")).thenReturn(query)
+      runBlocking<Unit> {
+        val query = mock(Query::class.java)
+        `when`(collection.whereEqualTo("householdId", "household-1")).thenReturn(query)
 
-      val listenerCaptor =
-        ArgumentCaptor.forClass(EventListener::class.java)
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
                 as ArgumentCaptor<EventListener<QuerySnapshot>>
-      val registration = mock(ListenerRegistration::class.java)
-      `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
+        val registration = mock(ListenerRegistration::class.java)
+        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
 
-      val emittedLists = mutableListOf<List<Receipt>>()
-      val job =
-        launch(Dispatchers.Unconfined) {
-          repository.getSharedReceipts("household-1").collect { emittedLists.add(it) }
-        }
+        val emittedLists = mutableListOf<List<Receipt>>()
+        val job =
+            launch(Dispatchers.Unconfined) {
+              repository.getSharedReceipts("household-1").collect { emittedLists.add(it) }
+            }
 
-      val snapshot = mock(QuerySnapshot::class.java)
-      val receipt = mock(DocumentSnapshot::class.java)
-      `when`(receipt.id).thenReturn("receipt-4")
-      `when`(receipt.getString("storeName")).thenReturn("Aldi")
-      `when`(receipt.getLong("totalAmountCents")).thenReturn(3500L)
-      `when`(receipt.getString("ownerId")).thenReturn("user-2")
-      `when`(receipt.getString("householdId")).thenReturn("household-1")
-      val date = Date(1_700_000_000_000L)
-      `when`(receipt.getTimestamp("date")).thenReturn(Timestamp(date))
+        val snapshot = mock(QuerySnapshot::class.java)
+        val receipt = mock(DocumentSnapshot::class.java)
+        `when`(receipt.id).thenReturn("receipt-4")
+        `when`(receipt.getString("storeName")).thenReturn("Aldi")
+        `when`(receipt.getLong("totalAmountCents")).thenReturn(3500L)
+        `when`(receipt.getString("ownerId")).thenReturn("user-2")
+        `when`(receipt.getString("householdId")).thenReturn("household-1")
+        val date = Date(1_700_000_000_000L)
+        `when`(receipt.getTimestamp("date")).thenReturn(Timestamp(date))
 
-      val invalid = mock(DocumentSnapshot::class.java)
-      `when`(invalid.getString("storeName")).thenReturn(" ")
+        val invalid = mock(DocumentSnapshot::class.java)
+        `when`(invalid.getString("storeName")).thenReturn(" ")
 
-      `when`(snapshot.documents).thenReturn(listOf(receipt, invalid))
+        `when`(snapshot.documents).thenReturn(listOf(receipt, invalid))
 
-      listenerCaptor.value.onEvent(snapshot, null)
+        listenerCaptor.value.onEvent(snapshot, null)
 
-      assertEquals(1, emittedLists.size)
-      assertEquals(1, emittedLists[0].size)
-      assertEquals("receipt-4", emittedLists[0][0].id)
-      assertEquals("Aldi", emittedLists[0][0].storeName)
-      assertEquals(3500L, emittedLists[0][0].totalAmountCents)
-      assertEquals(date, emittedLists[0][0].date)
+        assertEquals(1, emittedLists.size)
+        assertEquals(1, emittedLists[0].size)
+        assertEquals("receipt-4", emittedLists[0][0].id)
+        assertEquals("Aldi", emittedLists[0][0].storeName)
+        assertEquals(3500L, emittedLists[0][0].totalAmountCents)
+        assertEquals(date, emittedLists[0][0].date)
 
-      job.cancel()
-    }
+        job.cancel()
+      }
 
   @Test
   fun addReceipt_failsOnBlankStoreNameOrOwnerId() =
-    runBlocking<Unit> {
-      assertNull(repository.addReceipt(Receipt(storeName = "  ", ownerId = "user-1")))
-      assertNull(repository.addReceipt(Receipt(storeName = "Migros", ownerId = "   ")))
-    }
+      runBlocking<Unit> {
+        assertNull(repository.addReceipt(Receipt(storeName = "  ", ownerId = "user-1")))
+        assertNull(repository.addReceipt(Receipt(storeName = "Migros", ownerId = "   ")))
+      }
 
   @Test
   fun addReceipt_succeedsAndTrimsData() =
-    runBlocking<Unit> {
-      val document = mock(DocumentReference::class.java)
-      `when`(collection.document()).thenReturn(document)
-      `when`(document.id).thenReturn("generated-id")
-      `when`(document.set(any(Receipt::class.java))).thenReturn(Tasks.forResult(null))
+      runBlocking<Unit> {
+        val document = mock(DocumentReference::class.java)
+        `when`(collection.document()).thenReturn(document)
+        `when`(document.id).thenReturn("generated-id")
+        `when`(document.set(any(Receipt::class.java))).thenReturn(Tasks.forResult(null))
 
-      val result =
-        repository.addReceipt(
-          Receipt(
-            storeName = "  Migros  ",
-            totalAmountCents = 1250L,
-            ownerId = "user-1",
-            householdId = "  "))
+        val result =
+            repository.addReceipt(
+                Receipt(
+                    storeName = "  Migros  ",
+                    totalAmountCents = 1250L,
+                    ownerId = "user-1",
+                    householdId = "  "))
 
-      assertEquals("generated-id", result)
+        assertEquals("generated-id", result)
 
-      val captor = ArgumentCaptor.forClass(Receipt::class.java)
-      verify(document).set(captor.capture())
+        val captor = ArgumentCaptor.forClass(Receipt::class.java)
+        verify(document).set(captor.capture())
 
-      val saved = captor.value
-      assertEquals("generated-id", saved.id)
-      assertEquals("Migros", saved.storeName)
-      assertEquals(1250L, saved.totalAmountCents)
-      assertEquals("user-1", saved.ownerId)
-      assertNull(saved.householdId)
-    }
+        val saved = captor.value
+        assertEquals("generated-id", saved.id)
+        assertEquals("Migros", saved.storeName)
+        assertEquals(1250L, saved.totalAmountCents)
+        assertEquals("user-1", saved.ownerId)
+        assertNull(saved.householdId)
+      }
 
   @Test
   fun addReceipt_returnsNullOnGenericException() =
-    runBlocking<Unit> {
-      val document = mock(DocumentReference::class.java)
-      `when`(collection.document()).thenReturn(document)
-      `when`(document.set(any(Receipt::class.java)))
-        .thenThrow(RuntimeException("Firestore error"))
+      runBlocking<Unit> {
+        val document = mock(DocumentReference::class.java)
+        `when`(collection.document()).thenReturn(document)
+        `when`(document.set(any(Receipt::class.java)))
+            .thenThrow(RuntimeException("Firestore error"))
 
-      val result = repository.addReceipt(Receipt(storeName = "Migros", ownerId = "user-1"))
-      assertNull(result)
-    }
+        val result = repository.addReceipt(Receipt(storeName = "Migros", ownerId = "user-1"))
+        assertNull(result)
+      }
 
   @Test
   fun deleteReceipt_failsOnBlankId() =
-    runBlocking<Unit> { assertFalse(repository.deleteReceipt("  ")) }
+      runBlocking<Unit> { assertFalse(repository.deleteReceipt("  ")) }
 
   @Test
   fun deleteReceipt_succeeds() =
-    runBlocking<Unit> {
-      val document = mock(DocumentReference::class.java)
-      `when`(collection.document("receipt-1")).thenReturn(document)
-      `when`(document.delete()).thenReturn(Tasks.forResult(null))
+      runBlocking<Unit> {
+        val document = mock(DocumentReference::class.java)
+        `when`(collection.document("receipt-1")).thenReturn(document)
+        `when`(document.delete()).thenReturn(Tasks.forResult(null))
 
-      val result = repository.deleteReceipt("receipt-1")
-      assertTrue(result)
-      verify(document).delete()
-    }
+        val result = repository.deleteReceipt("receipt-1")
+        assertTrue(result)
+        verify(document).delete()
+      }
 
   @Test
   fun deleteReceipt_returnsFalseOnGenericException() =
-    runBlocking<Unit> {
-      val document = mock(DocumentReference::class.java)
-      `when`(collection.document("receipt-1")).thenReturn(document)
-      `when`(document.delete()).thenThrow(RuntimeException("Firestore error"))
+      runBlocking<Unit> {
+        val document = mock(DocumentReference::class.java)
+        `when`(collection.document("receipt-1")).thenReturn(document)
+        `when`(document.delete()).thenThrow(RuntimeException("Firestore error"))
 
-      val result = repository.deleteReceipt("receipt-1")
-      assertFalse(result)
-    }
+        val result = repository.deleteReceipt("receipt-1")
+        assertFalse(result)
+      }
 
   @Test
   fun toReceiptOrNull_parsesCorrectly() {
