@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -23,9 +24,13 @@ class MainActivityTest : TestCase() {
   fun test() = run {
     step("Start Main Activity") {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
-        simpleText {
+        fridgeTitle {
           assertIsDisplayed()
-          assertTextEquals("Hello Android!")
+          assertTextEquals("Fridge")
+        }
+        emptyState {
+          assertIsDisplayed()
+          assertTextEquals("Your fridge is empty")
         }
       }
     }

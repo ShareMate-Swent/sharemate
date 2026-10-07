@@ -1,5 +1,19 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <resources>
     <string name="app_name">SampleApp</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+    <string name="fridge_title">Fridge</string>
+    <string name="fridge_category_all">All</string>
+    <string name="fridge_category_fruits">Fruits</string>
+    <string name="fridge_category_vegetables">Vegetables</string>
+    <string name="fridge_category_canned_goods">Canned goods</string>
+    <string name="fridge_sort">Sort</string>
+    <string name="fridge_view_options">View options</string>
+    <string name="fridge_yours">Yours</string>
+    <string name="fridge_shared">Shared</string>
+    <string name="fridge_empty">Your fridge is empty</string>
+    <string name="fridge_recipes">Recipes</string>
+    <string name="fridge_receipts">Receipts</string>
+    <string name="fridge_settings">Settings</string>
 </resources>
