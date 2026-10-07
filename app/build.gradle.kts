@@ -7,8 +7,9 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-jacoco {
-    toolVersion = "0.8.12"
+// AGP configures JaCoCo during evaluation; keep the report engine aligned afterward.
+afterEvaluate {
+    jacoco { toolVersion = "0.8.13" }
 }
 
 android {
@@ -45,7 +46,7 @@ android {
     }
 
     testCoverage {
-        jacocoVersion = "0.8.12"
+        jacocoVersion = "0.8.13"
     }
 
     buildFeatures {
@@ -135,6 +136,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.play.services)
     testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
@@ -173,6 +175,8 @@ dependencies {
     testImplementation(libs.robolectric)
 
     // ----------       Firebase     ------------
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-firestore")
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
 }
@@ -214,4 +218,8 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
         include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
         include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
     })
+}
+
+configurations.configureEach {
+    exclude(group = "com.google.protobuf", module = "protobuf-lite")
 }

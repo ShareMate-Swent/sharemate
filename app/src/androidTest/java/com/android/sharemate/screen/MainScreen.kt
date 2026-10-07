@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.screen
 
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
@@ -10,5 +11,6 @@ class MainScreen(semanticsProvider: SemanticsNodeInteractionsProvider) :
         semanticsProvider = semanticsProvider,
         viewBuilderAction = { hasTestTag(C.Tag.main_screen_container) }) {
 
-  val simpleText: KNode = child { hasTestTag(C.Tag.greeting) }
+  val fridgeTitle: KNode = child { hasTestTag(C.Tag.fridge_title) }
+  val emptyState: KNode = child { hasTestTag(C.Tag.fridge_empty) }
 }

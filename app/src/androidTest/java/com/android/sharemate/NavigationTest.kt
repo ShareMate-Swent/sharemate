@@ -1,5 +1,7 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -7,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.resources.C
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Rule
@@ -16,7 +19,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
 
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule()
+
+  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun selectingEachDestinationShowsItsPageLabel() = run {
@@ -32,7 +37,18 @@ class MainActivityTest : TestCase() {
       destinations.forEach { (testTag, label) ->
         composeTestRule.onNodeWithTag(testTag).performClick()
         composeTestRule.onNodeWithTag(testTag).assertIsSelected()
-        composeTestRule.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals(label)
+        if (testTag == NavigationTestTags.FRIDGE_TAB) {
+          composeTestRule
+              .onNodeWithTag(C.Tag.fridge_title)
+              .assertIsDisplayed()
+              .assertTextEquals("Fridge")
+          composeTestRule
+              .onNodeWithTag(C.Tag.fridge_empty)
+              .assertIsDisplayed()
+              .assertTextEquals("Your fridge is empty")
+        } else {
+          composeTestRule.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals(label)
+        }
         if (label == "Recipes" || label == "Receipts") {
           composeTestRule.onNodeWithText("Coming soon").assertExists()
         } else {
