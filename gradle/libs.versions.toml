@@ -1,4 +1,9 @@
 [versions]
+# Auth 24.2.0 metadata requires newer Kotlin; preserve the main toolchain.
+firebaseAuth = { strictly = "23.1.0" }
+coroutines = "1.8.1"
+mockito = "5.13.0"
+firebaseBom = "34.19.0"
 # Core & Plugins
 agp = "8.4.2"
 kotlin = "1.9.23"
@@ -26,6 +31,10 @@ kaspresso = "1.5.5"
 robolectric = "4.14.1"
 
 [libraries]
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
+mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth", version.ref = "firebaseAuth" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }

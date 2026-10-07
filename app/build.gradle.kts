@@ -135,8 +135,10 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
     globalTestImplementation(libs.androidx.junit)
     globalTestImplementation(libs.androidx.espresso.core)
 
@@ -172,6 +174,8 @@ dependencies {
     // ----------       Firebase     ------------
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
     implementation("com.google.firebase:firebase-firestore")
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
 }
 
 tasks.withType<Test> {
