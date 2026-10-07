@@ -103,4 +103,9 @@ class FridgeScreenTest {
           else destination.assertIsNotSelected()
         }
   }
+
+  @Test
+  fun addItemIsVisibleButDisabledWithoutRuntimeWiring() {
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed().assertIsNotEnabled()
+  }
 }
