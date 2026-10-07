@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.MainActivity
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.navigation.NavigationTestTags
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,11 +58,17 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun bottomBarShowsOnlyFridgeSelectedAndDestinationsDisabled() {
-    listOf("Fridge", "Recipes", "Receipts", "Settings").forEachIndexed { index, label ->
-      val destination = composeTestRule.onNodeWithTag("${C.Tag.fridge_navigation_prefix}$index")
-      destination.assertIsDisplayed().assertTextEquals(label).assertIsNotEnabled()
-      if (index == 0) destination.assertIsSelected() else destination.assertIsNotSelected()
-    }
+  fun bottomBarShowsOnlyFridgeSelectedAndDestinationsEnabled() {
+    listOf(
+            NavigationTestTags.FRIDGE_TAB to "Fridge",
+            NavigationTestTags.RECIPES_TAB to "Recipes",
+            NavigationTestTags.RECEIPTS_TAB to "Receipts",
+            NavigationTestTags.SETTINGS_TAB to "Settings")
+        .forEach { (testTag, label) ->
+          val destination = composeTestRule.onNodeWithTag(testTag)
+          destination.assertIsDisplayed().assertTextEquals(label).assertIsEnabled()
+          if (testTag == NavigationTestTags.FRIDGE_TAB) destination.assertIsSelected()
+          else destination.assertIsNotSelected()
+        }
   }
 }
