@@ -112,7 +112,8 @@ private fun AuthForm(
               modifier =
                   Modifier.testTag("auth_error").semantics { liveRegion = LiveRegionMode.Polite })
         }
-        if (state.isLoading) CircularProgressIndicator(Modifier.testTag("auth_loading"))
+        if (state.isLoading || state.isRestoringSession)
+            CircularProgressIndicator(Modifier.testTag("auth_loading"))
         Button(
             onClick = onSubmit,
             enabled = !state.isLoading && !state.isRestoringSession,
