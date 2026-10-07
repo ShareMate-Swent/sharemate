@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
@@ -29,6 +30,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import kotlin.coroutines.cancellation.CancellationException
 
 class FirebaseReceiptRepositoryUnitTest {
   private lateinit var firestore: FirebaseFirestore
@@ -233,6 +235,34 @@ class FirebaseReceiptRepositoryUnitTest {
       }
 
   @Test
+  fun addReceipt_rethrowsCancellationException() = runBlocking<Unit> {
+    val document = mock(DocumentReference::class.java)
+    `when`(collection.document()).thenReturn(document)
+    `when`(document.set(any(Receipt::class.java))).thenThrow(CancellationException("Cancelled"))
+
+    try {
+      repository.addReceipt(Receipt(storeName = "Migros", ownerId = "user-1"))
+      Assert.fail("Expected CancellationException")
+    } catch (e: CancellationException) {
+      // Expected
+    }
+  }
+
+  @Test
+  fun deleteReceipt_rethrowsCancellationException() = runBlocking<Unit> {
+    val document = mock(DocumentReference::class.java)
+    `when`(collection.document("receipt-1")).thenReturn(document)
+    `when`(document.delete()).thenThrow(CancellationException("Cancelled"))
+
+    try {
+      repository.deleteReceipt("receipt-1")
+      Assert.fail("Expected CancellationException")
+    } catch (e: CancellationException) {
+      // Expected
+    }
+  }
+
+  @Test
   fun deleteReceipt_failsOnBlankId() =
       runBlocking<Unit> { assertFalse(repository.deleteReceipt("  ")) }
 
@@ -293,4 +323,6 @@ class FirebaseReceiptRepositoryUnitTest {
 
     assertNull(document.toReceiptOrNull())
   }
+
+
 }
