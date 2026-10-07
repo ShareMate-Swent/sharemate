@@ -103,9 +103,15 @@ class AuthViewModelTest {
       viewModel.submit()
       advanceUntilIdle()
       if (password.length == 5) assertEquals(AuthUiError.WEAK_PASSWORD, viewModel.state.value.error)
+      else {
+        repository.sessions.emit(AuthSession("new-user", "student@example.org"))
+        advanceUntilIdle()
+        ready()
+      }
     }
     assertEquals(listOf("123456", "1234567"), repository.calls.map { it.password })
     assertTrue(repository.calls.all { it.signup })
+    viewModel.updatePassword("1234567")
     viewModel.updateConfirmPassword("different")
     viewModel.submit()
     assertEquals(AuthUiError.PASSWORD_MISMATCH, viewModel.state.value.error)
@@ -228,6 +234,9 @@ class AuthViewModelTest {
     assertEquals("secret", viewModel.state.value.password)
     assertEquals(1, repository.calls.size)
     assertEquals(0, repository.signOutCalls)
+    repository.sessions.emit(AuthSession("user", "student@example.org"))
+    advanceUntilIdle()
+    assertTrue(viewModel.state.value.isLoading)
     gate.complete(Unit)
     advanceUntilIdle()
     assertFalse(viewModel.state.value.isLoading)
@@ -255,6 +264,34 @@ class AuthViewModelTest {
     assertNull(viewModel.state.value.session)
     assertEquals("", viewModel.state.value.email)
     assertFalse(viewModel.state.value.isRestoringSession)
+  }
+
+  @Test
+  fun successfulRequestWaitsForSessionBeforeUnlockingForm() = runTest {
+    ready()
+    for (mode in AuthMode.values()) {
+      viewModel.selectMode(mode)
+      fillLogin()
+      viewModel.updateConfirmPassword("secret")
+      val previousCalls = repository.calls.size
+      viewModel.submit()
+      advanceUntilIdle()
+      assertTrue(viewModel.state.value.isLoading)
+      assertNull(viewModel.state.value.session)
+      viewModel.submit()
+      viewModel.updatePassword("changed")
+      advanceUntilIdle()
+      assertEquals(previousCalls + 1, repository.calls.size)
+      assertEquals("secret", viewModel.state.value.password)
+      repository.sessions.emit(AuthSession("user", "student@example.org"))
+      advanceUntilIdle()
+      assertFalse(viewModel.state.value.isLoading)
+      assertEquals("user", viewModel.state.value.session?.uid)
+      assertEquals("", viewModel.state.value.password)
+      assertEquals("", viewModel.state.value.confirmPassword)
+      viewModel.signOut()
+      advanceUntilIdle()
+    }
   }
 
   private suspend fun ready() {
