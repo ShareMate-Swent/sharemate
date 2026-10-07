@@ -17,9 +17,10 @@ class MainActivityAuthTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
-  fun loginRevealsApplicationAndSignoutReturnsToProtectedLogin() {
-    compose.onNodeWithTag("auth_submit").assertIsDisplayed()
+  fun loginRevealsApplicationAndSignoutReturnsToWelcome() {
+    compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
+    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -31,7 +32,7 @@ class MainActivityAuthTest {
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithText("Sign out").performClick()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertIsDisplayed()
+    compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
     verify(firebase.auth).signOut()
   }
 }
