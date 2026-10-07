@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 /** Authentication identity only; household/profile data belongs to its own repository. */
 data class AuthSession(val uid: String, val email: String?)
 
+// Keep these names aligned with AuthUiError: UI conversion uses valueOf(name).
 enum class AuthError {
   INVALID_EMAIL,
   INVALID_CREDENTIALS,
