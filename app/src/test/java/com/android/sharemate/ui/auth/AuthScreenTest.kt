@@ -102,6 +102,20 @@ class AuthScreenTest {
   }
 
   @Test
+  fun restoringSessionShowsProgressAndDisablesSubmit() {
+    var state by mutableStateOf(AuthUiState())
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
+    compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
+    compose.runOnIdle { state = state.copy(isLoading = true) }
+    compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
+    compose.runOnIdle { state = state.copy(isRestoringSession = false, isLoading = false) }
+    compose.onNodeWithTag("auth_loading").assertDoesNotExist()
+    compose.onNodeWithTag("auth_submit").assertIsEnabled()
+  }
+
+  @Test
   fun validationAndProviderFailuresDisplaySafeActionableFeedback() {
     var state by mutableStateOf(AuthUiState(isRestoringSession = false))
     compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
