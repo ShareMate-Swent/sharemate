@@ -143,8 +143,16 @@ class HouseholdRepositoryFirestoreTest {
     val created = repository.createHousehold("Home", "creator")
 
     val joined = repository.joinHousehold("  ${created.inviteCode.lowercase()}  ", "member")
+    val storedHousehold =
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(created.id).get())
+            .toObject(Household::class.java)
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document("member").get())
 
     assertEquals(listOf("creator", "member"), joined.memberIds)
+    assertEquals(listOf("creator", "member"), storedHousehold?.memberIds)
+    assertEquals(created.id, storedUser.getString("householdId"))
   }
 
   @Test
@@ -162,9 +170,17 @@ class HouseholdRepositoryFirestoreTest {
     val created = repository.createHousehold("Home", "creator")
 
     val joined = repository.joinHousehold(created.inviteCode, "creator")
+    val storedHousehold =
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(created.id).get())
+            .toObject(Household::class.java)
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document("creator").get())
 
     assertEquals(created, joined)
     assertEquals(listOf("creator"), joined.memberIds)
+    assertEquals(listOf("creator"), storedHousehold?.memberIds)
+    assertEquals(created.id, storedUser.getString("householdId"))
   }
 
   @Test
