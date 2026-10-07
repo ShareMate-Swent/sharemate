@@ -28,4 +28,10 @@
     <string name="fridge_cancel">Cancel</string>
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
+    <string name="fridge_remove">Remove</string>
+    <string name="fridge_remove_description">Remove %1$s</string>
+    <string name="fridge_remove_title">Remove item?</string>
+    <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
+    <string name="fridge_removing">Removing…</string>
+    <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
 </resources>

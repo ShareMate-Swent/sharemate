@@ -40,6 +40,54 @@ class FridgeViewModel(
     }
   }
 
+  fun requestRemoval(itemId: String) {
+    val state = uiState.value
+    if (state.isDeleting ||
+        state.isSaving ||
+        state.isAddItemDialogOpen ||
+        state.pendingRemovalItem != null ||
+        itemId.isBlank())
+        return
+    val item = state.items.firstOrNull { it.id == itemId } ?: return
+    mutableUiState.update { it.copy(pendingRemovalItem = item, removalFailed = false) }
+  }
+
+  fun cancelRemoval() {
+    if (uiState.value.isDeleting) return
+    mutableUiState.update { it.copy(pendingRemovalItem = null, removalFailed = false) }
+  }
+
+  fun confirmRemoval() {
+    val state = uiState.value
+    if (state.isDeleting) return
+    val item = state.pendingRemovalItem ?: return
+    if (state.items.none { it.id == item.id }) {
+      cancelRemoval()
+      return
+    }
+    mutableUiState.update { it.copy(isDeleting = true, removalFailed = false) }
+    viewModelScope.launch {
+      try {
+        if (itemRepository.deleteItem(item.id)) {
+          mutableUiState.update {
+            it.copy(
+                items = it.items.filterNot { saved -> saved.id == item.id },
+                pendingRemovalItem = null,
+                isDeleting = false,
+                removalFailed = false)
+          }
+        } else {
+          mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
+        }
+      } catch (exception: CancellationException) {
+        mutableUiState.update { it.copy(isDeleting = false) }
+        throw exception
+      } catch (exception: Exception) {
+        mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
+      }
+    }
+  }
+
   fun openAddItemDialog() {
     if (uiState.value.isSaving || uiState.value.isAddItemDialogOpen) return
     mutableUiState.update {

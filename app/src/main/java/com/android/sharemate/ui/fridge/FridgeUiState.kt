@@ -12,7 +12,10 @@ data class FridgeUiState(
     val itemCategory: String = "",
     val expirationDateInput: String = "",
     val isSaving: Boolean = false,
-    val formError: FridgeFormError? = null
+    val formError: FridgeFormError? = null,
+    val pendingRemovalItem: Item? = null,
+    val isDeleting: Boolean = false,
+    val removalFailed: Boolean = false
 )
 
 enum class FridgeFormError {

@@ -41,6 +41,173 @@ class FridgeViewModelTest {
     Dispatchers.resetMain()
   }
 
+  private val milk = Item(id = "milk", name = "Milk", householdId = "test-household")
+  private val bread = Item(id = "bread", name = "Bread", householdId = "test-household")
+
+  @Test
+  fun requestingAndCancellingRemovalDoesNotDelete() = runTest {
+    repository.emitItems(listOf(milk))
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+
+    assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
+    assertTrue(repository.deletedItemIds.isEmpty())
+    viewModel.cancelRemoval()
+    viewModel.confirmRemoval()
+    runCurrent()
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertEquals(listOf(milk), viewModel.uiState.value.items)
+    assertTrue(repository.deletedItemIds.isEmpty())
+  }
+
+  @Test
+  fun successfulRemovalUpdatesLocalStateWithoutWaitingForSnapshot() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    repository.emitOnDelete = false
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertEquals(listOf(milk.id), repository.deletedItemIds)
+    assertEquals(listOf(bread), viewModel.uiState.value.items)
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertFalse(viewModel.uiState.value.isDeleting)
+    assertFalse(viewModel.uiState.value.removalFailed)
+  }
+
+  @Test
+  fun removingTheLastItemLeavesAnEmptyInventory() = runTest {
+    repository.emitItems(listOf(milk))
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+  }
+
+  @Test
+  fun failedRemovalRetainsTheItemAndAllowsRetry() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.returnFalseOnDelete = true
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertEquals(listOf(milk), viewModel.uiState.value.items)
+    assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
+    assertTrue(viewModel.uiState.value.removalFailed)
+    assertFalse(viewModel.uiState.value.isDeleting)
+    repository.returnFalseOnDelete = false
+    viewModel.confirmRemoval()
+    runCurrent()
+    assertEquals(listOf(milk.id, milk.id), repository.deletedItemIds)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertFalse(viewModel.uiState.value.removalFailed)
+  }
+
+  @Test
+  fun removalExceptionRetainsTheItemAndAllowsRetry() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.deleteFailure = IOException("Delete failed")
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertEquals(listOf(milk), viewModel.uiState.value.items)
+    assertTrue(viewModel.uiState.value.removalFailed)
+    assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
+    assertFalse(viewModel.uiState.value.isDeleting)
+    assertNull(viewModel.uiState.value.formError)
+    assertFalse(viewModel.uiState.value.isSaving)
+    repository.deleteFailure = null
+    viewModel.confirmRemoval()
+    runCurrent()
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+  }
+
+  @Test
+  fun pendingRemovalPreventsDuplicateRequestsAndCancellation() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    val gate = CompletableDeferred<Unit>()
+    repository.deleteGate = gate
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    viewModel.confirmRemoval()
+    viewModel.cancelRemoval()
+    viewModel.requestRemoval(bread.id)
+    runCurrent()
+
+    assertEquals(listOf(milk.id), repository.deletedItemIds)
+    assertTrue(viewModel.uiState.value.isDeleting)
+    assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
+    assertEquals(listOf(milk, bread), viewModel.uiState.value.items)
+    gate.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(bread), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.isDeleting)
+  }
+
+  @Test
+  fun unknownAndBlankIdsNeverDelete() = runTest {
+    repository.emitItems(listOf(milk))
+    val viewModel = viewModel()
+    runCurrent()
+    listOf("unknown", "", " ").forEach { id ->
+      viewModel.requestRemoval(id)
+      viewModel.confirmRemoval()
+    }
+    runCurrent()
+    assertTrue(repository.deletedItemIds.isEmpty())
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertEquals(listOf(milk), viewModel.uiState.value.items)
+  }
+
+  @Test
+  fun anItemRemovedFromTheInventoryBeforeConfirmationNeverDeletes() = runTest {
+    repository.emitItems(listOf(milk))
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.requestRemoval(milk.id)
+    repository.emitItems(emptyList())
+    runCurrent()
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertTrue(repository.deletedItemIds.isEmpty())
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertFalse(viewModel.uiState.value.isDeleting)
+  }
+
+  @Test
+  fun removalDoesNotInterruptAnOpenAddItemDraft() = runTest {
+    repository.emitItems(listOf(milk))
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Cheese")
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    runCurrent()
+
+    assertTrue(repository.deletedItemIds.isEmpty())
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertEquals("Cheese", viewModel.uiState.value.itemName)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+  }
+
   private fun viewModel(): FridgeViewModel =
       FridgeViewModel(repository, "test-user", "test-household").also {
         viewModelStore.put("fridge", it)

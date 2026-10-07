@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +39,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -57,7 +60,10 @@ fun FridgeScreen(
     onNameChange: (String) -> Unit = {},
     onCategoryChange: (String) -> Unit = {},
     onExpirationDateChange: (String) -> Unit = {},
-    onSaveItem: () -> Unit = {}
+    onSaveItem: () -> Unit = {},
+    onRemoveItem: ((String) -> Unit)? = null,
+    onCancelRemoval: () -> Unit = {},
+    onConfirmRemoval: () -> Unit = {}
 ) {
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
     Text(
@@ -167,7 +173,16 @@ fun FridgeScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                  items(uiState.items, key = { it.id }) { item -> FridgeItem(item) }
+                  items(uiState.items, key = { it.id }) { item ->
+                    FridgeItem(
+                        item = item,
+                        removalEnabled =
+                            onRemoveItem != null &&
+                                !uiState.isDeleting &&
+                                !uiState.isSaving &&
+                                !uiState.isAddItemDialogOpen,
+                        onRemove = { onRemoveItem?.invoke(item.id) })
+                  }
                 }
           } else if (uiState.isLoading) {
             Text(stringResource(R.string.fridge_loading))
@@ -189,10 +204,47 @@ fun FridgeScreen(
         onSave = onSaveItem,
         onDismiss = onDismissAddItem)
   }
+  uiState.pendingRemovalItem?.let { item ->
+    AlertDialog(
+        modifier = Modifier.testTag(C.Tag.fridge_remove_dialog),
+        onDismissRequest = { if (!uiState.isDeleting) onCancelRemoval() },
+        title = { Text(stringResource(R.string.fridge_remove_title)) },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.fridge_remove_confirmation, item.name))
+            if (uiState.removalFailed) {
+              Text(
+                  stringResource(R.string.fridge_remove_failed),
+                  color = MaterialTheme.colorScheme.error,
+                  modifier = Modifier.testTag(C.Tag.fridge_removal_error))
+            }
+          }
+        },
+        confirmButton = {
+          TextButton(
+              onClick = onConfirmRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_confirm_remove)) {
+                Text(
+                    stringResource(
+                        if (uiState.isDeleting) R.string.fridge_removing
+                        else R.string.fridge_remove))
+              }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = onCancelRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_cancel_remove)) {
+                Text(stringResource(R.string.fridge_cancel))
+              }
+        })
+  }
 }
 
 @Composable
-private fun FridgeItem(item: Item) {
+private fun FridgeItem(item: Item, removalEnabled: Boolean, onRemove: () -> Unit) {
+  val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   Surface(
       modifier = Modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}"),
       shape = RoundedCornerShape(12.dp),
@@ -207,6 +259,15 @@ private fun FridgeItem(item: Item) {
                         R.string.fridge_item_expiration,
                         it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString()))
               }
+              TextButton(
+                  onClick = onRemove,
+                  enabled = removalEnabled,
+                  modifier =
+                      Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
+                        contentDescription = removeDescription
+                      }) {
+                    Text(stringResource(R.string.fridge_remove))
+                  }
             }
       }
 }
