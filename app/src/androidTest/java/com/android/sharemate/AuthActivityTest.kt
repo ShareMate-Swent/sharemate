@@ -14,7 +14,9 @@ import org.junit.runner.RunWith
 /** Verifies signed-out entry and Android back navigation on the real application. */
 @RunWith(AndroidJUnit4::class)
 class AuthActivityTest {
-  @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule(signedIn = false)
+
+  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun signedOutStartupAndBackKeepApplicationProtected() {
