@@ -174,6 +174,7 @@ dependencies {
     // ----------       Firebase     ------------
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation("com.google.firebase:firebase-firestore")
 }
 
 tasks.withType<Test> {
