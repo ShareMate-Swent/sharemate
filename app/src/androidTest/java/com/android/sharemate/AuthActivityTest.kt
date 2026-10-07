@@ -5,7 +5,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sharemate.resources.C
+import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.google.firebase.auth.FirebaseAuth
 import org.junit.Rule
 import org.junit.Test
@@ -22,7 +22,7 @@ class AuthActivityTest {
     compose.waitUntil(5000) {
       compose.onAllNodes(hasTestTag("auth_welcome")).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
     compose.onNodeWithTag("auth_submit").assertDoesNotExist()
     compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").assertIsDisplayed()
@@ -34,6 +34,6 @@ class AuthActivityTest {
     compose
         .onNodeWithTag("auth_password")
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
-    compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
   }
 }

@@ -2,7 +2,7 @@ package com.android.sharemate
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import com.android.sharemate.resources.C
+import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
@@ -63,19 +63,21 @@ class MainActivityAuthTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
-  fun loginRevealsApplicationAndSignoutReturnsToProtectedLogin() {
-    compose.onNodeWithTag("auth_welcome").assertExists()
-    compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
+  fun loginRevealsApplicationAndSignoutReturnsToWelcome() {
+    compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
     compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
-    compose.onNodeWithTag(C.Tag.greeting).assertIsDisplayed().assertTextEquals("Hello Android!")
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsDisplayed().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals("Fridge")
     compose.onNodeWithTag("auth_submit").assertDoesNotExist()
     verify(auth).signInWithEmailAndPassword("student@example.org", "secret")
+    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithText("Sign out").performClick()
-    compose.onNodeWithTag(C.Tag.greeting).assertDoesNotExist()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
+    compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
     verify(auth).signOut()
   }
 }
