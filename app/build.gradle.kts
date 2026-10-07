@@ -7,8 +7,9 @@ plugins {
     id("com.google.gms.google-services")
 }
 
-jacoco {
-    toolVersion = "0.8.12"
+// AGP configures JaCoCo during evaluation; keep the report engine aligned afterward.
+afterEvaluate {
+    jacoco { toolVersion = "0.8.13" }
 }
 
 android {
@@ -45,7 +46,7 @@ android {
     }
 
     testCoverage {
-        jacocoVersion = "0.8.12"
+        jacocoVersion = "0.8.13"
     }
 
     buildFeatures {
