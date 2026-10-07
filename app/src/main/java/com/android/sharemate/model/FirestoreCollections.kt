@@ -5,4 +5,5 @@ package com.android.sharemate.model
 object FirestoreCollections {
   const val USERS = "users"
   const val HOUSEHOLDS = "households"
+  const val INVITE_CODES = "inviteCodes"
 }

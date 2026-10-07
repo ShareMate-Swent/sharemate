@@ -2,6 +2,7 @@
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
@@ -20,13 +21,8 @@ class HouseholdRepositoryFirestore(
     repeat(MAX_INVITE_CODE_ATTEMPTS) {
       val inviteCode = inviteCodeGenerator.generate()
       val existing =
-          firestore
-              .collection(FirestoreCollections.HOUSEHOLDS)
-              .whereEqualTo(INVITE_CODE_FIELD, inviteCode)
-              .limit(1)
-              .get()
-              .await()
-      if (!existing.isEmpty) return@repeat
+          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode).get().await()
+      if (existing.exists()) return@repeat
 
       val householdReference = firestore.collection(FirestoreCollections.HOUSEHOLDS).document()
       val household =
@@ -37,10 +33,13 @@ class HouseholdRepositoryFirestore(
               memberIds = listOf(creatorId),
               createdBy = creatorId,
               createdAt = Date())
+      val inviteCodeReference =
+          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
 
       firestore
           .batch()
           .set(householdReference, household)
+          .set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
           .set(
               firestore.collection(FirestoreCollections.USERS).document(creatorId),
               mapOf(HOUSEHOLD_ID_FIELD to household.id),
@@ -53,8 +52,39 @@ class HouseholdRepositoryFirestore(
     throw IllegalStateException("Could not generate a unique household invite code")
   }
 
-  override suspend fun joinHousehold(inviteCode: String, userId: String): Household =
-      throw UnsupportedOperationException("Joining a household is implemented in Task 2.4")
+  override suspend fun joinHousehold(inviteCode: String, userId: String): Household {
+    require(inviteCode.isNotBlank()) { "Invite code must not be blank" }
+    require(userId.isNotBlank()) { "User ID must not be blank" }
+
+    val normalizedCode = inviteCode.trim().uppercase()
+    val inviteCodeSnapshot =
+        firestore
+            .collection(FirestoreCollections.INVITE_CODES)
+            .document(normalizedCode)
+            .get()
+            .await()
+    if (!inviteCodeSnapshot.exists()) {
+      throw IllegalArgumentException("Invalid invite code")
+    }
+    val householdId =
+        inviteCodeSnapshot.getString(HOUSEHOLD_ID_FIELD)
+            ?: throw IllegalArgumentException("Invalid invite code")
+    val householdReference =
+        firestore.collection(FirestoreCollections.HOUSEHOLDS).document(householdId)
+
+    firestore
+        .batch()
+        .update(householdReference, MEMBER_IDS_FIELD, FieldValue.arrayUnion(userId))
+        .set(
+            firestore.collection(FirestoreCollections.USERS).document(userId),
+            mapOf(HOUSEHOLD_ID_FIELD to householdId),
+            SetOptions.merge())
+        .commit()
+        .await()
+
+    return householdReference.get().await().toObject(Household::class.java)
+        ?: throw IllegalStateException("Household does not exist for invite code")
+  }
 
   override suspend fun getHousehold(householdId: String): Household? {
     val snapshot =
