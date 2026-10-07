@@ -10,6 +10,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.model.auth.AuthError
+import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import kotlinx.coroutines.CompletableDeferred
@@ -67,10 +69,35 @@ class AuthWelcomeScreenTest {
     compose.onNodeWithTag("auth_loading").assertExists()
     compose.runOnIdle {
       assertEquals(listOf("student@example.org" to "secret"), repository.calls)
-      repository.pending.complete(Unit)
+      repository.pending.completeExceptionally(AuthException(AuthError.NETWORK))
     }
+    compose
+        .onNodeWithTag("auth_error")
+        .assertTextEquals("Check your internet connection and try again.")
     compose.onNodeWithTag("auth_back").assertIsEnabled().performScrollTo().performClick()
     compose.onNodeWithTag("auth_welcome").assertExists()
+  }
+
+  @Test
+  fun successfulRequestKeepsFormLockedUntilSessionArrives() {
+    val repository = WelcomeRepository()
+    compose.setContent {
+      val vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
+      AuthGate(vm) { Text("Private content") }
+    }
+    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
+    compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
+    compose.onNodeWithTag("auth_password").performTextInput("secret")
+    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.runOnIdle { repository.pending.complete(Unit) }
+    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_back").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithText("Private content").assertDoesNotExist()
+    compose.runOnIdle { repository.session.value = AuthSession("user", "student@example.org") }
+    compose.onNodeWithText("Private content").assertIsDisplayed()
+    compose.onNodeWithTag("auth_loading").assertDoesNotExist()
+    compose.onNodeWithTag("auth_submit").assertDoesNotExist()
   }
 
   @Test

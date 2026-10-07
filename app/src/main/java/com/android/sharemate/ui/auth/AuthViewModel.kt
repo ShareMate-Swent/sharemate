@@ -9,6 +9,7 @@ import com.android.sharemate.model.auth.AuthSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -17,6 +18,8 @@ enum class AuthMode {
   SIGN_UP
 }
 
+// Keep repository error names aligned with AuthError for valueOf(name); validation errors are
+// UI-only.
 enum class AuthUiError {
   INVALID_EMAIL,
   PASSWORD_REQUIRED,
@@ -92,7 +95,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         when {
           !EMAIL_PATTERN.matches(email) -> AuthUiError.INVALID_EMAIL
           current.password.isEmpty() -> AuthUiError.PASSWORD_REQUIRED
-          current.mode == AuthMode.SIGN_UP && current.password.length < 6 ->
+          current.mode == AuthMode.SIGN_UP && current.password.length < MIN_PASSWORD_LENGTH ->
               AuthUiError.WEAK_PASSWORD
           current.mode == AuthMode.SIGN_UP && current.password != current.confirmPassword ->
               AuthUiError.PASSWORD_MISMATCH
@@ -107,6 +110,8 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
       try {
         if (current.mode == AuthMode.LOGIN) repository.signIn(email, current.password)
         else repository.signUp(email, current.password)
+        // Keep submissions disabled until the observed session reaches UI state.
+        state.first { it.session != null }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (failure: AuthException) {
@@ -127,6 +132,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   }
 
   private companion object {
+    const val MIN_PASSWORD_LENGTH = 6
     val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
   }
 }
