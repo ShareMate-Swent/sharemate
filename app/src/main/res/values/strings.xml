@@ -13,7 +13,4 @@
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
     <string name="fridge_empty">Your fridge is empty</string>
-    <string name="fridge_recipes">Recipes</string>
-    <string name="fridge_receipts">Receipts</string>
-    <string name="fridge_settings">Settings</string>
 </resources>
