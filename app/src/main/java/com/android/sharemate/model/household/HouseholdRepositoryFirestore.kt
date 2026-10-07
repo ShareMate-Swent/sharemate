@@ -2,13 +2,10 @@
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
-import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.tasks.await
 
 /** Firestore-backed implementation of [HouseholdRepository]. */
 class HouseholdRepositoryFirestore(
@@ -57,7 +54,7 @@ class HouseholdRepositoryFirestore(
   }
 
   override suspend fun joinHousehold(inviteCode: String, userId: String): Household =
-      TODO("Implemented in Task 2.4")
+      throw UnsupportedOperationException("Joining a household is implemented in Task 2.4")
 
   override suspend fun getHousehold(householdId: String): Household? {
     val snapshot =
@@ -81,16 +78,5 @@ class HouseholdRepositoryFirestore(
     const val INVITE_CODE_FIELD = "inviteCode"
     const val MEMBER_IDS_FIELD = "memberIds"
     const val MAX_INVITE_CODE_ATTEMPTS = 10
-  }
-}
-
-private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { continuation ->
-  addOnCompleteListener { task ->
-    if (task.isSuccessful) {
-      continuation.resume(task.result)
-    } else {
-      continuation.resumeWithException(
-          task.exception ?: IllegalStateException("Firestore task failed"))
-    }
   }
 }
