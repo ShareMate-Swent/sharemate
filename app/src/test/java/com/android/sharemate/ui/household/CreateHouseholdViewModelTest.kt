@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -7,6 +8,7 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,6 +22,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -75,6 +78,19 @@ class CreateHouseholdViewModelTest {
     advanceUntilIdle()
     assertEquals("ABC123", viewModel.state.value.inviteCode)
     assertEquals(2, repository.createCalls.get())
+  }
+
+  @Test
+  fun cancellationIsNotReportedAsCreationFailure() = runTest {
+    val viewModel = CreateHouseholdViewModel(repository, auth)
+    repository.failure = CancellationException("cancelled")
+    viewModel.updateName("Kitchen")
+    viewModel.createHousehold()
+    advanceUntilIdle()
+    assertEquals(1, repository.createCalls.get())
+    assertNull(viewModel.state.value.error)
+    assertNull(viewModel.state.value.inviteCode)
+    assertFalse(viewModel.state.value.isLoading)
   }
 
   @Test
