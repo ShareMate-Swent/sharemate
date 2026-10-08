@@ -2,8 +2,6 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -23,6 +21,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Date
@@ -44,6 +43,8 @@ class ManualItemCreationTest {
   fun emptyNameIsRejectedAndValidItemIsRendered() {
     val repository = TestItemRepository()
     val viewModel = showManualEntryScreen(repository)
+    val expirationDate = LocalDate.now().plusDays(30)
+    val storedExpirationDate = Date.from(expirationDate.atStartOfDay(ZoneOffset.UTC).toInstant())
 
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_add_item)
@@ -83,7 +84,7 @@ class ManualItemCreationTest {
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_expiration_input)
         .performScrollTo()
-        .performTextReplacement("2026-10-12")
+        .performTextReplacement(expirationDate.toString())
     Espresso.closeSoftKeyboard()
     composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled().performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) {
@@ -99,7 +100,7 @@ class ManualItemCreationTest {
         .assertIsDisplayed()
     composeTestRule
         .onNodeWithText(
-            composeTestRule.activity.getString(R.string.fridge_item_expiration, "2026-10-12"))
+            "Expires ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(storedExpirationDate)}")
         .assertIsDisplayed()
     composeTestRule.runOnIdle {
       val expected =
@@ -107,8 +108,7 @@ class ManualItemCreationTest {
               name = "Milk",
               ownerId = "test-user",
               householdId = "test-household",
-              expirationDate =
-                  Date.from(LocalDate.of(2026, 10, 12).atStartOfDay(ZoneOffset.UTC).toInstant()),
+              expirationDate = storedExpirationDate,
               category = "Dairy")
       assertEquals(listOf(expected), repository.submissions)
       assertEquals(listOf(expected.copy(id = "test-item-1")), viewModel.uiState.value.items)
@@ -207,17 +207,7 @@ class ManualItemCreationTest {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
     composeTestRule.setContent {
-      val uiState by viewModel.uiState.collectAsState()
-      SampleAppTheme(dynamicColor = false) {
-        FridgeScreen(
-            uiState = uiState,
-            onAddItem = viewModel::openAddItemDialog,
-            onDismissAddItem = viewModel::dismissAddItemDialog,
-            onNameChange = viewModel::updateName,
-            onCategoryChange = viewModel::updateCategory,
-            onExpirationDateChange = viewModel::updateExpirationDate,
-            onSaveItem = viewModel::saveItem)
-      }
+      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
     }
     return viewModel
   }
