@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -9,6 +10,40 @@ service cloud.firestore {
 
     function documentPath(collection, documentId) {
       return /databases/$(database)/documents/$(collection)/$(documentId);
+    }
+
+    // Private items belong to their owner; shared items belong to household members.
+    match /items/{itemId} {
+      function canAccess(item) {
+        let householdId = item.get('householdId', null);
+        return signedIn() && (
+            (householdId == null && item.ownerId == request.auth.uid)
+            || (householdId is string
+                && request.auth.uid in get(documentPath('households', householdId)).data.memberIds));
+      }
+
+      // Missing quantity/status are legacy documents. Explicit invalid values are rejected.
+      function validItem(item) {
+        let quantity = item.get('quantity', 1);
+        let status = item.get('status', 'ACTIVE');
+        return item.name is string && item.name.size() > 0
+            && item.ownerId is string && item.ownerId.size() > 0
+            && quantity is int && quantity > 0 && quantity <= 2147483647
+            && status in ['ACTIVE', 'EATEN', 'DISCARDED']
+            && (item.get('category', null) == null || item.category is string)
+            && (item.get('expirationDate', null) == null || item.expirationDate is timestamp);
+      }
+
+      allow read: if canAccess(resource.data);
+      allow create: if canAccess(request.resource.data)
+          && request.resource.data.ownerId == request.auth.uid
+          && validItem(request.resource.data);
+      allow update: if canAccess(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['name', 'quantity', 'category', 'expirationDate', 'status'])
+          && validItem(request.resource.data);
+      // Deleting a missing document is an idempotent operation with no data to authorize.
+      allow delete: if signedIn() && (resource == null || canAccess(resource.data));
     }
 
     // A user profile is private to its owner.

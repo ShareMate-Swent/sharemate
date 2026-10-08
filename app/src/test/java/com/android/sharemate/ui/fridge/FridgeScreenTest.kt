@@ -18,7 +18,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import java.time.LocalDate
 import java.time.ZoneId
@@ -182,6 +185,14 @@ class FridgeScreenTest {
     override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+        error("Not used in this test")
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? = error("Not used in this test.")
 
