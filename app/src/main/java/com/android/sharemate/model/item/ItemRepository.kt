@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
@@ -26,4 +27,16 @@ interface ItemRepository {
 
   /** Supprime un item spécifique. */
   suspend fun deleteItem(itemId: String): Boolean
+
+  /** Updates only editable fields; never transfers ownership or changes sharing. */
+  fun updateItem(itemId: String, edit: ItemEdit): ItemWrite
+
+  /** Changes lifecycle only. ACTIVE also permits undoing an accidental consume/discard. */
+  fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite
+
+  /**
+   * Permanently deletes, returning after SDK submission even offline. Missing documents are an
+   * idempotent delete. [deleteItem] remains the legacy server-confirmed Boolean operation.
+   */
+  fun deleteItemQueued(itemId: String): ItemWrite
 }

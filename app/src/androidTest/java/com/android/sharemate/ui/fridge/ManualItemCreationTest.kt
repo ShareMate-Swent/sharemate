@@ -18,7 +18,10 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.text.DateFormat
@@ -223,6 +226,14 @@ class ManualItemCreationTest {
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+        error("Not used in this test")
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? {
       submissions += item
