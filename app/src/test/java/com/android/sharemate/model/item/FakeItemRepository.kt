@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.CompletableDeferred
@@ -17,6 +18,11 @@ class FakeItemRepository : ItemRepository {
   var addFailure: Exception? = null
   var readFailure: Exception? = null
   var addGate: CompletableDeferred<Unit>? = null
+  val deletedItemIds = mutableListOf<String>()
+  var returnFalseOnDelete = false
+  var deleteFailure: Exception? = null
+  var deleteGate: CompletableDeferred<Unit>? = null
+  var emitOnDelete = true
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
@@ -42,8 +48,12 @@ class FakeItemRepository : ItemRepository {
   }
 
   override suspend fun deleteItem(itemId: String): Boolean {
+    deletedItemIds += itemId
+    deleteGate?.await()
+    deleteFailure?.let { throw it }
+    if (returnFalseOnDelete) return false
     val existed = items.value.any { it.id == itemId }
-    items.value = items.value.filterNot { it.id == itemId }
+    if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
     return existed
   }
 

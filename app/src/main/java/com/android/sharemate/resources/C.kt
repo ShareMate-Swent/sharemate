@@ -24,5 +24,10 @@ object C {
     const val fridge_inventory_error = "fridge_inventory_error"
     const val fridge_item_list = "fridge_item_list"
     const val fridge_item_prefix = "fridge_item_"
+    const val fridge_remove_prefix = "fridge_remove_"
+    const val fridge_remove_dialog = "fridge_remove_dialog"
+    const val fridge_confirm_remove = "fridge_confirm_remove"
+    const val fridge_cancel_remove = "fridge_cancel_remove"
+    const val fridge_removal_error = "fridge_removal_error"
   }
 }
