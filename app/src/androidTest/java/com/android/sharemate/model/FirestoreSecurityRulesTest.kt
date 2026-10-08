@@ -11,6 +11,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Query
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
@@ -292,6 +293,183 @@ class FirestoreSecurityRulesTest {
     FirebaseEmulator.signInAs("member")
     assertDenied(receiptRef.update("householdId", null))
   }
+
+  @Test
+  fun signedOutUserCannotReadOrWriteItemsOrReceipts() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    Tasks.await(itemReference("item1").set(itemData(ownerId)))
+    Tasks.await(receiptReference("receipt1").set(receiptData(ownerId)))
+    FirebaseEmulator.signOut()
+
+    assertDenied(itemReference("item1").get())
+    assertDenied(itemReference("item1").update("name", "Banana"))
+    assertDenied(itemReference("item1").delete())
+    assertDenied(itemReference("item2").set(itemData(ownerId)))
+    assertDenied(receiptReference("receipt1").get())
+    assertDenied(receiptReference("receipt1").update("storeName", "Coop"))
+    assertDenied(receiptReference("receipt1").delete())
+    assertDenied(receiptReference("receipt2").set(receiptData(ownerId)))
+  }
+
+  @Test
+  fun itemRequiresStringOwnerAndStringOrNullHousehold() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val itemRef = itemReference("item1")
+
+    assertDenied(itemRef.set(mapOf("name" to "Apple")))
+    assertDenied(itemRef.set(mapOf("ownerId" to ownerId, "householdId" to 42)))
+
+    Tasks.await(itemRef.set(itemData(ownerId)))
+    assertDenied(itemRef.update("householdId", 42))
+  }
+
+  @Test
+  fun receiptRequiresStringOwnerAndStringOrNullHousehold() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val receiptRef = receiptReference("receipt1")
+
+    assertDenied(receiptRef.set(mapOf("storeName" to "Migros")))
+    assertDenied(receiptRef.set(mapOf("ownerId" to ownerId, "householdId" to 42)))
+
+    Tasks.await(receiptRef.set(receiptData(ownerId)))
+    assertDenied(receiptRef.update("householdId", 42))
+  }
+
+  @Test
+  fun memberOfAnotherHouseholdCannotAccessSharedItemOrReceipt() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    Tasks.await(itemReference("item1").set(itemData(creatorId, household.id)))
+    Tasks.await(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
+
+    // The neighbor belongs to a household, but not to the one the documents are shared with.
+    createHouseholdAs("neighbor")
+
+    assertDenied(itemReference("item1").get())
+    assertDenied(itemReference("item1").update("name", "Banana"))
+    assertDenied(itemReference("item1").delete())
+    assertDenied(receiptReference("receipt1").get())
+    assertDenied(receiptReference("receipt1").update("storeName", "Coop"))
+    assertDenied(receiptReference("receipt1").delete())
+  }
+
+  @Test
+  fun memberCannotCreateItemOrReceiptOwnedBySomeoneElse() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    joinHouseholdAs("member", household)
+
+    assertDenied(itemReference("item1").set(itemData(creatorId, household.id)))
+    assertDenied(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
+  }
+
+  @Test
+  fun sharingAndUnsharingItemChangesWhatHouseholdMembersCanSee() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    joinHouseholdAs("member", household)
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(itemReference("item1").set(itemData(creatorId)))
+
+    FirebaseEmulator.signInAs("member")
+    assertDenied(itemReference("item1").get())
+
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(itemReference("item1").update("householdId", household.id))
+    FirebaseEmulator.signInAs("member")
+    Tasks.await(itemReference("item1").get())
+
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(itemReference("item1").update("householdId", null))
+    FirebaseEmulator.signInAs("member")
+    assertDenied(itemReference("item1").get())
+  }
+
+  @Test
+  fun ownerCanListOwnItemsAndReceipts() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    Tasks.await(itemReference("item1").set(itemData(ownerId)))
+    Tasks.await(receiptReference("receipt1").set(receiptData(ownerId)))
+    val otherId = FirebaseEmulator.signInAs("other")
+    Tasks.await(itemReference("item2").set(itemData(otherId)))
+    Tasks.await(receiptReference("receipt2").set(receiptData(otherId)))
+
+    FirebaseEmulator.signInAs("owner")
+    val items = firestore.collection(FirestoreCollections.ITEMS)
+    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
+
+    assertEquals(setOf("item1"), documentIds(items.whereEqualTo("ownerId", ownerId)))
+    assertEquals(setOf("receipt1"), documentIds(receipts.whereEqualTo("ownerId", ownerId)))
+  }
+
+  @Test
+  fun memberCanListSharedItemsOnlyThroughHouseholdFilter() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    Tasks.await(itemReference("private").set(itemData(creatorId)))
+    Tasks.await(itemReference("shared").set(itemData(creatorId, household.id)))
+    joinHouseholdAs("member", household)
+    val items = firestore.collection(FirestoreCollections.ITEMS)
+
+    assertEquals(setOf("shared"), documentIds(items.whereEqualTo("householdId", household.id)))
+    // Filtering on the owner would also match the creator's private item.
+    assertDenied(items.whereEqualTo("ownerId", creatorId).get())
+    assertDenied(items.get())
+  }
+
+  @Test
+  fun memberCanListSharedReceiptsOnlyThroughHouseholdFilter() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    Tasks.await(receiptReference("private").set(receiptData(creatorId)))
+    Tasks.await(receiptReference("shared").set(receiptData(creatorId, household.id)))
+    joinHouseholdAs("member", household)
+    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
+
+    assertEquals(setOf("shared"), documentIds(receipts.whereEqualTo("householdId", household.id)))
+    // Filtering on the owner would also match the creator's private receipt.
+    assertDenied(receipts.whereEqualTo("ownerId", creatorId).get())
+    assertDenied(receipts.get())
+  }
+
+  @Test
+  fun nonMemberCannotListSharedItemsOrReceipts() {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    Tasks.await(itemReference("item1").set(itemData(creatorId, household.id)))
+    Tasks.await(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
+    val items = firestore.collection(FirestoreCollections.ITEMS)
+    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(items.whereEqualTo("householdId", household.id).get())
+    assertDenied(items.whereEqualTo("ownerId", creatorId).get())
+    assertDenied(receipts.whereEqualTo("householdId", household.id).get())
+    assertDenied(receipts.whereEqualTo("ownerId", creatorId).get())
+  }
+
+  // ----- Helpers -------------------------------------------------------------
+
+  /** Joins [household] as [alias] through the repository, leaving that user signed in. */
+  private fun joinHouseholdAs(alias: String, household: Household) {
+    val memberId = FirebaseEmulator.signInAs(alias)
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+  }
+
+  private fun itemReference(itemId: String): DocumentReference =
+    firestore.collection(FirestoreCollections.ITEMS).document(itemId)
+
+  private fun receiptReference(receiptId: String): DocumentReference =
+    firestore.collection(FirestoreCollections.RECEIPTS).document(receiptId)
+
+  private fun itemData(ownerId: String, householdId: String? = null): Map<String, Any?> =
+    mapOf("ownerId" to ownerId, "householdId" to householdId, "name" to "Apple")
+
+  private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
+    mapOf("ownerId" to ownerId, "householdId" to householdId, "storeName" to "Migros")
+
+  private fun documentIds(query: Query): Set<String> =
+    Tasks.await(query.get()).documents.map { it.id }.toSet()
 
   /** Creates a household through the repository, leaving its creator signed in. */
   private fun createHouseholdAs(alias: String): Household {
