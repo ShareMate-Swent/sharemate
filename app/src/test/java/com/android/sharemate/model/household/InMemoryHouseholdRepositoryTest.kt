@@ -39,14 +39,15 @@ class InMemoryHouseholdRepositoryTest {
   }
 
   @Test
-  fun joiningHouseholdTwiceThrows() {
+  fun joiningHouseholdTwiceIsIdempotent() {
     runBlocking {
       val created = repository.createHousehold("Home", "creator")
-      repository.joinHousehold(created.inviteCode, "member")
+      val firstJoin = repository.joinHousehold(created.inviteCode, "member")
 
-      assertThrows(IllegalStateException::class.java) {
-        runBlocking { repository.joinHousehold(created.inviteCode, "member") }
-      }
+      val secondJoin = repository.joinHousehold(created.inviteCode, "member")
+
+      assertEquals(firstJoin, secondJoin)
+      assertEquals(listOf("creator", "member"), secondJoin.memberIds)
     }
   }
 

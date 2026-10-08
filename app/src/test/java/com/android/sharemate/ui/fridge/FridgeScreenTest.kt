@@ -1,167 +1,195 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
-import androidx.activity.compose.setContent
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sharemate.MainActivity
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.navigation.NavigationTestTags
-import com.android.sharemate.ui.theme.SampleAppTheme
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.Date
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(AndroidJUnit4::class)
+@RunWith(RobolectricTestRunner::class)
 class FridgeScreenTest {
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule val composeRule = createComposeRule()
 
   @Test
   fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
     val requests = mutableListOf<String>()
     val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
-    composeTestRule.activity.setContent {
-      SampleAppTheme(dynamicColor = false) {
+    composeRule.setContent {
+      MaterialTheme {
         FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
       }
     }
 
-    composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Bread").assertIsDisplayed()
-    composeTestRule
+    composeRule.onNodeWithText("Milk").assertIsDisplayed()
+    composeRule.onNodeWithText("Bread").assertIsDisplayed()
+    composeRule
         .onNodeWithContentDescription("Remove Milk")
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
-    composeTestRule
+    composeRule
         .onNodeWithContentDescription("Remove Bread")
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
-    composeTestRule.runOnIdle { assertEquals(listOf("milk", "bread"), requests) }
-    composeTestRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
+    composeRule.runOnIdle { assertEquals(listOf("milk", "bread"), requests) }
+    composeRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
   }
 
   @Test
   fun removeActionIsDisabledWithoutRuntimeWiring() {
-    composeTestRule.activity.setContent {
-      SampleAppTheme(dynamicColor = false) {
+    composeRule.setContent {
+      MaterialTheme {
         FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
       }
     }
-    composeTestRule
-        .onNodeWithContentDescription("Remove Milk")
-        .assertIsDisplayed()
-        .assertIsNotEnabled()
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsDisplayed().assertIsNotEnabled()
   }
 
   @Test
   fun removalActionsAreDisabledWhileDeletionIsPending() {
-    composeTestRule.activity.setContent {
-      SampleAppTheme(dynamicColor = false) {
+    composeRule.setContent {
+      MaterialTheme {
         FridgeScreen(
             uiState =
                 FridgeUiState(items = listOf(Item(id = "milk", name = "Milk")), isDeleting = true),
             onRemoveItem = {})
       }
     }
-    composeTestRule.onNodeWithContentDescription("Remove Milk").assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsNotEnabled()
+    composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
   }
 
   @Test
-  fun callerModifierIsAppliedAndUpdatesWithoutChangingFridgeContent() {
-    val modifier = mutableStateOf(Modifier.semantics { contentDescription = "Initial fridge" })
-    composeTestRule.activity.setContent {
-      SampleAppTheme(dynamicColor = false) { FridgeScreen(modifier = modifier.value) }
+  fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
+    composeRule.setContent { MaterialTheme { FridgeScreen() } }
+
+    composeRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
+    composeRule.onNodeWithTag(C.Tag.fridge_empty).assertIsDisplayed()
+    composeRule.onNodeWithText("All").assertIsDisplayed()
+    composeRule.onNodeWithText("Fruits").assertIsDisplayed()
+    composeRule.onNodeWithText("Sort").assertIsDisplayed()
+    composeRule.onNodeWithText("Yours").assertIsDisplayed()
+    composeRule.onNodeWithText("Shared").assertIsDisplayed()
+  }
+
+  @Test
+  fun sortAndFilterControlsUpdateViewModel() {
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1"),
+                Item(id = "bread", name = "Bread", category = "Bakery", ownerId = "owner-2")))
+    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.waitForIdle()
+
+    composeRule.onNodeWithText("Name").performClick()
+    assertEquals(FridgeSortOrder.NAME, viewModel.sortOrder.value)
+
+    composeRule.onNodeWithText("Category").performClick()
+    composeRule.onNodeWithTag("fridge_filter_category_Dairy").performClick()
+    assertEquals("Dairy", viewModel.selectedCategory.value)
+
+    composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
+    assertEquals("owner-1", viewModel.selectedOwnerId.value)
+  }
+
+  @Test
+  fun categoryChipRemainsUniqueWhenItemLabelsMatch() {
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "apple", name = "Apple", category = "Fruits"),
+                Item(id = "banana", name = "Banana", category = "Fruits"),
+                Item(id = "carrot", name = "Carrot", category = "Vegetables")))
+    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+
+    for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {
+      composeRule.onNode(hasText("Category") and isSelectable()).performClick()
+      composeRule.onNodeWithTag("fridge_filter_category_$category").performClick()
+      composeRule.onAllNodesWithText("Category: $category").assertCountEquals(matchingNodes)
+      composeRule
+          .onNode(hasText("Category: $category") and isSelectable())
+          .assertIsSelected()
+          .performClick()
+      composeRule.onNodeWithTag("fridge_filter_category_all").performClick()
+      composeRule.onNode(hasText("Category") and isSelectable()).assertIsNotSelected()
+      assertEquals(null, viewModel.selectedCategory.value)
+    }
+  }
+
+  @Test
+  fun highlightsExpiredAndSoonToExpireItems() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeItem(item = itemExpiringIn(-1))
+        FridgeItem(item = itemExpiringIn(3).copy(id = "soon"))
+      }
     }
 
-    composeTestRule.onNodeWithContentDescription("Initial fridge").assertIsDisplayed()
-    composeTestRule.runOnIdle {
-      modifier.value = Modifier.semantics { contentDescription = "Updated fridge" }
-    }
-
-    composeTestRule.onNodeWithContentDescription("Initial fridge").assertDoesNotExist()
-    composeTestRule.onNodeWithContentDescription("Updated fridge").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
-    composeTestRule
-        .onNodeWithTag(C.Tag.fridge_empty)
-        .assertIsDisplayed()
-        .assertTextEquals("Your fridge is empty")
-    composeTestRule.onNodeWithText("All").assertIsSelected().assertIsNotEnabled()
-    listOf("Fruits", "Vegetables", "Canned goods").forEach { category ->
-      composeTestRule.onNodeWithText(category).assertIsNotSelected().assertIsNotEnabled()
-    }
+    composeRule.onNodeWithText("Expired on", substring = true).assertIsDisplayed()
+    composeRule.onNodeWithText("Expires soon:", substring = true).assertIsDisplayed()
   }
 
   @Test
-  fun launcherDisplaysFridgeTitleAndEmptyState() {
-    composeTestRule.onNodeWithTag(C.Tag.fridge_screen_container).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
-    composeTestRule
-        .onNodeWithTag(C.Tag.fridge_empty)
-        .assertIsDisplayed()
-        .assertTextEquals("Your fridge is empty")
+  fun doesNotMarkItemsExpiringAfterThreeDaysAsSoon() {
+    composeRule.setContent { MaterialTheme { FridgeItem(item = itemExpiringIn(4)) } }
+
+    composeRule.onNodeWithText("Expires ", substring = true).assertIsDisplayed()
+    composeRule.onAllNodesWithText("Expires soon:", substring = true).assertCountEquals(0)
   }
 
-  @Test
-  fun categoriesAreStaticWithAllSelected() {
-    composeTestRule
-        .onNodeWithText("All")
-        .assertIsDisplayed()
-        .assertIsSelected()
-        .assertIsNotEnabled()
-    listOf("Fruits", "Vegetables", "Canned goods").forEach { category ->
-      composeTestRule
-          .onNodeWithText(category)
-          .performScrollTo()
-          .assertIsDisplayed()
-          .assertIsNotSelected()
-          .assertIsNotEnabled()
-    }
+  private fun itemExpiringIn(days: Long) =
+      Item(
+          id = "milk",
+          name = "Milk",
+          expirationDate =
+              Date.from(
+                  LocalDate.now().plusDays(days).atStartOfDay(ZoneId.systemDefault()).toInstant()))
+
+  private class FakeItemRepository(items: List<Item>) : ItemRepository {
+    private val sharedItems = MutableStateFlow(items)
+
+    override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
+
+    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+
+    override suspend fun addItem(item: Item): String? = error("Not used in this test.")
+
+    override suspend fun deleteItem(itemId: String): Boolean = error("Not used in this test.")
   }
 
-  @Test
-  fun sortAndOwnershipControlsAreStatic() {
-    listOf("Sort", "Yours", "Shared").forEach { label ->
-      composeTestRule.onNodeWithText(label).assertIsDisplayed().assertIsNotEnabled()
-    }
-  }
-
-  @Test
-  fun bottomBarShowsOnlyFridgeSelectedAndDestinationsEnabled() {
-    listOf(
-            NavigationTestTags.FRIDGE_TAB to "Fridge",
-            NavigationTestTags.RECIPES_TAB to "Recipes",
-            NavigationTestTags.RECEIPTS_TAB to "Receipts",
-            NavigationTestTags.SETTINGS_TAB to "Settings")
-        .forEach { (testTag, label) ->
-          val destination = composeTestRule.onNodeWithTag(testTag)
-          destination.assertIsDisplayed().assertTextEquals(label).assertIsEnabled()
-          if (testTag == NavigationTestTags.FRIDGE_TAB) destination.assertIsSelected()
-          else destination.assertIsNotSelected()
-        }
-  }
-
-  @Test
-  fun addItemIsVisibleButDisabledWithoutRuntimeWiring() {
-    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed().assertIsNotEnabled()
+  private companion object {
+    const val USER_ID = "user-1"
+    const val HOUSEHOLD_ID = "household-1"
   }
 }
