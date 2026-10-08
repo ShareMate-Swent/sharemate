@@ -5,12 +5,15 @@ package com.android.sharemate.ui.fridge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -31,6 +34,56 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class FridgeScreenTest {
   @get:Rule val composeRule = createComposeRule()
+
+  @Test
+  fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
+    val requests = mutableListOf<String>()
+    val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
+      }
+    }
+
+    composeRule.onNodeWithText("Milk").assertIsDisplayed()
+    composeRule.onNodeWithText("Bread").assertIsDisplayed()
+    composeRule
+        .onNodeWithContentDescription("Remove Milk")
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    composeRule
+        .onNodeWithContentDescription("Remove Bread")
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    composeRule.runOnIdle { assertEquals(listOf("milk", "bread"), requests) }
+    composeRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
+  }
+
+  @Test
+  fun removeActionIsDisabledWithoutRuntimeWiring() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
+      }
+    }
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsDisplayed().assertIsNotEnabled()
+  }
+
+  @Test
+  fun removalActionsAreDisabledWhileDeletionIsPending() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState =
+                FridgeUiState(items = listOf(Item(id = "milk", name = "Milk")), isDeleting = true),
+            onRemoveItem = {})
+      }
+    }
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsNotEnabled()
+    composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
+  }
 
   @Test
   fun defaultScreenShowsInventoryAndDisabledCategoryControls() {

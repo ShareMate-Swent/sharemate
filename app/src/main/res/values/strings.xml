@@ -49,4 +49,10 @@
     <string name="invalid_invite_code">This code doesn\'t exist. Check it with your roommate.</string>
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="back">Back</string>
+    <string name="fridge_remove">Remove</string>
+    <string name="fridge_remove_description">Remove %1$s</string>
+    <string name="fridge_remove_title">Remove item?</string>
+    <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
+    <string name="fridge_removing">Removing…</string>
+    <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
 </resources>

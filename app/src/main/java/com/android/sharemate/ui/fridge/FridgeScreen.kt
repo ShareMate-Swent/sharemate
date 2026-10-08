@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -30,6 +31,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -79,6 +81,9 @@ fun FridgeScreen(
     onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
     onCategoryFilterChange: ((String?) -> Unit)? = null,
     onOwnerFilterChange: ((String?) -> Unit)? = null,
+    onRemoveItem: ((String) -> Unit)? = null,
+    onCancelRemoval: () -> Unit = {},
+    onConfirmRemoval: () -> Unit = {},
 ) {
   val hasFunctionalFilters =
       sortOrder != null &&
@@ -231,7 +236,16 @@ fun FridgeScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                  items(uiState.items, key = { it.id }) { item -> FridgeItem(item) }
+                  items(uiState.items, key = { it.id }) { item ->
+                    FridgeItem(
+                        item = item,
+                        removalEnabled =
+                            onRemoveItem != null &&
+                                !uiState.isDeleting &&
+                                !uiState.isSaving &&
+                                !uiState.isAddItemDialogOpen,
+                        onRemove = { onRemoveItem?.invoke(item.id) })
+                  }
                 }
           } else if (uiState.isLoading) {
             Text(stringResource(R.string.fridge_loading))
@@ -256,6 +270,42 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onDismiss = onDismissAddItem)
+  }
+  uiState.pendingRemovalItem?.let { item ->
+    AlertDialog(
+        modifier = Modifier.testTag(C.Tag.fridge_remove_dialog),
+        onDismissRequest = { if (!uiState.isDeleting) onCancelRemoval() },
+        title = { Text(stringResource(R.string.fridge_remove_title)) },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.fridge_remove_confirmation, item.name))
+            if (uiState.removalFailed) {
+              Text(
+                  stringResource(R.string.fridge_remove_failed),
+                  color = MaterialTheme.colorScheme.error,
+                  modifier = Modifier.testTag(C.Tag.fridge_removal_error))
+            }
+          }
+        },
+        confirmButton = {
+          TextButton(
+              onClick = onConfirmRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_confirm_remove)) {
+                Text(
+                    stringResource(
+                        if (uiState.isDeleting) R.string.fridge_removing
+                        else R.string.fridge_remove))
+              }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = onCancelRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_cancel_remove)) {
+                Text(stringResource(R.string.fridge_cancel))
+              }
+        })
   }
 }
 
@@ -297,6 +347,9 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onSortOrderChange = viewModel::setSortOrder,
       onCategoryFilterChange = viewModel::setCategoryFilter,
       onOwnerFilterChange = viewModel::setOwnerFilter,
+      onRemoveItem = viewModel::requestRemoval,
+      onCancelRemoval = viewModel::cancelRemoval,
+      onConfirmRemoval = viewModel::confirmRemoval,
   )
 }
 
@@ -341,7 +394,13 @@ private fun ItemFilterChip(
 }
 
 @Composable
-fun FridgeItem(item: Item, modifier: Modifier = Modifier) {
+fun FridgeItem(
+    item: Item,
+    modifier: Modifier = Modifier,
+    removalEnabled: Boolean = false,
+    onRemove: () -> Unit = {}
+) {
+  val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
   val containerColor =
       when (expiryStatus) {
@@ -372,6 +431,15 @@ fun FridgeItem(item: Item, modifier: Modifier = Modifier) {
               Text(item.name, style = MaterialTheme.typography.titleMedium)
               item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
               item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+              TextButton(
+                  onClick = onRemove,
+                  enabled = removalEnabled,
+                  modifier =
+                      Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
+                        contentDescription = removeDescription
+                      }) {
+                    Text(stringResource(R.string.fridge_remove))
+                  }
             }
       }
 }
