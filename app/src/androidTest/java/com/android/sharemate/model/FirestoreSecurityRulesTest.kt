@@ -4,6 +4,8 @@ package com.android.sharemate.model
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.item.Item
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -13,11 +15,15 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import java.util.concurrent.ExecutionException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +33,7 @@ import org.junit.runner.RunWith
 class FirestoreSecurityRulesTest {
   private val firestore = FirebaseEmulator.firestore
   private val repository = HouseholdRepositoryFirestore(firestore)
+  private val itemRepository = FirebaseItemRepository(firestore)
 
   @Before
   fun setUp() {
@@ -610,6 +617,90 @@ class FirestoreSecurityRulesTest {
     assertDenied(
         receiptReference("receipt1")
             .set(mapOf("ownerId" to userId, "householdId" to 42, "storeName" to "Migros")))
+  }
+
+  // ======================= FirebaseItemRepository Coverage =======================
+
+  @Test
+  fun itemRepositoryCanCreateReadAndDeletePrivateItem() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("owner")
+
+    // Create
+    val itemId = itemRepository.addItem(Item(id = "", name = "Apple", ownerId = userId))
+    assertNotNull(itemId)
+
+    // Read
+    val items = itemRepository.getPrivateItems(userId).first()
+    assertEquals(1, items.size)
+    assertEquals(itemId, items[0].id)
+    assertEquals("Apple", items[0].name)
+
+    // Delete
+    assertTrue(itemRepository.deleteItem(itemId!!))
+
+    // Verify deleted
+    val itemsAfterDelete = itemRepository.getPrivateItems(userId).first()
+    assertTrue(itemsAfterDelete.isEmpty())
+  }
+
+  @Test
+  fun itemRepositoryCanCreateReadAndDeleteSharedItem() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val memberId = joinHouseholdAs("member", household)
+
+    // Create
+    val itemId =
+        itemRepository.addItem(
+            Item(id = "", name = "Banana", ownerId = memberId, householdId = household.id))
+    assertNotNull(itemId)
+
+    // Read
+    val items = itemRepository.getSharedItems(household.id).first()
+    assertEquals(1, items.size)
+    assertEquals(itemId, items[0].id)
+    assertEquals("Banana", items[0].name)
+
+    // Delete
+    assertTrue(itemRepository.deleteItem(itemId!!))
+
+    // Verify deleted
+    val itemsAfterDelete = itemRepository.getSharedItems(household.id).first()
+    assertTrue(itemsAfterDelete.isEmpty())
+  }
+
+  @Test
+  fun itemRepositoryFailsToCreateItemForAnotherUser() = runBlocking {
+    FirebaseEmulator.signInAs("owner")
+
+    val itemId = itemRepository.addItem(Item(id = "", name = "Apple", ownerId = "someone-else"))
+
+    // The repository catches the Permission Denied exception and returns null
+    assertNull(itemId)
+  }
+
+  @Test
+  fun itemRepositoryFailsToDeleteSomeoneElsesItem() = runBlocking {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val itemId = itemRepository.addItem(Item(id = "", name = "Apple", ownerId = ownerId))
+    assertNotNull(itemId)
+
+    FirebaseEmulator.signInAs("outsider")
+
+    // The repository catches the Permission Denied exception and returns false
+    assertFalse(itemRepository.deleteItem(itemId!!))
+  }
+
+  @Test
+  fun itemRepositoryFailsToAddSharedItemToForeignHousehold() = runBlocking {
+    val otherHousehold = createHouseholdAs("other")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+
+    val itemId =
+        itemRepository.addItem(
+            Item(id = "", name = "Apple", ownerId = outsiderId, householdId = otherHousehold.id))
+
+    // The repository catches the Permission Denied exception and returns null
+    assertNull(itemId)
   }
 
   // ======================= new helpers =======================
