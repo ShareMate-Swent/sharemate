@@ -16,7 +16,7 @@ class InMemoryHouseholdRepository : HouseholdRepository {
         Household(
             id = UUID.randomUUID().toString(),
             name = name,
-            inviteCode = UUID.randomUUID().toString().take(8),
+            inviteCode = UUID.randomUUID().toString().take(8).uppercase(),
             memberIds = listOf(creatorId),
             createdBy = creatorId,
             createdAt = Date())
@@ -28,10 +28,11 @@ class InMemoryHouseholdRepository : HouseholdRepository {
     require(inviteCode.isNotBlank()) { "Invite code must not be blank" }
     require(userId.isNotBlank()) { "User ID must not be blank" }
 
+    val normalizedCode = inviteCode.trim().uppercase()
     val household =
-        households.values.firstOrNull { it.inviteCode == inviteCode }
+        households.values.firstOrNull { it.inviteCode == normalizedCode }
             ?: throw IllegalArgumentException("Invalid invite code")
-    check(userId !in household.memberIds) { "User is already a household member" }
+    if (userId in household.memberIds) return household
 
     return household.copy(memberIds = household.memberIds + userId).also {
       households[household.id] = it

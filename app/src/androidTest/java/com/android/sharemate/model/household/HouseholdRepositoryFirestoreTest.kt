@@ -8,7 +8,6 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
-import java.util.Date
 import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -60,6 +59,13 @@ class HouseholdRepositoryFirestoreTest {
     assertEquals(household, storedHousehold)
     assertEquals(household.id, storedUser.getString("householdId"))
     assertEquals("Creator", storedUser.getString("displayName"))
+    val storedInviteCode =
+        Tasks.await(
+            firestore
+                .collection(FirestoreCollections.INVITE_CODES)
+                .document(household.inviteCode)
+                .get())
+    assertEquals(household.id, storedInviteCode.getString("householdId"))
   }
 
   @Test
@@ -91,21 +97,14 @@ class HouseholdRepositoryFirestoreTest {
         HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(1234)))
     Tasks.await(
         firestore
-            .collection(FirestoreCollections.HOUSEHOLDS)
-            .document("existing-household")
-            .set(
-                Household(
-                    id = "existing-household",
-                    name = "Existing",
-                    inviteCode = firstCode,
-                    memberIds = listOf("other"),
-                    createdBy = "other",
-                    createdAt = Date())))
+            .collection(FirestoreCollections.INVITE_CODES)
+            .document(firstCode)
+            .set(mapOf("householdId" to "existing-household")))
 
     val created = repositoryWithSeed.createHousehold("Home", "creator")
 
     assertNotEquals(firstCode, created.inviteCode)
-    assertEquals(2, Tasks.await(firestore.collection(FirestoreCollections.HOUSEHOLDS).get()).size())
+    assertEquals(1, Tasks.await(firestore.collection(FirestoreCollections.HOUSEHOLDS).get()).size())
   }
 
   @Test
@@ -114,16 +113,74 @@ class HouseholdRepositoryFirestoreTest {
         HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(ConstantRandom()))
     Tasks.await(
         firestore
-            .collection(FirestoreCollections.HOUSEHOLDS)
-            .document("existing-household")
-            .set(mapOf("inviteCode" to "AAAAAA")))
+            .collection(FirestoreCollections.INVITE_CODES)
+            .document("AAAAAA")
+            .set(mapOf("householdId" to "existing-household")))
 
     assertThrows(IllegalStateException::class.java) {
       runBlocking { repositoryWithRepeatedCode.createHousehold("Home", "creator") }
     }
 
-    assertEquals(1, Tasks.await(firestore.collection(FirestoreCollections.HOUSEHOLDS).get()).size())
+    assertEquals(0, Tasks.await(firestore.collection(FirestoreCollections.HOUSEHOLDS).get()).size())
     assertFalseDocumentExists(FirestoreCollections.USERS, "creator")
+  }
+
+  @Test
+  fun joinHouseholdWithValidCodeAddsMemberAndUpdatesUser() = runBlocking {
+    val created = repository.createHousehold("Home", "creator")
+
+    val joined = repository.joinHousehold(created.inviteCode, "member")
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document("member").get())
+
+    assertEquals(listOf("creator", "member"), joined.memberIds)
+    assertEquals(created.id, storedUser.getString("householdId"))
+    assertEquals(joined, repository.getHousehold(created.id))
+  }
+
+  @Test
+  fun joinHouseholdAcceptsLowercaseCodeAndSurroundingSpaces() = runBlocking {
+    val created = repository.createHousehold("Home", "creator")
+
+    val joined = repository.joinHousehold("  ${created.inviteCode.lowercase()}  ", "member")
+    val storedHousehold =
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(created.id).get())
+            .toObject(Household::class.java)
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document("member").get())
+
+    assertEquals(listOf("creator", "member"), joined.memberIds)
+    assertEquals(listOf("creator", "member"), storedHousehold?.memberIds)
+    assertEquals(created.id, storedUser.getString("householdId"))
+  }
+
+  @Test
+  fun joinHouseholdWithUnknownCodeThrowsWithoutWriting() = runBlocking {
+    assertThrows(IllegalArgumentException::class.java) {
+      runBlocking { repository.joinHousehold("UNKNOWN", "member") }
+    }
+
+    assertTrue(Tasks.await(firestore.collection(FirestoreCollections.HOUSEHOLDS).get()).isEmpty)
+    assertFalseDocumentExists(FirestoreCollections.USERS, "member")
+  }
+
+  @Test
+  fun joiningHouseholdAlreadyContainingUserDoesNotDuplicateMember() = runBlocking {
+    val created = repository.createHousehold("Home", "creator")
+
+    val joined = repository.joinHousehold(created.inviteCode, "creator")
+    val storedHousehold =
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(created.id).get())
+            .toObject(Household::class.java)
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document("creator").get())
+
+    assertEquals(created, joined)
+    assertEquals(listOf("creator"), joined.memberIds)
+    assertEquals(listOf("creator"), storedHousehold?.memberIds)
+    assertEquals(created.id, storedUser.getString("householdId"))
   }
 
   @Test
@@ -166,7 +223,11 @@ class HouseholdRepositoryFirestoreTest {
 
   private fun clearEmulatorData() {
     runBlocking {
-      for (collection in listOf(FirestoreCollections.USERS, FirestoreCollections.HOUSEHOLDS)) {
+      for (collection in
+          listOf(
+              FirestoreCollections.USERS,
+              FirestoreCollections.HOUSEHOLDS,
+              FirestoreCollections.INVITE_CODES)) {
         val snapshot = Tasks.await(firestore.collection(collection).get())
         if (!snapshot.isEmpty) {
           val batch = firestore.batch()
