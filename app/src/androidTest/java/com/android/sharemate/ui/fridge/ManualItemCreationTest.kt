@@ -17,6 +17,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
@@ -202,7 +205,13 @@ class ManualItemCreationTest {
   }
 
   private fun showManualEntryScreen(repository: TestItemRepository): FridgeViewModel {
-    val viewModel = FridgeViewModel(repository, "test-user", "test-household")
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
