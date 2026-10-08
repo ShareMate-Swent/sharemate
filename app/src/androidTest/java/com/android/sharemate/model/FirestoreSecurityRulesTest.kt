@@ -236,7 +236,7 @@ class FirestoreSecurityRulesTest {
   fun userCannotChangeOwnerOfReceipt() {
     val ownerId = FirebaseEmulator.signInAs("owner")
     val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
-    Tasks.await(receiptRef.set(mapOf("ownerId" to ownerId, "storeName" to "Migros")))
+    Tasks.await(receiptRef.set(receiptData(ownerId)))
 
     assertDenied(receiptRef.update("ownerId", "someone-else"))
   }
@@ -250,9 +250,7 @@ class FirestoreSecurityRulesTest {
 
     FirebaseEmulator.signInAs("creator")
     val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
-    Tasks.await(
-        receiptRef.set(
-            mapOf("ownerId" to creatorId, "householdId" to household.id, "storeName" to "Migros")))
+    Tasks.await(receiptRef.set(receiptData(creatorId, household.id)))
 
     FirebaseEmulator.signInAs("member")
     Tasks.await(receiptRef.get())
@@ -270,10 +268,7 @@ class FirestoreSecurityRulesTest {
     val ownerId = FirebaseEmulator.signInAs("owner")
     val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
 
-    assertDenied(
-        receiptRef.set(
-            mapOf(
-                "ownerId" to ownerId, "householdId" to otherHousehold.id, "storeName" to "Migros")))
+    assertDenied(receiptRef.set(receiptData(ownerId, otherHousehold.id)))
   }
 
   @Test
@@ -285,13 +280,20 @@ class FirestoreSecurityRulesTest {
 
     FirebaseEmulator.signInAs("creator")
     val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
-    Tasks.await(
-        receiptRef.set(
-            mapOf("ownerId" to creatorId, "householdId" to household.id, "storeName" to "Migros")))
+    Tasks.await(receiptRef.set(receiptData(creatorId, household.id)))
 
     FirebaseEmulator.signInAs("member")
     assertDenied(receiptRef.update("householdId", null))
   }
+
+  /** A receipt that satisfies hasValidReceiptData; override fields as needed. */
+  private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
+      buildMap {
+        put("ownerId", ownerId)
+        put("storeName", "Migros")
+        put("totalAmountCents", 1250L)
+        if (householdId != null) put("householdId", householdId)
+      }
 
   /** Creates a household through the repository, leaving its creator signed in. */
   private fun createHouseholdAs(alias: String): Household {
