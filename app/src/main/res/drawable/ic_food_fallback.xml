@@ -1,0 +1,19 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp"
+    android:height="180dp"
+    android:viewportWidth="240"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#FFF3E0"
+        android:pathData="M0,0h240v180h-240z" />
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M45,105c0,-34 34,-62 75,-62s75,28 75,62c0,23 -34,42 -75,42s-75,-19 -75,-42z" />
+    <path
+        android:fillColor="#8D6E63"
+        android:pathData="M105,45c5,-19 17,-29 35,-34l5,8c-16,7 -24,16 -27,28z" />
+    <path
+        android:fillColor="#66BB6A"
+        android:pathData="M135,17c18,-13 39,-7 44,10c-18,8 -32,5 -44,-10z" />
+</vector>
