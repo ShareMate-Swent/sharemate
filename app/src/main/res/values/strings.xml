@@ -30,6 +30,7 @@
     <string name="fridge_cancel">Cancel</string>
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
+
     <string name="household_choice_title">Set up your fridge</string>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
@@ -49,4 +50,12 @@
     <string name="invalid_invite_code">This code doesn\'t exist. Check it with your roommate.</string>
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="back">Back</string>
+
+    <string name="fridge_image_description">Photo of %1$s</string>
+    <string name="fridge_image_placeholder">Generic food image</string>
+    <string name="fridge_image_source">Image source</string>
+    <string name="fridge_image_license">License</string>
+    <string name="fridge_image_author">Author</string>
+    <string name="fridge_image_openverse">Image search powered by Openverse</string>
+
 </resources>

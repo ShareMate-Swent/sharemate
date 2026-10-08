@@ -14,6 +14,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
@@ -52,7 +55,12 @@ class FridgeScreenTest {
             listOf(
                 Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1"),
                 Item(id = "bread", name = "Bread", category = "Bakery", ownerId = "owner-2")))
-    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -77,7 +85,12 @@ class FridgeScreenTest {
                 Item(id = "apple", name = "Apple", category = "Fruits"),
                 Item(id = "banana", name = "Banana", category = "Fruits"),
                 Item(id = "carrot", name = "Carrot", category = "Vegetables")))
-    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {

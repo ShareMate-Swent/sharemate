@@ -299,6 +299,20 @@ class FirebaseItemRepositoryTest {
 
     val date = Date()
     `when`(doc.getTimestamp("expirationDate")).thenReturn(Timestamp(date))
+    `when`(doc.getString("category")).thenReturn("Dairy")
+    `when`(doc.get("image"))
+        .thenReturn(
+            mapOf(
+                "origin" to "REMOTE_IMAGE",
+                "reference" to "https://images.example.org/apple.jpg",
+                "author" to "Jane Doe",
+                "sourceName" to "Photo library",
+                "sourceUrl" to "https://example.org/photos/42",
+                "title" to "Fresh apple",
+                "license" to "by",
+                "licenseUrl" to "https://creativecommons.org/licenses/by/4.0/",
+                "licenseVersion" to "4.0",
+                "authorUrl" to "https://example.org/jane"))
 
     val item = doc.toItemOrNull()
 
@@ -307,5 +321,34 @@ class FirebaseItemRepositoryTest {
     assertEquals("user-1", item?.ownerId)
     assertEquals("house-1", item?.householdId)
     assertEquals(date, item?.expirationDate)
+    assertEquals("Dairy", item?.category)
+    assertEquals(
+        ItemImage(
+            origin = ItemImageOrigin.REMOTE_IMAGE,
+            reference = "https://images.example.org/apple.jpg",
+            author = "Jane Doe",
+            sourceName = "Photo library",
+            sourceUrl = "https://example.org/photos/42",
+            title = "Fresh apple",
+            license = "by",
+            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            licenseVersion = "4.0",
+            authorUrl = "https://example.org/jane"),
+        item?.image)
+  }
+
+  @Test
+  fun toItemOrNull_keepsLegacyDocumentsCompatible() {
+    val doc = mock(DocumentSnapshot::class.java)
+    `when`(doc.id).thenReturn("legacy")
+    `when`(doc.getString("name")).thenReturn("Apple")
+    `when`(doc.getString("ownerId")).thenReturn("user-1")
+    `when`(doc.get("image")).thenReturn(mapOf("origin" to "UNKNOWN", "reference" to ""))
+
+    val item = doc.toItemOrNull()
+
+    assertEquals("Apple", item?.name)
+    assertNull(item?.category)
+    assertNull(item?.image)
   }
 }

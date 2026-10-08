@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -52,6 +53,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
+import coil.imageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
@@ -341,7 +344,11 @@ private fun ItemFilterChip(
 }
 
 @Composable
-fun FridgeItem(item: Item, modifier: Modifier = Modifier) {
+fun FridgeItem(
+    item: Item,
+    modifier: Modifier = Modifier,
+    imageLoader: ImageLoader = LocalContext.current.imageLoader
+) {
   val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
   val containerColor =
       when (expiryStatus) {
@@ -369,9 +376,17 @@ fun FridgeItem(item: Item, modifier: Modifier = Modifier) {
       contentColor = contentColor) {
         Column(
             modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              Text(item.name, style = MaterialTheme.typography.titleMedium)
-              item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
-              item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+              Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FridgeItemImage(item, imageLoader)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                      Text(item.name, style = MaterialTheme.typography.titleMedium)
+                      item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
+                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+                    }
+              }
+              FridgeImageCredits(item.image)
             }
       }
 }
