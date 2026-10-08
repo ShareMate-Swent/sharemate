@@ -16,8 +16,8 @@ interface HouseholdRepository {
    * Adds [userId] to the household identified by [inviteCode].
    *
    * @throws IllegalArgumentException if [inviteCode] or [userId] is blank, or the invite code is
-   *   invalid.
-   * @throws IllegalStateException if [userId] is already a member of the household.
+   *   invalid. An unknown invite code also throws [IllegalArgumentException]. If [userId] is
+   *   already a member, the operation has no effect and the household is returned.
    * @throws Exception if the data source cannot join the household.
    */
   suspend fun joinHousehold(inviteCode: String, userId: String): Household

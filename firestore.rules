@@ -1,0 +1,75 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function documentPath(collection, documentId) {
+      return /databases/$(database)/documents/$(collection)/$(documentId);
+    }
+
+    // A user profile is private to its owner.
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    // Lookup from an invite code to its household. A code can be fetched by anyone who knows it,
+    // but codes cannot be listed, so they cannot be enumerated. Codes are immutable.
+    match /inviteCodes/{code} {
+      function pointsToOwnHousehold() {
+        let household = getAfter(documentPath('households', request.resource.data.householdId));
+        return household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
+      }
+
+      allow get: if signedIn();
+      allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['householdId'])
+          && request.resource.data.householdId is string
+          && pointsToOwnHousehold();
+    }
+
+    match /households/{householdId} {
+      function isMember() {
+        return request.auth.uid in resource.data.memberIds;
+      }
+
+      // The creator is the only initial member, and the invite-code lookup document must be
+      // written in the same batch.
+      function isValidNewHousehold() {
+        let household = request.resource.data;
+        let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
+        return household.keys().hasOnly(fields)
+            && household.keys().hasAll(fields)
+            && household.id == householdId
+            && household.name is string
+            && household.name.size() > 0
+            && household.inviteCode is string
+            && household.createdBy == request.auth.uid
+            && household.memberIds == [request.auth.uid]
+            && household.createdAt is timestamp
+            && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
+                == householdId;
+      }
+
+      // Joining: a user may only append themselves to the members, and must point their own
+      // profile at the household in the same batch. No other field can change.
+      function onlyAddsSelf() {
+        let before = resource.data.memberIds;
+        let after = request.resource.data.memberIds;
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+            && (after == before
+                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
+            && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+      }
+
+      // Fetching a missing household is allowed so that lookups can return "not found".
+      allow get: if signedIn() && (resource == null || isMember());
+      allow list: if signedIn() && isMember();
+      allow create: if signedIn() && isValidNewHousehold();
+      allow update: if signedIn() && onlyAddsSelf();
+    }
+  }
+}

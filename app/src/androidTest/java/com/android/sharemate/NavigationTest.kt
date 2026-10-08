@@ -19,7 +19,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
 
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule()
+
+  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun selectingEachDestinationShowsItsPageLabel() = run {

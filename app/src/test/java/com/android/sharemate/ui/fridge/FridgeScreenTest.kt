@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.FirebaseAuthTestRule
 import com.android.sharemate.MainActivity
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.navigation.NavigationTestTags
@@ -28,7 +29,9 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FridgeScreenTest {
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0) val firebase = FirebaseAuthTestRule(startSignedIn = true)
+
+  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun callerModifierIsAppliedAndUpdatesWithoutChangingFridgeContent() {
@@ -102,5 +105,10 @@ class FridgeScreenTest {
           if (testTag == NavigationTestTags.FRIDGE_TAB) destination.assertIsSelected()
           else destination.assertIsNotSelected()
         }
+  }
+
+  @Test
+  fun addItemIsVisibleButDisabledWithoutRuntimeWiring() {
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed().assertIsNotEnabled()
   }
 }
