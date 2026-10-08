@@ -5,6 +5,10 @@ package com.android.sharemate.ui.fridge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -63,6 +67,31 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("Owner").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
+  }
+
+  @Test
+  fun categoryChipRemainsUniqueWhenItemLabelsMatch() {
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "apple", name = "Apple", category = "Fruits"),
+                Item(id = "banana", name = "Banana", category = "Fruits"),
+                Item(id = "carrot", name = "Carrot", category = "Vegetables")))
+    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+
+    for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {
+      composeRule.onNode(hasText("Category") and isSelectable()).performClick()
+      composeRule.onNodeWithTag("fridge_filter_category_$category").performClick()
+      composeRule.onAllNodesWithText("Category: $category").assertCountEquals(matchingNodes)
+      composeRule
+          .onNode(hasText("Category: $category") and isSelectable())
+          .assertIsSelected()
+          .performClick()
+      composeRule.onNodeWithTag("fridge_filter_category_all").performClick()
+      composeRule.onNode(hasText("Category") and isSelectable()).assertIsNotSelected()
+      assertEquals(null, viewModel.selectedCategory.value)
+    }
   }
 
   @Test

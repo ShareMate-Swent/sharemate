@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -49,29 +51,29 @@ class FridgeScreenTest {
   @Test
   fun categoryDropdownFiltersItemsAndCanBeCleared() {
     showScreen()
-    compose.onNodeWithText("Category").performScrollTo().performClick()
+    filterChip("Category").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsDisplayed().performClick()
-    compose.onNodeWithText("Category: Fruits").assertIsSelected()
+    filterChip("Category: Fruits").assertIsSelected()
     item("banana").assertIsDisplayed()
     item("apple").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
 
-    compose.onNodeWithText("Category: Fruits").performScrollTo().performClick()
+    filterChip("Category: Fruits").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_category_all").performClick()
-    compose.onNodeWithText("Category").assertIsNotSelected()
+    filterChip("Category").assertIsNotSelected()
     assertItemOrder("carrot", "banana", "apple")
   }
 
   @Test
   fun ownerAndCategoryFiltersCombineAndShowAnEmptyResult() {
     showScreen()
-    compose.onNodeWithText("Owner").performScrollTo().performClick()
+    filterChip("Owner").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_owner_alice").performClick()
     item("banana").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
     item("apple").assertDoesNotExist()
 
-    compose.onNodeWithText("Category").performScrollTo().performClick()
+    filterChip("Category").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_category_Vegetables").performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
@@ -79,12 +81,12 @@ class FridgeScreenTest {
         .assertTextEquals("No items match the selected filters.")
     item("banana").assertDoesNotExist()
 
-    compose.onNodeWithText("Owner: alice").performScrollTo().performClick()
+    filterChip("Owner: alice").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_owner_all").performClick()
     item("carrot").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
 
-    compose.onNodeWithText("Category: Vegetables").performScrollTo().performClick()
+    filterChip("Category: Vegetables").performScrollTo().performClick()
     compose.onNodeWithTag("fridge_filter_category_all").performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
@@ -96,8 +98,8 @@ class FridgeScreenTest {
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
         .assertTextEquals("Your fridge is empty")
-    compose.onNodeWithText("Category").performScrollTo().assertIsNotEnabled()
-    compose.onNodeWithText("Owner").performScrollTo().assertIsNotEnabled()
+    filterChip("Category").performScrollTo().assertIsNotEnabled()
+    filterChip("Owner").performScrollTo().assertIsNotEnabled()
     compose.onNodeWithText("Name").performScrollTo().performClick().assertIsSelected()
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
@@ -118,6 +120,9 @@ class FridgeScreenTest {
   }
 
   private fun item(id: String) = compose.onNodeWithTag("${C.Tag.fridge_item_prefix}$id")
+
+  // Item category labels share the chip text but have no selection semantics.
+  private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
   private fun assertItemOrder(vararg ids: String) {
     val positions = ids.map { item(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top }
