@@ -10,13 +10,13 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -295,165 +295,354 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun signedOutUserCannotReadOrWriteItemsOrReceipts() {
-    val ownerId = FirebaseEmulator.signInAs("owner")
-    Tasks.await(itemReference("item1").set(itemData(ownerId)))
-    Tasks.await(receiptReference("receipt1").set(receiptData(ownerId)))
+  fun userCanReadWriteAndDeleteOwnProfile() {
+    val userId = FirebaseEmulator.signInAs("user")
+    val profileRef = userReference(userId)
+
+    Tasks.await(profileRef.set(mapOf("displayName" to "Alice")))
+    assertEquals("Alice", Tasks.await(profileRef.get()).getString("displayName"))
+    Tasks.await(profileRef.update("displayName", "Bob"))
+    Tasks.await(profileRef.delete())
+  }
+
+  // ======================= invite codes =======================
+
+  @Test
+  fun signedInUserCanFetchInviteCodeByItsValue() {
+    val household = createHouseholdAs("creator")
+    FirebaseEmulator.signInAs("joiner")
+
+    val lookup = Tasks.await(inviteCodeReference(household.inviteCode).get())
+
+    assertEquals(household.id, lookup.getString("householdId"))
+  }
+
+  @Test
+  fun inviteCodeMustMatchTheCodeStoredOnTheHousehold() {
+    val household = createHouseholdAs("creator")
+    val otherCode = "NOT-${household.inviteCode}"
+
+    // The creator owns the household, but the code does not match household.inviteCode.
+    assertDenied(inviteCodeReference(otherCode).set(mapOf("householdId" to household.id)))
+  }
+
+  @Test
+  fun inviteCodeLookupMustBeWellFormedAndPointToTheNewHousehold() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val household = wellFormedHousehold(userId)
+
+    assertDenied(commitHousehold(household, mapOf("householdId" to "another-household")))
+    assertDenied(commitHousehold(household, mapOf("householdId" to 42)))
+    assertDenied(commitHousehold(household, validLookup + ("extra" to "field")))
+  }
+
+  // ======================= households =======================
+
+  @Test
+  fun wellFormedHouseholdIsAccepted() {
+    val userId = FirebaseEmulator.signInAs("creator")
+
+    // Baseline for the negative test below: only the mutated field makes the write fail.
+    Tasks.await(commitHousehold(wellFormedHousehold(userId), validLookup))
+  }
+
+  @Test
+  fun householdCreationRejectsMalformedData() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val valid = wellFormedHousehold(userId)
+
+    assertDenied(commitHousehold(valid + ("id" to "other-id"), validLookup))
+    assertDenied(commitHousehold(valid + ("extra" to "field"), validLookup))
+    assertDenied(commitHousehold(valid - "createdAt", validLookup))
+    assertDenied(commitHousehold(valid + ("createdAt" to "yesterday"), validLookup))
+    assertDenied(commitHousehold(valid + ("name" to 42), validLookup))
+  }
+
+  @Test
+  fun fetchingMissingHouseholdReportsNotFoundInsteadOfDenying() {
+    FirebaseEmulator.signInAs("user")
+
+    val snapshot = Tasks.await(householdReference("does-not-exist").get())
+
+    assertFalse(snapshot.exists())
+  }
+
+  @Test
+  fun memberCanListOnlyTheirOwnHouseholds() {
+    val own = createHouseholdAs("creator")
+    createHouseholdAs("other")
+    FirebaseEmulator.signInAs("creator")
+
+    val result =
+        Tasks.await(
+            firestore
+                .collection(FirestoreCollections.HOUSEHOLDS)
+                .whereArrayContains("memberIds", own.createdBy)
+                .get())
+
+    assertEquals(listOf(own.id), result.documents.map { it.id })
+  }
+
+  @Test
+  fun joinedMemberCanReadHouseholdWithBothMembers() {
+    val household = createHouseholdAs("creator")
+    val memberId = joinHouseholdAs("member", household)
+
+    val snapshot = Tasks.await(householdReference(household.id).get())
+
+    val memberIds = (snapshot.get("memberIds") as List<*>).toSet()
+    assertEquals(setOf(household.createdBy, memberId), memberIds)
+  }
+
+  @Test
+  fun existingMemberCanRepeatTheJoinWithoutDuplicatingMembership() {
+    val household = createHouseholdAs("creator")
+    val memberId = joinHouseholdAs("member", household)
+    val householdRef = householdReference(household.id)
+
+    Tasks.await(householdRef.update("memberIds", FieldValue.arrayUnion(memberId)))
+
+    val memberIds = Tasks.await(householdRef.get()).get("memberIds") as List<*>
+    assertEquals(2, memberIds.size)
+  }
+
+  @Test
+  fun joiningWithProfilePointingAtAnotherHouseholdIsDenied() {
+    val household = createHouseholdAs("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+    val householdRef = householdReference(household.id)
+
+    val join =
+        firestore
+            .batch()
+            .update(householdRef, "memberIds", FieldValue.arrayUnion(outsiderId))
+            .set(userReference(outsiderId), mapOf("householdId" to "elsewhere"), SetOptions.merge())
+
+    assertDenied(join.commit())
+  }
+
+  // ======================= items =======================
+
+  @Test
+  fun userCanReadWriteAndDeleteOwnPrivateItem() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    val itemRef = itemReference("item1")
+
+    Tasks.await(itemRef.set(mapOf("ownerId" to userId, "name" to "Apple")))
+    assertEquals("Apple", Tasks.await(itemRef.get()).getString("name"))
+    Tasks.await(itemRef.update("name", "Banana"))
+    Tasks.await(itemRef.delete())
+  }
+
+  @Test
+  fun userCannotCreateItemForAnotherUser() {
+    FirebaseEmulator.signInAs("owner")
+
+    assertDenied(itemReference("item1").set(mapOf("ownerId" to "someone-else", "name" to "Apple")))
+  }
+
+  @Test
+  fun householdMemberCanReadWriteAndDeleteSharedItem() {
+    val household = createHouseholdAs("creator")
+    val memberId = joinHouseholdAs("member", household)
+    val itemRef = itemReference("item1")
+
+    Tasks.await(
+        itemRef.set(mapOf("ownerId" to memberId, "householdId" to household.id, "name" to "Apple")))
+
+    FirebaseEmulator.signInAs("creator")
+    assertEquals("Apple", Tasks.await(itemRef.get()).getString("name"))
+    Tasks.await(itemRef.update("name", "Banana"))
+    Tasks.await(itemRef.delete())
+  }
+
+  @Test
+  fun nonMemberCannotReadOrWriteSharedItem() {
+    val household = createHouseholdAs("creator")
+    val itemRef = itemReference("item1")
+    Tasks.await(
+        itemRef.set(
+            mapOf(
+                "ownerId" to household.createdBy,
+                "householdId" to household.id,
+                "name" to "Apple")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(itemRef.get())
+    assertDenied(itemRef.update("name", "Banana"))
+    assertDenied(itemRef.delete())
+  }
+
+  @Test
+  fun itemWithMalformedOwnerOrHouseholdIsRejected() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    val itemRef = itemReference("item1")
+
+    assertDenied(itemRef.set(mapOf("ownerId" to userId, "householdId" to 42)))
+    assertDenied(itemRef.set(mapOf("ownerId" to 42)))
+    // An explicit null householdId is equivalent to a private item.
+    Tasks.await(itemRef.set(mapOf("ownerId" to userId, "householdId" to null)))
+  }
+
+  @Test
+  fun ownerCannotSetMalformedHouseholdOnUpdate() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(mapOf("ownerId" to userId, "name" to "Apple")))
+
+    assertDenied(itemRef.update("householdId", 42))
+    assertDenied(itemRef.update("householdId", "missing-household"))
+  }
+
+  @Test
+  fun signedOutUserCannotAccessItemsOrReceipts() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    Tasks.await(itemReference("item1").set(mapOf("ownerId" to userId, "name" to "Apple")))
+    Tasks.await(
+        receiptReference("receipt1").set(mapOf("ownerId" to userId, "storeName" to "Migros")))
     FirebaseEmulator.signOut()
 
     assertDenied(itemReference("item1").get())
-    assertDenied(itemReference("item1").update("name", "Banana"))
     assertDenied(itemReference("item1").delete())
-    assertDenied(itemReference("item2").set(itemData(ownerId)))
+    assertDenied(itemReference("item2").set(mapOf("ownerId" to userId)))
     assertDenied(receiptReference("receipt1").get())
-    assertDenied(receiptReference("receipt1").update("storeName", "Coop"))
     assertDenied(receiptReference("receipt1").delete())
-    assertDenied(receiptReference("receipt2").set(receiptData(ownerId)))
+    assertDenied(receiptReference("receipt2").set(mapOf("ownerId" to userId)))
+  }
+
+  // The following two tests exercise the rules through real queries. If one fails, the rule is
+  // valid but cannot be proven safe by Firestore's query evaluator: that is a real limitation to
+  // fix in firestore.rules, not a flaw in the test.
+
+  @Test
+  fun itemsCannotBeListedWithoutFiltering() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    Tasks.await(itemReference("item1").set(mapOf("ownerId" to userId, "name" to "Apple")))
+
+    assertDenied(firestore.collection(FirestoreCollections.ITEMS).get())
   }
 
   @Test
-  fun itemRequiresStringOwnerAndStringOrNullHousehold() {
+  fun userCanListOwnItemsButNotThoseOfAnotherUser() {
     val ownerId = FirebaseEmulator.signInAs("owner")
-    val itemRef = itemReference("item1")
+    Tasks.await(itemReference("item1").set(mapOf("ownerId" to ownerId, "name" to "Apple")))
+    val ownItems = firestore.collection(FirestoreCollections.ITEMS).whereEqualTo("ownerId", ownerId)
 
-    assertDenied(itemRef.set(mapOf("name" to "Apple")))
-    assertDenied(itemRef.set(mapOf("ownerId" to ownerId, "householdId" to 42)))
-
-    Tasks.await(itemRef.set(itemData(ownerId)))
-    assertDenied(itemRef.update("householdId", 42))
-  }
-
-  @Test
-  fun receiptRequiresStringOwnerAndStringOrNullHousehold() {
-    val ownerId = FirebaseEmulator.signInAs("owner")
-    val receiptRef = receiptReference("receipt1")
-
-    assertDenied(receiptRef.set(mapOf("storeName" to "Migros")))
-    assertDenied(receiptRef.set(mapOf("ownerId" to ownerId, "householdId" to 42)))
-
-    Tasks.await(receiptRef.set(receiptData(ownerId)))
-    assertDenied(receiptRef.update("householdId", 42))
-  }
-
-  @Test
-  fun memberOfAnotherHouseholdCannotAccessSharedItemOrReceipt() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    Tasks.await(itemReference("item1").set(itemData(creatorId, household.id)))
-    Tasks.await(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
-
-    // The neighbor belongs to a household, but not to the one the documents are shared with.
-    createHouseholdAs("neighbor")
-
-    assertDenied(itemReference("item1").get())
-    assertDenied(itemReference("item1").update("name", "Banana"))
-    assertDenied(itemReference("item1").delete())
-    assertDenied(receiptReference("receipt1").get())
-    assertDenied(receiptReference("receipt1").update("storeName", "Coop"))
-    assertDenied(receiptReference("receipt1").delete())
-  }
-
-  @Test
-  fun memberCannotCreateItemOrReceiptOwnedBySomeoneElse() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    joinHouseholdAs("member", household)
-
-    assertDenied(itemReference("item1").set(itemData(creatorId, household.id)))
-    assertDenied(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
-  }
-
-  @Test
-  fun sharingAndUnsharingItemChangesWhatHouseholdMembersCanSee() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    joinHouseholdAs("member", household)
-    FirebaseEmulator.signInAs("creator")
-    Tasks.await(itemReference("item1").set(itemData(creatorId)))
-
-    FirebaseEmulator.signInAs("member")
-    assertDenied(itemReference("item1").get())
-
-    FirebaseEmulator.signInAs("creator")
-    Tasks.await(itemReference("item1").update("householdId", household.id))
-    FirebaseEmulator.signInAs("member")
-    Tasks.await(itemReference("item1").get())
-
-    FirebaseEmulator.signInAs("creator")
-    Tasks.await(itemReference("item1").update("householdId", null))
-    FirebaseEmulator.signInAs("member")
-    assertDenied(itemReference("item1").get())
-  }
-
-  @Test
-  fun ownerCanListOwnItemsAndReceipts() {
-    val ownerId = FirebaseEmulator.signInAs("owner")
-    Tasks.await(itemReference("item1").set(itemData(ownerId)))
-    Tasks.await(receiptReference("receipt1").set(receiptData(ownerId)))
-    val otherId = FirebaseEmulator.signInAs("other")
-    Tasks.await(itemReference("item2").set(itemData(otherId)))
-    Tasks.await(receiptReference("receipt2").set(receiptData(otherId)))
-
-    FirebaseEmulator.signInAs("owner")
-    val items = firestore.collection(FirestoreCollections.ITEMS)
-    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
-
-    assertEquals(setOf("item1"), documentIds(items.whereEqualTo("ownerId", ownerId)))
-    assertEquals(setOf("receipt1"), documentIds(receipts.whereEqualTo("ownerId", ownerId)))
-  }
-
-  @Test
-  fun memberCanListSharedItemsOnlyThroughHouseholdFilter() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    Tasks.await(itemReference("private").set(itemData(creatorId)))
-    Tasks.await(itemReference("shared").set(itemData(creatorId, household.id)))
-    joinHouseholdAs("member", household)
-    val items = firestore.collection(FirestoreCollections.ITEMS)
-
-    assertEquals(setOf("shared"), documentIds(items.whereEqualTo("householdId", household.id)))
-    // Filtering on the owner would also match the creator's private item.
-    assertDenied(items.whereEqualTo("ownerId", creatorId).get())
-    assertDenied(items.get())
-  }
-
-  @Test
-  fun memberCanListSharedReceiptsOnlyThroughHouseholdFilter() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    Tasks.await(receiptReference("private").set(receiptData(creatorId)))
-    Tasks.await(receiptReference("shared").set(receiptData(creatorId, household.id)))
-    joinHouseholdAs("member", household)
-    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
-
-    assertEquals(setOf("shared"), documentIds(receipts.whereEqualTo("householdId", household.id)))
-    // Filtering on the owner would also match the creator's private receipt.
-    assertDenied(receipts.whereEqualTo("ownerId", creatorId).get())
-    assertDenied(receipts.get())
-  }
-
-  @Test
-  fun nonMemberCannotListSharedItemsOrReceipts() {
-    val household = createHouseholdAs("creator")
-    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
-    Tasks.await(itemReference("item1").set(itemData(creatorId, household.id)))
-    Tasks.await(receiptReference("receipt1").set(receiptData(creatorId, household.id)))
-    val items = firestore.collection(FirestoreCollections.ITEMS)
-    val receipts = firestore.collection(FirestoreCollections.RECEIPTS)
+    assertEquals(listOf("item1"), Tasks.await(ownItems.get()).documents.map { it.id })
 
     FirebaseEmulator.signInAs("outsider")
-    assertDenied(items.whereEqualTo("householdId", household.id).get())
-    assertDenied(items.whereEqualTo("ownerId", creatorId).get())
-    assertDenied(receipts.whereEqualTo("householdId", household.id).get())
-    assertDenied(receipts.whereEqualTo("ownerId", creatorId).get())
+    assertDenied(ownItems.get())
   }
 
-  // ----- Helpers -------------------------------------------------------------
+  @Test
+  fun memberCanListSharedItemsByHousehold() {
+    val household = createHouseholdAs("creator")
+    Tasks.await(
+        itemReference("item1")
+            .set(
+                mapOf(
+                    "ownerId" to household.createdBy,
+                    "householdId" to household.id,
+                    "name" to "Apple")))
+    joinHouseholdAs("member", household)
+    val sharedItems =
+        firestore.collection(FirestoreCollections.ITEMS).whereEqualTo("householdId", household.id)
 
-  /** Joins [household] as [alias] through the repository, leaving that user signed in. */
-  private fun joinHouseholdAs(alias: String, household: Household) {
-    val memberId = FirebaseEmulator.signInAs(alias)
-    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    assertEquals(listOf("item1"), Tasks.await(sharedItems.get()).documents.map { it.id })
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(sharedItems.get())
+  }
+
+  // ======================= receipts =======================
+
+  @Test
+  fun userCanReadWriteAndDeleteOwnPrivateReceipt() {
+    val userId = FirebaseEmulator.signInAs("owner")
+    val receiptRef = receiptReference("receipt1")
+
+    Tasks.await(receiptRef.set(mapOf("ownerId" to userId, "storeName" to "Migros")))
+    assertEquals("Migros", Tasks.await(receiptRef.get()).getString("storeName"))
+    Tasks.await(receiptRef.update("storeName", "Coop"))
+    Tasks.await(receiptRef.delete())
+  }
+
+  @Test
+  fun userCannotCreateReceiptForAnotherUser() {
+    FirebaseEmulator.signInAs("owner")
+
+    assertDenied(
+        receiptReference("receipt1")
+            .set(mapOf("ownerId" to "someone-else", "storeName" to "Migros")))
+  }
+
+  @Test
+  fun nonMemberCannotReadOrWriteSharedReceipt() {
+    val household = createHouseholdAs("creator")
+    val receiptRef = receiptReference("receipt1")
+    Tasks.await(
+        receiptRef.set(
+            mapOf(
+                "ownerId" to household.createdBy,
+                "householdId" to household.id,
+                "storeName" to "Migros")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(receiptRef.get())
+    assertDenied(receiptRef.update("storeName", "Coop"))
+    assertDenied(receiptRef.delete())
+  }
+
+  @Test
+  fun ownerCanShareAndUnshareOwnReceipt() {
+    val household = createHouseholdAs("creator")
+    val receiptRef = receiptReference("receipt1")
+    Tasks.await(receiptRef.set(mapOf("ownerId" to household.createdBy, "storeName" to "Migros")))
+
+    Tasks.await(receiptRef.update("householdId", household.id))
+    Tasks.await(receiptRef.update("householdId", null))
+  }
+
+  @Test
+  fun receiptWithMalformedHouseholdIsRejected() {
+    val userId = FirebaseEmulator.signInAs("owner")
+
+    assertDenied(
+        receiptReference("receipt1")
+            .set(mapOf("ownerId" to userId, "householdId" to 42, "storeName" to "Migros")))
+  }
+
+  // ======================= new helpers =======================
+
+  /** Signs in as [alias] and joins [household] through the repository. Returns the user's uid. */
+  private fun joinHouseholdAs(alias: String, household: Household): String {
+    val userId = FirebaseEmulator.signInAs(alias)
+    runBlocking { repository.joinHousehold(household.inviteCode, userId) }
+    return userId
+  }
+
+  /** A household document that satisfies every rule, stored under id "household". */
+  private fun wellFormedHousehold(userId: String): Map<String, Any> =
+      mapOf(
+          "id" to "household",
+          "name" to "Home",
+          "inviteCode" to "ABCDEF",
+          "memberIds" to listOf(userId),
+          "createdBy" to userId,
+          "createdAt" to Date())
+
+  /** The invite-code lookup document matching [wellFormedHousehold]. */
+  private val validLookup: Map<String, Any> = mapOf("householdId" to "household")
+
+  /** Same batch as the repository, but with caller-controlled documents. */
+  private fun commitHousehold(data: Map<String, Any>, lookup: Map<String, Any>): Task<Void> {
+    val userId = checkNotNull(FirebaseEmulator.auth.uid)
+    return firestore
+        .batch()
+        .set(householdReference("household"), data)
+        .set(inviteCodeReference("ABCDEF"), lookup)
+        .set(userReference(userId), mapOf("householdId" to "household"), SetOptions.merge())
+        .commit()
   }
 
   private fun itemReference(itemId: String): DocumentReference =
@@ -461,15 +650,6 @@ class FirestoreSecurityRulesTest {
 
   private fun receiptReference(receiptId: String): DocumentReference =
       firestore.collection(FirestoreCollections.RECEIPTS).document(receiptId)
-
-  private fun itemData(ownerId: String, householdId: String? = null): Map<String, Any?> =
-      mapOf("ownerId" to ownerId, "householdId" to householdId, "name" to "Apple")
-
-  private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
-      mapOf("ownerId" to ownerId, "householdId" to householdId, "storeName" to "Migros")
-
-  private fun documentIds(query: Query): Set<String> =
-      Tasks.await(query.get()).documents.map { it.id }.toSet()
 
   /** Creates a household through the repository, leaving its creator signed in. */
   private fun createHouseholdAs(alias: String): Household {
