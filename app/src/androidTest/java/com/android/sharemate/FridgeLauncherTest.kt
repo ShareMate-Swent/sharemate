@@ -2,7 +2,9 @@
 package com.android.sharemate
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.resources.C
 import com.android.sharemate.screen.MainScreen
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import io.github.kakaocup.compose.node.element.ComposeScreen
@@ -25,6 +27,9 @@ class FridgeLauncherTest : TestCase() {
   @Test
   fun test() = run {
     step("Start Main Activity") {
+      composeTestRule.waitUntil(10_000) {
+        composeTestRule.onAllNodesWithTag(C.Tag.fridge_title).fetchSemanticsNodes().isNotEmpty()
+      }
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         fridgeTitle {
           assertIsDisplayed()

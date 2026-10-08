@@ -34,31 +34,42 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.auth.AuthGate
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
+import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
+  private val authRepository: AuthRepository by lazy {
+    FirebaseAuthRepository(FirebaseAuth.getInstance())
+  }
+  private val householdRepository: HouseholdRepository by lazy {
+    HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
+  }
+
   private val authViewModel: AuthViewModel by viewModels {
-    viewModelFactory {
-      initializer { AuthViewModel(FirebaseAuthRepository(FirebaseAuth.getInstance())) }
-    }
+    viewModelFactory { initializer { AuthViewModel(authRepository) } }
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
       SampleAppTheme(dynamicColor = false) {
-        AuthGate(
+        AuthHouseholdGate(
             authViewModel,
+            authRepository,
+            householdRepository,
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
               val navController = rememberNavController()
               val currentRoute =
