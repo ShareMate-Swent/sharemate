@@ -10,8 +10,8 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
@@ -457,19 +457,19 @@ class FirestoreSecurityRulesTest {
   }
 
   private fun itemReference(itemId: String): DocumentReference =
-    firestore.collection(FirestoreCollections.ITEMS).document(itemId)
+      firestore.collection(FirestoreCollections.ITEMS).document(itemId)
 
   private fun receiptReference(receiptId: String): DocumentReference =
-    firestore.collection(FirestoreCollections.RECEIPTS).document(receiptId)
+      firestore.collection(FirestoreCollections.RECEIPTS).document(receiptId)
 
   private fun itemData(ownerId: String, householdId: String? = null): Map<String, Any?> =
-    mapOf("ownerId" to ownerId, "householdId" to householdId, "name" to "Apple")
+      mapOf("ownerId" to ownerId, "householdId" to householdId, "name" to "Apple")
 
   private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
-    mapOf("ownerId" to ownerId, "householdId" to householdId, "storeName" to "Migros")
+      mapOf("ownerId" to ownerId, "householdId" to householdId, "storeName" to "Migros")
 
   private fun documentIds(query: Query): Set<String> =
-    Tasks.await(query.get()).documents.map { it.id }.toSet()
+      Tasks.await(query.get()).documents.map { it.id }.toSet()
 
   /** Creates a household through the repository, leaving its creator signed in. */
   private fun createHouseholdAs(alias: String): Household {
