@@ -15,15 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.android.sharemate.model.auth.AuthSession
 
 /** Keeps application content hidden until Firebase has restored or established a session. */
 @Composable
 fun AuthGate(
     viewModel: AuthViewModel,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable (AuthSession) -> Unit
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
+  val session = state.session
   when {
     state.isRestoringSession ->
         AuthTheme(updateSystemBars = true) {
@@ -33,7 +35,7 @@ fun AuthGate(
             }
           }
         }
-    state.session != null -> content()
+    session != null -> content(session)
     else -> AuthEntryFlow(viewModel, state, modifier)
   }
 }

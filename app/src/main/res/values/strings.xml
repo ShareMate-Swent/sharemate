@@ -48,5 +48,6 @@
     <string name="join_household">Join household</string>
     <string name="invalid_invite_code">This code doesn\'t exist. Check it with your roommate.</string>
     <string name="household_generic_error">Something went wrong. Please try again.</string>
+    <string name="household_retry">Try again</string>
     <string name="back">Back</string>
 </resources>
