@@ -7,4 +7,5 @@ object FirestoreCollections {
   const val HOUSEHOLDS = "households"
   const val ITEMS = "items"
   const val RECEIPTS = "receipts"
+  const val INVITE_CODES = "inviteCodes"
 }

@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -40,11 +43,22 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import java.time.ZoneOffset
 
 @Composable
-fun FridgeScreen(modifier: Modifier = Modifier) {
+fun FridgeScreen(
+    modifier: Modifier = Modifier,
+    uiState: FridgeUiState = FridgeUiState(),
+    onAddItem: (() -> Unit)? = null,
+    onDismissAddItem: () -> Unit = {},
+    onNameChange: (String) -> Unit = {},
+    onCategoryChange: (String) -> Unit = {},
+    onExpirationDateChange: (String) -> Unit = {},
+    onSaveItem: () -> Unit = {}
+) {
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
     Text(
         text = stringResource(R.string.fridge_title),
@@ -131,16 +145,70 @@ fun FridgeScreen(modifier: Modifier = Modifier) {
                 }
           }
         }
+    Button(
+        onClick = { onAddItem?.invoke() },
+        enabled = onAddItem != null && !uiState.isSaving,
+        modifier =
+            Modifier.align(Alignment.End)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .testTag(C.Tag.fridge_add_item)) {
+          Text(stringResource(R.string.fridge_add_item))
+        }
+    if (uiState.loadFailed) {
+      Text(
+          stringResource(R.string.fridge_load_failed),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_inventory_error))
+    }
     Box(
         modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
         contentAlignment = Alignment.Center) {
-          Text(
-              stringResource(R.string.fridge_empty),
-              modifier = Modifier.testTag(C.Tag.fridge_empty),
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-              style = MaterialTheme.typography.bodyLarge)
+          if (uiState.items.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                  items(uiState.items, key = { it.id }) { item -> FridgeItem(item) }
+                }
+          } else if (uiState.isLoading) {
+            Text(stringResource(R.string.fridge_loading))
+          } else {
+            Text(
+                stringResource(R.string.fridge_empty),
+                modifier = Modifier.testTag(C.Tag.fridge_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge)
+          }
         }
   }
+  if (uiState.isAddItemDialogOpen) {
+    AddItemDialog(
+        uiState = uiState,
+        onNameChange = onNameChange,
+        onCategoryChange = onCategoryChange,
+        onExpirationDateChange = onExpirationDateChange,
+        onSave = onSaveItem,
+        onDismiss = onDismissAddItem)
+  }
+}
+
+@Composable
+private fun FridgeItem(item: Item) {
+  Surface(
+      modifier = Modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}"),
+      shape = RoundedCornerShape(12.dp),
+      color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(
+            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              Text(item.name, style = MaterialTheme.typography.titleMedium)
+              item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
+              item.expirationDate?.let {
+                Text(
+                    stringResource(
+                        R.string.fridge_item_expiration,
+                        it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString()))
+              }
+            }
+      }
 }
 
 private fun outlineIcon(name: String, pathData: String): ImageVector =
