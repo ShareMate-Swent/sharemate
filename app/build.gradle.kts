@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
@@ -160,6 +161,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
+    implementation(libs.coil.compose)
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)

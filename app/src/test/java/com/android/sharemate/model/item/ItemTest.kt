@@ -18,6 +18,12 @@ class ItemTest {
     assertEquals("test-household", item.householdId)
     assertEquals(expiration, item.expirationDate)
     assertNull(item.category)
+    assertNull(item.image)
+  }
+
+  @Test
+  fun imageDefaultsToNullForLegacyItems() {
+    assertNull(Item().image)
   }
 
   @Test
