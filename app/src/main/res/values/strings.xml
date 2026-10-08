@@ -1,8 +1,10 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <resources>
     <string name="app_name">SampleApp</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
     <string name="fridge_title">Fridge</string>
     <string name="fridge_category_all">All</string>
     <string name="fridge_category_fruits">Fruits</string>

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -11,7 +12,10 @@ import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -264,4 +268,101 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.loadFailed)
     assertFalse(viewModel.uiState.value.isLoading)
   }
+
+  @Test
+  fun sortsSharedItemsByExpirationWithUndatedItemsLast() = runTest {
+    val viewModel = viewModel()
+    val collection =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.visibleItems.collect()
+        }
+    val later = item("later", expirationDate = Date(2_000))
+    val undated = item("undated")
+    val sooner = item("sooner", expirationDate = Date(1_000))
+    repository.emitItems(listOf(later, undated, sooner))
+    runCurrent()
+
+    assertEquals(listOf(sooner, later, undated), viewModel.visibleItems.value)
+    collection.cancel()
+  }
+
+  @Test
+  fun sortsItemsByNameWithoutCaseSensitivity() = runTest {
+    val viewModel = viewModel()
+    val collection =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.visibleItems.collect()
+        }
+    val banana = item("banana", name = "banana")
+    val apple = item("apple", name = "Apple")
+    val carrot = item("carrot", name = "carrot")
+    repository.emitItems(listOf(banana, carrot, apple))
+    viewModel.setSortOrder(FridgeSortOrder.NAME)
+    runCurrent()
+
+    assertEquals(listOf(apple, banana, carrot), viewModel.visibleItems.value)
+    collection.cancel()
+  }
+
+  @Test
+  fun categoryFilterIgnoresCaseAndWhitespaceAndCanBeCleared() = runTest {
+    val viewModel = viewModel()
+    val collection =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.visibleItems.collect()
+        }
+    val milk = item("milk", category = " Dairy ")
+    val apple = item("apple", category = "Fruit")
+    repository.emitItems(listOf(milk, apple))
+    viewModel.setCategoryFilter(" dairy ")
+    runCurrent()
+
+    assertEquals(listOf(milk), viewModel.visibleItems.value)
+
+    viewModel.setCategoryFilter("")
+    runCurrent()
+    assertNull(viewModel.selectedCategory.value)
+    assertEquals(listOf(milk, apple), viewModel.visibleItems.value)
+    collection.cancel()
+  }
+
+  @Test
+  fun combinesOwnerAndCategoryFiltersAndReactsToInventoryChanges() = runTest {
+    val viewModel = viewModel()
+    val collection =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.visibleItems.collect()
+        }
+    val matching = item("matching", category = "Dairy", ownerId = "owner-1")
+    val otherOwner = item("other-owner", category = "Dairy", ownerId = "owner-2")
+    val otherCategory = item("other-category", category = "Fruit", ownerId = "owner-1")
+    repository.emitItems(listOf(matching, otherOwner, otherCategory))
+    viewModel.setCategoryFilter("dairy")
+    viewModel.setOwnerFilter("owner-1")
+    runCurrent()
+
+    assertEquals(listOf(matching), viewModel.visibleItems.value)
+
+    val anotherMatch = item("another-match", category = "Dairy", ownerId = "owner-1")
+    repository.emitItems(listOf(matching, otherOwner, otherCategory, anotherMatch))
+    runCurrent()
+    assertEquals(listOf(matching, anotherMatch), viewModel.visibleItems.value)
+    collection.cancel()
+  }
 }
+
+private fun item(
+    id: String,
+    name: String = id,
+    expirationDate: Date? = null,
+    category: String? = null,
+    ownerId: String = "test-user",
+) =
+    Item(
+        id = id,
+        name = name,
+        ownerId = ownerId,
+        householdId = "test-household",
+        expirationDate = expirationDate,
+        category = category,
+    )

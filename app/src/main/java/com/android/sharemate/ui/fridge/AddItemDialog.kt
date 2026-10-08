@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +27,7 @@ fun AddItemDialog(
     onCategoryChange: (String) -> Unit,
     onExpirationDateChange: (String) -> Unit,
     onSave: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.fridge_add_dialog),
