@@ -174,11 +174,9 @@ dependencies {
     testImplementation(libs.robolectric)
 
     // ----------       Firebase     ------------
-    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
-    implementation("com.google.firebase:firebase-firestore")
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
-    implementation("com.google.firebase:firebase-firestore")
+    implementation(libs.firebase.firestore)
 }
 
 tasks.withType<Test> {
