@@ -89,14 +89,13 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
 }
 
 internal fun DocumentSnapshot.toItemOrNull(): Item? {
-    val name = getString("name")?.takeIf { it.isNotBlank() } ?: return null
-    val ownerId = getString("ownerId")?.takeIf { it.isNotBlank() } ?: return null
-    return Item(
-        id = id,
-        name = name,
-        ownerId = ownerId,
-        householdId = getString("householdId")?.takeIf { it.isNotBlank() },
-        expirationDate = getTimestamp("expirationDate")?.toDate(),
-        category = getString("category")?.takeIf { it.isNotBlank() }
-    )
+  val name = getString("name")?.takeIf { it.isNotBlank() } ?: return null
+  val ownerId = getString("ownerId")?.takeIf { it.isNotBlank() } ?: return null
+  return Item(
+      id = id,
+      name = name,
+      ownerId = ownerId,
+      householdId = getString("householdId")?.takeIf { it.isNotBlank() },
+      expirationDate = getTimestamp("expirationDate")?.toDate(),
+      category = getString("category")?.takeIf { it.isNotBlank() })
 }
