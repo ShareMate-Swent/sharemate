@@ -152,6 +152,149 @@ class FirestoreSecurityRulesTest {
     assertDenied(householdReference(household.id).delete())
   }
 
+  // ---------------------------------------------------------------------------
+  // FIXED: use the uid returned by signInAs instead of the literal "owner".
+  // ---------------------------------------------------------------------------
+  @Test
+  fun userCannotReadOrWriteAnotherUsersPrivateItem() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+    Tasks.await(itemRef.set(mapOf("ownerId" to ownerId, "name" to "Apple")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(itemRef.get())
+    assertDenied(itemRef.update("name", "Banana"))
+    assertDenied(itemRef.delete())
+  }
+
+  // ---------------------------------------------------------------------------
+  // REPLACES userCannotChangeOwnerOrHouseholdOfItem
+  // ---------------------------------------------------------------------------
+  @Test
+  fun userCannotChangeOwnerOfItem() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+    Tasks.await(
+        itemRef.set(
+            mapOf("ownerId" to creatorId, "householdId" to household.id, "name" to "Apple")))
+
+    assertDenied(itemRef.update("ownerId", "someone-else"))
+  }
+
+  @Test
+  fun memberCannotChangeOwnerOrHouseholdOfSomeoneElsesItem() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    FirebaseEmulator.signInAs("creator")
+    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+    Tasks.await(
+        itemRef.set(
+            mapOf("ownerId" to creatorId, "householdId" to household.id, "name" to "Apple")))
+
+    FirebaseEmulator.signInAs("member")
+    // A member can edit the item's content, but cannot unshare it nor take it over.
+    Tasks.await(itemRef.update("name", "Banana"))
+    assertDenied(itemRef.update("householdId", null))
+    assertDenied(itemRef.update("ownerId", memberId))
+  }
+
+  @Test
+  fun ownerCanShareAndUnshareOwnItem() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+    Tasks.await(itemRef.set(mapOf("ownerId" to creatorId, "name" to "Apple")))
+
+    Tasks.await(itemRef.update("householdId", household.id))
+    Tasks.await(itemRef.update("householdId", null))
+  }
+
+  @Test
+  fun userCannotShareItemWithHouseholdTheyAreNotIn() {
+    val otherHousehold = createHouseholdAs("other")
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+
+    // Creating directly in a foreign household is denied...
+    assertDenied(
+        itemRef.set(
+            mapOf("ownerId" to ownerId, "householdId" to otherHousehold.id, "name" to "Apple")))
+
+    // ...and so is moving an existing private item into it.
+    Tasks.await(itemRef.set(mapOf("ownerId" to ownerId, "name" to "Apple")))
+    assertDenied(itemRef.update("householdId", otherHousehold.id))
+  }
+
+  // ---------------------------------------------------------------------------
+  // NEW: receipts
+  // ---------------------------------------------------------------------------
+  @Test
+  fun userCannotChangeOwnerOfReceipt() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
+    Tasks.await(receiptRef.set(receiptData(ownerId)))
+
+    assertDenied(receiptRef.update("ownerId", "someone-else"))
+  }
+
+  @Test
+  fun householdMemberCanReadAndUpdateButNotDeleteSharedReceipt() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    FirebaseEmulator.signInAs("creator")
+    val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
+    Tasks.await(receiptRef.set(receiptData(creatorId, household.id)))
+
+    FirebaseEmulator.signInAs("member")
+    Tasks.await(receiptRef.get())
+    Tasks.await(receiptRef.update("storeName", "Coop"))
+    assertDenied(receiptRef.delete())
+
+    // The owner can still delete it.
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(receiptRef.delete())
+  }
+
+  @Test
+  fun userCannotCreateReceiptInHouseholdTheyAreNotIn() {
+    val otherHousehold = createHouseholdAs("other")
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
+
+    assertDenied(receiptRef.set(receiptData(ownerId, otherHousehold.id)))
+  }
+
+  @Test
+  fun memberCannotChangeHouseholdOfSomeoneElsesReceipt() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    FirebaseEmulator.signInAs("creator")
+    val receiptRef = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt1")
+    Tasks.await(receiptRef.set(receiptData(creatorId, household.id)))
+
+    FirebaseEmulator.signInAs("member")
+    assertDenied(receiptRef.update("householdId", null))
+  }
+
+  /** A receipt that satisfies hasValidReceiptData; override fields as needed. */
+  private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
+      buildMap {
+        put("ownerId", ownerId)
+        put("storeName", "Migros")
+        put("totalAmountCents", 1250L)
+        if (householdId != null) put("householdId", householdId)
+      }
+
   /** Creates a household through the repository, leaving its creator signed in. */
   private fun createHouseholdAs(alias: String): Household {
     val creatorId = FirebaseEmulator.signInAs(alias)

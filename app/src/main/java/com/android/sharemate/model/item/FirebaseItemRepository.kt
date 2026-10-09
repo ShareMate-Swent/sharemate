@@ -96,5 +96,6 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? {
       name = name,
       ownerId = ownerId,
       householdId = getString("householdId")?.takeIf { it.isNotBlank() },
-      expirationDate = getTimestamp("expirationDate")?.toDate())
+      expirationDate = getTimestamp("expirationDate")?.toDate(),
+      category = getString("category")?.takeIf { it.isNotBlank() })
 }

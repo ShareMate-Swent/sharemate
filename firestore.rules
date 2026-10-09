@@ -71,5 +71,85 @@ service cloud.firestore {
       allow create: if signedIn() && isValidNewHousehold();
       allow update: if signedIn() && onlyAddsSelf();
     }
+
+    function isHouseholdMember(householdId) {
+      return householdId != null &&
+        request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+    }
+
+    // Helpers shared by items and receipts. They take the document data as a parameter.
+    function isOwner(data) {
+      return data.ownerId == request.auth.uid;
+    }
+
+    function isShared(data) {
+      return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
+    }
+
+    // Item documents must contain the fields the app expects; householdId is optional.
+    function hasValidItemData(data) {
+      return data.ownerId is string
+          && data.name is string
+          && data.name.size() > 0
+          && (data.get('householdId', null) == null || data.householdId is string)
+          && (data.get('expirationDate', null) == null || data.expirationDate is timestamp)
+          && (data.get('category', null) == null || data.category is string);
+    }
+
+    // Receipt documents must contain the fields the app expects; householdId is optional.
+    function hasValidReceiptData(data) {
+      return data.ownerId is string
+          && data.storeName is string
+          && data.storeName.size() > 0
+          && data.totalAmountCents is number
+          && data.totalAmountCents >= 0
+          && (data.get('householdId', null) == null || data.householdId is string)
+          && (data.get('date', null) == null || data.date is timestamp);
+    }
+
+    // A document is either private (no householdId) or shared with a household the writer is in.
+    function isPrivateOrSharedWithMyHousehold(data) {
+      return data.get('householdId', null) == null || isShared(data);
+    }
+
+    // Owner or household member can update. ownerId is immutable. householdId can only be
+    // changed by the owner, and only to null or to a household the owner belongs to.
+    function canUpdateItem(before, after) {
+      return (isOwner(before) || isShared(before))
+          && hasValidItemData(after)
+          && after.ownerId == before.ownerId
+          && (after.get('householdId', null) == before.get('householdId', null)
+              || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
+    }
+
+    function canUpdateReceipt(before, after) {
+      return (isOwner(before) || isShared(before))
+          && hasValidReceiptData(after)
+          && after.ownerId == before.ownerId
+          && (after.get('householdId', null) == before.get('householdId', null)
+              || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
+    }
+
+    match /items/{itemId} {
+      allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow create: if signedIn()
+          && hasValidItemData(request.resource.data)
+          && isOwner(request.resource.data)
+          && isPrivateOrSharedWithMyHousehold(request.resource.data);
+      allow update: if signedIn() && canUpdateItem(resource.data, request.resource.data);
+      // Items belong to the shared list: any household member can delete them.
+      allow delete: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+    }
+
+    match /receipts/{receiptId} {
+      allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow create: if signedIn()
+          && hasValidReceiptData(request.resource.data)
+          && isOwner(request.resource.data)
+          && isPrivateOrSharedWithMyHousehold(request.resource.data);
+      allow update: if signedIn() && canUpdateReceipt(resource.data, request.resource.data);
+      // Receipts can only be deleted by their owner.
+      allow delete: if signedIn() && isOwner(resource.data);
+    }
   }
 }
