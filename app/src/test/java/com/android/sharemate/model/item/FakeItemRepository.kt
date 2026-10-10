@@ -23,6 +23,9 @@ class FakeItemRepository : ItemRepository {
   var deleteFailure: Exception? = null
   var deleteGate: CompletableDeferred<Unit>? = null
   var emitOnDelete = true
+  val edits = mutableListOf<Pair<String, ItemEdit>>()
+  var editFailure: Exception? = null
+  var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
@@ -63,10 +66,14 @@ class FakeItemRepository : ItemRepository {
   }
 
   override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
+    edits += itemId to edit
+    editFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
     if (edit.name.isBlank() || edit.quantity <= 0) {
       return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
     }
-    return change(itemId) {
+    return change(itemId, editConfirmation) {
       it.copy(
           name = edit.name.trim(),
           quantity = edit.quantity,
@@ -91,7 +98,11 @@ class FakeItemRepository : ItemRepository {
     return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
   }
 
-  private fun change(itemId: String, transform: (Item) -> Item): ItemWrite {
+  private fun change(
+      itemId: String,
+      confirmation: CompletableDeferred<Result<Unit>>? = null,
+      transform: (Item) -> Item
+  ): ItemWrite {
     if (itemId.isBlank() || '/' in itemId) {
       return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
     }
@@ -99,6 +110,6 @@ class FakeItemRepository : ItemRepository {
       return ItemWrite.Rejected(NoSuchElementException("Item not found: $itemId"))
     }
     items.value = items.value.map { if (it.id == itemId) transform(it) else it }
-    return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
+    return ItemWrite.Queued(confirmation ?: CompletableDeferred(Result.success(Unit)))
   }
 }

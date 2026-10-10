@@ -5,7 +5,10 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
@@ -146,10 +149,16 @@ class FridgeViewModel(
   }
 
   fun openAddItemDialog() {
-    if (uiState.value.isSaving || uiState.value.isAddItemDialogOpen) return
+    if (uiState.value.isSaving ||
+        uiState.value.isAddItemDialogOpen ||
+        uiState.value.pendingRemovalItem != null ||
+        uiState.value.isDeleting)
+        return
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = true,
+          editingItemId = null,
+          itemQuantity = "1",
           itemName = "",
           itemCategory = "",
           expirationDateInput = "",
@@ -162,11 +171,44 @@ class FridgeViewModel(
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = false,
+          editingItemId = null,
+          itemQuantity = "1",
           itemName = "",
           itemCategory = "",
           expirationDateInput = "",
           formError = null)
     }
+  }
+
+  fun openEditItemDialog(itemId: String) {
+    val state = uiState.value
+    if (state.isSaving ||
+        state.isAddItemDialogOpen ||
+        state.pendingRemovalItem != null ||
+        state.isDeleting ||
+        itemId in state.pendingEditIds)
+        return
+    val item =
+        state.items.firstOrNull {
+          it.id == itemId && it.status == ItemStatus.ACTIVE && it.householdId == householdId
+        } ?: return
+    mutableUiState.update {
+      it.copy(
+          isAddItemDialogOpen = true,
+          editingItemId = item.id,
+          itemName = item.name,
+          itemQuantity = item.quantity.toString(),
+          itemCategory = item.category.orEmpty(),
+          expirationDateInput =
+              item.expirationDate
+                  ?.let { it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString() }
+                  .orEmpty(),
+          formError = null)
+    }
+  }
+
+  fun updateQuantity(quantity: String) = updateDraft {
+    it.copy(itemQuantity = quantity, formError = null)
   }
 
   fun updateName(name: String) = updateDraft { it.copy(itemName = name, formError = null) }
@@ -207,6 +249,18 @@ class FridgeViewModel(
           mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
           return
         }
+    if (state.editingItemId != null) {
+      val quantity = state.itemQuantity.trim().toIntOrNull()
+      if (quantity == null || quantity <= 0) {
+        mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
+        return
+      }
+      saveEdit(
+          state.editingItemId,
+          ItemEdit(
+              name, quantity, state.itemCategory.trim().takeIf(String::isNotEmpty), expirationDate))
+      return
+    }
     val item =
         Item(
             name = name,
@@ -240,6 +294,64 @@ class FridgeViewModel(
         mutableUiState.update { it.copy(isSaving = false) }
         throw exception
       } catch (exception: Exception) {
+        mutableUiState.update { it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED) }
+      }
+    }
+  }
+
+  private fun saveEdit(itemId: String, edit: ItemEdit) {
+    val state = uiState.value
+    if (itemId in state.pendingEditIds) return
+    if (state.items.none {
+      it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+    }) {
+      mutableUiState.update { it.copy(formError = FridgeFormError.SAVE_FAILED) }
+      return
+    }
+    mutableUiState.update { it.copy(isSaving = true, formError = null) }
+    viewModelScope.launch {
+      try {
+        when (val write = itemRepository.updateItem(itemId, edit)) {
+          is ItemWrite.Rejected -> {
+            if (write.cause is CancellationException) throw write.cause
+            mutableUiState.update {
+              it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED)
+            }
+          }
+          is ItemWrite.Queued -> {
+            // Snapshots own local application and rollback; submission is not server approval.
+            mutableUiState.update {
+              it.copy(
+                  isSaving = false,
+                  isAddItemDialogOpen = false,
+                  editingItemId = null,
+                  itemName = "",
+                  itemQuantity = "1",
+                  itemCategory = "",
+                  expirationDateInput = "",
+                  pendingEditIds = it.pendingEditIds + itemId,
+                  editSyncFailed = false)
+            }
+            viewModelScope.launch {
+              try {
+                val result = write.confirmation.await()
+                mutableUiState.update {
+                  it.copy(editSyncFailed = it.editSyncFailed || result.isFailure)
+                }
+              } catch (cancelled: CancellationException) {
+                throw cancelled
+              } catch (_: Exception) {
+                mutableUiState.update { it.copy(editSyncFailed = true) }
+              } finally {
+                mutableUiState.update { it.copy(pendingEditIds = it.pendingEditIds - itemId) }
+              }
+            }
+          }
+        }
+      } catch (cancelled: CancellationException) {
+        mutableUiState.update { it.copy(isSaving = false) }
+        throw cancelled
+      } catch (_: Exception) {
         mutableUiState.update { it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED) }
       }
     }
