@@ -5,6 +5,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemStatus
 import java.io.IOException
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -48,6 +49,214 @@ class FridgeViewModelTest {
 
   private val milk = Item(id = "milk", name = "Milk", householdId = "test-household")
   private val bread = Item(id = "bread", name = "Bread", householdId = "test-household")
+
+  @Test
+  fun editPrefillsAllFieldsAndCancelDiscardsChanges() = runTest {
+    val original = milk.copy(quantity = 3, category = "Dairy", expirationDate = Date(0))
+    repository.emitItems(listOf(original))
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    assertEquals(milk.id, vm.uiState.value.editingItemId)
+    assertEquals("Milk", vm.uiState.value.itemName)
+    assertEquals("3", vm.uiState.value.itemQuantity)
+    assertEquals("Dairy", vm.uiState.value.itemCategory)
+    assertEquals("1970-01-01", vm.uiState.value.expirationDateInput)
+    vm.updateName("Changed")
+    vm.updateQuantity("5")
+    vm.dismissAddItemDialog()
+    assertTrue(repository.edits.isEmpty())
+    assertNull(vm.uiState.value.editingItemId)
+    vm.openEditItemDialog(milk.id)
+    assertEquals("Milk", vm.uiState.value.itemName)
+    assertEquals("3", vm.uiState.value.itemQuantity)
+  }
+
+  @Test
+  fun editUpdatesExistingItemAndPreservesLatestMetadata() = runTest {
+    repository.emitItems(listOf(milk.copy(ownerId = "original"), bread))
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    val latest = milk.copy(ownerId = "latest")
+    repository.emitItems(listOf(latest, bread))
+    runCurrent()
+    vm.updateName(" Cheese ")
+    vm.updateQuantity(" 4 ")
+    vm.updateCategory(" Dairy ")
+    vm.updateExpirationDate("2026-12-31")
+    vm.saveItem()
+    vm.saveItem()
+    vm.updateName("Ignored")
+    vm.dismissAddItemDialog()
+    runCurrent()
+    val expected =
+        latest.copy(
+            name = "Cheese",
+            quantity = 4,
+            category = "Dairy",
+            expirationDate =
+                Date.from(LocalDate.parse("2026-12-31").atStartOfDay(ZoneOffset.UTC).toInstant()))
+    assertEquals(listOf(expected, bread), vm.uiState.value.items)
+    assertEquals(1, repository.edits.size)
+    assertEquals(milk.id, repository.edits.single().first)
+    assertTrue(repository.addedItems.isEmpty())
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+  }
+
+  @Test
+  fun invalidEditInputsNeverSubmitAndOptionalFieldsCanBeCleared() = runTest {
+    repository.emitItems(listOf(milk.copy(category = "Dairy", expirationDate = Date(0))))
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.updateName(" ")
+    vm.saveItem()
+    assertEquals(FridgeFormError.NAME_REQUIRED, vm.uiState.value.formError)
+    vm.updateName("Milk")
+    vm.updateExpirationDate("2026-02-30")
+    vm.saveItem()
+    assertEquals(FridgeFormError.INVALID_EXPIRATION_DATE, vm.uiState.value.formError)
+    vm.updateExpirationDate("")
+    listOf("", "0", "-1", "1.5", "abc", "2147483648").forEach {
+      vm.updateQuantity(it)
+      vm.saveItem()
+      assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+    }
+    assertTrue(repository.edits.isEmpty())
+    vm.updateQuantity("2147483647")
+    vm.updateCategory(" ")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(milk.copy(quantity = Int.MAX_VALUE), vm.uiState.value.items.single())
+  }
+
+  @Test
+  fun rejectedEditRetainsDraftAndAllowsRetry() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.editFailure = IOException("Rejected")
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.updateName("Cheese")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(FridgeFormError.SAVE_FAILED, vm.uiState.value.formError)
+    assertEquals("Cheese", vm.uiState.value.itemName)
+    assertEquals(listOf(milk), vm.uiState.value.items)
+    assertFalse(vm.uiState.value.isSaving)
+    repository.editFailure = null
+    vm.saveItem()
+    runCurrent()
+    assertEquals("Cheese", vm.uiState.value.items.single().name)
+  }
+
+  @Test
+  fun queuedEditAppliesOfflineWithoutLoadingAndServerRollbackIsReactive() = runTest {
+    repository.emitItems(listOf(milk))
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    repository.editConfirmation = confirmation
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.updateName("Cheese")
+    vm.saveItem()
+    runCurrent()
+    assertEquals("Cheese", vm.uiState.value.items.single().name)
+    assertFalse(vm.uiState.value.isSaving)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertEquals(setOf(milk.id), vm.uiState.value.pendingEditIds)
+    vm.openEditItemDialog(milk.id)
+    vm.saveItem()
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertEquals(1, repository.edits.size)
+    vm.openAddItemDialog()
+    vm.updateName("New draft")
+    repository.emitItems(listOf(milk))
+    confirmation.complete(Result.failure(IOException("Permission denied")))
+    runCurrent()
+    assertEquals(listOf(milk), vm.uiState.value.items)
+    assertTrue(vm.uiState.value.editSyncFailed)
+    assertTrue(vm.uiState.value.pendingEditIds.isEmpty())
+    assertEquals("New draft", vm.uiState.value.itemName)
+  }
+
+  @Test
+  fun cancelledEditPropagatesWithoutReportingSaveFailure() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.editFailure = CancellationException("Cancelled")
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.saveItem()
+    runCurrent()
+    assertFalse(vm.uiState.value.isSaving)
+    assertNull(vm.uiState.value.formError)
+    assertEquals(listOf(milk), vm.uiState.value.items)
+  }
+
+  @Test
+  fun editTargetsOnlyCurrentActiveHouseholdItemsAndNeverInterruptsAnotherDialog() = runTest {
+    repository.emitItems(
+        listOf(
+            milk,
+            bread.copy(status = ItemStatus.EATEN),
+            milk.copy(id = "private", householdId = null)))
+    val vm = viewModel()
+    runCurrent()
+    listOf("", "unknown", bread.id, "private").forEach(vm::openEditItemDialog)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    vm.requestRemoval(milk.id)
+    vm.openEditItemDialog(milk.id)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    vm.cancelRemoval()
+    vm.openEditItemDialog(milk.id)
+    vm.requestRemoval(milk.id)
+    assertNull(vm.uiState.value.pendingRemovalItem)
+    repository.emitItems(emptyList())
+    runCurrent()
+    vm.saveItem()
+    assertEquals(FridgeFormError.SAVE_FAILED, vm.uiState.value.formError)
+    assertTrue(repository.edits.isEmpty())
+  }
+
+  @Test
+  fun editedFieldsImmediatelyReapplyExistingFiltersAndSorting() = runTest {
+    repository.emitItems(listOf(milk.copy(category = "Dairy"), bread.copy(category = "Dairy")))
+    val vm = viewModel()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
+    vm.setCategoryFilter("dairy")
+    vm.setSortOrder(FridgeSortOrder.NAME)
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.updateName("Apple")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf("Apple", "Bread"), vm.visibleItems.value.map { it.name })
+    vm.openEditItemDialog(milk.id)
+    vm.updateCategory("Fruit")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf(bread.copy(category = "Dairy")), vm.visibleItems.value)
+  }
+
+  @Test
+  fun clearingViewModelCancelsConfirmationWaitWithoutCancellingQueuedWrite() = runTest {
+    repository.emitItems(listOf(milk))
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    repository.editConfirmation = confirmation
+    val vm = viewModel()
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.saveItem()
+    runCurrent()
+    viewModelStore.clear()
+    runCurrent()
+    assertTrue(vm.uiState.value.pendingEditIds.isEmpty())
+    assertFalse(vm.uiState.value.editSyncFailed)
+    assertFalse(confirmation.isCancelled)
+    assertTrue(confirmation.complete(Result.success(Unit)))
+  }
 
   @Test
   fun cancelledRemovalResetsPendingWithoutReportingFailure() = runTest {

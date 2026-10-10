@@ -9,6 +9,10 @@ data class FridgeUiState(
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
     val isAddItemDialogOpen: Boolean = false,
+    val editingItemId: String? = null,
+    val itemQuantity: String = "1",
+    val pendingEditIds: Set<String> = emptySet(),
+    val editSyncFailed: Boolean = false,
     val itemName: String = "",
     val itemCategory: String = "",
     val expirationDateInput: String = "",
@@ -21,6 +25,7 @@ data class FridgeUiState(
 
 enum class FridgeFormError {
   NAME_REQUIRED,
+  INVALID_QUANTITY,
   INVALID_EXPIRATION_DATE,
   SAVE_FAILED,
 }

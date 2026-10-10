@@ -28,11 +28,17 @@ fun AddItemDialog(
     onExpirationDateChange: (String) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
+    onQuantityChange: (String) -> Unit = {},
 ) {
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.fridge_add_dialog),
       onDismissRequest = { if (!uiState.isSaving) onDismiss() },
-      title = { Text(stringResource(R.string.fridge_add_item)) },
+      title = {
+        Text(
+            stringResource(
+                if (uiState.editingItemId != null) R.string.fridge_edit_item
+                else R.string.fridge_add_item))
+      },
       text = {
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -45,6 +51,16 @@ fun AddItemDialog(
                   enabled = !uiState.isSaving,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_name_input))
+              if (uiState.editingItemId != null) {
+                OutlinedTextField(
+                    value = uiState.itemQuantity,
+                    onValueChange = onQuantityChange,
+                    label = { Text(stringResource(R.string.fridge_quantity)) },
+                    isError = uiState.formError == FridgeFormError.INVALID_QUANTITY,
+                    enabled = !uiState.isSaving,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("fridge_quantity_input"))
+              }
               OutlinedTextField(
                   value = uiState.itemCategory,
                   onValueChange = onCategoryChange,
@@ -66,6 +82,7 @@ fun AddItemDialog(
                     text =
                         stringResource(
                             when (error) {
+                              FridgeFormError.INVALID_QUANTITY -> R.string.fridge_quantity_invalid
                               FridgeFormError.NAME_REQUIRED -> R.string.fridge_name_required
                               FridgeFormError.INVALID_EXPIRATION_DATE ->
                                   R.string.fridge_date_invalid
