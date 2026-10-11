@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
@@ -84,6 +85,30 @@ class HouseholdRepositoryFirestore(
 
     return householdReference.get().await().toObject(Household::class.java)
         ?: throw IllegalStateException("Household does not exist for invite code")
+  }
+
+  override suspend fun leaveHousehold(userId: String) {
+    require(userId.isNotBlank()) { "User ID must not be blank" }
+
+    val memberships =
+        firestore
+            .collection(FirestoreCollections.HOUSEHOLDS)
+            .whereArrayContains(MEMBER_IDS_FIELD, userId)
+            .get()
+            .await()
+    if (memberships.isEmpty) return
+
+    val batch = firestore.batch()
+    memberships.documents.forEach {
+      batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
+    }
+    batch
+        .set(
+            firestore.collection(FirestoreCollections.USERS).document(userId),
+            mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()),
+            SetOptions.merge())
+        .commit()
+        .await()
   }
 
   override suspend fun getHousehold(householdId: String): Household? {

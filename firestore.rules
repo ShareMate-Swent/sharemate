@@ -65,11 +65,23 @@ service cloud.firestore {
             && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
       }
 
+      // Leaving: a member may only remove themselves, and must unlink their own profile from the
+      // household in the same batch. No other field can change.
+      function onlyRemovesSelf() {
+        let before = resource.data.memberIds;
+        let after = request.resource.data.memberIds;
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+            && request.auth.uid in before
+            && after == before.removeAll([request.auth.uid])
+            && getAfter(documentPath('users', request.auth.uid)).data.get('householdId', null)
+                != householdId;
+      }
+
       // Fetching a missing household is allowed so that lookups can return "not found".
       allow get: if signedIn() && (resource == null || isMember());
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
-      allow update: if signedIn() && onlyAddsSelf();
+      allow update: if signedIn() && (onlyAddsSelf() || onlyRemovesSelf());
     }
 
     function isHouseholdMember(householdId) {

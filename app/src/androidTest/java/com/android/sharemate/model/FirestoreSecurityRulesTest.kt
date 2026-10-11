@@ -134,6 +134,36 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun leavingRequiresUnlinkingOwnProfile() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    // The member's profile still points at the household, so this half of a leave is rejected.
+    assertDenied(
+        householdReference(household.id).update("memberIds", FieldValue.arrayRemove(memberId)))
+  }
+
+  @Test
+  fun leavingCannotChangeOtherHouseholdFields() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertDenied(
+        firestore
+            .batch()
+            .update(
+                householdReference(household.id),
+                mapOf("memberIds" to FieldValue.arrayRemove(memberId), "name" to "Renamed"))
+            .set(
+                userReference(memberId),
+                mapOf("householdId" to FieldValue.delete()),
+                SetOptions.merge())
+            .commit())
+  }
+
+  @Test
   fun joiningRequiresPointingOwnProfileAtTheHousehold() {
     val household = createHouseholdAs("creator")
     val outsiderId = FirebaseEmulator.signInAs("outsider")
