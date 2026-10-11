@@ -109,7 +109,17 @@ fun JoinHouseholdScreen(
               val isNext = index == state.inviteCode.length
               Box(
                   modifier =
-                      Modifier.size(width = 48.dp, height = 58.dp)
+                      Modifier.weight(1f, fill = false)
+                          .size(width = 48.dp, height = 58.dp)
+                          .testTag(
+                              when (index) {
+                                0 -> JoinHouseholdTestTags.CODE_BOX_1
+                                1 -> JoinHouseholdTestTags.CODE_BOX_2
+                                2 -> JoinHouseholdTestTags.CODE_BOX_3
+                                3 -> JoinHouseholdTestTags.CODE_BOX_4
+                                4 -> JoinHouseholdTestTags.CODE_BOX_5
+                                else -> JoinHouseholdTestTags.CODE_BOX_6
+                              })
                           .background(colors.surfaceContainerLowest, RoundedCornerShape(12.dp))
                           .border(
                               width = if (isNext) 2.dp else 1.dp,
@@ -121,16 +131,7 @@ fun JoinHouseholdScreen(
                     text = state.inviteCode.getOrNull(index)?.toString() ?: "",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    modifier =
-                        Modifier.testTag(
-                            when (index) {
-                              0 -> JoinHouseholdTestTags.CODE_BOX_1
-                              1 -> JoinHouseholdTestTags.CODE_BOX_2
-                              2 -> JoinHouseholdTestTags.CODE_BOX_3
-                              3 -> JoinHouseholdTestTags.CODE_BOX_4
-                              4 -> JoinHouseholdTestTags.CODE_BOX_5
-                              else -> JoinHouseholdTestTags.CODE_BOX_6
-                            }))
+                )
               }
             }
           }

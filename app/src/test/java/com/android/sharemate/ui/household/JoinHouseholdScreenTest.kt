@@ -1,15 +1,19 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.width
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
@@ -19,6 +23,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,6 +91,26 @@ class JoinHouseholdScreenTest {
   }
 
   @Test
+  @Config(qualifiers = "w320dp-h640dp")
+  fun codeBoxesShrinkEvenlyToFitNarrowScreens() {
+    val boxes = showFullCodeAndMeasureBoxes()
+
+    val firstWidth = boxes.first().width.value
+    // Weighted widths can differ by one pixel when the space does not divide evenly.
+    boxes.forEach { assertEquals(firstWidth, it.width.value, 1f) }
+    assertTrue(firstWidth > 0f)
+    // 320 dp wide screen minus the 24 dp side padding.
+    assertTrue(boxes.first().left.value >= 24f - 0.5f)
+    assertTrue(boxes.last().right.value <= 296f + 0.5f)
+  }
+
+  @Test
+  @Config(qualifiers = "w412dp-h900dp")
+  fun codeBoxesKeepTheirDesignWidthWhenThereIsRoom() {
+    showFullCodeAndMeasureBoxes().forEach { assertEquals(48f, it.width.value, 0.5f) }
+  }
+
+  @Test
   fun invalidCodeDisplaysErrorAndShortCodeDisablesButton() {
     val viewModel = joinViewModel(TestHouseholdRepository(IllegalArgumentException("invalid")))
     composeTestRule.setContent {
@@ -97,6 +122,23 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.ERROR).assertIsDisplayed()
+  }
+
+  private fun showFullCodeAndMeasureBoxes(): List<DpRect> {
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABC234")
+    return listOf(
+            JoinHouseholdTestTags.CODE_BOX_1,
+            JoinHouseholdTestTags.CODE_BOX_2,
+            JoinHouseholdTestTags.CODE_BOX_3,
+            JoinHouseholdTestTags.CODE_BOX_4,
+            JoinHouseholdTestTags.CODE_BOX_5,
+            JoinHouseholdTestTags.CODE_BOX_6)
+        .map {
+          composeTestRule.onNodeWithTag(it, useUnmergedTree = true).getUnclippedBoundsInRoot()
+        }
   }
 
   private fun joinViewModel(repository: TestHouseholdRepository = TestHouseholdRepository()) =
