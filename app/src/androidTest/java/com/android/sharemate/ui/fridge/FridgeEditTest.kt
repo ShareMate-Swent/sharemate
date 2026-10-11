@@ -13,7 +13,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
-import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
@@ -24,7 +23,6 @@ import com.android.sharemate.resources.C
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -35,7 +33,6 @@ import org.junit.runner.RunWith
 class FridgeEditTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val repository = EditRepository()
-  private val store = ViewModelStore()
   private val item =
       Item(
           id = "milk",
@@ -46,28 +43,22 @@ class FridgeEditTest {
           category = "Dairy",
           expirationDate = Date(0))
 
-  @After fun clear() = store.clear()
-
   private fun show() {
-    repository.emitItems(listOf(item))
+    repository.items.value = listOf(item)
     val vm = FridgeViewModel(repository, "user", "household")
-    store.put("fridge", vm)
+    compose.activity.viewModelStore.put("fridge", vm)
     compose.setContent { MaterialTheme { FridgeScreen(vm) } }
     compose.onNodeWithTag("fridge_edit_milk").performClick()
   }
+
+  private fun input(tag: String) = compose.onNodeWithTag(tag)
 
   @Test
   fun prefilledEditSavesAllFieldsWithoutCreatingAnotherItem() {
     show()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
-    compose
-        .onNodeWithTag(C.Tag.fridge_name_input)
-        .assertTextContains("Milk")
-        .performTextReplacement("Cheese")
-    compose
-        .onNodeWithTag("fridge_quantity_input")
-        .assertTextContains("3")
-        .performTextReplacement("4")
+    input(C.Tag.fridge_name_input).assertTextContains("Milk").performTextReplacement("Cheese")
+    input("fridge_quantity_input").assertTextContains("3").performTextReplacement("4")
     compose
         .onNodeWithTag(C.Tag.fridge_category_input)
         .assertTextContains("Dairy")
@@ -145,7 +136,7 @@ class FridgeEditTest {
     compose.onNodeWithText("Cheese").assertIsDisplayed()
     compose.onNodeWithTag("fridge_edit_milk").assertIsNotEnabled()
     compose.runOnIdle {
-      repository.emitItems(listOf(item))
+      repository.items.value = listOf(item)
       confirmation.complete(Result.failure(IllegalStateException("Server denied")))
     }
     compose.onNodeWithText("Milk").assertIsDisplayed()
@@ -153,14 +144,10 @@ class FridgeEditTest {
   }
 
   private class EditRepository : ItemRepository {
-    private val items = MutableStateFlow<List<Item>>(emptyList())
+    val items = MutableStateFlow<List<Item>>(emptyList())
     val edits = mutableListOf<Pair<String, ItemEdit>>()
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
-
-    fun emitItems(value: List<Item>) {
-      items.value = value
-    }
 
     override fun getSharedItems(householdId: String) = items
 
