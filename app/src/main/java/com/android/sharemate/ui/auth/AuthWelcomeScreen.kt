@@ -46,7 +46,7 @@ fun AuthWelcomeScreen(
                 Modifier.widthIn(max = 520.dp)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .heightIn(min = maxHeight)
+                    .heightIn(min = this@BoxWithConstraints.maxHeight)
                     .padding(horizontal = 24.dp, vertical = 24.dp)
                     .testTag("auth_welcome"),
             horizontalAlignment = Alignment.CenterHorizontally,

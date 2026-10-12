@@ -31,6 +31,11 @@
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
     <string name="household_choice_title">Set up your fridge</string>
+    <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
+    <string name="create_a_household_description">Start a new shared fridge and invite your roommates.</string>
+    <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
+    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="share_invite_code">Share</string>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
