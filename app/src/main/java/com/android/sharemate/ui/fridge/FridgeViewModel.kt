@@ -37,6 +37,7 @@ class FridgeViewModel(
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
+  private val latestStatusWrites = mutableMapOf<String, Any>()
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
@@ -157,6 +158,9 @@ class FridgeViewModel(
         state.items.firstOrNull {
           it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
         } ?: return
+    // Invalidate older confirmations as soon as this action is accepted, before launching it.
+    val operation = Any()
+    latestStatusWrites[itemId] = operation
     mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds + itemId) }
     viewModelScope.launch {
       try {
@@ -169,7 +173,10 @@ class FridgeViewModel(
             if (write.cause is CancellationException) throw write.cause
             reportStatusError(item.name, false)
           }
-          is ItemWrite.Queued -> trackConfirmation(write) { reportStatusError(item.name, true) }
+          is ItemWrite.Queued ->
+              trackConfirmation(write) {
+                if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
+              }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -416,6 +423,7 @@ class FridgeViewModel(
   override fun onCleared() {
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
+    latestStatusWrites.clear()
     mutableUiState.update { it.copy(pendingStatusIds = emptySet()) }
   }
 

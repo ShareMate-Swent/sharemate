@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -26,6 +27,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -161,9 +163,119 @@ class FridgeViewModelTest {
     assertEquals("Newer values", vm.uiState.value.items.single().name)
     assertEquals("Unsaved draft", vm.uiState.value.itemName)
     assertTrue(vm.uiState.value.isAddItemDialogOpen)
+    assertSame(error, vm.uiState.value.statusError)
     vm.dismissStatusError(error)
-    assertTrue(vm.uiState.value.statusError !== error)
+    assertNull(vm.uiState.value.statusError)
+  }
+
+  @Test
+  fun olderStatusFailureIsIgnoredAfterNewerConfirmationSucceeds() = runTest {
+    assertOlderStatusFailureIgnored(exceptional = false)
+  }
+
+  @Test
+  fun olderExceptionalStatusCompletionIsIgnoredAfterNewerConfirmationSucceeds() = runTest {
+    assertOlderStatusFailureIgnored(exceptional = true)
+  }
+
+  private fun TestScope.assertOlderStatusFailureIgnored(exceptional: Boolean) {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = second
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    runCurrent()
+    second.complete(Result.success(Unit))
+    runCurrent()
+    if (exceptional) first.completeExceptionally(IOException("Old failure"))
+    else first.complete(Result.failure(IOException("Old failure")))
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+    assertEquals(
+        listOf(milk.id to ItemStatus.EATEN, milk.id to ItemStatus.DISCARDED),
+        repository.statusChanges)
+  }
+
+  @Test
+  fun newerStatusSubmissionInvalidatesOldFailureBeforeSubmissionCoroutineRuns() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = CompletableDeferred()
+    // Queue the old callback first, then accept a newer action before either coroutine runs.
+    first.complete(Result.failure(IOException("Old failure")))
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    assertEquals(setOf(milk.id), vm.uiState.value.pendingStatusIds)
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+    assertFalse(repository.statusConfirmation!!.isCompleted)
+  }
+
+  @Test
+  fun newerStatusForAnotherItemDoesNotSuppressOriginalItemFailure() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    val first = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.statusConfirmation = CompletableDeferred(Result.success(Unit))
+    vm.setItemStatus(bread.id, ItemStatus.DISCARDED)
+    runCurrent()
+    first.complete(Result.failure(IOException("Milk rejected")))
+    runCurrent()
+
     assertEquals(milk.name, vm.uiState.value.statusError?.itemName)
+    assertTrue(vm.uiState.value.statusError!!.isSyncFailure)
+    assertEquals(
+        listOf(milk.copy(status = ItemStatus.EATEN), bread.copy(status = ItemStatus.DISCARDED)),
+        vm.uiState.value.items)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+  }
+
+  @Test
+  fun cancelledLatestStatusConfirmationDoesNotReportFailureOrCancelOlderWrite() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = second
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    runCurrent()
+    second.cancel(CancellationException("Cancelled confirmation"))
+    runCurrent()
+    assertNull(vm.uiState.value.statusError)
+    assertFalse(first.isCancelled)
+    first.complete(Result.failure(IOException("Stale failure after cancellation")))
+    runCurrent()
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
   }
 
   @Test
