@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -133,6 +134,53 @@ class FridgeScreenTest {
       store.clear()
       Dispatchers.resetMain()
     }
+  }
+
+  @Test
+  fun removalSyncErrorDismissesAfterEightSecondsAndRetainsItsIdentity() {
+    val error = FridgeRemovalSyncError("Milk")
+    val dismissed = mutableListOf<FridgeRemovalSyncError>()
+    composeRule.mainClock.autoAdvance = false
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(removalSyncError = error),
+            onDismissRemovalSyncError = { dismissed += it })
+      }
+    }
+    composeRule.onNodeWithTag(C.Tag.fridge_removal_sync_error).assertIsDisplayed()
+    composeRule
+        .onNodeWithText("Deletion of Milk could not sync. The item may reappear.")
+        .assertIsDisplayed()
+    composeRule.mainClock.advanceTimeBy(7_900)
+    composeRule.runOnIdle { assertEquals(emptyList<FridgeRemovalSyncError>(), dismissed) }
+    composeRule.mainClock.advanceTimeBy(200)
+    composeRule.runOnIdle { assertEquals(listOf(error), dismissed) }
+  }
+
+  @Test
+  fun removalSyncErrorWaitsUntilRemovalDialogIsClosed() {
+    val error = FridgeRemovalSyncError("Milk")
+    val state =
+        mutableStateOf(
+            FridgeUiState(
+                removalSyncError = error, pendingRemovalItem = Item(id = "bread", name = "Bread")))
+    val dismissed = mutableListOf<FridgeRemovalSyncError>()
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(uiState = state.value, onDismissRemovalSyncError = { dismissed += it })
+      }
+    }
+    composeRule.mainClock.autoAdvance = false
+    composeRule.mainClock.advanceTimeBy(9_000)
+    composeRule.runOnIdle {
+      assertEquals(emptyList<FridgeRemovalSyncError>(), dismissed)
+      state.value = state.value.copy(pendingRemovalItem = null)
+    }
+    composeRule.mainClock.advanceTimeBy(100)
+    composeRule.waitForIdle()
+    composeRule.mainClock.advanceTimeBy(8_100)
+    composeRule.runOnIdle { assertEquals(listOf(error), dismissed) }
   }
 
   @Test

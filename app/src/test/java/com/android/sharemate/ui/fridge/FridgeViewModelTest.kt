@@ -690,6 +690,52 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun inactiveItemsCannotBeRequestedForRemovalAndInvalidateOpenConfirmation() = runTest {
+    val vm = viewModel()
+    for (status in listOf(ItemStatus.EATEN, ItemStatus.DISCARDED)) {
+      repository.emitItems(listOf(milk.copy(status = status)))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      repository.emitItems(listOf(milk))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      assertEquals(milk, vm.uiState.value.pendingRemovalItem)
+      repository.emitItems(listOf(milk.copy(status = status)))
+      runCurrent()
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      vm.confirmRemoval()
+      runCurrent()
+    }
+    assertTrue(repository.deletedItemIds.isEmpty())
+  }
+
+  @Test
+  fun inventoryChangeBeforeQueuedRemovalStartsPreventsDeletionAndReleasesLock() = runTest {
+    val vm = viewModel()
+    for (updatedItems in listOf(emptyList(), listOf(milk.copy(status = ItemStatus.EATEN)))) {
+      repository.emitItems(listOf(milk, bread))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      // Queue the snapshot before the deletion coroutine, while confirmation still sees Milk.
+      repository.emitItems(updatedItems)
+      vm.confirmRemoval()
+      assertTrue(vm.uiState.value.isDeleting)
+      runCurrent()
+      assertFalse(vm.uiState.value.isDeleting)
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      assertFalse(vm.uiState.value.removalFailed)
+    }
+    assertTrue(repository.deletedItemIds.isEmpty())
+    repository.emitItems(listOf(bread))
+    runCurrent()
+    vm.requestRemoval(bread.id)
+    vm.confirmRemoval()
+    runCurrent()
+    assertEquals(listOf(bread.id), repository.queuedDeletionIds)
+  }
+
+  @Test
   fun unknownAndBlankIdsNeverDelete() = runTest {
     val inactive = bread.copy(status = ItemStatus.EATEN)
     repository.emitItems(listOf(milk, inactive, milk.copy(id = "foreign", householdId = "other")))
