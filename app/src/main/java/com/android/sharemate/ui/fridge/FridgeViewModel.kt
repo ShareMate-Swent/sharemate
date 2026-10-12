@@ -14,6 +14,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import java.util.Date
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,7 @@ class FridgeViewModel(
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
+  private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
@@ -185,8 +187,7 @@ class FridgeViewModel(
     if (state.isSaving ||
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
-        state.isDeleting ||
-        itemId in state.pendingEditIds)
+        state.isDeleting)
         return
     val item =
         state.items.firstOrNull {
@@ -301,7 +302,6 @@ class FridgeViewModel(
 
   private fun saveEdit(itemId: String, edit: ItemEdit) {
     val state = uiState.value
-    if (itemId in state.pendingEditIds) return
     if (state.items.none {
       it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
     }) {
@@ -328,24 +328,29 @@ class FridgeViewModel(
                   itemName = "",
                   itemQuantity = "1",
                   itemCategory = "",
-                  expirationDateInput = "",
-                  pendingEditIds = it.pendingEditIds + itemId,
-                  editSyncFailed = false)
+                  expirationDateInput = "")
             }
-            viewModelScope.launch {
-              try {
-                val result = write.confirmation.await()
-                mutableUiState.update {
-                  it.copy(editSyncFailed = it.editSyncFailed || result.isFailure)
+            // No coroutine waits indefinitely offline. Each callback owns its write;
+            // completed confirmations only report errors, never alter drafts or items.
+            val operation = Any()
+            confirmationHandlers[operation] = null
+            val handler =
+                write.confirmation.invokeOnCompletion { cause ->
+                  viewModelScope.launch {
+                    confirmationHandlers.remove(operation)?.dispose()
+                    if (cause !is CancellationException) {
+                      try {
+                        if (write.confirmation.await().isFailure) reportEditSyncError(edit.name)
+                      } catch (cancelled: CancellationException) {
+                        throw cancelled
+                      } catch (_: Exception) {
+                        reportEditSyncError(edit.name)
+                      }
+                    }
+                  }
                 }
-              } catch (cancelled: CancellationException) {
-                throw cancelled
-              } catch (_: Exception) {
-                mutableUiState.update { it.copy(editSyncFailed = true) }
-              } finally {
-                mutableUiState.update { it.copy(pendingEditIds = it.pendingEditIds - itemId) }
-              }
-            }
+            if (operation in confirmationHandlers) confirmationHandlers[operation] = handler
+            else handler.dispose()
           }
         }
       } catch (cancelled: CancellationException) {
@@ -355,6 +360,19 @@ class FridgeViewModel(
         mutableUiState.update { it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED) }
       }
     }
+  }
+
+  override fun onCleared() {
+    confirmationHandlers.values.forEach { it?.dispose() }
+    confirmationHandlers.clear()
+  }
+
+  private fun reportEditSyncError(name: String) {
+    mutableUiState.update { it.copy(editSyncError = FridgeEditSyncError(name)) }
+  }
+
+  fun dismissEditSyncError(error: FridgeEditSyncError) {
+    mutableUiState.update { if (it.editSyncError === error) it.copy(editSyncError = null) else it }
   }
 
   private fun String?.normalizedFilter(): String? = this?.trim()?.takeIf(String::isNotEmpty)

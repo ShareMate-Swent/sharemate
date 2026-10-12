@@ -11,8 +11,7 @@ data class FridgeUiState(
     val isAddItemDialogOpen: Boolean = false,
     val editingItemId: String? = null,
     val itemQuantity: String = "1",
-    val pendingEditIds: Set<String> = emptySet(),
-    val editSyncFailed: Boolean = false,
+    val editSyncError: FridgeEditSyncError? = null,
     val itemName: String = "",
     val itemCategory: String = "",
     val expirationDateInput: String = "",
@@ -29,3 +28,6 @@ enum class FridgeFormError {
   INVALID_EXPIRATION_DATE,
   SAVE_FAILED,
 }
+
+/** Each rejection is a distinct event, even when the item name is unchanged. */
+class FridgeEditSyncError(val itemName: String)

@@ -33,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,7 @@ import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.delay
 
 @Composable
 fun FridgeScreen(
@@ -87,6 +89,7 @@ fun FridgeScreen(
     onConfirmRemoval: () -> Unit = {},
     onEditItem: ((String) -> Unit)? = null,
     onQuantityChange: (String) -> Unit = {},
+    onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
 ) {
   val hasFunctionalFilters =
       sortOrder != null &&
@@ -226,11 +229,17 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_add_item)) {
           Text(stringResource(R.string.fridge_add_item))
         }
-    if (uiState.editSyncFailed) {
+    uiState.editSyncError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen) {
+        if (!uiState.isAddItemDialogOpen) {
+          delay(8_000)
+          onDismissEditSyncError(error)
+        }
+      }
       Text(
-          stringResource(R.string.fridge_edit_sync_failed),
+          stringResource(R.string.fridge_edit_sync_failed, error.itemName),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp).testTag("fridge_edit_sync_error"))
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_edit_sync_error))
     }
     if (uiState.loadFailed) {
       Text(
@@ -254,7 +263,6 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
-                                item.id !in uiState.pendingEditIds &&
                                 item.status == ItemStatus.ACTIVE,
                         onEdit = { onEditItem?.invoke(item.id) },
                         removalEnabled =
@@ -360,6 +368,7 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onSaveItem = viewModel::saveItem,
       onEditItem = viewModel::openEditItemDialog,
       onQuantityChange = viewModel::updateQuantity,
+      onDismissEditSyncError = viewModel::dismissEditSyncError,
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
@@ -459,7 +468,7 @@ fun FridgeItem(
                   onClick = onEdit,
                   enabled = editEnabled,
                   modifier =
-                      Modifier.testTag("fridge_edit_${item.id}").semantics {
+                      Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
                         contentDescription = editDescription
                       }) {
                     Text(stringResource(R.string.fridge_edit_item))

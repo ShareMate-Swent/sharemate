@@ -146,6 +146,13 @@ class FridgeViewModelTest {
     assertEquals(listOf(milk), vm.uiState.value.items)
     assertFalse(vm.uiState.value.isSaving)
     repository.editFailure = null
+    repository.editException = IOException("Submission failed")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(FridgeFormError.SAVE_FAILED, vm.uiState.value.formError)
+    assertEquals("Cheese", vm.uiState.value.itemName)
+    assertFalse(vm.uiState.value.isSaving)
+    repository.editException = null
     vm.saveItem()
     runCurrent()
     assertEquals("Cheese", vm.uiState.value.items.single().name)
@@ -165,20 +172,55 @@ class FridgeViewModelTest {
     assertEquals("Cheese", vm.uiState.value.items.single().name)
     assertFalse(vm.uiState.value.isSaving)
     assertFalse(vm.uiState.value.isAddItemDialogOpen)
-    assertEquals(setOf(milk.id), vm.uiState.value.pendingEditIds)
     vm.openEditItemDialog(milk.id)
-    vm.saveItem()
-    assertFalse(vm.uiState.value.isAddItemDialogOpen)
-    assertEquals(1, repository.edits.size)
-    vm.openAddItemDialog()
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
     vm.updateName("New draft")
+    val second = CompletableDeferred<Result<Unit>>()
+    repository.editConfirmation = second
+    vm.saveItem()
+    vm.saveItem()
+    confirmation.complete(Result.success(Unit))
+    assertTrue(vm.uiState.value.isSaving)
+    runCurrent()
+    assertEquals(2, repository.edits.size)
+    assertEquals("New draft", vm.uiState.value.items.single().name)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    vm.openEditItemDialog(milk.id)
+    vm.updateName("Unsaved draft")
     repository.emitItems(listOf(milk))
-    confirmation.complete(Result.failure(IOException("Permission denied")))
+    second.complete(Result.failure(IOException("Permission denied")))
     runCurrent()
     assertEquals(listOf(milk), vm.uiState.value.items)
-    assertTrue(vm.uiState.value.editSyncFailed)
-    assertTrue(vm.uiState.value.pendingEditIds.isEmpty())
-    assertEquals("New draft", vm.uiState.value.itemName)
+    assertEquals("New draft", vm.uiState.value.editSyncError?.itemName)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+    assertEquals("Unsaved draft", vm.uiState.value.itemName)
+    vm.dismissEditSyncError(vm.uiState.value.editSyncError!!)
+    assertNull(vm.uiState.value.editSyncError)
+  }
+
+  @Test
+  fun olderRejectionNeverOverwritesNewerEditOrClearsNewerError() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    val vm = viewModel()
+    runCurrent()
+    listOf(first, second).forEachIndexed { index, confirmation ->
+      repository.editConfirmation = confirmation
+      vm.openEditItemDialog(milk.id)
+      vm.updateName("Edit $index")
+      vm.saveItem()
+      runCurrent()
+    }
+    second.complete(Result.failure(IOException("Newer rejection")))
+    runCurrent()
+    val error = vm.uiState.value.editSyncError!!
+    first.completeExceptionally(IOException("Older rejection"))
+    runCurrent()
+    assertEquals("Edit 1", vm.uiState.value.items.single().name)
+    assertEquals("Edit 0", vm.uiState.value.editSyncError?.itemName)
+    vm.dismissEditSyncError(error)
+    assertEquals("Edit 0", vm.uiState.value.editSyncError?.itemName)
   }
 
   @Test
@@ -252,10 +294,11 @@ class FridgeViewModelTest {
     runCurrent()
     viewModelStore.clear()
     runCurrent()
-    assertTrue(vm.uiState.value.pendingEditIds.isEmpty())
-    assertFalse(vm.uiState.value.editSyncFailed)
+    assertNull(vm.uiState.value.editSyncError)
     assertFalse(confirmation.isCancelled)
-    assertTrue(confirmation.complete(Result.success(Unit)))
+    assertTrue(confirmation.complete(Result.failure(IOException("Rejected after clear"))))
+    runCurrent()
+    assertNull(vm.uiState.value.editSyncError)
   }
 
   @Test

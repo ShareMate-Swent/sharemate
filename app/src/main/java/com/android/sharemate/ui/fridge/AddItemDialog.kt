@@ -59,7 +59,7 @@ fun AddItemDialog(
                     isError = uiState.formError == FridgeFormError.INVALID_QUANTITY,
                     enabled = !uiState.isSaving,
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("fridge_quantity_input"))
+                    modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_quantity_input))
               }
               OutlinedTextField(
                   value = uiState.itemCategory,

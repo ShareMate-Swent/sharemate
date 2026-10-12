@@ -25,6 +25,7 @@ class FakeItemRepository : ItemRepository {
   var emitOnDelete = true
   val edits = mutableListOf<Pair<String, ItemEdit>>()
   var editFailure: Exception? = null
+  var editException: Exception? = null
   var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
@@ -67,6 +68,7 @@ class FakeItemRepository : ItemRepository {
 
   override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
     edits += itemId to edit
+    editException?.let { throw it }
     editFailure?.let {
       return ItemWrite.Rejected(it)
     }
