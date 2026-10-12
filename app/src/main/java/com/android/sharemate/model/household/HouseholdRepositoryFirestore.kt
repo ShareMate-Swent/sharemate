@@ -96,17 +96,18 @@ class HouseholdRepositoryFirestore(
             .whereArrayContains(MEMBER_IDS_FIELD, userId)
             .get()
             .await()
-    if (memberships.isEmpty) return
+    val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
+    // memberIds is the source of truth, but a profile can still point at a household that no
+    // longer lists the user; clear that copy too so both sides agree after leaving.
+    val hasStaleProfileLink = userReference.get().await().contains(HOUSEHOLD_ID_FIELD)
+    if (memberships.isEmpty && !hasStaleProfileLink) return
 
     val batch = firestore.batch()
     memberships.documents.forEach {
       batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
     }
     batch
-        .set(
-            firestore.collection(FirestoreCollections.USERS).document(userId),
-            mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()),
-            SetOptions.merge())
+        .set(userReference, mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()), SetOptions.merge())
         .commit()
         .await()
   }

@@ -228,6 +228,19 @@ class HouseholdRepositoryFirestoreTest {
   }
 
   @Test
+  fun leavingClearsProfileLinkToHouseholdThatNoLongerListsTheUser() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("outsider")
+    val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
+    Tasks.await(userReference.set(mapOf("displayName" to "Outsider", "householdId" to "gone")))
+
+    repository.leaveHousehold(userId)
+    val storedUser = Tasks.await(userReference.get())
+
+    assertFalse(storedUser.contains("householdId"))
+    assertEquals("Outsider", storedUser.getString("displayName"))
+  }
+
+  @Test
   fun leavingWithoutHouseholdWritesNothingAndBlankUserIsRejected() = runBlocking {
     val userId = FirebaseEmulator.signInAs("outsider")
     assertThrows(IllegalArgumentException::class.java) {
