@@ -163,6 +163,8 @@ class LeaveHouseholdViewModelTest {
 
     override suspend fun signUp(email: String, password: String) = Unit
 
+    override suspend fun signInWithGoogle(idToken: String) = Unit
+
     override fun signOut() {
       sessionState.value = null
     }

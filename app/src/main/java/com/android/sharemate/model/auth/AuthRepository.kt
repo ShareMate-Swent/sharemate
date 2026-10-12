@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.model.auth
 
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,8 @@ enum class AuthError {
   NETWORK,
   TOO_MANY_REQUESTS,
   PROVIDER_DISABLED,
+  GOOGLE_UNAVAILABLE,
+  ACCOUNT_CONFLICT,
   UNKNOWN
 }
 
@@ -27,6 +30,9 @@ interface AuthRepository {
   suspend fun signIn(email: String, password: String)
 
   suspend fun signUp(email: String, password: String)
+
+  /** Exchanges a Google ID token without storing it. */
+  suspend fun signInWithGoogle(idToken: String)
 
   fun signOut()
 }

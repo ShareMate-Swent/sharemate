@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.model.auth
 
 import com.google.android.gms.tasks.Tasks
@@ -89,6 +90,46 @@ class FirebaseAuthRepositoryUnitTest {
             listOf(null, AuthSession("trusted-uid", "student@example.org")),
             repository.session.take(2).toList())
         verify(auth).removeAuthStateListener(listener)
+      }
+
+  @Test
+  fun googleExchangesTheExactTokenAndReturnsSafeFailures() =
+      runBlocking<Unit> {
+        val credential = mock(com.google.firebase.auth.AuthCredential::class.java)
+        mockStatic(com.google.firebase.auth.GoogleAuthProvider::class.java).use { provider ->
+          provider
+              .`when`<com.google.firebase.auth.AuthCredential> {
+                com.google.firebase.auth.GoogleAuthProvider.getCredential(" exact-token ", null)
+              }
+              .thenReturn(credential)
+          `when`(auth.signInWithCredential(credential))
+              .thenReturn(Tasks.forResult(mock(AuthResult::class.java)))
+          repository.signInWithGoogle(" exact-token ")
+          provider.verify {
+            com.google.firebase.auth.GoogleAuthProvider.getCredential(" exact-token ", null)
+          }
+          verify(auth).signInWithCredential(credential)
+          for ((code, expected) in
+              listOf(
+                  "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL" to AuthError.ACCOUNT_CONFLICT,
+                  "ERROR_OPERATION_NOT_ALLOWED" to AuthError.PROVIDER_DISABLED)) {
+            `when`(auth.signInWithCredential(credential))
+                .thenReturn(Tasks.forException(FirebaseAuthException(code, "private response")))
+            try {
+              repository.signInWithGoogle(" exact-token ")
+              fail("Failed Google exchange must be mapped")
+            } catch (actual: AuthException) {
+              assertEquals(expected, actual.error)
+              assertEquals(expected.name, actual.message)
+              assertNull(actual.cause)
+            }
+          }
+          `when`(auth.signInWithCredential(credential)).thenReturn(Tasks.forCanceled())
+          try {
+            repository.signInWithGoogle(" exact-token ")
+            fail("Google task cancellation must propagate")
+          } catch (_: CancellationException) {}
+        }
       }
 
   @Test

@@ -144,7 +144,9 @@ class AuthHouseholdGateTest {
   private fun GateContent() {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
     SampleAppTheme(dynamicColor = false) {
-      AuthHouseholdGate(authViewModel, auth, households) { household, onMembershipChanged ->
+      AuthHouseholdGate(authViewModel, auth, households, googleTokenProvider = { null }) {
+          household,
+          onMembershipChanged ->
         Text("Private application", Modifier.testTag("private_app"))
         Text(household.id, Modifier.testTag("private_app_household"))
         TextButton(
@@ -168,6 +170,9 @@ class AuthHouseholdGateTest {
     }
 
     override suspend fun signUp(email: String, password: String) = signIn(email, password)
+
+    override suspend fun signInWithGoogle(idToken: String) =
+        error("Google sign-in is not used by this fake")
 
     override fun signOut() {
       session.value = null
