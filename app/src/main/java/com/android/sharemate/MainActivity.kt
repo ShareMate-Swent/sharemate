@@ -40,6 +40,7 @@ import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
+import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.navigation.TopLevelDestination
@@ -58,8 +59,10 @@ class MainActivity : ComponentActivity() {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
   }
 
+  private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
+
   private val authViewModel: AuthViewModel by viewModels {
-    viewModelFactory { initializer { AuthViewModel(authRepository) } }
+    viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {

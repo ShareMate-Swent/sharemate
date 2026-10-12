@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
 import androidx.activity.ComponentActivity
@@ -35,7 +36,7 @@ class AuthWelcomeScreenTest {
       AuthGate(vm) { Text("Private content") }
     }
     compose.onNodeWithTag("auth_welcome").assertExists()
-    compose.onNodeWithText("Google", substring = true).assertDoesNotExist()
+    compose.onNodeWithTag("auth_google_sign_in").assertExists()
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_confirm_password").assertExists()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
@@ -121,10 +122,67 @@ class AuthWelcomeScreenTest {
     }
   }
 
+  @Test
+  fun googleButtonShowsSafeFailureAndDisablesAllWelcomeActionsWhileLoading() {
+    val loading = androidx.compose.runtime.mutableStateOf(false)
+    var calls = 0
+    compose.setContent {
+      AuthWelcomeScreen(
+          {},
+          {},
+          onGoogleSignIn = { calls++ },
+          isLoading = loading.value,
+          error = AuthUiError.GOOGLE_UNAVAILABLE)
+    }
+    compose
+        .onNodeWithTag("auth_google_sign_in")
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    compose.runOnIdle {
+      assertEquals(1, calls)
+      loading.value = true
+    }
+    compose.onNodeWithTag("auth_google_sign_in").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_welcome_login").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_welcome_signup").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_google_loading").assertExists()
+    compose.runOnIdle { loading.value = false }
+    compose.onNodeWithTag("auth_google_loading").assertDoesNotExist()
+    compose.onNodeWithTag("auth_google_sign_in").assertIsEnabled()
+    compose.onNodeWithTag("auth_error").assertExists()
+  }
+
+  @Test
+  fun googleLoginOpensPrivateContentOnlyAfterFirebaseSessionAndReturnsToWelcomeOnLogout() {
+    val repository = WelcomeRepository()
+    lateinit var vm: AuthViewModel
+    compose.setContent {
+      vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
+      AuthGate(vm, googleTokenProvider = { "google-token" }) { Text("Private content") }
+    }
+    compose.onNodeWithTag("auth_google_sign_in").performScrollTo().performClick()
+    compose.runOnIdle { repository.pending.complete(Unit) }
+    compose.onNodeWithTag("auth_google_loading").assertExists()
+    compose.onNodeWithText("Private content").assertDoesNotExist()
+    compose.runOnIdle {
+      repository.session.value = AuthSession("google-user", "student@example.org")
+    }
+    compose.onNodeWithText("Private content").assertIsDisplayed()
+    compose.runOnIdle { vm.signOut() }
+    compose.onNodeWithText("Private content").assertDoesNotExist()
+    compose.onNodeWithTag("auth_welcome").assertExists()
+  }
+
   private class WelcomeRepository : AuthRepository {
     override val session = MutableStateFlow<AuthSession?>(null)
     val calls = mutableListOf<Pair<String, String>>()
     val pending = CompletableDeferred<Unit>()
+
+    override suspend fun signInWithGoogle(idToken: String) {
+      assertEquals("google-token", idToken)
+      pending.await()
+    }
 
     override suspend fun signIn(email: String, password: String) {
       calls.add(email to password)
