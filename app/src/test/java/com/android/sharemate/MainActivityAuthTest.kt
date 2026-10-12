@@ -1,9 +1,11 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +29,8 @@ class MainActivityAuthTest {
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsDisplayed().assertIsSelected()
     compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
     compose.onNodeWithText("Your fridge is empty").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
+    assertEquals(listOf("student-home"), firebase.observedHouseholds)
     compose.onNodeWithTag("auth_submit").assertDoesNotExist()
     verify(firebase.auth).signInWithEmailAndPassword("student@example.org", "secret")
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
@@ -34,5 +38,6 @@ class MainActivityAuthTest {
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
     compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
     verify(firebase.auth).signOut()
+    compose.waitUntil { firebase.removedListeners == listOf("student-home") }
   }
 }
