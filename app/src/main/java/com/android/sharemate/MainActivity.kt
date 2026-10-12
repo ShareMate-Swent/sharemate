@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
             authViewModel,
             authRepository,
             householdRepository,
+            googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
               val navController = rememberNavController()
               val currentRoute =

@@ -10,13 +10,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.model.auth.AuthSession
@@ -27,7 +25,7 @@ import kotlinx.coroutines.launch
 fun AuthGate(
     viewModel: AuthViewModel,
     modifier: Modifier = Modifier,
-    googleTokenProvider: (suspend () -> String?)? = null,
+    googleTokenProvider: suspend () -> String?,
     content: @Composable (AuthSession) -> Unit
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -51,13 +49,8 @@ private fun AuthEntryFlow(
     viewModel: AuthViewModel,
     state: AuthUiState,
     modifier: Modifier,
-    googleTokenProvider: (suspend () -> String?)?,
+    googleTokenProvider: suspend () -> String?,
 ) {
-  val context = LocalContext.current
-  val googleSignIn =
-      remember(context.applicationContext) {
-        CredentialManagerGoogleSignIn(context.applicationContext)
-      }
   val scope = rememberCoroutineScope()
   var showForm by rememberSaveable { mutableStateOf(false) }
   val goBack = {
@@ -91,12 +84,7 @@ private fun AuthEntryFlow(
           modifier = modifier,
           isLoading = state.isLoading,
           error = state.error,
-          onGoogleSignIn = {
-            scope.launch {
-              viewModel.signInWithGoogle(
-                  googleTokenProvider ?: { googleSignIn.getIdToken(context) })
-            }
-          })
+          onGoogleSignIn = { scope.launch { viewModel.signInWithGoogle(googleTokenProvider) } })
     }
   }
 }

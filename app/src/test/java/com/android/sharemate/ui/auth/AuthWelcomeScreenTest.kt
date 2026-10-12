@@ -33,7 +33,7 @@ class AuthWelcomeScreenTest {
     lateinit var vm: AuthViewModel
     compose.setContent {
       vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
-      AuthGate(vm) { Text("Private content") }
+      AuthGate(vm, googleTokenProvider = { null }) { Text("Private content") }
     }
     compose.onNodeWithTag("auth_welcome").assertExists()
     compose.onNodeWithTag("auth_google_sign_in").assertExists()
@@ -84,7 +84,7 @@ class AuthWelcomeScreenTest {
     val repository = WelcomeRepository()
     compose.setContent {
       val vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
-      AuthGate(vm) { Text("Private content") }
+      AuthGate(vm, googleTokenProvider = { null }) { Text("Private content") }
     }
     compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")

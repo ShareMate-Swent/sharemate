@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.credentials.*
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -35,6 +36,30 @@ class CredentialManagerGoogleSignInTest {
     val adapter = CredentialManagerGoogleSignIn(context, manager, "")
     assertUnavailable { adapter.getIdToken(context) }
     verifyNoInteractions(manager)
+  }
+
+  @Test
+  fun defaultConfigurationUsesTheGeneratedWebClientId() = runBlocking {
+    val expectedClientId = context.getString(R.string.default_web_client_id)
+    assertTrue(expectedClientId.isNotBlank())
+    val credential =
+        GoogleIdTokenCredential.Builder()
+            .setId("student@example.org")
+            .setIdToken("resource-path-token")
+            .build()
+    var requestedClientId: String? = null
+    doAnswer {
+          val request = it.getArgument<GetCredentialRequest>(1)
+          requestedClientId =
+              (request.credentialOptions.single() as GetSignInWithGoogleOption).serverClientId
+          GetCredentialResponse(CustomCredential(credential.type, credential.data))
+        }
+        .`when`(manager)
+        .getCredential(eq(context) ?: context, anyRequest())
+    val adapter = CredentialManagerGoogleSignIn(context, manager)
+    assertEquals("resource-path-token", adapter.getIdToken(context))
+    assertEquals(expectedClientId, requestedClientId)
+    verify(manager).getCredential(eq(context) ?: context, anyRequest())
   }
 
   @Test

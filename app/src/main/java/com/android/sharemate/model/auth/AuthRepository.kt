@@ -31,10 +31,8 @@ interface AuthRepository {
 
   suspend fun signUp(email: String, password: String)
 
-  /** Exchanges a Google ID token without storing it. Unsupported providers fail safely. */
-  suspend fun signInWithGoogle(idToken: String) {
-    throw AuthException(AuthError.PROVIDER_DISABLED)
-  }
+  /** Exchanges a Google ID token without storing it. */
+  suspend fun signInWithGoogle(idToken: String)
 
   fun signOut()
 }

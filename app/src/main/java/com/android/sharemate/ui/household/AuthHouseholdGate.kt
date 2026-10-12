@@ -41,10 +41,11 @@ fun AuthHouseholdGate(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
     householdRepository: HouseholdRepository,
+    googleTokenProvider: suspend () -> String?,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-  AuthGate(authViewModel, modifier) { session ->
+  AuthGate(authViewModel, modifier, googleTokenProvider) { session ->
     key(session.uid) {
       val owner: HouseholdFlowStore =
           viewModel(

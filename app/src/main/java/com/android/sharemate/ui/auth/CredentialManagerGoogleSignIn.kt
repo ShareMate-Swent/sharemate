@@ -1,7 +1,6 @@
 // Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
-import android.annotation.SuppressLint
 import android.content.Context
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -9,6 +8,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -25,14 +25,8 @@ class CredentialManagerGoogleSignIn(
   private val manager by lazy { credentialManager ?: CredentialManager.create(applicationContext) }
 
   /** The Activity context is used only for this UI-scoped request, never retained in a field. */
-  // OAuth setup generates this optional resource; lookup keeps email auth usable before setup.
-  @SuppressLint("DiscouragedApi")
   suspend fun getIdToken(context: Context): String? {
-    val resource =
-        applicationContext.resources.getIdentifier(
-            "default_web_client_id", "string", applicationContext.packageName)
-    val clientId =
-        serverClientId ?: if (resource == 0) "" else applicationContext.getString(resource)
+    val clientId = serverClientId ?: applicationContext.getString(R.string.default_web_client_id)
     if (clientId.isBlank()) throw AuthException(AuthError.GOOGLE_UNAVAILABLE)
     val option = GetSignInWithGoogleOption.Builder(clientId).build()
     val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
