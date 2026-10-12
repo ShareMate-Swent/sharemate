@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import android.app.Activity
@@ -31,18 +32,25 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
+import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.ui.auth.AuthGate
 import com.android.sharemate.ui.auth.AuthViewModel
 
-/** Gives each signed-in user an isolated household flow, cleared when their session ends. */
+/**
+ * Gives each signed-in user an isolated household flow, cleared when their session ends.
+ *
+ * @param content The application, shown once the user belongs to a household. It receives that
+ *   household and a callback to invoke when membership may have changed (e.g. after leaving), so
+ *   the gate looks it up again and shows onboarding if needed.
+ */
 @Composable
 fun AuthHouseholdGate(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
     householdRepository: HouseholdRepository,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable (household: Household, onMembershipChanged: () -> Unit) -> Unit,
 ) {
   AuthGate(authViewModel, modifier) { session ->
     key(session.uid) {
@@ -81,8 +89,8 @@ fun AuthHouseholdGate(
                     viewModel = gateViewModel,
                     onCreateHousehold = { navController.navigate("household_create") },
                     onJoinHousehold = { navController.navigate("household_join") },
-                ) {
-                  content()
+                ) { household ->
+                  content(household, gateViewModel::refresh)
                 }
               }
               if (state !is HouseholdGateState.Ready) {
