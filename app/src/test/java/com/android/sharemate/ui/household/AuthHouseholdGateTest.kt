@@ -3,6 +3,7 @@ package com.android.sharemate.ui.household
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -98,6 +99,25 @@ class AuthHouseholdGateTest {
   }
 
   @Test
+  fun leavingReturnsToTheChoiceAndJoiningAgainShowsTheNewHousehold() {
+    households.memberships["student"] = Household(id = "old-home")
+    compose.setContent { GateContent() }
+    compose.onNodeWithTag("private_app_household").assertTextEquals("old-home")
+
+    compose.onNodeWithTag("private_app_leave").performClick()
+
+    compose.onNodeWithTag("private_app").assertDoesNotExist()
+    compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
+
+    compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
+    compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("JOIN12")
+    compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+
+    compose.onNodeWithTag("private_app_household").assertTextEquals("joined-home")
+    compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).assertDoesNotExist()
+  }
+
+  @Test
   fun retryAndAccountChangeCancelOldLookupWithoutRevealingOldHousehold() {
     households.failure = IllegalStateException("Offline")
     compose.setContent { GateContent() }
@@ -131,7 +151,18 @@ class AuthHouseholdGateTest {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
     SampleAppTheme(dynamicColor = false) {
       AuthHouseholdGate(authViewModel, auth, households, googleTokenProvider = { null }) {
+          household,
+          onMembershipChanged ->
         Text("Private application", Modifier.testTag("private_app"))
+        Text(household.id, Modifier.testTag("private_app_household"))
+        TextButton(
+            onClick = {
+              households.memberships.remove("student")
+              onMembershipChanged()
+            },
+            modifier = Modifier.testTag("private_app_leave")) {
+              Text("Leave")
+            }
       }
     }
   }
