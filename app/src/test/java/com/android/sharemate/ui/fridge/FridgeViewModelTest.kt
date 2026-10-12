@@ -255,6 +255,13 @@ class FridgeViewModelTest {
     vm.openEditItemDialog(milk.id)
     vm.requestRemoval(milk.id)
     assertNull(vm.uiState.value.pendingRemovalItem)
+    listOf(listOf(bread), listOf(milk.copy(status = ItemStatus.EATEN))).forEach { changed ->
+      repository.emitItems(changed)
+      runCurrent()
+      vm.saveItem()
+      assertEquals(FridgeFormError.SAVE_FAILED, vm.uiState.value.formError)
+      assertTrue(repository.edits.isEmpty())
+    }
     repository.emitItems(emptyList())
     runCurrent()
     vm.saveItem()
