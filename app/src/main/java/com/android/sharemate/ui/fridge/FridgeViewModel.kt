@@ -81,7 +81,23 @@ class FridgeViewModel(
     viewModelScope.launch {
       try {
         itemRepository.getSharedItems(householdId).collect { items ->
-          mutableUiState.update { it.copy(items = items, isLoading = false, loadFailed = false) }
+          mutableUiState.update { state ->
+            val pending = state.pendingRemovalItem
+            val stale =
+                !state.isDeleting &&
+                    pending != null &&
+                    items.none {
+                      it.id == pending.id &&
+                          it.householdId == householdId &&
+                          it.status == ItemStatus.ACTIVE
+                    }
+            state.copy(
+                items = items,
+                isLoading = false,
+                loadFailed = false,
+                pendingRemovalItem = if (stale) null else pending,
+                removalFailed = if (stale) false else state.removalFailed)
+          }
         }
       } catch (exception: CancellationException) {
         throw exception
@@ -100,7 +116,10 @@ class FridgeViewModel(
         itemId in state.pendingStatusIds ||
         itemId.isBlank())
         return
-    val item = state.items.firstOrNull { it.id == itemId } ?: return
+    val item =
+        state.items.firstOrNull {
+          it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+        } ?: return
     mutableUiState.update { it.copy(pendingRemovalItem = item, removalFailed = false) }
   }
 
@@ -113,23 +132,36 @@ class FridgeViewModel(
     val state = uiState.value
     if (state.isDeleting) return
     val item = state.pendingRemovalItem ?: return
-    if (state.items.none { it.id == item.id }) {
+    if (state.items.none {
+      it.id == item.id && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+    }) {
       cancelRemoval()
       return
     }
     mutableUiState.update { it.copy(isDeleting = true, removalFailed = false) }
     viewModelScope.launch {
       try {
-        if (itemRepository.deleteItem(item.id)) {
-          mutableUiState.update {
-            it.copy(
-                items = it.items.filterNot { saved -> saved.id == item.id },
-                pendingRemovalItem = null,
-                isDeleting = false,
-                removalFailed = false)
+        if (uiState.value.items.none {
+          it.id == item.id && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+        }) {
+          mutableUiState.update { it.copy(pendingRemovalItem = null, isDeleting = false) }
+          return@launch
+        }
+        when (val write = itemRepository.deleteItemQueued(item.id)) {
+          is ItemWrite.Rejected -> {
+            if (write.cause is CancellationException) throw write.cause
+            mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
           }
-        } else {
-          mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
+          is ItemWrite.Queued -> {
+            mutableUiState.update {
+              it.copy(pendingRemovalItem = null, isDeleting = false, removalFailed = false)
+            }
+            trackConfirmation(write) {
+              mutableUiState.update {
+                it.copy(removalSyncError = FridgeRemovalSyncError(item.name))
+              }
+            }
+          }
         }
       } catch (exception: CancellationException) {
         mutableUiState.update { it.copy(isDeleting = false) }
@@ -137,6 +169,12 @@ class FridgeViewModel(
       } catch (exception: Exception) {
         mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
       }
+    }
+  }
+
+  fun dismissRemovalSyncError(error: FridgeRemovalSyncError) {
+    mutableUiState.update {
+      if (it.removalSyncError === error) it.copy(removalSyncError = null) else it
     }
   }
 

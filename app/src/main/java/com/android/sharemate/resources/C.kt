@@ -35,5 +35,6 @@ object C {
     const val fridge_confirm_remove = "fridge_confirm_remove"
     const val fridge_cancel_remove = "fridge_cancel_remove"
     const val fridge_removal_error = "fridge_removal_error"
+    const val fridge_removal_sync_error = "fridge_removal_sync_error"
   }
 }

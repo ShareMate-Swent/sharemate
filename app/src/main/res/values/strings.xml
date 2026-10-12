@@ -60,10 +60,11 @@
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="household_retry">Try again</string>
     <string name="back">Back</string>
-    <string name="fridge_remove">Remove</string>
-    <string name="fridge_remove_description">Remove %1$s</string>
-    <string name="fridge_remove_title">Remove item?</string>
-    <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
-    <string name="fridge_removing">Removing…</string>
-    <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
+    <string name="fridge_remove">Delete</string>
+    <string name="fridge_remove_description">Delete %1$s</string>
+    <string name="fridge_remove_title">Delete item permanently?</string>
+    <string name="fridge_remove_confirmation">Permanently delete %1$s from the fridge? This cannot be undone.</string>
+    <string name="fridge_removing">Deleting…</string>
+    <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
+    <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
 </resources>

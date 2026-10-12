@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -26,8 +27,14 @@ import com.android.sharemate.resources.C
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -84,6 +91,51 @@ class FridgeScreenTest {
   }
 
   @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun deleteConfirmationCancelsAndQueuesCorrectItemOfflineWithoutAffectingOtherActions() {
+    Dispatchers.setMain(UnconfinedTestDispatcher())
+    val repository = com.android.sharemate.model.item.FakeItemRepository()
+    val milk = Item(id = "milk", name = "Milk", householdId = HOUSEHOLD_ID)
+    val bread = milk.copy(id = "bread", name = "Bread")
+    repository.emitItems(listOf(milk, bread))
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    repository.deleteConfirmation = confirmation
+    val viewModel = FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID)
+    val store = ViewModelStore().also { it.put("fridge", viewModel) }
+    try {
+      composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+      composeRule.onNodeWithContentDescription("Delete Milk").performClick()
+      composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
+      composeRule
+          .onNodeWithText("Permanently delete Milk from the fridge? This cannot be undone.")
+          .assertIsDisplayed()
+      composeRule.onNodeWithTag(C.Tag.fridge_cancel_remove).performClick()
+      composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
+      composeRule.runOnIdle { assertEquals(emptyList<String>(), repository.deletedItemIds) }
+      composeRule.onNodeWithContentDescription("Delete Milk").performClick()
+      composeRule.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
+      composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
+      composeRule.onNodeWithTag(C.Tag.fridge_item_prefix + milk.id).assertDoesNotExist()
+      composeRule.onNodeWithText("Bread").assertIsDisplayed()
+      composeRule.runOnIdle {
+        assertEquals(listOf(milk.id), repository.queuedDeletionIds)
+        assertEquals(false, confirmation.isCompleted)
+      }
+      composeRule.onNodeWithTag(C.Tag.fridge_edit_prefix + bread.id).performClick()
+      assertEquals(bread.id, viewModel.uiState.value.editingItemId)
+      composeRule.runOnUiThread { viewModel.dismissAddItemDialog() }
+      composeRule.onNodeWithTag(C.Tag.fridge_eaten_prefix + bread.id).performClick()
+      composeRule.onNodeWithTag(C.Tag.fridge_item_prefix + bread.id).assertDoesNotExist()
+      composeRule.runOnIdle {
+        assertEquals(listOf(bread.id to ItemStatus.EATEN), repository.statusChanges)
+      }
+    } finally {
+      store.clear()
+      Dispatchers.resetMain()
+    }
+  }
+
+  @Test
   fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
     val requests = mutableListOf<String>()
     val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
@@ -96,12 +148,12 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("Milk").assertIsDisplayed()
     composeRule.onNodeWithText("Bread").assertIsDisplayed()
     composeRule
-        .onNodeWithContentDescription("Remove Milk")
+        .onNodeWithContentDescription("Delete Milk")
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
     composeRule
-        .onNodeWithContentDescription("Remove Bread")
+        .onNodeWithContentDescription("Delete Bread")
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
@@ -116,7 +168,7 @@ class FridgeScreenTest {
         FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
       }
     }
-    composeRule.onNodeWithContentDescription("Remove Milk").assertIsDisplayed().assertIsNotEnabled()
+    composeRule.onNodeWithContentDescription("Delete Milk").assertIsDisplayed().assertIsNotEnabled()
   }
 
   @Test
@@ -129,7 +181,7 @@ class FridgeScreenTest {
             onRemoveItem = {})
       }
     }
-    composeRule.onNodeWithContentDescription("Remove Milk").assertIsNotEnabled()
+    composeRule.onNodeWithContentDescription("Delete Milk").assertIsNotEnabled()
     composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
   }
 

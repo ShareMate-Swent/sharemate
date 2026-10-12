@@ -22,6 +22,7 @@ data class FridgeUiState(
     val pendingRemovalItem: Item? = null,
     val isDeleting: Boolean = false,
     val removalFailed: Boolean = false,
+    val removalSyncError: FridgeRemovalSyncError? = null,
 )
 
 enum class FridgeFormError {
@@ -35,3 +36,5 @@ enum class FridgeFormError {
 class FridgeEditSyncError(val itemName: String)
 
 class FridgeStatusError(val itemName: String, val isSyncFailure: Boolean)
+
+class FridgeRemovalSyncError(val itemName: String)

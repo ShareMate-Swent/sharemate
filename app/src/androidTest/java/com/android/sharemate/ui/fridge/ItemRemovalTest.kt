@@ -6,7 +6,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -115,23 +114,20 @@ class ItemRemovalTest {
   }
 
   @Test
-  fun pendingDeletionDisablesConfirmationAndCancel() {
-    val gate = CompletableDeferred<Unit>()
-    val repository = TestItemRepository(listOf(milk)).apply { deleteGate = gate }
+  fun offlineDeletionClosesConfirmationWithoutAwaitingServer() {
+    val gate = CompletableDeferred<Result<Unit>>()
+    val repository = TestItemRepository(listOf(milk)).apply { deleteConfirmation = gate }
     val viewModel = showFridge(repository)
     requestRemoval(milk)
     composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.isDeleting }
-
-    composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_remove).assertIsNotEnabled()
+    waitForRemoval(viewModel, milk.id)
     composeTestRule.runOnIdle {
       viewModel.confirmRemoval()
       viewModel.cancelRemoval()
       assertEquals(listOf(milk.id), repository.deletedIds)
-      assertEquals(listOf(milk), viewModel.uiState.value.items)
-      assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
-      gate.complete(Unit)
+      assertTrue(viewModel.uiState.value.items.isEmpty())
+      assertTrue(!gate.isCompleted)
+      gate.complete(Result.success(Unit))
     }
     waitForRemoval(viewModel, milk.id)
     composeTestRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
@@ -179,7 +175,7 @@ class ItemRemovalTest {
     private val items = MutableStateFlow(initialItems)
     val deletedIds = mutableListOf<String>()
     var returnFalseOnDelete = false
-    var deleteGate: CompletableDeferred<Unit>? = null
+    var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
@@ -193,18 +189,16 @@ class ItemRemovalTest {
     override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
         error("Not used in this test")
 
-    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
+    override fun deleteItemQueued(itemId: String): ItemWrite {
+      deletedIds += itemId
+      if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
+      items.value = items.value.filterNot { it.id == itemId }
+      return ItemWrite.Queued(deleteConfirmation ?: CompletableDeferred(Result.success(Unit)))
+    }
 
     override suspend fun addItem(item: Item): String? =
         throw UnsupportedOperationException("Item creation is not used by removal tests")
 
-    override suspend fun deleteItem(itemId: String): Boolean {
-      deletedIds += itemId
-      deleteGate?.await()
-      if (returnFalseOnDelete) return false
-      val existed = items.value.any { it.id == itemId }
-      items.value = items.value.filterNot { it.id == itemId }
-      return existed
-    }
+    override suspend fun deleteItem(itemId: String): Boolean = error("Must use queued deletion")
   }
 }
