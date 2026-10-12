@@ -55,8 +55,9 @@ class FridgeViewModel(
           ) { state, sortOrder, category, ownerId ->
             val filteredItems =
                 state.items.filter { item ->
-                  (category == null ||
-                      item.category?.trim()?.equals(category, ignoreCase = true) == true) &&
+                  item.status == ItemStatus.ACTIVE &&
+                      (category == null ||
+                          item.category?.trim()?.equals(category, ignoreCase = true) == true) &&
                       (ownerId == null || item.ownerId == ownerId)
                 }
 
@@ -96,6 +97,7 @@ class FridgeViewModel(
         state.isSaving ||
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
+        itemId in state.pendingStatusIds ||
         itemId.isBlank())
         return
     val item = state.items.firstOrNull { it.id == itemId } ?: return
@@ -140,6 +142,51 @@ class FridgeViewModel(
 
   fun setSortOrder(sortOrder: FridgeSortOrder) {
     sortOrderState.value = sortOrder
+  }
+
+  fun setItemStatus(itemId: String, status: ItemStatus) {
+    val state = uiState.value
+    if (status == ItemStatus.ACTIVE ||
+        state.isSaving ||
+        state.isDeleting ||
+        state.isAddItemDialogOpen ||
+        state.pendingRemovalItem != null ||
+        itemId in state.pendingStatusIds)
+        return
+    val item =
+        state.items.firstOrNull {
+          it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+        } ?: return
+    mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds + itemId) }
+    viewModelScope.launch {
+      try {
+        if (uiState.value.items.none {
+          it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+        })
+            return@launch
+        when (val write = itemRepository.setItemStatus(itemId, status)) {
+          is ItemWrite.Rejected -> {
+            if (write.cause is CancellationException) throw write.cause
+            reportStatusError(item.name, false)
+          }
+          is ItemWrite.Queued -> trackConfirmation(write) { reportStatusError(item.name, true) }
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        reportStatusError(item.name, false)
+      } finally {
+        mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds - itemId) }
+      }
+    }
+  }
+
+  private fun reportStatusError(name: String, syncFailure: Boolean) {
+    mutableUiState.update { it.copy(statusError = FridgeStatusError(name, syncFailure)) }
+  }
+
+  fun dismissStatusError(error: FridgeStatusError) {
+    mutableUiState.update { if (it.statusError === error) it.copy(statusError = null) else it }
   }
 
   fun setCategoryFilter(category: String?) {
@@ -187,7 +234,8 @@ class FridgeViewModel(
     if (state.isSaving ||
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
-        state.isDeleting)
+        state.isDeleting ||
+        itemId in state.pendingStatusIds)
         return
     val item =
         state.items.firstOrNull {
@@ -330,27 +378,7 @@ class FridgeViewModel(
                   itemCategory = "",
                   expirationDateInput = "")
             }
-            // No coroutine waits indefinitely offline. Each callback owns its write;
-            // completed confirmations only report errors, never alter drafts or items.
-            val operation = Any()
-            confirmationHandlers[operation] = null
-            val handler =
-                write.confirmation.invokeOnCompletion { cause ->
-                  viewModelScope.launch {
-                    confirmationHandlers.remove(operation)?.dispose()
-                    if (cause !is CancellationException) {
-                      try {
-                        if (write.confirmation.await().isFailure) reportEditSyncError(edit.name)
-                      } catch (cancelled: CancellationException) {
-                        throw cancelled
-                      } catch (_: Exception) {
-                        reportEditSyncError(edit.name)
-                      }
-                    }
-                  }
-                }
-            if (operation in confirmationHandlers) confirmationHandlers[operation] = handler
-            else handler.dispose()
+            trackConfirmation(write) { reportEditSyncError(edit.name) }
           }
         }
       } catch (cancelled: CancellationException) {
@@ -362,9 +390,33 @@ class FridgeViewModel(
     }
   }
 
+  // Observe each queued write independently without a waiting job while offline.
+  private fun trackConfirmation(write: ItemWrite.Queued, onFailure: () -> Unit) {
+    val operation = Any()
+    confirmationHandlers[operation] = null
+    val handler =
+        write.confirmation.invokeOnCompletion { cause ->
+          viewModelScope.launch {
+            confirmationHandlers.remove(operation)?.dispose()
+            if (cause !is CancellationException) {
+              try {
+                if (write.confirmation.await().isFailure) onFailure()
+              } catch (cancelled: CancellationException) {
+                throw cancelled
+              } catch (_: Exception) {
+                onFailure()
+              }
+            }
+          }
+        }
+    if (operation in confirmationHandlers) confirmationHandlers[operation] = handler
+    else handler.dispose()
+  }
+
   override fun onCleared() {
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
+    mutableUiState.update { it.copy(pendingStatusIds = emptySet()) }
   }
 
   private fun reportEditSyncError(name: String) {
