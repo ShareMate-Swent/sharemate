@@ -33,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,12 +57,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.delay
 
 @Composable
 fun FridgeScreen(
@@ -84,6 +87,9 @@ fun FridgeScreen(
     onRemoveItem: ((String) -> Unit)? = null,
     onCancelRemoval: () -> Unit = {},
     onConfirmRemoval: () -> Unit = {},
+    onEditItem: ((String) -> Unit)? = null,
+    onQuantityChange: (String) -> Unit = {},
+    onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
 ) {
   val hasFunctionalFilters =
       sortOrder != null &&
@@ -223,6 +229,18 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_add_item)) {
           Text(stringResource(R.string.fridge_add_item))
         }
+    uiState.editSyncError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen) {
+        if (!uiState.isAddItemDialogOpen) {
+          delay(8_000)
+          onDismissEditSyncError(error)
+        }
+      }
+      Text(
+          stringResource(R.string.fridge_edit_sync_failed, error.itemName),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_edit_sync_error))
+    }
     if (uiState.loadFailed) {
       Text(
           stringResource(R.string.fridge_load_failed),
@@ -239,6 +257,14 @@ fun FridgeScreen(
                   items(uiState.items, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
+                        editEnabled =
+                            onEditItem != null &&
+                                !uiState.isSaving &&
+                                !uiState.isDeleting &&
+                                !uiState.isAddItemDialogOpen &&
+                                uiState.pendingRemovalItem == null &&
+                                item.status == ItemStatus.ACTIVE,
+                        onEdit = { onEditItem?.invoke(item.id) },
                         removalEnabled =
                             onRemoveItem != null &&
                                 !uiState.isDeleting &&
@@ -269,6 +295,7 @@ fun FridgeScreen(
         onCategoryChange = onCategoryChange,
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
+        onQuantityChange = onQuantityChange,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -339,6 +366,9 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onCategoryChange = viewModel::updateCategory,
       onExpirationDateChange = viewModel::updateExpirationDate,
       onSaveItem = viewModel::saveItem,
+      onEditItem = viewModel::openEditItemDialog,
+      onQuantityChange = viewModel::updateQuantity,
+      onDismissEditSyncError = viewModel::dismissEditSyncError,
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
@@ -398,9 +428,12 @@ fun FridgeItem(
     item: Item,
     modifier: Modifier = Modifier,
     removalEnabled: Boolean = false,
-    onRemove: () -> Unit = {}
+    onRemove: () -> Unit = {},
+    editEnabled: Boolean = false,
+    onEdit: () -> Unit = {},
 ) {
   val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
+  val editDescription = stringResource(R.string.fridge_edit_description, item.name)
   val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
   val containerColor =
       when (expiryStatus) {
@@ -431,6 +464,15 @@ fun FridgeItem(
               Text(item.name, style = MaterialTheme.typography.titleMedium)
               item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
               item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+              TextButton(
+                  onClick = onEdit,
+                  enabled = editEnabled,
+                  modifier =
+                      Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
+                        contentDescription = editDescription
+                      }) {
+                    Text(stringResource(R.string.fridge_edit_item))
+                  }
               TextButton(
                   onClick = onRemove,
                   enabled = removalEnabled,

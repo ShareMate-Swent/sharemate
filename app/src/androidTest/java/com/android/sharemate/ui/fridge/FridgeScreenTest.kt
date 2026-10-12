@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
@@ -27,7 +29,7 @@ import java.util.Date
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,9 +130,12 @@ class FridgeScreenTest {
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
   private fun assertItemOrder(vararg ids: String) {
-    val positions = ids.map { item(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top }
-    assertTrue(
-        "Expected rendered order: ${ids.toList()}", positions.zipWithNext().all { (a, b) -> a < b })
+    val list = compose.onNodeWithTag(C.Tag.fridge_item_list)
+    ids.forEachIndexed { index, id ->
+      assertEquals(index, list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey](id))
+      list.performScrollToIndex(index)
+      item(id).assertIsDisplayed()
+    }
   }
 
   private class ReadOnlyItemRepository(items: List<Item>) : ItemRepository {
