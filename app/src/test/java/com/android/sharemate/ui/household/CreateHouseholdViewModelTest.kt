@@ -153,6 +153,8 @@ class CreateHouseholdViewModelTest {
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
         delegate.joinHousehold(inviteCode, userId)
 
+    override suspend fun leaveHousehold(userId: String) = delegate.leaveHousehold(userId)
+
     override suspend fun getHousehold(householdId: String) = delegate.getHousehold(householdId)
 
     override suspend fun getHouseholdForUser(userId: String) = delegate.getHouseholdForUser(userId)

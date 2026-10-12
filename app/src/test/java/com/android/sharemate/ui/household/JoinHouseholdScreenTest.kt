@@ -172,6 +172,8 @@ class JoinHouseholdScreenTest {
       return Household(inviteCode = inviteCode, memberIds = listOf(userId))
     }
 
+    override suspend fun leaveHousehold(userId: String) = delegate.leaveHousehold(userId)
+
     override suspend fun getHousehold(householdId: String) = delegate.getHousehold(householdId)
 
     override suspend fun getHouseholdForUser(userId: String) = delegate.getHouseholdForUser(userId)

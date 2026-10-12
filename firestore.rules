@@ -54,22 +54,40 @@ service cloud.firestore {
                 == householdId;
       }
 
+      // Membership changes may touch memberIds and nothing else.
+      function onlyMemberIdsChange() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']);
+      }
+
       // Joining: a user may only append themselves to the members, and must point their own
       // profile at the household in the same batch. No other field can change.
       function onlyAddsSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+        return onlyMemberIdsChange()
             && (after == before
                 || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
             && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+      }
+
+      // Leaving: a member may only remove themselves, and must clear the household from their
+      // own profile in the same batch, so it cannot be left pointing at this or any other
+      // household. No other field can change.
+      function onlyRemovesSelf() {
+        let before = resource.data.memberIds;
+        let after = request.resource.data.memberIds;
+        return onlyMemberIdsChange()
+            && request.auth.uid in before
+            && after == before.removeAll([request.auth.uid])
+            && getAfter(documentPath('users', request.auth.uid)).data.get('householdId', null)
+                == null;
       }
 
       // Fetching a missing household is allowed so that lookups can return "not found".
       allow get: if signedIn() && (resource == null || isMember());
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
-      allow update: if signedIn() && onlyAddsSelf();
+      allow update: if signedIn() && (onlyAddsSelf() || onlyRemovesSelf());
     }
 
     function isHouseholdMember(householdId) {
