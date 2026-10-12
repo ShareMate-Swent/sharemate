@@ -41,7 +41,8 @@ class FakeItemRepository : ItemRepository {
     addedItems += item
     addGate?.await()
     addFailure?.let { throw it }
-    if (returnNullOnAdd) return null
+    if (returnNullOnAdd || item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0)
+        return null
     val itemId = "item-${++nextId}"
     items.value += item.copy(id = itemId)
     return itemId
@@ -59,5 +60,45 @@ class FakeItemRepository : ItemRepository {
 
   fun emitItems(updatedItems: List<Item>) {
     items.value = updatedItems
+  }
+
+  override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
+    if (edit.name.isBlank() || edit.quantity <= 0) {
+      return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
+    }
+    return change(itemId) {
+      it.copy(
+          name = edit.name.trim(),
+          quantity = edit.quantity,
+          category = edit.category,
+          expirationDate = edit.expirationDate)
+    }
+  }
+
+  override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+      change(itemId) { it.copy(status = status) }
+
+  override fun deleteItemQueued(itemId: String): ItemWrite {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
+    }
+    deleteFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
+    if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
+    deletedItemIds += itemId
+    if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
+    return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
+  }
+
+  private fun change(itemId: String, transform: (Item) -> Item): ItemWrite {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
+    }
+    if (items.value.none { it.id == itemId }) {
+      return ItemWrite.Rejected(NoSuchElementException("Item not found: $itemId"))
+    }
+    items.value = items.value.map { if (it.id == itemId) transform(it) else it }
+    return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
   }
 }

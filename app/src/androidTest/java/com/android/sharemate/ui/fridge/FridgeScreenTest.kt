@@ -17,7 +17,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.util.Date
@@ -138,6 +141,14 @@ class FridgeScreenTest {
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && !it.isShared } }
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+        error("Not used in this test")
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? = error("Read-only test repository")
 

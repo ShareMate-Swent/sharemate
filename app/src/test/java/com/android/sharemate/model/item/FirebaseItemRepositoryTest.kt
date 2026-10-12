@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: AI Assistant
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -60,6 +61,7 @@ class FirebaseItemRepositoryTest {
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
+        `when`(query.whereEqualTo("householdId", null)).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
@@ -112,6 +114,7 @@ class FirebaseItemRepositoryTest {
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
+        `when`(query.whereEqualTo("householdId", null)).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)

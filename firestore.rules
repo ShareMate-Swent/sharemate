@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -106,7 +107,11 @@ service cloud.firestore {
 
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
-      return data.ownerId is string
+      let quantity = data.get('quantity', 1);
+      let status = data.get('status', 'ACTIVE');
+      return quantity is int && quantity > 0 && quantity <= 2147483647
+          && status in ['ACTIVE', 'EATEN', 'DISCARDED']
+          && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
           && data.name.size() > 0
           && (data.get('householdId', null) == null || data.householdId is string)
@@ -156,7 +161,8 @@ service cloud.firestore {
           && isPrivateOrSharedWithMyHousehold(request.resource.data);
       allow update: if signedIn() && canUpdateItem(resource.data, request.resource.data);
       // Items belong to the shared list: any household member can delete them.
-      allow delete: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow delete: if signedIn()
+          && (resource == null || isOwner(resource.data) || isShared(resource.data));
     }
 
     match /receipts/{receiptId} {

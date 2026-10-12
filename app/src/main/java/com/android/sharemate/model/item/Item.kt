@@ -20,6 +20,9 @@ data class Item(
     val householdId: String? = null,
     val expirationDate: Date? = null,
     val category: String? = null,
+    /** Positive count of units; old documents default to one unit. */
+    val quantity: Int = 1,
+    val status: ItemStatus = ItemStatus.ACTIVE,
 ) {
   /** Helper pour déterminer facilement si un item est partagé ou privé côté UI. */
   val isShared: Boolean
