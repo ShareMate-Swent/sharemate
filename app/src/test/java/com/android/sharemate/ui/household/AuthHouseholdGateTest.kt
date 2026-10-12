@@ -99,7 +99,7 @@ class AuthHouseholdGateTest {
   }
 
   @Test
-  fun leavingTheHouseholdReturnsToTheCreateOrJoinChoice() {
+  fun leavingReturnsToTheChoiceAndJoiningAgainShowsTheNewHousehold() {
     households.memberships["student"] = Household(id = "old-home")
     compose.setContent { GateContent() }
     compose.onNodeWithTag("private_app_household").assertTextEquals("old-home")
@@ -108,7 +108,13 @@ class AuthHouseholdGateTest {
 
     compose.onNodeWithTag("private_app").assertDoesNotExist()
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
-    compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).assertIsDisplayed()
+
+    compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
+    compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("JOIN12")
+    compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+
+    compose.onNodeWithTag("private_app_household").assertTextEquals("joined-home")
+    compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).assertDoesNotExist()
   }
 
   @Test

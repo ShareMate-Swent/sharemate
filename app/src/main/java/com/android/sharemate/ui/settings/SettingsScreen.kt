@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import com.android.sharemate.ui.navigation.NavigationTestTags
 
@@ -97,7 +98,7 @@ private fun LeaveHouseholdDialog(
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
           Text(stringResource(R.string.leave_household_message, householdName))
-          if (state.error != null) {
+          state.error?.let { error ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -109,7 +110,12 @@ private fun LeaveHouseholdDialog(
                   modifier = Modifier.size(18.dp),
               )
               Text(
-                  text = stringResource(R.string.leave_household_failed),
+                  text =
+                      stringResource(
+                          when (error) {
+                            LeaveHouseholdError.NO_SESSION -> R.string.leave_household_no_session
+                            LeaveHouseholdError.LEAVE_FAILED -> R.string.leave_household_failed
+                          }),
                   style = MaterialTheme.typography.labelLarge,
                   color = colors.error,
                   modifier = Modifier.testTag(SettingsTestTags.LEAVE_ERROR),

@@ -59,6 +59,7 @@
     <string name="leave_household_title">Leave household?</string>
     <string name="leave_household_message">You will no longer see %1$s\'s fridge. The other members keep the household and its items. You can join again with the invite code.</string>
     <string name="leave_household_failed">Could not leave the household. Check your connection and try again.</string>
+    <string name="leave_household_no_session">Your session has ended. Sign in again to leave the household.</string>
     <string name="leave">Leave</string>
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>

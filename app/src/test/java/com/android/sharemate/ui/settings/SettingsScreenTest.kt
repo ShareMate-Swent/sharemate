@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.android.sharemate.R
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import org.junit.Assert.assertEquals
@@ -91,11 +92,24 @@ class SettingsScreenTest {
     showSettings(
         LeaveHouseholdUiState(isConfirming = true, error = LeaveHouseholdError.LEAVE_FAILED))
 
-    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_ERROR).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals(composeTestRule.activity.getString(R.string.leave_household_failed))
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertTextEquals("Try again")
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).performClick()
 
     assertEquals(1, confirms)
+  }
+
+  @Test
+  fun endedSessionShowsItsOwnMessageInsteadOfTheConnectionOne() {
+    showSettings(LeaveHouseholdUiState(isConfirming = true, error = LeaveHouseholdError.NO_SESSION))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals(composeTestRule.activity.getString(R.string.leave_household_no_session))
   }
 
   @Test
