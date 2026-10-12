@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.model.auth
 
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
@@ -91,6 +92,25 @@ class FirebaseAuthRepositoryTest {
       assertNull(repository.session.first())
       // Restore the test user so tearDown deletes it from the emulator.
       repository.signIn(email, "test-password")
+    }
+  }
+
+  @Test
+  fun googleCredentialEstablishesFirebaseSessionAndSignsOut() = runBlocking {
+    withTimeout(20000) {
+      val id = UUID.randomUUID().toString()
+      val email = "google-$id@example.org"
+      // Literal JSON ID tokens are accepted only by the local Auth emulator.
+      repository.signInWithGoogle("""{"sub":"$id","email":"$email","email_verified":true}""")
+      val session = repository.session.first { it != null }!!
+      assertEquals(email, session.email)
+      assertEquals(auth.currentUser?.uid, session.uid)
+      assertTrue(auth.currentUser!!.providerData.any { it.providerId == "google.com" })
+      repository.signOut()
+      assertNull(repository.session.first())
+      // Reauthenticate solely to let the existing fixture delete the emulator user.
+      repository.signInWithGoogle("""{"sub":"$id","email":"$email","email_verified":true}""")
+      assertEquals(session.uid, repository.session.first { it != null }?.uid)
     }
   }
 

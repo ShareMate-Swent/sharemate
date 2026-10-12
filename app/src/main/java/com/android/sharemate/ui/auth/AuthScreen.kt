@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
@@ -180,7 +181,7 @@ private fun PasswordField(
       modifier = Modifier.fillMaxWidth().testTag(tag))
 }
 
-private fun AuthUiError.messageResource(): Int =
+internal fun AuthUiError.messageResource(): Int =
     when (this) {
       AuthUiError.INVALID_EMAIL -> R.string.auth_error_email
       AuthUiError.PASSWORD_REQUIRED -> R.string.auth_error_password_required
@@ -191,5 +192,7 @@ private fun AuthUiError.messageResource(): Int =
       AuthUiError.NETWORK -> R.string.auth_error_network
       AuthUiError.TOO_MANY_REQUESTS -> R.string.auth_error_rate_limit
       AuthUiError.PROVIDER_DISABLED -> R.string.auth_error_provider_disabled
+      AuthUiError.GOOGLE_UNAVAILABLE -> R.string.auth_error_google_unavailable
+      AuthUiError.ACCOUNT_CONFLICT -> R.string.auth_error_account_conflict
       AuthUiError.UNKNOWN -> R.string.auth_error_unknown
     }
