@@ -42,6 +42,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.content.ActivityNotFoundException
 
 @RunWith(AndroidJUnit4::class)
 class FridgeItemTest {
@@ -291,5 +292,33 @@ class FridgeItemTest {
 
   private class PendingImage(val source: String, val size: Size) {
     val succeeds = CompletableDeferred<Boolean>()
+  }
+
+  @Test
+  fun attributionLinkWithoutBrowserDoesNotCrash() {
+    val url = "https://example.org/photo"
+    val attemptedLinks = mutableListOf<String>()
+    val failingHandler = object : UriHandler {
+      override fun openUri(uri: String) {
+        attemptedLinks += uri
+        throw IllegalArgumentException(
+            "Cannot open link",
+            ActivityNotFoundException("No browser installed"))
+      }
+    }
+  
+    compose.setContent {
+      CompositionLocalProvider(LocalUriHandler provides failingHandler) {
+        SampleAppTheme(dynamicColor = false) {
+          FridgeImageCredits(remote().copy(sourceUrl = url))
+        }
+      }
+    }
+  
+    compose.onNodeWithText("Image source").performClick()
+    compose.waitForIdle()
+  
+    assertEquals(listOf(url), attemptedLinks)
+    compose.onNodeWithText("Image source").assertIsDisplayed()
   }
 }
