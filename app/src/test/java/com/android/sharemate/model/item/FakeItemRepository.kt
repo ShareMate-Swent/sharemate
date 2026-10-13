@@ -27,6 +27,10 @@ class FakeItemRepository : ItemRepository {
   var editFailure: Exception? = null
   var editException: Exception? = null
   var editConfirmation: CompletableDeferred<Result<Unit>>? = null
+  val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
+  var statusFailure: Exception? = null
+  var statusException: Exception? = null
+  var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
@@ -84,8 +88,14 @@ class FakeItemRepository : ItemRepository {
     }
   }
 
-  override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
-      change(itemId) { it.copy(status = status) }
+  override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
+    statusChanges += itemId to status
+    statusException?.let { throw it }
+    statusFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
+    return change(itemId, statusConfirmation) { it.copy(status = status) }
+  }
 
   override fun deleteItemQueued(itemId: String): ItemWrite {
     if (itemId.isBlank() || '/' in itemId) {

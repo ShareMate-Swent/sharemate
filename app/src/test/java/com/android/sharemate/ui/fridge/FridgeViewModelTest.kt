@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -26,6 +27,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -49,6 +51,276 @@ class FridgeViewModelTest {
 
   private val milk = Item(id = "milk", name = "Milk", householdId = "test-household")
   private val bread = Item(id = "bread", name = "Bread", householdId = "test-household")
+
+  @Test
+  fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
+    val vm = viewModel()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
+    val active = milk.copy(ownerId = "other-member", category = "Dairy")
+    val history =
+        listOf(
+            active.copy(id = "eaten", status = ItemStatus.EATEN),
+            active.copy(id = "discarded", status = ItemStatus.DISCARDED))
+    repository.emitItems(history + bread.copy(category = "Bakery") + active)
+    vm.setSortOrder(FridgeSortOrder.NAME)
+    runCurrent()
+    assertEquals(listOf(bread.id, milk.id), vm.visibleItems.value.map { it.id })
+    vm.setCategoryFilter(" dairy ")
+    vm.setOwnerFilter("other-member")
+    runCurrent()
+    assertEquals(listOf(active), vm.visibleItems.value)
+    assertEquals(4, vm.uiState.value.items.size)
+  }
+
+  @Test
+  fun offlineStatusActionsPreserveDocumentsAndReleaseOnlyLocalLocks() = runTest {
+    repository.emitItems(listOf(milk.copy(ownerId = "other-member"), bread))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    assertEquals(setOf(milk.id), vm.uiState.value.pendingStatusIds)
+    vm.openEditItemDialog(milk.id)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    runCurrent()
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+    assertFalse(repository.statusConfirmation!!.isCompleted)
+    vm.setItemStatus(bread.id, ItemStatus.DISCARDED)
+    runCurrent()
+    assertEquals(
+        listOf(milk.id to ItemStatus.EATEN, bread.id to ItemStatus.DISCARDED),
+        repository.statusChanges)
+    assertEquals(
+        listOf(
+            milk.copy(ownerId = "other-member", status = ItemStatus.EATEN),
+            bread.copy(status = ItemStatus.DISCARDED)),
+        vm.uiState.value.items)
+    assertTrue(repository.deletedItemIds.isEmpty())
+    assertTrue(repository.edits.isEmpty())
+    vm.openAddItemDialog()
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+  }
+
+  @Test
+  fun statusFailuresAndCancellationPreserveItemsAndAllowRetry() = runTest {
+    for (failure in listOf(IOException("Failed"), CancellationException("Cancelled"))) {
+      for (throws in listOf(false, true)) {
+        repository.emitItems(listOf(milk))
+        repository.statusFailure = if (throws) null else failure
+        repository.statusException = if (throws) failure else null
+        val vm = viewModel()
+        runCurrent()
+        vm.setItemStatus(milk.id, ItemStatus.EATEN)
+        runCurrent()
+        assertEquals(listOf(milk), vm.uiState.value.items)
+        assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+        assertEquals(failure !is CancellationException, vm.uiState.value.statusError != null)
+        vm.uiState.value.statusError?.let {
+          assertFalse(it.isSyncFailure)
+          vm.dismissStatusError(it)
+        }
+        repository.statusFailure = null
+        repository.statusException = null
+        vm.setItemStatus(milk.id, ItemStatus.EATEN)
+        runCurrent()
+        assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+      }
+    }
+  }
+
+  @Test
+  fun olderStatusRejectionPreservesNewerStateDraftAndErrorIdentity() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    val vm = viewModel()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
+    runCurrent()
+    repository.statusConfirmation = first
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    assertTrue(vm.visibleItems.value.isEmpty())
+    repository.emitItems(listOf(milk)) // Firestore rejection rollback restores the active card.
+    runCurrent()
+    assertEquals(listOf(milk), vm.visibleItems.value)
+    repository.statusConfirmation = second
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    second.complete(Result.failure(IOException("Newer rejection")))
+    runCurrent()
+    val error = vm.uiState.value.statusError!!
+    assertTrue(error.isSyncFailure)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+    repository.emitItems(listOf(milk.copy(name = "Newer values")))
+    runCurrent()
+    vm.openEditItemDialog(milk.id)
+    vm.updateName("Unsaved draft")
+    first.completeExceptionally(IOException("Older rejection"))
+    runCurrent()
+    assertEquals(2, repository.statusChanges.size)
+    assertEquals("Newer values", vm.uiState.value.items.single().name)
+    assertEquals("Unsaved draft", vm.uiState.value.itemName)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+    assertSame(error, vm.uiState.value.statusError)
+    vm.dismissStatusError(error)
+    assertNull(vm.uiState.value.statusError)
+  }
+
+  @Test
+  fun olderStatusFailureIsIgnoredAfterNewerConfirmationSucceeds() = runTest {
+    assertOlderStatusFailureIgnored(exceptional = false)
+  }
+
+  @Test
+  fun olderExceptionalStatusCompletionIsIgnoredAfterNewerConfirmationSucceeds() = runTest {
+    assertOlderStatusFailureIgnored(exceptional = true)
+  }
+
+  private fun TestScope.assertOlderStatusFailureIgnored(exceptional: Boolean) {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = second
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    runCurrent()
+    second.complete(Result.success(Unit))
+    runCurrent()
+    if (exceptional) first.completeExceptionally(IOException("Old failure"))
+    else first.complete(Result.failure(IOException("Old failure")))
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+    assertEquals(
+        listOf(milk.id to ItemStatus.EATEN, milk.id to ItemStatus.DISCARDED),
+        repository.statusChanges)
+  }
+
+  @Test
+  fun newerStatusSubmissionInvalidatesOldFailureBeforeSubmissionCoroutineRuns() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = CompletableDeferred()
+    // Queue the old callback first, then accept a newer action before either coroutine runs.
+    first.complete(Result.failure(IOException("Old failure")))
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    assertEquals(setOf(milk.id), vm.uiState.value.pendingStatusIds)
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+    assertFalse(repository.statusConfirmation!!.isCompleted)
+  }
+
+  @Test
+  fun newerStatusForAnotherItemDoesNotSuppressOriginalItemFailure() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    val first = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.statusConfirmation = CompletableDeferred(Result.success(Unit))
+    vm.setItemStatus(bread.id, ItemStatus.DISCARDED)
+    runCurrent()
+    first.complete(Result.failure(IOException("Milk rejected")))
+    runCurrent()
+
+    assertEquals(milk.name, vm.uiState.value.statusError?.itemName)
+    assertTrue(vm.uiState.value.statusError!!.isSyncFailure)
+    assertEquals(
+        listOf(milk.copy(status = ItemStatus.EATEN), bread.copy(status = ItemStatus.DISCARDED)),
+        vm.uiState.value.items)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+  }
+
+  @Test
+  fun cancelledLatestStatusConfirmationDoesNotReportFailureOrCancelOlderWrite() = runTest {
+    repository.emitItems(listOf(milk))
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = first
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.statusConfirmation = second
+    vm.setItemStatus(milk.id, ItemStatus.DISCARDED)
+    runCurrent()
+    second.cancel(CancellationException("Cancelled confirmation"))
+    runCurrent()
+    assertNull(vm.uiState.value.statusError)
+    assertFalse(first.isCancelled)
+    first.complete(Result.failure(IOException("Stale failure after cancellation")))
+    runCurrent()
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(ItemStatus.DISCARDED, vm.uiState.value.items.single().status)
+  }
+
+  @Test
+  fun statusTargetsOnlyActiveHouseholdItemsAndRespectsDialogs() = runTest {
+    repository.emitItems(
+        listOf(
+            milk,
+            bread.copy(status = ItemStatus.EATEN),
+            milk.copy(id = "private", ownerId = "test-user", householdId = null),
+            milk.copy(id = "foreign", householdId = "other-household")))
+    val vm = viewModel()
+    runCurrent()
+    listOf("", "missing", bread.id, "private", "foreign").forEach {
+      vm.setItemStatus(it, ItemStatus.DISCARDED)
+    }
+    vm.setItemStatus(milk.id, ItemStatus.ACTIVE)
+    vm.openEditItemDialog(milk.id)
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    vm.dismissAddItemDialog()
+    vm.requestRemoval(milk.id)
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    vm.cancelRemoval()
+    repository.emitItems(emptyList())
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    assertTrue(repository.statusChanges.isEmpty())
+    assertTrue(repository.deletedItemIds.isEmpty())
+  }
+
+  @Test
+  fun clearingViewModelDetachesStatusConfirmationWithoutCancellingWrite() = runTest {
+    repository.emitItems(listOf(milk))
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    repository.statusConfirmation = confirmation
+    val vm = viewModel()
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    viewModelStore.clear()
+    assertFalse(confirmation.isCancelled)
+    confirmation.complete(Result.failure(IOException("Late rejection")))
+    runCurrent()
+    assertNull(vm.uiState.value.statusError)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+  }
 
   @Test
   fun editPrefillsAllFieldsAndCancelDiscardsChanges() = runTest {
