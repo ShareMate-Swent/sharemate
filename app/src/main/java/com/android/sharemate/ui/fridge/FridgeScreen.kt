@@ -496,9 +496,8 @@ fun FridgeItem(
       shape = RoundedCornerShape(12.dp),
       color = containerColor,
       contentColor = contentColor) {
-                Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FridgeItemImage(item, imageLoader)
                 Column(
