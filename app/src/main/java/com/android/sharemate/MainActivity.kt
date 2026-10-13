@@ -18,17 +18,20 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -37,10 +40,13 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
 import com.android.sharemate.ui.fridge.FridgeScreen
+import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.TopLevelDestination
@@ -60,6 +66,9 @@ class MainActivity : ComponentActivity() {
   }
 
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
+  private val itemRepository: ItemRepository by lazy {
+    FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
 
   private val authViewModel: AuthViewModel by viewModels {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
@@ -76,9 +85,17 @@ class MainActivity : ComponentActivity() {
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
+                session,
                 household,
                 onMembershipChanged ->
               val navController = rememberNavController()
+              DisposableEffect(navController) {
+                onDispose {
+                  if (!isChangingConfigurations) {
+                    clearFridgeNavigation(navController)
+                  }
+                }
+              }
               val currentRoute =
                   navController.currentBackStackEntryAsState().value?.destination?.route
               Scaffold(
@@ -121,9 +138,19 @@ class MainActivity : ComponentActivity() {
                     startDestination = TopLevelDestination.FRIDGE.route,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                 ) {
-                  composable(TopLevelDestination.FRIDGE.route) {
+                  composable(TopLevelDestination.FRIDGE.route) { entry ->
+                    val fridgeViewModel: FridgeViewModel =
+                        viewModel(
+                            viewModelStoreOwner = entry,
+                            key = "fridge_${session.uid}_${household.id}",
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    FridgeViewModel(itemRepository, session.uid, household.id)
+                                  }
+                                })
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      FridgeScreen()
+                      FridgeScreen(viewModel = fridgeViewModel)
                     }
                   }
                   composable(TopLevelDestination.RECIPES.route) {
@@ -162,4 +189,18 @@ class MainActivity : ComponentActivity() {
       }
     }
   }
+}
+
+internal fun clearFridgeNavigation(navController: NavHostController) {
+  val fridgeEntry =
+      try {
+        navController.getBackStackEntry(TopLevelDestination.FRIDGE.route)
+      } catch (_: IllegalArgumentException) {
+        null
+      }
+  if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
+    fridgeEntry.viewModelStore.clear()
+  }
+  TopLevelDestination.entries.forEach { navController.clearBackStack(it.route) }
+  navController.popBackStack(navController.graph.id, inclusive = true)
 }
