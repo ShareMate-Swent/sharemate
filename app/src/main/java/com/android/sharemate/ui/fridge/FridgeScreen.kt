@@ -471,12 +471,8 @@ fun FridgeItem(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                       Text(item.name, style = MaterialTheme.typography.titleMedium)
-                      item.category?.let {
-                        Text(stringResource(R.string.fridge_item_category, it))
-                      }
-                      item.expirationDate?.let {
-                        Text(it.expiryDescription(expiryStatus))
-                      }
+                      item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
+                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
                     }
               }
               FridgeImageCredits(item.image)

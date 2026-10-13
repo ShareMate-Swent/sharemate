@@ -27,7 +27,6 @@ class ItemTest {
   fun imageDefaultsToNullForLegacyItems() {
     assertNull(Item().image)
   }
-}
 
   @Test
   fun categoryIsOptionalAndCanBeProvided() {
