@@ -457,7 +457,6 @@ private fun ItemFilterChip(
 }
 
 @Composable
-@Composable
 fun FridgeItem(
     item: Item,
     modifier: Modifier = Modifier,
