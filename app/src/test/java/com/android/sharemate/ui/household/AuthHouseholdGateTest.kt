@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
@@ -103,6 +104,7 @@ class AuthHouseholdGateTest {
     households.memberships["student"] = Household(id = "old-home")
     compose.setContent { GateContent() }
     compose.onNodeWithTag("private_app_household").assertTextEquals("old-home")
+    compose.onNodeWithTag("private_app_user").assertTextEquals("student")
 
     compose.onNodeWithTag("private_app_leave").performClick()
 
@@ -151,10 +153,12 @@ class AuthHouseholdGateTest {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
     SampleAppTheme(dynamicColor = false) {
       AuthHouseholdGate(authViewModel, auth, households, googleTokenProvider = { null }) {
+          session,
           household,
           onMembershipChanged ->
         Text("Private application", Modifier.testTag("private_app"))
         Text(household.id, Modifier.testTag("private_app_household"))
+        Text(session.uid, Modifier.testTag("private_app_user"))
         TextButton(
             onClick = {
               households.memberships.remove("student")

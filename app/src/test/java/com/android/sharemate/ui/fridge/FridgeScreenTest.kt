@@ -39,6 +39,51 @@ class FridgeScreenTest {
   @get:Rule val composeRule = createComposeRule()
 
   @Test
+  fun statusActionsAreAccessibleAndForwardTheCorrectLifecycleValue() {
+    val changes = mutableListOf<ItemStatus>()
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeItem(
+            item = Item(id = "milk", name = "Milk"),
+            statusEnabled = true,
+            onStatusChange = { changes += it })
+      }
+    }
+    composeRule.onNodeWithContentDescription("Mark Milk as Eaten").assertIsEnabled().performClick()
+    composeRule
+        .onNodeWithContentDescription("Mark Milk as Thrown away")
+        .assertIsEnabled()
+        .performClick()
+    assertEquals(listOf(ItemStatus.EATEN, ItemStatus.DISCARDED), changes)
+  }
+
+  @Test
+  fun activeScreenHidesHistoryAndDisablesActionsDuringLocalSubmission() {
+    val item = Item(id = "milk", name = "Milk")
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState =
+                FridgeUiState(
+                    items =
+                        listOf(
+                            item,
+                            item.copy(id = "eaten", status = ItemStatus.EATEN),
+                            item.copy(id = "discarded", status = ItemStatus.DISCARDED)),
+                    pendingStatusIds = setOf(item.id)),
+            onStatusChange = { _, _ -> },
+            onEditItem = {})
+      }
+    }
+    composeRule.onNodeWithTag(C.Tag.fridge_eaten_prefix + item.id).assertIsNotEnabled()
+    composeRule.onNodeWithTag(C.Tag.fridge_discard_prefix + item.id).assertIsNotEnabled()
+    composeRule.onNodeWithTag(C.Tag.fridge_edit_prefix + item.id).assertIsNotEnabled()
+    listOf("eaten", "discarded").forEach {
+      composeRule.onNodeWithTag(C.Tag.fridge_item_prefix + it).assertDoesNotExist()
+    }
+  }
+
+  @Test
   fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
     val requests = mutableListOf<String>()
     val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))

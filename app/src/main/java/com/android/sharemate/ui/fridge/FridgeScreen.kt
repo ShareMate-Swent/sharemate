@@ -5,6 +5,7 @@ package com.android.sharemate.ui.fridge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -65,7 +66,10 @@ fun FridgeScreen(
     onEditItem: ((String) -> Unit)? = null,
     onQuantityChange: (String) -> Unit = {},
     onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
+    onStatusChange: ((String, ItemStatus) -> Unit)? = null,
+    onDismissStatusError: (FridgeStatusError) -> Unit = {},
 ) {
+  val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
     Text(
         text = stringResource(R.string.fridge_title),
@@ -113,14 +117,29 @@ fun FridgeScreen(
           color = MaterialTheme.colorScheme.error,
           modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_inventory_error))
     }
+    uiState.statusError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen, uiState.pendingRemovalItem) {
+        if (!uiState.isAddItemDialogOpen && uiState.pendingRemovalItem == null) {
+          delay(8_000)
+          onDismissStatusError(error)
+        }
+      }
+      Text(
+          stringResource(
+              if (error.isSyncFailure) R.string.fridge_status_sync_failed
+              else R.string.fridge_status_failed,
+              error.itemName),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_status_error))
+    }
     Box(
         modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
         contentAlignment = Alignment.Center) {
-          if (uiState.items.isNotEmpty()) {
+          if (activeItems.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                  items(uiState.items, key = { it.id }) { item ->
+                  items(activeItems, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
                         editEnabled =
@@ -129,13 +148,23 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingStatusIds &&
                                 item.status == ItemStatus.ACTIVE,
                         onEdit = { onEditItem?.invoke(item.id) },
+                        statusEnabled =
+                            onStatusChange != null &&
+                                !uiState.isSaving &&
+                                !uiState.isDeleting &&
+                                !uiState.isAddItemDialogOpen &&
+                                uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingStatusIds,
+                        onStatusChange = { onStatusChange?.invoke(item.id, it) },
                         removalEnabled =
                             onRemoveItem != null &&
                                 !uiState.isDeleting &&
                                 !uiState.isSaving &&
-                                !uiState.isAddItemDialogOpen,
+                                !uiState.isAddItemDialogOpen &&
+                                item.id !in uiState.pendingStatusIds,
                         onRemove = { onRemoveItem?.invoke(item.id) })
                   }
                 }
@@ -235,6 +264,8 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onEditItem = viewModel::openEditItemDialog,
       onQuantityChange = viewModel::updateQuantity,
       onDismissEditSyncError = viewModel::dismissEditSyncError,
+      onStatusChange = viewModel::setItemStatus,
+      onDismissStatusError = viewModel::dismissStatusError,
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
@@ -257,6 +288,8 @@ fun FridgeItem(
     onRemove: () -> Unit = {},
     editEnabled: Boolean = false,
     onEdit: () -> Unit = {},
+    statusEnabled: Boolean = false,
+    onStatusChange: (ItemStatus) -> Unit = {},
 ) {
   val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   val editDescription = stringResource(R.string.fridge_edit_description, item.name)
@@ -290,23 +323,46 @@ fun FridgeItem(
               Text(item.name, style = MaterialTheme.typography.titleMedium)
               item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
               item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
-              TextButton(
-                  onClick = onEdit,
-                  enabled = editEnabled,
-                  modifier =
-                      Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
-                        contentDescription = editDescription
-                      }) {
-                    Text(stringResource(R.string.fridge_edit_item))
-                  }
-              TextButton(
-                  onClick = onRemove,
-                  enabled = removalEnabled,
-                  modifier =
-                      Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
-                        contentDescription = removeDescription
-                      }) {
-                    Text(stringResource(R.string.fridge_remove))
+              Row {
+                TextButton(
+                    onClick = onEdit,
+                    enabled = editEnabled,
+                    modifier =
+                        Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
+                          contentDescription = editDescription
+                        }) {
+                      Text(stringResource(R.string.fridge_edit_item))
+                    }
+                TextButton(
+                    onClick = onRemove,
+                    enabled = removalEnabled,
+                    modifier =
+                        Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
+                          contentDescription = removeDescription
+                        }) {
+                      Text(stringResource(R.string.fridge_remove))
+                    }
+              }
+              if (item.status == ItemStatus.ACTIVE)
+                  Row {
+                    listOf(
+                            ItemStatus.EATEN to R.string.fridge_eaten,
+                            ItemStatus.DISCARDED to R.string.fridge_discarded)
+                        .forEach { (status, resource) ->
+                          val label = stringResource(resource)
+                          val description =
+                              stringResource(R.string.fridge_status_description, item.name, label)
+                          TextButton(
+                              onClick = { onStatusChange(status) },
+                              enabled = statusEnabled,
+                              modifier =
+                                  Modifier.testTag(
+                                          (if (status == ItemStatus.EATEN) C.Tag.fridge_eaten_prefix
+                                          else C.Tag.fridge_discard_prefix) + item.id)
+                                      .semantics { contentDescription = description }) {
+                                Text(label)
+                              }
+                        }
                   }
             }
       }

@@ -55,6 +55,10 @@ class ManualItemCreationTest {
         .assertIsEnabled()
         .performClick()
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(C.Tag.fridge_quantity_input)
+        .assertIsDisplayed()
+        .assertTextContains("1")
     composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled().performClick()
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_form_error)
@@ -119,17 +123,84 @@ class ManualItemCreationTest {
   }
 
   @Test
+  fun enteredQuantityIsSavedWithTheNewItem() {
+    val repository = TestItemRepository()
+    val viewModel = showManualEntryScreen(repository)
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    composeTestRule
+        .onNodeWithTag(C.Tag.fridge_quantity_input)
+        .performScrollTo()
+        .performTextReplacement("12")
+    Espresso.closeSoftKeyboard()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      viewModel.uiState.value.items.size == 1 && !viewModel.uiState.value.isAddItemDialogOpen
+    }
+    composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
+    composeTestRule.runOnIdle {
+      assertEquals(1, repository.submissions.size)
+      assertEquals(12, repository.submissions.single().quantity)
+      assertEquals(12, viewModel.uiState.value.items.single().quantity)
+    }
+  }
+
+  @Test
+  fun invalidQuantitiesShowValidationAndCanBeCorrected() {
+    val repository = TestItemRepository()
+    val viewModel = showManualEntryScreen(repository)
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    listOf("", "abc", "1.5", "0", "-1", "2147483648").forEach { input ->
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_quantity_input)
+          .performScrollTo()
+          .performTextReplacement(input)
+      Espresso.closeSoftKeyboard()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled().performClick()
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_form_error)
+          .performScrollTo()
+          .assertIsDisplayed()
+          .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_quantity_invalid))
+      composeTestRule.runOnIdle {
+        assertTrue(repository.submissions.isEmpty())
+        assertTrue(viewModel.uiState.value.items.isEmpty())
+        assertEquals(input, viewModel.uiState.value.itemQuantity)
+      }
+    }
+    composeTestRule
+        .onNodeWithTag(C.Tag.fridge_quantity_input)
+        .performScrollTo()
+        .performTextReplacement("4")
+    Espresso.closeSoftKeyboard()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) {
+      viewModel.uiState.value.items.size == 1 && !viewModel.uiState.value.isAddItemDialogOpen
+    }
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+    composeTestRule.runOnIdle {
+      assertEquals(1, repository.submissions.size)
+      assertEquals(4, repository.submissions.single().quantity)
+    }
+  }
+
+  @Test
   fun cancelDoesNotSaveAnItem() {
     val repository = TestItemRepository()
     showManualEntryScreen(repository)
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    composeTestRule.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("4")
     Espresso.closeSoftKeyboard()
     composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_item).assertIsEnabled().performClick()
 
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
     composeTestRule.onNodeWithTag(C.Tag.fridge_empty).assertIsDisplayed()
     composeTestRule.runOnIdle { assertTrue(repository.submissions.isEmpty()) }
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("1")
+    composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_item).performClick()
   }
 
   @Test
@@ -138,6 +209,7 @@ class ManualItemCreationTest {
     val viewModel = showManualEntryScreen(repository)
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    composeTestRule.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("3")
     Espresso.closeSoftKeyboard()
     composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) {
@@ -154,6 +226,10 @@ class ManualItemCreationTest {
         .onNodeWithTag(C.Tag.fridge_name_input)
         .performScrollTo()
         .assertTextContains("Milk")
+    composeTestRule
+        .onNodeWithTag(C.Tag.fridge_quantity_input)
+        .performScrollTo()
+        .assertTextContains("3")
     composeTestRule.runOnIdle {
       assertEquals(1, repository.submissions.size)
       assertTrue(viewModel.uiState.value.items.isEmpty())
@@ -170,6 +246,8 @@ class ManualItemCreationTest {
     composeTestRule.runOnIdle {
       assertEquals(2, repository.submissions.size)
       assertEquals("Milk", viewModel.uiState.value.items.single().name)
+      assertEquals(listOf(3, 3), repository.submissions.map { it.quantity })
+      assertEquals(3, viewModel.uiState.value.items.single().quantity)
     }
   }
 
@@ -180,6 +258,7 @@ class ManualItemCreationTest {
     val viewModel = showManualEntryScreen(repository)
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    composeTestRule.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("6")
     Espresso.closeSoftKeyboard()
     composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.isSaving }
@@ -188,6 +267,7 @@ class ManualItemCreationTest {
             C.Tag.fridge_save_item,
             C.Tag.fridge_cancel_item,
             C.Tag.fridge_name_input,
+            C.Tag.fridge_quantity_input,
             C.Tag.fridge_category_input,
             C.Tag.fridge_expiration_input)
         .forEach { testTag -> composeTestRule.onNodeWithTag(testTag).assertIsNotEnabled() }
@@ -201,7 +281,11 @@ class ManualItemCreationTest {
     }
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
     composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
-    composeTestRule.runOnIdle { assertEquals(1, repository.submissions.size) }
+    composeTestRule.runOnIdle {
+      assertEquals(1, repository.submissions.size)
+      assertEquals(6, repository.submissions.single().quantity)
+      assertEquals(6, viewModel.uiState.value.items.single().quantity)
+    }
   }
 
   private fun showManualEntryScreen(repository: TestItemRepository): FridgeViewModel {

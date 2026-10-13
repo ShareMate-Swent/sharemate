@@ -26,10 +26,12 @@ import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.util.Date
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +40,38 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FridgeScreenTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private lateinit var repository: ScreenItemRepository
+  private lateinit var viewModel: FridgeViewModel
+
+  @Test
+  fun queuedStatusActionsRetainRecordsAndRejectionRestoresAnEditableCard() {
+    showScreen()
+    compose.onNodeWithTag(C.Tag.fridge_eaten_prefix + "carrot").performScrollTo().performClick()
+    item("carrot").assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.fridge_discard_prefix + "banana").performScrollTo().performClick()
+    item("banana").assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(
+          listOf("carrot" to ItemStatus.EATEN, "banana" to ItemStatus.DISCARDED),
+          repository.statusChanges)
+      assertEquals(3, viewModel.uiState.value.items.size)
+      assertTrue(viewModel.uiState.value.pendingStatusIds.isEmpty())
+      assertTrue(repository.confirmations.none { it.isCompleted })
+      repository.inventory.value =
+          repository.inventory.value.map {
+            if (it.id == "carrot") it.copy(status = ItemStatus.ACTIVE) else it
+          }
+      repository.confirmations.first().complete(Result.failure(IllegalStateException("Denied")))
+    }
+    item("carrot").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_status_error).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(
+          ItemStatus.DISCARDED, viewModel.uiState.value.items.first { it.id == "banana" }.status)
+    }
+    compose.onNodeWithTag(C.Tag.fridge_edit_prefix + "carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
+  }
 
   @Test
   fun sortChipsChangeTheRenderedOrder() {
@@ -111,9 +145,9 @@ class FridgeScreenTest {
   }
 
   private fun showScreen(items: List<Item> = inventory) {
-    lateinit var viewModel: FridgeViewModel
     compose.runOnUiThread {
-      viewModel = FridgeViewModel(ReadOnlyItemRepository(items), "alice", "household")
+      repository = ScreenItemRepository(items)
+      viewModel = FridgeViewModel(repository, "alice", "household")
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
@@ -138,8 +172,10 @@ class FridgeScreenTest {
     }
   }
 
-  private class ReadOnlyItemRepository(items: List<Item>) : ItemRepository {
-    private val inventory = MutableStateFlow(items)
+  private class ScreenItemRepository(items: List<Item>) : ItemRepository {
+    val inventory = MutableStateFlow(items)
+    val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
+    val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
@@ -150,8 +186,14 @@ class FridgeScreenTest {
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
 
-    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
-        error("Not used in this test")
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
+      statusChanges += itemId to status
+      inventory.value =
+          inventory.value.map { if (it.id == itemId) it.copy(status = status) else it }
+      val confirmation = CompletableDeferred<Result<Unit>>()
+      confirmations += confirmation
+      return ItemWrite.Queued(confirmation)
+    }
 
     override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
