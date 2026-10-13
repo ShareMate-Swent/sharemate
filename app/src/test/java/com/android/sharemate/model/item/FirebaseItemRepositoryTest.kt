@@ -36,6 +36,49 @@ import org.mockito.Mockito.`when`
 
 class FirebaseItemRepositoryTest {
 
+  @Test
+  fun inventoryReadsStoredImageAndAttribution() {
+    val doc = mock(DocumentSnapshot::class.java)
+    `when`(doc.id).thenReturn("milk")
+    `when`(doc.getString("name")).thenReturn("Milk")
+    `when`(doc.getString("ownerId")).thenReturn("owner")
+    `when`(doc.get("image"))
+        .thenReturn(
+            mapOf(
+                "origin" to "REMOTE_IMAGE",
+                "reference" to "https://example.org/milk.jpg",
+                "author" to "Jane",
+                "sourceUrl" to "https://example.org/photo",
+                "license" to "by"))
+    val image = doc.toItemOrNull()!!.image!!
+    assertEquals(ItemImageOrigin.REMOTE_IMAGE, image.origin)
+    assertEquals("https://example.org/milk.jpg", image.reference)
+    assertEquals("Jane", image.author)
+    assertEquals("https://example.org/photo", image.sourceUrl)
+    assertEquals("by", image.license)
+  }
+
+  @Test
+  fun invalidOptionalImagesDoNotDiscardInventoryItems() {
+    val doc = mock(DocumentSnapshot::class.java)
+    `when`(doc.id).thenReturn("milk")
+    `when`(doc.getString("name")).thenReturn("Milk")
+    `when`(doc.getString("ownerId")).thenReturn("owner")
+    listOf(
+            null,
+            "invalid",
+            mapOf("reference" to ""),
+            mapOf("origin" to "UNKNOWN", "reference" to "photo"))
+        .forEach {
+          `when`(doc.get("image")).thenReturn(it)
+          assertEquals("Milk", doc.toItemOrNull()!!.name)
+          assertNull(doc.toItemOrNull()!!.image)
+        }
+    `when`(doc.get("image"))
+        .thenReturn(mapOf("origin" to "PERSONAL_PHOTO", "reference" to "content://photos/42"))
+    assertEquals(ItemImageOrigin.PERSONAL_PHOTO, doc.toItemOrNull()!!.image!!.origin)
+  }
+
   private lateinit var firestore: FirebaseFirestore
   private lateinit var collection: CollectionReference
   private lateinit var repository: FirebaseItemRepository

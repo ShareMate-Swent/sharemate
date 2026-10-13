@@ -157,9 +157,28 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
               householdId = getString("householdId")?.takeIf { it.isNotBlank() },
               expirationDate = getTimestamp("expirationDate")?.toDate(),
               category = getString("category")?.takeIf { it.isNotBlank() },
+              image = toItemImageOrNull(),
               quantity = quantity,
               status = status)
     } catch (_: RuntimeException) {
       // A malformed document must not terminate a flow containing other valid items.
       null
     }
+
+/** Ignore malformed optional image metadata without dropping an otherwise valid item. */
+private fun DocumentSnapshot.toItemImageOrNull(): ItemImage? {
+  val data = get("image") as? Map<*, *> ?: return null
+  val reference = (data["reference"] as? String)?.takeIf(String::isNotBlank) ?: return null
+  val origin = ItemImageOrigin.values().firstOrNull { it.name == data["origin"] } ?: return null
+  return ItemImage(
+      origin = origin,
+      reference = reference,
+      author = data["author"] as? String,
+      sourceName = data["sourceName"] as? String,
+      sourceUrl = data["sourceUrl"] as? String,
+      title = data["title"] as? String,
+      license = data["license"] as? String,
+      licenseUrl = data["licenseUrl"] as? String,
+      licenseVersion = data["licenseVersion"] as? String,
+      authorUrl = data["authorUrl"] as? String)
+}

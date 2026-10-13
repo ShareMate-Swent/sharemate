@@ -24,10 +24,12 @@ import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,12 +104,14 @@ class ManualItemCreationTest {
     composeTestRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
     composeTestRule.onNodeWithTag("${C.Tag.fridge_item_prefix}test-item-1").assertIsDisplayed()
     composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText(composeTestRule.activity.getString(R.string.fridge_item_category, "Dairy"))
-        .assertIsDisplayed()
+    composeTestRule.onNodeWithText("Qty: 1 unit").assertIsDisplayed()
     composeTestRule
         .onNodeWithText(
-            "Expires ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(storedExpirationDate)}")
+            composeTestRule.activity.getString(
+                R.string.fridge_card_expiration,
+                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                    .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                    .format(storedExpirationDate)))
         .assertIsDisplayed()
     composeTestRule.runOnIdle {
       val expected =

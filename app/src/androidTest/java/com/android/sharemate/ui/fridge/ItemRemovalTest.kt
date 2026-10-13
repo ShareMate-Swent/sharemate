@@ -140,6 +140,7 @@ class ItemRemovalTest {
   }
 
   private fun requestRemoval(item: Item) {
+    composeTestRule.onNodeWithTag("fridge_item_actions_${item.id}").performClick()
     composeTestRule
         .onNodeWithTag("${C.Tag.fridge_remove_prefix}${item.id}")
         .assertIsDisplayed()
