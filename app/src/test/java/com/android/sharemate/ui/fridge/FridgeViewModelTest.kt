@@ -898,12 +898,72 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun addQuantityDefaultsToOneAndCancelResetsTheDraft() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog()
+    assertEquals("1", vm.uiState.value.itemQuantity)
+    vm.updateQuantity("4")
+    vm.dismissAddItemDialog()
+    assertTrue(repository.addedItems.isEmpty())
+    vm.openAddItemDialog()
+    assertEquals("1", vm.uiState.value.itemQuantity)
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(1, repository.addedItems.single().quantity)
+    assertEquals(1, vm.uiState.value.items.single().quantity)
+    assertEquals("1", vm.uiState.value.itemQuantity)
+  }
+
+  @Test
+  fun addSavesPositiveTrimmedAndMaximumQuantities() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    listOf("2", " 12 ", Int.MAX_VALUE.toString()).forEach { input ->
+      vm.openAddItemDialog()
+      assertEquals("1", vm.uiState.value.itemQuantity)
+      vm.updateName("Milk")
+      vm.updateQuantity(input)
+      vm.saveItem()
+      runCurrent()
+      assertEquals(input.trim().toInt(), repository.addedItems.last().quantity)
+      assertEquals(input.trim().toInt(), vm.uiState.value.items.last().quantity)
+      assertFalse(vm.uiState.value.isAddItemDialogOpen)
+      assertEquals("1", vm.uiState.value.itemQuantity)
+    }
+    assertEquals(3, repository.addedItems.size)
+  }
+
+  @Test
+  fun invalidAddQuantitiesKeepTheDraftWithoutSubmitting() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    listOf("", " ", "abc", "1.5", "0", "-1", "2147483648", "999999999999999999999").forEach { input
+      ->
+      vm.updateQuantity(input)
+      assertNull(vm.uiState.value.formError)
+      vm.saveItem()
+      runCurrent()
+      assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+      assertEquals(input, vm.uiState.value.itemQuantity)
+      assertTrue(vm.uiState.value.isAddItemDialogOpen)
+      assertFalse(vm.uiState.value.isSaving)
+      assertTrue(repository.addedItems.isEmpty())
+      assertTrue(vm.uiState.value.items.isEmpty())
+    }
+  }
+
+  @Test
   fun failedSaveKeepsTheDraftAndCanBeRetried() = runTest {
     repository.returnNullOnAdd = true
     val viewModel = viewModel()
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
+    viewModel.updateQuantity("3")
     viewModel.saveItem()
     runCurrent()
 
@@ -912,12 +972,17 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
     assertEquals("Milk", viewModel.uiState.value.itemName)
     assertFalse(viewModel.uiState.value.isSaving)
+    assertEquals("3", viewModel.uiState.value.itemQuantity)
+    assertEquals(3, repository.addedItems.single().quantity)
 
     repository.returnNullOnAdd = false
     viewModel.saveItem()
     runCurrent()
     assertEquals(1, viewModel.uiState.value.items.size)
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertEquals(listOf(3, 3), repository.addedItems.map { it.quantity })
+    assertEquals(3, viewModel.uiState.value.items.single().quantity)
+    assertEquals("1", viewModel.uiState.value.itemQuantity)
   }
 
   @Test
@@ -927,6 +992,7 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
+    viewModel.updateQuantity("5")
     viewModel.saveItem()
     runCurrent()
 
@@ -934,6 +1000,13 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.items.isEmpty())
     assertEquals("Milk", viewModel.uiState.value.itemName)
     assertFalse(viewModel.uiState.value.isSaving)
+    assertEquals("5", viewModel.uiState.value.itemQuantity)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+    repository.addFailure = null
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(listOf(5, 5), repository.addedItems.map { it.quantity })
+    assertEquals(5, viewModel.uiState.value.items.single().quantity)
   }
 
   @Test
@@ -944,9 +1017,11 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
+    viewModel.updateQuantity("6")
     viewModel.saveItem()
     viewModel.saveItem()
     viewModel.updateName("Bread")
+    viewModel.updateQuantity("9")
     viewModel.dismissAddItemDialog()
     runCurrent()
 
@@ -954,11 +1029,15 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.isSaving)
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
     assertEquals("Milk", viewModel.uiState.value.itemName)
+    assertEquals("6", viewModel.uiState.value.itemQuantity)
+    assertEquals(6, repository.addedItems.single().quantity)
 
     gate.complete(Unit)
     runCurrent()
     assertEquals(1, viewModel.uiState.value.items.size)
     assertFalse(viewModel.uiState.value.isSaving)
+    assertEquals(1, repository.addedItems.size)
+    assertEquals(6, viewModel.uiState.value.items.single().quantity)
   }
 
   @Test
