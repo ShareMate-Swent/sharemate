@@ -56,4 +56,6 @@
     <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
     <string name="fridge_removing">Removing…</string>
     <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
+    <string name="notif_channel_expiration_name">Food expiry reminders</string>
+    <string name="notif_channel_expiration_desc">Notifications for food items that are nearing their expiry date.</string>
 </resources>

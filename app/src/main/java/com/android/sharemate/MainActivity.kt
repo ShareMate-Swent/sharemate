@@ -1,6 +1,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -64,6 +66,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    createExpirationChannel()
     setContent {
       SampleAppTheme(dynamicColor = false) {
         AuthHouseholdGate(
@@ -145,5 +148,15 @@ class MainActivity : ComponentActivity() {
             }
       }
     }
+  }
+
+  private fun createExpirationChannel() {
+    val channel =
+      NotificationChannel(
+        ExpirationNotifier.CHANNEL_ID,
+        getString(R.string.notif_channel_expiration_name),
+        NotificationManager.IMPORTANCE_DEFAULT,
+      ).apply { description = getString(R.string.notif_channel_expiration_desc) }
+    getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
   }
 }
