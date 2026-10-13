@@ -1,5 +1,7 @@
+// Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,12 +13,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -36,7 +44,10 @@ import com.android.sharemate.R
 fun AuthWelcomeScreen(
     onLogIn: () -> Unit,
     onCreateAccount: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onGoogleSignIn: () -> Unit = {},
+    isLoading: Boolean = false,
+    error: AuthUiError? = null,
 ) {
   AuthTheme {
     Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -46,7 +57,7 @@ fun AuthWelcomeScreen(
                 Modifier.widthIn(max = 520.dp)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .heightIn(min = maxHeight)
+                    .heightIn(min = this@BoxWithConstraints.maxHeight)
                     .padding(horizontal = 24.dp, vertical = 24.dp)
                     .testTag("auth_welcome"),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -77,8 +88,37 @@ fun AuthWelcomeScreen(
               Column(
                   modifier = Modifier.padding(top = 32.dp),
                   horizontalAlignment = Alignment.CenterHorizontally) {
+                    error?.let {
+                      Text(
+                          stringResource(it.messageResource()),
+                          color = MaterialTheme.colorScheme.error,
+                          modifier = Modifier.testTag("auth_error"))
+                    }
+                    if (isLoading) {
+                      CircularProgressIndicator(Modifier.testTag("auth_google_loading"))
+                    }
+                    OutlinedButton(
+                        onClick = onGoogleSignIn,
+                        enabled = !isLoading,
+                        colors =
+                            ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color.White, contentColor = Color(0xFF1F1F1F)),
+                        border = BorderStroke(1.dp, Color(0xFF747775)),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("auth_google_sign_in")) {
+                          Image(
+                              painterResource(R.drawable.google_g),
+                              contentDescription = null,
+                              modifier = Modifier.size(20.dp))
+                          Spacer(Modifier.width(10.dp))
+                          Text(stringResource(R.string.auth_google_sign_in))
+                        }
+                    Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = onLogIn,
+                        enabled = !isLoading,
                         modifier =
                             Modifier.fillMaxWidth()
                                 .heightIn(min = 48.dp)
@@ -87,6 +127,7 @@ fun AuthWelcomeScreen(
                         }
                     TextButton(
                         onClick = onCreateAccount,
+                        enabled = !isLoading,
                         modifier = Modifier.testTag("auth_welcome_signup")) {
                           Text(stringResource(R.string.auth_create_account))
                         }

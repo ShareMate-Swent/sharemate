@@ -19,6 +19,8 @@ class ItemTest {
     assertEquals(expiration, item.expirationDate)
     assertNull(item.category)
     assertNull(item.image)
+    assertEquals(1, item.quantity)
+    assertEquals(ItemStatus.ACTIVE, item.status)
   }
 
   @Test
@@ -30,5 +32,18 @@ class ItemTest {
   fun categoryIsOptionalAndCanBeProvided() {
     assertNull(Item().category)
     assertEquals("Dairy", Item(category = "Dairy").category)
+  }
+
+  @Test
+  fun quantityAndStatusCanBeEditedWithoutChangingIdentity() {
+    val original = Item(id = "id", ownerId = "owner", householdId = "household")
+    for (status in ItemStatus.values()) {
+      val edited = original.copy(quantity = 3, status = status)
+      assertEquals(3, edited.quantity)
+      assertEquals(status, edited.status)
+      assertEquals(original.id, edited.id)
+      assertEquals(original.ownerId, edited.ownerId)
+      assertEquals(original.householdId, edited.householdId)
+    }
   }
 }

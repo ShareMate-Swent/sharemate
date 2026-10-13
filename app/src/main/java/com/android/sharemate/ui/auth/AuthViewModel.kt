@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -30,6 +31,8 @@ enum class AuthUiError {
   NETWORK,
   TOO_MANY_REQUESTS,
   PROVIDER_DISABLED,
+  GOOGLE_UNAVAILABLE,
+  ACCOUNT_CONFLICT,
   UNKNOWN
 }
 
@@ -44,7 +47,10 @@ data class AuthUiState(
     val error: AuthUiError? = null
 )
 
-class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
+class AuthViewModel(
+    private val repository: AuthRepository,
+    private val clearCredentialState: suspend () -> Unit = {},
+) : ViewModel() {
   private val mutableState = MutableStateFlow(AuthUiState())
   val state = mutableState.asStateFlow()
 
@@ -124,10 +130,59 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     }
   }
 
+  /**
+   * The picker runs in the caller's UI scope; only the token exchange uses the retained VM scope.
+   */
+  suspend fun signInWithGoogle(tokenProvider: suspend () -> String?) {
+    val current = state.value
+    if (current.isLoading || current.isRestoringSession || current.session != null) return
+    mutableState.update { it.copy(isLoading = true, error = null) }
+    var handedOff = false
+    try {
+      val token = tokenProvider() ?: return
+      if (token.isBlank()) throw AuthException(AuthError.INVALID_CREDENTIALS)
+      viewModelScope.launch { exchangeGoogleToken(token) }
+      handedOff = true
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: AuthException) {
+      mutableState.update { it.copy(error = failure.error.toUiError()) }
+    } catch (_: Exception) {
+      mutableState.update { it.copy(error = AuthUiError.GOOGLE_UNAVAILABLE) }
+    } finally {
+      if (!handedOff) mutableState.update { it.copy(isLoading = false) }
+    }
+  }
+
+  private suspend fun exchangeGoogleToken(token: String) {
+    try {
+      repository.signInWithGoogle(token)
+      state.first { it.session != null }
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: AuthException) {
+      mutableState.update { it.copy(error = failure.error.toUiError()) }
+    } catch (_: Exception) {
+      mutableState.update { it.copy(error = AuthUiError.UNKNOWN) }
+    } finally {
+      mutableState.update { it.copy(isLoading = false) }
+    }
+  }
+
   fun signOut() {
-    if (!state.value.isLoading) {
-      repository.signOut()
-      mutableState.update { AuthUiState(isRestoringSession = false) }
+    if (state.value.isLoading) return
+    repository.signOut()
+    mutableState.update { AuthUiState(isRestoringSession = false, isLoading = true) }
+    viewModelScope.launch {
+      try {
+        clearCredentialState()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // Firebase has already signed out; provider cleanup must not prevent logout.
+      } finally {
+        mutableState.update { it.copy(isLoading = false) }
+      }
     }
   }
 

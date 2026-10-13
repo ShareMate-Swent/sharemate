@@ -37,7 +37,9 @@ class AuthGateTest {
     }
     compose.setContent {
       viewModel = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
-      AuthGate(viewModel) { Text("Private content", Modifier.testTag("private_content")) }
+      AuthGate(viewModel, googleTokenProvider = { null }) {
+        Text("Private content", Modifier.testTag("private_content"))
+      }
     }
     compose.onNodeWithTag("private_content").assertDoesNotExist()
     compose.onNodeWithTag("auth_restoring").assertIsDisplayed()
@@ -73,6 +75,9 @@ class AuthGateTest {
     override suspend fun signIn(email: String, password: String) {}
 
     override suspend fun signUp(email: String, password: String) {}
+
+    override suspend fun signInWithGoogle(idToken: String) =
+        error("Google sign-in is not used by this fake")
 
     override fun signOut() {
       session.tryEmit(null)

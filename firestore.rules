@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -54,22 +55,125 @@ service cloud.firestore {
                 == householdId;
       }
 
+      // Membership changes may touch memberIds and nothing else.
+      function onlyMemberIdsChange() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']);
+      }
+
       // Joining: a user may only append themselves to the members, and must point their own
       // profile at the household in the same batch. No other field can change.
       function onlyAddsSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+        return onlyMemberIdsChange()
             && (after == before
                 || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
             && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+      }
+
+      // Leaving: a member may only remove themselves, and must clear the household from their
+      // own profile in the same batch, so it cannot be left pointing at this or any other
+      // household. No other field can change.
+      function onlyRemovesSelf() {
+        let before = resource.data.memberIds;
+        let after = request.resource.data.memberIds;
+        return onlyMemberIdsChange()
+            && request.auth.uid in before
+            && after == before.removeAll([request.auth.uid])
+            && getAfter(documentPath('users', request.auth.uid)).data.get('householdId', null)
+                == null;
       }
 
       // Fetching a missing household is allowed so that lookups can return "not found".
       allow get: if signedIn() && (resource == null || isMember());
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
-      allow update: if signedIn() && onlyAddsSelf();
+      allow update: if signedIn() && (onlyAddsSelf() || onlyRemovesSelf());
+    }
+
+    function isHouseholdMember(householdId) {
+      return householdId != null &&
+        request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+    }
+
+    // Helpers shared by items and receipts. They take the document data as a parameter.
+    function isOwner(data) {
+      return data.ownerId == request.auth.uid;
+    }
+
+    function isShared(data) {
+      return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
+    }
+
+    // Item documents must contain the fields the app expects; householdId is optional.
+    function hasValidItemData(data) {
+      let quantity = data.get('quantity', 1);
+      let status = data.get('status', 'ACTIVE');
+      return quantity is int && quantity > 0 && quantity <= 2147483647
+          && status in ['ACTIVE', 'EATEN', 'DISCARDED']
+          && data.ownerId is string && data.ownerId.size() > 0
+          && data.name is string
+          && data.name.size() > 0
+          && (data.get('householdId', null) == null || data.householdId is string)
+          && (data.get('expirationDate', null) == null || data.expirationDate is timestamp)
+          && (data.get('category', null) == null || data.category is string);
+    }
+
+    // Receipt documents must contain the fields the app expects; householdId is optional.
+    function hasValidReceiptData(data) {
+      return data.ownerId is string
+          && data.storeName is string
+          && data.storeName.size() > 0
+          && data.totalAmountCents is number
+          && data.totalAmountCents >= 0
+          && (data.get('householdId', null) == null || data.householdId is string)
+          && (data.get('date', null) == null || data.date is timestamp);
+    }
+
+    // A document is either private (no householdId) or shared with a household the writer is in.
+    function isPrivateOrSharedWithMyHousehold(data) {
+      return data.get('householdId', null) == null || isShared(data);
+    }
+
+    // Owner or household member can update. ownerId is immutable. householdId can only be
+    // changed by the owner, and only to null or to a household the owner belongs to.
+    function canUpdateItem(before, after) {
+      return (isOwner(before) || isShared(before))
+          && hasValidItemData(after)
+          && after.ownerId == before.ownerId
+          && (after.get('householdId', null) == before.get('householdId', null)
+              || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
+    }
+
+    function canUpdateReceipt(before, after) {
+      return (isOwner(before) || isShared(before))
+          && hasValidReceiptData(after)
+          && after.ownerId == before.ownerId
+          && (after.get('householdId', null) == before.get('householdId', null)
+              || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
+    }
+
+    match /items/{itemId} {
+      allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow create: if signedIn()
+          && hasValidItemData(request.resource.data)
+          && isOwner(request.resource.data)
+          && isPrivateOrSharedWithMyHousehold(request.resource.data);
+      allow update: if signedIn() && canUpdateItem(resource.data, request.resource.data);
+      // Items belong to the shared list: any household member can delete them.
+      allow delete: if signedIn()
+          && (resource == null || isOwner(resource.data) || isShared(resource.data));
+    }
+
+    match /receipts/{receiptId} {
+      allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow create: if signedIn()
+          && hasValidReceiptData(request.resource.data)
+          && isOwner(request.resource.data)
+          && isPrivateOrSharedWithMyHousehold(request.resource.data);
+      allow update: if signedIn() && canUpdateReceipt(resource.data, request.resource.data);
+      // Receipts can only be deleted by their owner.
+      allow delete: if signedIn() && isOwner(resource.data);
     }
   }
 }

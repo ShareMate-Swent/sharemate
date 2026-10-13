@@ -18,6 +18,19 @@ class FakeItemRepository : ItemRepository {
   var addFailure: Exception? = null
   var readFailure: Exception? = null
   var addGate: CompletableDeferred<Unit>? = null
+  val deletedItemIds = mutableListOf<String>()
+  var returnFalseOnDelete = false
+  var deleteFailure: Exception? = null
+  var deleteGate: CompletableDeferred<Unit>? = null
+  var emitOnDelete = true
+  val edits = mutableListOf<Pair<String, ItemEdit>>()
+  var editFailure: Exception? = null
+  var editException: Exception? = null
+  var editConfirmation: CompletableDeferred<Result<Unit>>? = null
+  val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
+  var statusFailure: Exception? = null
+  var statusException: Exception? = null
+  var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
@@ -36,19 +49,79 @@ class FakeItemRepository : ItemRepository {
     addedItems += item
     addGate?.await()
     addFailure?.let { throw it }
-    if (returnNullOnAdd) return null
+    if (returnNullOnAdd || item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0)
+        return null
     val itemId = "item-${++nextId}"
     items.value += item.copy(id = itemId)
     return itemId
   }
 
   override suspend fun deleteItem(itemId: String): Boolean {
+    deletedItemIds += itemId
+    deleteGate?.await()
+    deleteFailure?.let { throw it }
+    if (returnFalseOnDelete) return false
     val existed = items.value.any { it.id == itemId }
-    items.value = items.value.filterNot { it.id == itemId }
+    if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
     return existed
   }
 
   fun emitItems(updatedItems: List<Item>) {
     items.value = updatedItems
+  }
+
+  override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
+    edits += itemId to edit
+    editException?.let { throw it }
+    editFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
+    if (edit.name.isBlank() || edit.quantity <= 0) {
+      return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
+    }
+    return change(itemId, editConfirmation) {
+      it.copy(
+          name = edit.name.trim(),
+          quantity = edit.quantity,
+          category = edit.category,
+          expirationDate = edit.expirationDate)
+    }
+  }
+
+  override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
+    statusChanges += itemId to status
+    statusException?.let { throw it }
+    statusFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
+    return change(itemId, statusConfirmation) { it.copy(status = status) }
+  }
+
+  override fun deleteItemQueued(itemId: String): ItemWrite {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
+    }
+    deleteFailure?.let {
+      return ItemWrite.Rejected(it)
+    }
+    if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
+    deletedItemIds += itemId
+    if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
+    return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
+  }
+
+  private fun change(
+      itemId: String,
+      confirmation: CompletableDeferred<Result<Unit>>? = null,
+      transform: (Item) -> Item
+  ): ItemWrite {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
+    }
+    if (items.value.none { it.id == itemId }) {
+      return ItemWrite.Rejected(NoSuchElementException("Item not found: $itemId"))
+    }
+    items.value = items.value.map { if (it.id == itemId) transform(it) else it }
+    return ItemWrite.Queued(confirmation ?: CompletableDeferred(Result.success(Unit)))
   }
 }

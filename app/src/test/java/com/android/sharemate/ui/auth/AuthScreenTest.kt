@@ -1,3 +1,4 @@
+// Co-authored-by: Codex
 package com.android.sharemate.ui.auth
 
 import androidx.compose.material3.MaterialTheme
@@ -131,7 +132,11 @@ class AuthScreenTest {
             AuthUiError.NETWORK to "Check your internet connection and try again.",
             AuthUiError.TOO_MANY_REQUESTS to "Too many attempts. Please try again later.",
             AuthUiError.PROVIDER_DISABLED to
-                "Email sign-in is currently unavailable. Please try again later.",
+                "This sign-in method is currently unavailable. Please try again later.",
+            AuthUiError.GOOGLE_UNAVAILABLE to
+                "Google sign-in is unavailable. Please use email or try again later.",
+            AuthUiError.ACCOUNT_CONFLICT to
+                "This account uses another sign-in method. Please sign in with that method.",
             AuthUiError.UNKNOWN to "Something went wrong. Please try again.")
     for ((error, message) in feedback) {
       compose.runOnIdle { state = state.copy(error = error) }

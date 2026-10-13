@@ -12,7 +12,36 @@
           "package_name": "com.android.sharemate"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "694271493315-350721et2t7so1tvllvv51sia426kiv0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.android.sharemate",
+            "certificate_hash": "bb2c2b6e72dc8e76cfc70ab9b66722db8e3a76c3"
+          }
+        },
+        {
+          "client_id": "694271493315-egakqtor4cf8di3r631kusjesjpg0888.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.android.sharemate",
+            "certificate_hash": "7c69ef4347cceb0d1f5b77c885b5e9ddc7d2a95b"
+          }
+        },
+        {
+          "client_id": "694271493315-vb2iru2hlmirh6m0k3huid2grkvrihtj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.android.sharemate",
+            "certificate_hash": "92e85a8c6edb38aae6416738d7ed9376cd15255c"
+          }
+        },
+        {
+          "client_id": "694271493315-u2aenlt4ckrdrlqtkiulfst82mvllgqt.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBjB8zc6EEtDNQxZqK4-prrlHVL-u54xLk"
@@ -20,7 +49,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "694271493315-u2aenlt4ckrdrlqtkiulfst82mvllgqt.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

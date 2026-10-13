@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -30,7 +31,9 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,12 +60,14 @@ import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.delay
 
 @Composable
 fun FridgeScreen(
@@ -82,7 +87,16 @@ fun FridgeScreen(
     onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
     onCategoryFilterChange: ((String?) -> Unit)? = null,
     onOwnerFilterChange: ((String?) -> Unit)? = null,
+    onRemoveItem: ((String) -> Unit)? = null,
+    onCancelRemoval: () -> Unit = {},
+    onConfirmRemoval: () -> Unit = {},
+    onEditItem: ((String) -> Unit)? = null,
+    onQuantityChange: (String) -> Unit = {},
+    onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
+    onStatusChange: ((String, ItemStatus) -> Unit)? = null,
+    onDismissStatusError: (FridgeStatusError) -> Unit = {},
 ) {
+  val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val hasFunctionalFilters =
       sortOrder != null &&
           onSortOrderChange != null &&
@@ -221,20 +235,74 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_add_item)) {
           Text(stringResource(R.string.fridge_add_item))
         }
+    uiState.editSyncError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen) {
+        if (!uiState.isAddItemDialogOpen) {
+          delay(8_000)
+          onDismissEditSyncError(error)
+        }
+      }
+      Text(
+          stringResource(R.string.fridge_edit_sync_failed, error.itemName),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_edit_sync_error))
+    }
     if (uiState.loadFailed) {
       Text(
           stringResource(R.string.fridge_load_failed),
           color = MaterialTheme.colorScheme.error,
           modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_inventory_error))
     }
+    uiState.statusError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen, uiState.pendingRemovalItem) {
+        if (!uiState.isAddItemDialogOpen && uiState.pendingRemovalItem == null) {
+          delay(8_000)
+          onDismissStatusError(error)
+        }
+      }
+      Text(
+          stringResource(
+              if (error.isSyncFailure) R.string.fridge_status_sync_failed
+              else R.string.fridge_status_failed,
+              error.itemName),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_status_error))
+    }
     Box(
         modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
         contentAlignment = Alignment.Center) {
-          if (uiState.items.isNotEmpty()) {
+          if (activeItems.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                  items(uiState.items, key = { it.id }) { item -> FridgeItem(item) }
+                  items(activeItems, key = { it.id }) { item ->
+                    FridgeItem(
+                        item = item,
+                        editEnabled =
+                            onEditItem != null &&
+                                !uiState.isSaving &&
+                                !uiState.isDeleting &&
+                                !uiState.isAddItemDialogOpen &&
+                                uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingStatusIds &&
+                                item.status == ItemStatus.ACTIVE,
+                        onEdit = { onEditItem?.invoke(item.id) },
+                        statusEnabled =
+                            onStatusChange != null &&
+                                !uiState.isSaving &&
+                                !uiState.isDeleting &&
+                                !uiState.isAddItemDialogOpen &&
+                                uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingStatusIds,
+                        onStatusChange = { onStatusChange?.invoke(item.id, it) },
+                        removalEnabled =
+                            onRemoveItem != null &&
+                                !uiState.isDeleting &&
+                                !uiState.isSaving &&
+                                !uiState.isAddItemDialogOpen &&
+                                item.id !in uiState.pendingStatusIds,
+                        onRemove = { onRemoveItem?.invoke(item.id) })
+                  }
                 }
           } else if (uiState.isLoading) {
             Text(stringResource(R.string.fridge_loading))
@@ -258,7 +326,44 @@ fun FridgeScreen(
         onCategoryChange = onCategoryChange,
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
+        onQuantityChange = onQuantityChange,
         onDismiss = onDismissAddItem)
+  }
+  uiState.pendingRemovalItem?.let { item ->
+    AlertDialog(
+        modifier = Modifier.testTag(C.Tag.fridge_remove_dialog),
+        onDismissRequest = { if (!uiState.isDeleting) onCancelRemoval() },
+        title = { Text(stringResource(R.string.fridge_remove_title)) },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.fridge_remove_confirmation, item.name))
+            if (uiState.removalFailed) {
+              Text(
+                  stringResource(R.string.fridge_remove_failed),
+                  color = MaterialTheme.colorScheme.error,
+                  modifier = Modifier.testTag(C.Tag.fridge_removal_error))
+            }
+          }
+        },
+        confirmButton = {
+          TextButton(
+              onClick = onConfirmRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_confirm_remove)) {
+                Text(
+                    stringResource(
+                        if (uiState.isDeleting) R.string.fridge_removing
+                        else R.string.fridge_remove))
+              }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = onCancelRemoval,
+              enabled = !uiState.isDeleting,
+              modifier = Modifier.testTag(C.Tag.fridge_cancel_remove)) {
+                Text(stringResource(R.string.fridge_cancel))
+              }
+        })
   }
 }
 
@@ -292,6 +397,11 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onCategoryChange = viewModel::updateCategory,
       onExpirationDateChange = viewModel::updateExpirationDate,
       onSaveItem = viewModel::saveItem,
+      onEditItem = viewModel::openEditItemDialog,
+      onQuantityChange = viewModel::updateQuantity,
+      onDismissEditSyncError = viewModel::dismissEditSyncError,
+      onStatusChange = viewModel::setItemStatus,
+      onDismissStatusError = viewModel::dismissStatusError,
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
@@ -300,6 +410,9 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onSortOrderChange = viewModel::setSortOrder,
       onCategoryFilterChange = viewModel::setCategoryFilter,
       onOwnerFilterChange = viewModel::setOwnerFilter,
+      onRemoveItem = viewModel::requestRemoval,
+      onCancelRemoval = viewModel::cancelRemoval,
+      onConfirmRemoval = viewModel::confirmRemoval,
   )
 }
 
@@ -347,8 +460,16 @@ private fun ItemFilterChip(
 fun FridgeItem(
     item: Item,
     modifier: Modifier = Modifier,
-    imageLoader: ImageLoader = LocalContext.current.imageLoader
+    removalEnabled: Boolean = false,
+    onRemove: () -> Unit = {},
+    editEnabled: Boolean = false,
+    onEdit: () -> Unit = {},
+    statusEnabled: Boolean = false,
+    onStatusChange: (ItemStatus) -> Unit = {},
+    imageLoader: ImageLoader = LocalContext.current.imageLoader,
 ) {
+  val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
+  val editDescription = stringResource(R.string.fridge_edit_description, item.name)
   val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
   val containerColor =
       when (expiryStatus) {
@@ -375,7 +496,8 @@ fun FridgeItem(
       color = containerColor,
       contentColor = contentColor) {
         Column(
-            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FridgeItemImage(item, imageLoader)
                 Column(
@@ -386,7 +508,52 @@ fun FridgeItem(
                       item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
                     }
               }
+
               FridgeImageCredits(item.image)
+
+              Row {
+                TextButton(
+                    onClick = onEdit,
+                    enabled = editEnabled,
+                    modifier =
+                        Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
+                          contentDescription = editDescription
+                        }) {
+                      Text(stringResource(R.string.fridge_edit_item))
+                    }
+                TextButton(
+                    onClick = onRemove,
+                    enabled = removalEnabled,
+                    modifier =
+                        Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
+                          contentDescription = removeDescription
+                        }) {
+                      Text(stringResource(R.string.fridge_remove))
+                    }
+              }
+
+              if (item.status == ItemStatus.ACTIVE) {
+                Row {
+                  listOf(
+                          ItemStatus.EATEN to R.string.fridge_eaten,
+                          ItemStatus.DISCARDED to R.string.fridge_discarded)
+                      .forEach { (status, resource) ->
+                        val label = stringResource(resource)
+                        val description =
+                            stringResource(R.string.fridge_status_description, item.name, label)
+                        TextButton(
+                            onClick = { onStatusChange(status) },
+                            enabled = statusEnabled,
+                            modifier =
+                                Modifier.testTag(
+                                        (if (status == ItemStatus.EATEN) C.Tag.fridge_eaten_prefix
+                                        else C.Tag.fridge_discard_prefix) + item.id)
+                                    .semantics { contentDescription = description }) {
+                              Text(label)
+                            }
+                      }
+                }
+              }
             }
       }
 }

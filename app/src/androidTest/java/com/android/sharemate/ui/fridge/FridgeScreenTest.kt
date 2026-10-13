@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -15,18 +16,24 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.util.Date
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +43,38 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FridgeScreenTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private lateinit var repository: ScreenItemRepository
+  private lateinit var viewModel: FridgeViewModel
+
+  @Test
+  fun queuedStatusActionsRetainRecordsAndRejectionRestoresAnEditableCard() {
+    showScreen()
+    compose.onNodeWithTag(C.Tag.fridge_eaten_prefix + "carrot").performScrollTo().performClick()
+    item("carrot").assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.fridge_discard_prefix + "banana").performScrollTo().performClick()
+    item("banana").assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(
+          listOf("carrot" to ItemStatus.EATEN, "banana" to ItemStatus.DISCARDED),
+          repository.statusChanges)
+      assertEquals(3, viewModel.uiState.value.items.size)
+      assertTrue(viewModel.uiState.value.pendingStatusIds.isEmpty())
+      assertTrue(repository.confirmations.none { it.isCompleted })
+      repository.inventory.value =
+          repository.inventory.value.map {
+            if (it.id == "carrot") it.copy(status = ItemStatus.ACTIVE) else it
+          }
+      repository.confirmations.first().complete(Result.failure(IllegalStateException("Denied")))
+    }
+    item("carrot").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_status_error).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(
+          ItemStatus.DISCARDED, viewModel.uiState.value.items.first { it.id == "banana" }.status)
+    }
+    compose.onNodeWithTag(C.Tag.fridge_edit_prefix + "carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
+  }
 
   @Test
   fun sortChipsChangeTheRenderedOrder() {
@@ -108,16 +147,16 @@ class FridgeScreenTest {
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
 
-  private fun showScreen(items: List<Item> = inventory) {
-    lateinit var viewModel: FridgeViewModel
+  private fun showScreen(items: List<Item> = inventory) {  private fun showScreen(items: List<Item> = inventory) {
     compose.runOnUiThread {
+      repository = ScreenItemRepository(items)
       val imageRepository =
           object : FoodImageRepository {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
           }
       viewModel =
           FridgeViewModel(
-              ReadOnlyItemRepository(items),
+              repository,
               "alice",
               "household",
               FoodImageSelector(imageRepository))
@@ -137,19 +176,38 @@ class FridgeScreenTest {
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
   private fun assertItemOrder(vararg ids: String) {
-    val positions = ids.map { item(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top }
-    assertTrue(
-        "Expected rendered order: ${ids.toList()}", positions.zipWithNext().all { (a, b) -> a < b })
+    val list = compose.onNodeWithTag(C.Tag.fridge_item_list)
+    ids.forEachIndexed { index, id ->
+      assertEquals(index, list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey](id))
+      list.performScrollToIndex(index)
+      item(id).assertIsDisplayed()
+    }
   }
 
-  private class ReadOnlyItemRepository(items: List<Item>) : ItemRepository {
-    private val inventory = MutableStateFlow(items)
+  private class ScreenItemRepository(items: List<Item>) : ItemRepository {
+    val inventory = MutableStateFlow(items)
+    val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
+    val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && !it.isShared } }
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
+      statusChanges += itemId to status
+      inventory.value =
+          inventory.value.map { if (it.id == itemId) it.copy(status = status) else it }
+      val confirmation = CompletableDeferred<Result<Unit>>()
+      confirmations += confirmation
+      return ItemWrite.Queued(confirmation)
+    }
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? = error("Read-only test repository")
 

@@ -197,6 +197,62 @@ class HouseholdRepositoryFirestoreTest {
   }
 
   @Test
+  fun leaveHouseholdRemovesMemberAndUnlinksProfile() = runBlocking {
+    val creatorId = FirebaseEmulator.signInAs("creator")
+    val created = repository.createHousehold("Home", creatorId)
+    val memberId = FirebaseEmulator.signInAs("member")
+    repository.joinHousehold(created.inviteCode, memberId)
+
+    repository.leaveHousehold(memberId)
+    val storedUser =
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document(memberId).get())
+
+    assertNull(repository.getHouseholdForUser(memberId))
+    assertTrue(storedUser.exists())
+    assertFalse(storedUser.contains("householdId"))
+    FirebaseEmulator.signInAs("creator")
+    assertEquals(listOf(creatorId), repository.getHousehold(created.id)?.memberIds)
+  }
+
+  @Test
+  fun lastMemberCanLeaveAndJoinAgainWithTheSameCode() = runBlocking {
+    val creatorId = FirebaseEmulator.signInAs("creator")
+    val created = repository.createHousehold("Home", creatorId)
+
+    repository.leaveHousehold(creatorId)
+
+    assertNull(repository.getHouseholdForUser(creatorId))
+    assertEquals(created.id, storedHouseholdIdForInviteCode(created.inviteCode))
+    val rejoined = repository.joinHousehold(created.inviteCode, creatorId)
+    assertEquals(listOf(creatorId), rejoined.memberIds)
+  }
+
+  @Test
+  fun leavingClearsProfileLinkToHouseholdThatNoLongerListsTheUser() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("outsider")
+    val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
+    Tasks.await(userReference.set(mapOf("displayName" to "Outsider", "householdId" to "gone")))
+
+    repository.leaveHousehold(userId)
+    val storedUser = Tasks.await(userReference.get())
+
+    assertFalse(storedUser.contains("householdId"))
+    assertEquals("Outsider", storedUser.getString("displayName"))
+  }
+
+  @Test
+  fun leavingWithoutHouseholdWritesNothingAndBlankUserIsRejected() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("outsider")
+    assertThrows(IllegalArgumentException::class.java) {
+      runBlocking { repository.leaveHousehold(" ") }
+    }
+
+    repository.leaveHousehold(userId)
+
+    assertUserDocumentDoesNotExist(userId)
+  }
+
+  @Test
   fun householdLookupsReturnHouseholdOrNull() = runBlocking {
     val creatorId = FirebaseEmulator.signInAs("creator")
     val household = repository.createHousehold("Home", creatorId)
