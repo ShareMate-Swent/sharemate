@@ -773,9 +773,9 @@ class FridgeViewModelTest {
   }
 
   private fun viewModel(householdId: String? = "test-household"): FridgeViewModel =
-    FridgeViewModel(repository, "test-user", householdId, imageSelector).also {
-      viewModelStore.put("fridge", it)
-    }
+      FridgeViewModel(repository, "test-user", householdId, imageSelector).also {
+        viewModelStore.put("fridge", it)
+      }
 
   @Test
   fun realNonBlankContextIsRequired() {

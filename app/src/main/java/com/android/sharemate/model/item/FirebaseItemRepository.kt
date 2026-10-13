@@ -168,11 +168,9 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
 private fun DocumentSnapshot.getItemImageOrNull(): ItemImage? {
   val values = get("image") as? Map<*, *> ?: return null
   val origin =
-      (values["origin"] as? String)?.let {
-        runCatching { ItemImageOrigin.valueOf(it) }.getOrNull()
-      } ?: return null
-  val reference =
-      (values["reference"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+      (values["origin"] as? String)?.let { runCatching { ItemImageOrigin.valueOf(it) }.getOrNull() }
+          ?: return null
+  val reference = (values["reference"] as? String)?.takeIf { it.isNotBlank() } ?: return null
 
   return ItemImage(
       origin = origin,

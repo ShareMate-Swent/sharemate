@@ -147,7 +147,7 @@ class FridgeScreenTest {
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
 
-  private fun showScreen(items: List<Item> = inventory) {  private fun showScreen(items: List<Item> = inventory) {
+  private fun showScreen(items: List<Item> = inventory) {
     compose.runOnUiThread {
       repository = ScreenItemRepository(items)
       val imageRepository =
@@ -155,11 +155,7 @@ class FridgeScreenTest {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
           }
       viewModel =
-          FridgeViewModel(
-              repository,
-              "alice",
-              "household",
-              FoodImageSelector(imageRepository))
+          FridgeViewModel(repository, "alice", "household", FoodImageSelector(imageRepository))
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {

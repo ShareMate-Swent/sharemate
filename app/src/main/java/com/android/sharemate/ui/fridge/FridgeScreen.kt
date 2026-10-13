@@ -496,8 +496,7 @@ fun FridgeItem(
       color = containerColor,
       contentColor = contentColor) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
               Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FridgeItemImage(item, imageLoader)
                 Column(
