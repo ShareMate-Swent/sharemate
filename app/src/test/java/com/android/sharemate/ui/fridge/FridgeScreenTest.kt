@@ -107,9 +107,8 @@ class FridgeScreenTest {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
       composeRule.onNodeWithContentDescription("Delete Milk").performClick()
       composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
-      composeRule
-          .onNodeWithText("Permanently delete Milk from the fridge? This cannot be undone.")
-          .assertIsDisplayed()
+      val prompt = "Permanently delete Milk from the fridge? This cannot be undone."
+      composeRule.onNodeWithText(prompt).assertIsDisplayed()
       composeRule.onNodeWithTag(C.Tag.fridge_cancel_remove).performClick()
       composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
       composeRule.runOnIdle { assertEquals(emptyList<String>(), repository.deletedItemIds) }
@@ -118,18 +117,14 @@ class FridgeScreenTest {
       composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
       composeRule.onNodeWithTag(C.Tag.fridge_item_prefix + milk.id).assertDoesNotExist()
       composeRule.onNodeWithText("Bread").assertIsDisplayed()
-      composeRule.runOnIdle {
-        assertEquals(listOf(milk.id), repository.queuedDeletionIds)
-        assertEquals(false, confirmation.isCompleted)
-      }
+      assertEquals(listOf(milk.id), repository.queuedDeletionIds)
+      assertEquals(false, confirmation.isCompleted)
       composeRule.onNodeWithTag(C.Tag.fridge_edit_prefix + bread.id).performClick()
       assertEquals(bread.id, viewModel.uiState.value.editingItemId)
       composeRule.runOnUiThread { viewModel.dismissAddItemDialog() }
       composeRule.onNodeWithTag(C.Tag.fridge_eaten_prefix + bread.id).performClick()
       composeRule.onNodeWithTag(C.Tag.fridge_item_prefix + bread.id).assertDoesNotExist()
-      composeRule.runOnIdle {
-        assertEquals(listOf(bread.id to ItemStatus.EATEN), repository.statusChanges)
-      }
+      assertEquals(listOf(bread.id to ItemStatus.EATEN), repository.statusChanges)
     } finally {
       store.clear()
       Dispatchers.resetMain()
@@ -137,41 +132,19 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun removalSyncErrorDismissesAfterEightSecondsAndRetainsItsIdentity() {
-    val error = FridgeRemovalSyncError("Milk")
-    val dismissed = mutableListOf<FridgeRemovalSyncError>()
-    composeRule.mainClock.autoAdvance = false
-    composeRule.setContent {
-      MaterialTheme {
-        FridgeScreen(
-            uiState = FridgeUiState(removalSyncError = error),
-            onDismissRemovalSyncError = { dismissed += it })
-      }
-    }
-    composeRule.onNodeWithTag(C.Tag.fridge_removal_sync_error).assertIsDisplayed()
-    composeRule
-        .onNodeWithText("Deletion of Milk could not sync. The item may reappear.")
-        .assertIsDisplayed()
-    composeRule.mainClock.advanceTimeBy(7_900)
-    composeRule.runOnIdle { assertEquals(emptyList<FridgeRemovalSyncError>(), dismissed) }
-    composeRule.mainClock.advanceTimeBy(200)
-    composeRule.runOnIdle { assertEquals(listOf(error), dismissed) }
-  }
-
-  @Test
-  fun removalSyncErrorWaitsUntilRemovalDialogIsClosed() {
+  fun removalSyncErrorRetainsIdentityAndStartsEightSecondTimeoutAfterDialogCloses() {
     val error = FridgeRemovalSyncError("Milk")
     val state =
         mutableStateOf(
             FridgeUiState(
                 removalSyncError = error, pendingRemovalItem = Item(id = "bread", name = "Bread")))
     val dismissed = mutableListOf<FridgeRemovalSyncError>()
+    composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(uiState = state.value, onDismissRemovalSyncError = { dismissed += it })
       }
     }
-    composeRule.mainClock.autoAdvance = false
     composeRule.mainClock.advanceTimeBy(9_000)
     composeRule.runOnIdle {
       assertEquals(emptyList<FridgeRemovalSyncError>(), dismissed)
@@ -179,7 +152,12 @@ class FridgeScreenTest {
     }
     composeRule.mainClock.advanceTimeBy(100)
     composeRule.waitForIdle()
-    composeRule.mainClock.advanceTimeBy(8_100)
+    composeRule.onNodeWithTag(C.Tag.fridge_removal_sync_error).assertIsDisplayed()
+    val message = "Deletion of Milk could not sync. The item may reappear."
+    composeRule.onNodeWithText(message).assertIsDisplayed()
+    composeRule.mainClock.advanceTimeBy(7_800)
+    composeRule.runOnIdle { assertEquals(emptyList<FridgeRemovalSyncError>(), dismissed) }
+    composeRule.mainClock.advanceTimeBy(200)
     composeRule.runOnIdle { assertEquals(listOf(error), dismissed) }
   }
 

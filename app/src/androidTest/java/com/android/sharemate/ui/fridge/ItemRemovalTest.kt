@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -116,10 +117,27 @@ class ItemRemovalTest {
   @Test
   fun offlineDeletionClosesConfirmationWithoutAwaitingServer() {
     val gate = CompletableDeferred<Result<Unit>>()
-    val repository = TestItemRepository(listOf(milk)).apply { deleteConfirmation = gate }
+    val repository =
+        TestItemRepository(listOf(milk, bread)).apply {
+          deleteConfirmation = gate
+          emitOnDelete = false
+        }
     val viewModel = showFridge(repository)
     requestRemoval(milk)
     composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
+    composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isDeleting }
+    listOf(
+            C.Tag.fridge_edit_prefix,
+            C.Tag.fridge_remove_prefix,
+            C.Tag.fridge_eaten_prefix,
+            C.Tag.fridge_discard_prefix)
+        .forEach {
+          composeTestRule.onNodeWithTag(it + milk.id).assertIsNotEnabled()
+          composeTestRule.onNodeWithTag(it + bread.id).assertIsEnabled()
+        }
+    requestRemoval(bread)
+    composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_remove).performClick()
+    composeTestRule.runOnIdle { repository.items.value = emptyList() }
     waitForRemoval(viewModel, milk.id)
     composeTestRule.runOnIdle {
       viewModel.confirmRemoval()
@@ -162,6 +180,8 @@ class ItemRemovalTest {
       SampleAppTheme(dynamicColor = false) {
         FridgeScreen(
             uiState = state,
+            onEditItem = viewModel::openEditItemDialog,
+            onStatusChange = viewModel::setItemStatus,
             onRemoveItem = viewModel::requestRemoval,
             onCancelRemoval = viewModel::cancelRemoval,
             onConfirmRemoval = viewModel::confirmRemoval)
@@ -172,8 +192,10 @@ class ItemRemovalTest {
   }
 
   private class TestItemRepository(initialItems: List<Item>) : ItemRepository {
-    private val items = MutableStateFlow(initialItems)
+    val items = MutableStateFlow(initialItems)
     val deletedIds = mutableListOf<String>()
+    var emitOnDelete = true
+
     var returnFalseOnDelete = false
     var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
@@ -192,7 +214,7 @@ class ItemRemovalTest {
     override fun deleteItemQueued(itemId: String): ItemWrite {
       deletedIds += itemId
       if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
-      items.value = items.value.filterNot { it.id == itemId }
+      if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
       return ItemWrite.Queued(deleteConfirmation ?: CompletableDeferred(Result.success(Unit)))
     }
 

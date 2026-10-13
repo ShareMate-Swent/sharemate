@@ -294,6 +294,7 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds &&
                                 item.status == ItemStatus.ACTIVE,
                         onEdit = { onEditItem?.invoke(item.id) },
@@ -303,6 +304,7 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds,
                         onStatusChange = { onStatusChange?.invoke(item.id, it) },
                         removalEnabled =
@@ -311,6 +313,7 @@ fun FridgeScreen(
                                 !uiState.isSaving &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds,
                         onRemove = { onRemoveItem?.invoke(item.id) })
                   }

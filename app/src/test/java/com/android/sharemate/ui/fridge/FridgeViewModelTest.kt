@@ -17,6 +17,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -470,6 +471,7 @@ class FridgeViewModelTest {
 
   @Test
   fun offlineRemovalReappliesFiltersAndSortingWithoutAwaitingConfirmation() = runTest {
+    Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
     val apple = milk.copy(id = "apple", name = "Apple", category = "Dairy")
     val cheese = milk.copy(id = "cheese", name = "Cheese", category = "Dairy")
     repository.emitItems(listOf(cheese, apple, bread))
@@ -484,6 +486,7 @@ class FridgeViewModelTest {
     repository.emitItems(listOf(bread, apple, cheese))
     runCurrent()
     vm.confirmRemoval()
+    assertTrue(vm.uiState.value.pendingDeletionIds.isEmpty())
     vm.confirmRemoval()
     runCurrent()
     assertEquals(listOf(apple.id), repository.queuedDeletionIds)
@@ -498,19 +501,13 @@ class FridgeViewModelTest {
 
   @Test
   fun removalRejectionRollbackPreservesNewerDialogDraftAndErrorIdentity() = runTest {
-    repository.emitItems(listOf(milk, bread))
     val first = CompletableDeferred<Result<Unit>>()
     val second = CompletableDeferred<Result<Unit>>()
-    val vm = viewModel()
-    runCurrent()
+    val vm = loaded(milk, bread)
     repository.deleteConfirmation = first
-    vm.requestRemoval(milk.id)
-    vm.confirmRemoval()
-    runCurrent()
+    delete(vm, milk)
     repository.deleteConfirmation = second
-    vm.requestRemoval(bread.id)
-    vm.confirmRemoval()
-    runCurrent()
+    delete(vm, bread)
     second.complete(Result.failure(IOException("Newer rejection")))
     repository.emitItems(listOf(bread))
     runCurrent()
@@ -535,14 +532,10 @@ class FridgeViewModelTest {
   @Test
   fun cancelledAndDetachedRemovalConfirmationsNeverReportFailure() = runTest {
     for (clear in listOf(false, true)) {
-      repository.emitItems(listOf(milk))
       val confirmation = CompletableDeferred<Result<Unit>>()
       repository.deleteConfirmation = confirmation
-      val vm = viewModel()
-      runCurrent()
-      vm.requestRemoval(milk.id)
-      vm.confirmRemoval()
-      runCurrent()
+      val vm = loaded(milk)
+      delete(vm, milk)
       if (clear) {
         viewModelStore.clear()
         assertFalse(confirmation.isCancelled)
@@ -595,6 +588,7 @@ class FridgeViewModelTest {
   fun successfulRemovalUsesQueuedDeletionAndWaitsForLocalSnapshot() = runTest {
     repository.emitItems(listOf(milk, bread))
     repository.emitOnDelete = false
+    repository.deleteConfirmation = CompletableDeferred()
     val viewModel = viewModel()
     runCurrent()
     viewModel.requestRemoval(milk.id)
@@ -603,13 +597,52 @@ class FridgeViewModelTest {
 
     assertEquals(listOf(milk.id), repository.deletedItemIds)
     assertEquals(listOf(milk.id), repository.queuedDeletionIds)
-    assertEquals(listOf(milk, bread), viewModel.uiState.value.items)
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    viewModel.openEditItemDialog(milk.id)
+    ItemStatus.entries.forEach { viewModel.setItemStatus(milk.id, it) }
+    runCurrent()
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertTrue(repository.edits.isEmpty())
+    viewModel.openEditItemDialog(bread.id)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+    viewModel.dismissAddItemDialog()
+    repository.statusConfirmation = CompletableDeferred()
+    viewModel.setItemStatus(bread.id, ItemStatus.EATEN)
+    runCurrent()
+    assertEquals(listOf(bread.id to ItemStatus.EATEN), repository.statusChanges)
+    val old = repository.deleteConfirmation!!
+    assertFalse(old.isCompleted)
     repository.emitItems(listOf(bread))
     runCurrent()
     assertEquals(listOf(bread), viewModel.uiState.value.items)
     assertNull(viewModel.uiState.value.pendingRemovalItem)
     assertFalse(viewModel.uiState.value.isDeleting)
     assertFalse(viewModel.uiState.value.removalFailed)
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
+    repository.emitItems(listOf(milk, bread)) // Rollback, then a newer deletion of the same ID.
+    runCurrent()
+    repository.deleteConfirmation = CompletableDeferred()
+    delete(viewModel, milk)
+    old.complete(Result.failure(IOException("Old rejection")))
+    runCurrent()
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    delete(viewModel, milk)
+    assertEquals(listOf(milk.id, milk.id), repository.deletedItemIds)
+    assertEquals(listOf(milk, bread), viewModel.uiState.value.items)
+    repository.deleteConfirmation!!.complete(Result.failure(IOException("New rejection")))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
+    repository.deleteConfirmation = CompletableDeferred()
+    delete(viewModel, milk)
+    repository.deleteConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    repository.emitItems(listOf(bread))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
   }
 
   @Test
@@ -640,6 +673,7 @@ class FridgeViewModelTest {
     assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
     assertTrue(viewModel.uiState.value.removalFailed)
     assertFalse(viewModel.uiState.value.isDeleting)
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
     repository.returnFalseOnDelete = false
     viewModel.confirmRemoval()
     runCurrent()
@@ -664,6 +698,7 @@ class FridgeViewModelTest {
     assertFalse(viewModel.uiState.value.isDeleting)
     assertNull(viewModel.uiState.value.formError)
     assertFalse(viewModel.uiState.value.isSaving)
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
     repository.deleteException = null
     viewModel.confirmRemoval()
     runCurrent()
@@ -729,9 +764,7 @@ class FridgeViewModelTest {
     assertTrue(repository.deletedItemIds.isEmpty())
     repository.emitItems(listOf(bread))
     runCurrent()
-    vm.requestRemoval(bread.id)
-    vm.confirmRemoval()
-    runCurrent()
+    delete(vm, bread)
     assertEquals(listOf(bread.id), repository.queuedDeletionIds)
   }
 
@@ -783,6 +816,17 @@ class FridgeViewModelTest {
     assertNull(viewModel.uiState.value.pendingRemovalItem)
     assertEquals("Cheese", viewModel.uiState.value.itemName)
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+  }
+
+  private fun TestScope.loaded(vararg items: Item): FridgeViewModel {
+    repository.emitItems(items.toList())
+    return viewModel().also { runCurrent() }
+  }
+
+  private fun TestScope.delete(vm: FridgeViewModel, item: Item) {
+    vm.requestRemoval(item.id)
+    vm.confirmRemoval()
+    runCurrent()
   }
 
   private fun viewModel(): FridgeViewModel =

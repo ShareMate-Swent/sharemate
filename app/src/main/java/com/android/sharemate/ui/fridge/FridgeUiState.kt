@@ -21,6 +21,7 @@ data class FridgeUiState(
     val formError: FridgeFormError? = null,
     val pendingRemovalItem: Item? = null,
     val isDeleting: Boolean = false,
+    val pendingDeletionIds: Set<String> = emptySet(),
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
 )
