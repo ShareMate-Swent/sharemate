@@ -1,4 +1,6 @@
 [versions]
+credentials = "1.3.0"
+googleId = "1.1.1"
 # Auth 24.2.0 metadata requires newer Kotlin; preserve the main toolchain.
 firebaseAuth = { strictly = "23.1.0" }
 coroutines = "1.8.1"
@@ -32,6 +34,9 @@ robolectric = "4.14.1"
 coil = "2.7.0"
 
 [libraries]
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
+androidx-credentials-play-services-auth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
+google-identity = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleId" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }

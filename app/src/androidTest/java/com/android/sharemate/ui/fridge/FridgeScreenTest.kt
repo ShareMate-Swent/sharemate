@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -15,16 +16,20 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.util.Date
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -125,9 +130,12 @@ class FridgeScreenTest {
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
   private fun assertItemOrder(vararg ids: String) {
-    val positions = ids.map { item(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top }
-    assertTrue(
-        "Expected rendered order: ${ids.toList()}", positions.zipWithNext().all { (a, b) -> a < b })
+    val list = compose.onNodeWithTag(C.Tag.fridge_item_list)
+    ids.forEachIndexed { index, id ->
+      assertEquals(index, list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey](id))
+      list.performScrollToIndex(index)
+      item(id).assertIsDisplayed()
+    }
   }
 
   private class ReadOnlyItemRepository(items: List<Item>) : ItemRepository {
@@ -138,6 +146,14 @@ class FridgeScreenTest {
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && !it.isShared } }
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+        error("Not used in this test")
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? = error("Read-only test repository")
 

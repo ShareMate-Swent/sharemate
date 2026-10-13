@@ -1,7 +1,14 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
-/** Provides household creation, joining, and lookup operations. */
+/**
+ * Provides household creation, joining, leaving, and lookup operations.
+ *
+ * Membership is stored twice: in [Household.memberIds] and as `householdId` on the user's profile.
+ * [Household.memberIds] is the source of truth: lookups and security rules read it. The profile
+ * field is a copy that implementations must write in the same atomic operation, never alone.
+ */
 interface HouseholdRepository {
 
   /**
@@ -21,6 +28,18 @@ interface HouseholdRepository {
    * @throws Exception if the data source cannot join the household.
    */
   suspend fun joinHousehold(inviteCode: String, userId: String): Household
+
+  /**
+   * Removes [userId] from the household they belong to and unlinks it from their profile.
+   *
+   * The household and its invite code are kept, even when its last member leaves, so the user can
+   * join again with the same code. When no household lists the user, only a stale household
+   * reference left on their profile is cleared; without one, nothing is written.
+   *
+   * @throws IllegalArgumentException if [userId] is blank.
+   * @throws Exception if the data source cannot leave the household.
+   */
+  suspend fun leaveHousehold(userId: String)
 
   /**
    * Looks up a household by its identifier.

@@ -15,6 +15,9 @@ object C {
     const val fridge_add_item = "fridge_add_item"
     const val fridge_add_dialog = "fridge_add_dialog"
     const val fridge_name_input = "fridge_name_input"
+    const val fridge_quantity_input = "fridge_quantity_input"
+    const val fridge_edit_sync_error = "fridge_edit_sync_error"
+    const val fridge_edit_prefix = "fridge_edit_"
     const val fridge_category_input = "fridge_category_input"
     const val fridge_expiration_input = "fridge_expiration_input"
     const val fridge_save_item = "fridge_save_item"
@@ -26,5 +29,10 @@ object C {
     const val fridge_image = "fridge_image"
     const val fridge_image_loading = "fridge_image_loading"
     const val fridge_image_placeholder = "fridge_image_placeholder"
+    const val fridge_remove_prefix = "fridge_remove_"
+    const val fridge_remove_dialog = "fridge_remove_dialog"
+    const val fridge_confirm_remove = "fridge_confirm_remove"
+    const val fridge_cancel_remove = "fridge_cancel_remove"
+    const val fridge_removal_error = "fridge_removal_error"
   }
 }

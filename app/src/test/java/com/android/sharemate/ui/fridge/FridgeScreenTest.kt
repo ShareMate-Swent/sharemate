@@ -5,17 +5,23 @@ package com.android.sharemate.ui.fridge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import java.time.LocalDate
 import java.time.ZoneId
@@ -31,6 +37,56 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class FridgeScreenTest {
   @get:Rule val composeRule = createComposeRule()
+
+  @Test
+  fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
+    val requests = mutableListOf<String>()
+    val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
+      }
+    }
+
+    composeRule.onNodeWithText("Milk").assertIsDisplayed()
+    composeRule.onNodeWithText("Bread").assertIsDisplayed()
+    composeRule
+        .onNodeWithContentDescription("Remove Milk")
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    composeRule
+        .onNodeWithContentDescription("Remove Bread")
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    composeRule.runOnIdle { assertEquals(listOf("milk", "bread"), requests) }
+    composeRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
+  }
+
+  @Test
+  fun removeActionIsDisabledWithoutRuntimeWiring() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
+      }
+    }
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsDisplayed().assertIsNotEnabled()
+  }
+
+  @Test
+  fun removalActionsAreDisabledWhileDeletionIsPending() {
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState =
+                FridgeUiState(items = listOf(Item(id = "milk", name = "Milk")), isDeleting = true),
+            onRemoveItem = {})
+      }
+    }
+    composeRule.onNodeWithContentDescription("Remove Milk").assertIsNotEnabled()
+    composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
+  }
 
   @Test
   fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
@@ -129,6 +185,14 @@ class FridgeScreenTest {
     override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+
+    override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
+        error("Not used in this test")
+
+    override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
+        error("Not used in this test")
+
+    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
     override suspend fun addItem(item: Item): String? = error("Not used in this test.")
 

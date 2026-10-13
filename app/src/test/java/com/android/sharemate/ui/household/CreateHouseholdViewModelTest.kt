@@ -127,6 +127,9 @@ class CreateHouseholdViewModelTest {
 
     override suspend fun signUp(email: String, password: String) = Unit
 
+    override suspend fun signInWithGoogle(idToken: String) =
+        error("Google sign-in is not used by this fake")
+
     override fun signOut() {
       sessionState.value = null
     }
@@ -149,6 +152,8 @@ class CreateHouseholdViewModelTest {
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
         delegate.joinHousehold(inviteCode, userId)
+
+    override suspend fun leaveHousehold(userId: String) = delegate.leaveHousehold(userId)
 
     override suspend fun getHousehold(householdId: String) = delegate.getHousehold(householdId)
 

@@ -1,9 +1,11 @@
+// Co-authored-by: Codex
 package com.android.sharemate.model.auth
 
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +31,13 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
 
   override suspend fun signUp(email: String, password: String) {
     authenticate { auth.createUserWithEmailAndPassword(email, password).await() }
+  }
+
+  override suspend fun signInWithGoogle(idToken: String) {
+    if (idToken.isBlank()) throw AuthException(AuthError.INVALID_CREDENTIALS)
+    authenticate {
+      auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await()
+    }
   }
 
   override fun signOut() = auth.signOut()
@@ -66,5 +75,7 @@ internal fun authErrorForCode(code: String): AuthError =
       "ERROR_NETWORK_REQUEST_FAILED" -> AuthError.NETWORK
       "ERROR_TOO_MANY_REQUESTS" -> AuthError.TOO_MANY_REQUESTS
       "ERROR_OPERATION_NOT_ALLOWED" -> AuthError.PROVIDER_DISABLED
+      "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
+      "ERROR_CREDENTIAL_ALREADY_IN_USE" -> AuthError.ACCOUNT_CONFLICT
       else -> AuthError.UNKNOWN
     }

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import kotlinx.coroutines.runBlocking
@@ -48,6 +49,31 @@ class InMemoryHouseholdRepositoryTest {
 
       assertEquals(firstJoin, secondJoin)
       assertEquals(listOf("creator", "member"), secondJoin.memberIds)
+    }
+  }
+
+  @Test
+  fun leavingHouseholdRemovesOnlyThatMemberAndKeepsTheHousehold() = runBlocking {
+    val created = repository.createHousehold("Home", "creator")
+    repository.joinHousehold(created.inviteCode, "member")
+
+    repository.leaveHousehold("member")
+
+    assertNull(repository.getHouseholdForUser("member"))
+    assertEquals(listOf("creator"), repository.getHousehold(created.id)?.memberIds)
+  }
+
+  @Test
+  fun leavingWithoutHouseholdDoesNothingAndBlankUserThrows() {
+    runBlocking {
+      val created = repository.createHousehold("Home", "creator")
+
+      repository.leaveHousehold("outsider")
+
+      assertEquals(created, repository.getHousehold(created.id))
+      assertThrows(IllegalArgumentException::class.java) {
+        runBlocking { repository.leaveHousehold(" ") }
+      }
     }
   }
 
