@@ -18,6 +18,11 @@
     <string name="fridge_add_item">Add Item</string>
     <string name="fridge_item_name">Item name</string>
     <string name="fridge_edit_item">Edit Item</string>
+    <string name="fridge_eaten">Eaten</string>
+    <string name="fridge_discarded">Thrown away</string>
+    <string name="fridge_status_description">Mark %1$s as %2$s</string>
+    <string name="fridge_status_failed">Could not update %1$s. Please try again.</string>
+    <string name="fridge_status_sync_failed">The status of %1$s could not synchronize. Check its current status and try again.</string>
     <string name="fridge_edit_description">Edit %1$s</string>
     <string name="fridge_quantity">Quantity</string>
     <string name="fridge_quantity_invalid">Enter a whole number greater than 0.</string>
