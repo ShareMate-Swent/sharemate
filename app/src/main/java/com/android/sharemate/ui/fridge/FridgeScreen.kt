@@ -25,12 +25,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil.ImageLoader
+import coil.imageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
@@ -290,6 +299,7 @@ fun FridgeItem(
     onEdit: () -> Unit = {},
     statusEnabled: Boolean = false,
     onStatusChange: (ItemStatus) -> Unit = {},
+    imageLoader: ImageLoader = LocalContext.current.imageLoader,
 ) {
   val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   val editDescription = stringResource(R.string.fridge_edit_description, item.name)
@@ -320,9 +330,18 @@ fun FridgeItem(
       contentColor = contentColor) {
         Column(
             modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              Text(item.name, style = MaterialTheme.typography.titleMedium)
-              item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
-              item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+              Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FridgeItemImage(item, imageLoader)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                      Text(item.name, style = MaterialTheme.typography.titleMedium)
+                      item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
+                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+                    }
+              }
+              FridgeImageCredits(item.image)
+
               Row {
                 TextButton(
                     onClick = onEdit,
@@ -343,27 +362,29 @@ fun FridgeItem(
                       Text(stringResource(R.string.fridge_remove))
                     }
               }
-              if (item.status == ItemStatus.ACTIVE)
-                  Row {
-                    listOf(
-                            ItemStatus.EATEN to R.string.fridge_eaten,
-                            ItemStatus.DISCARDED to R.string.fridge_discarded)
-                        .forEach { (status, resource) ->
-                          val label = stringResource(resource)
-                          val description =
-                              stringResource(R.string.fridge_status_description, item.name, label)
-                          TextButton(
-                              onClick = { onStatusChange(status) },
-                              enabled = statusEnabled,
-                              modifier =
-                                  Modifier.testTag(
-                                          (if (status == ItemStatus.EATEN) C.Tag.fridge_eaten_prefix
-                                          else C.Tag.fridge_discard_prefix) + item.id)
-                                      .semantics { contentDescription = description }) {
-                                Text(label)
-                              }
-                        }
-                  }
+
+              if (item.status == ItemStatus.ACTIVE) {
+                Row {
+                  listOf(
+                          ItemStatus.EATEN to R.string.fridge_eaten,
+                          ItemStatus.DISCARDED to R.string.fridge_discarded)
+                      .forEach { (status, resource) ->
+                        val label = stringResource(resource)
+                        val description =
+                            stringResource(R.string.fridge_status_description, item.name, label)
+                        TextButton(
+                            onClick = { onStatusChange(status) },
+                            enabled = statusEnabled,
+                            modifier =
+                                Modifier.testTag(
+                                        (if (status == ItemStatus.EATEN) C.Tag.fridge_eaten_prefix
+                                        else C.Tag.fridge_discard_prefix) + item.id)
+                                    .semantics { contentDescription = description }) {
+                              Text(label)
+                            }
+                      }
+                }
+              }
             }
       }
 }

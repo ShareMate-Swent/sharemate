@@ -40,6 +40,7 @@
     <string name="fridge_cancel">Cancel</string>
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
+
     <string name="household_choice_title">Set up your fridge</string>
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
     <string name="create_a_household_description">Start a new shared fridge and invite your roommates.</string>
@@ -73,6 +74,14 @@
     <string name="leave">Leave</string>
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>
+
+    <string name="fridge_image_description">Photo of %1$s</string>
+    <string name="fridge_image_placeholder">Generic food image</string>
+    <string name="fridge_image_source">Image source</string>
+    <string name="fridge_image_license">License</string>
+    <string name="fridge_image_author">Author</string>
+    <string name="fridge_image_openverse">Image search powered by Openverse</string>
+
     <string name="fridge_remove">Remove</string>
     <string name="fridge_remove_description">Remove %1$s</string>
     <string name="fridge_remove_title">Remove item?</string>
