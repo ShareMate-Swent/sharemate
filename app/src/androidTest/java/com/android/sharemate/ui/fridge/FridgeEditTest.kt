@@ -15,6 +15,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -51,7 +54,11 @@ class FridgeEditTest {
 
   private fun show() {
     repository.items.value = listOf(item, otherItem)
-    val vm = FridgeViewModel(repository, "user", "household")
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val vm = FridgeViewModel(repository, "user", "household", FoodImageSelector(imageRepository))
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()
