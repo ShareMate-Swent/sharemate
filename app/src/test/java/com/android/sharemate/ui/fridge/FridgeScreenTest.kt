@@ -307,7 +307,7 @@ class FridgeScreenTest {
   fun doesNotMarkItemsExpiringAfterThreeDaysAsSoon() {
     composeRule.setContent { MaterialTheme { FridgeItem(item = itemExpiringIn(4)) } }
 
-    composeRule.onNodeWithText("Expires ", substring = true).assertIsDisplayed()
+    composeRule.onNodeWithText("Expires:", substring = true).assertIsDisplayed()
     composeRule.onAllNodesWithText("Expires soon:", substring = true).assertCountEquals(0)
   }
 
