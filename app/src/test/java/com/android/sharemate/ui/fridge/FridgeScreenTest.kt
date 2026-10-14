@@ -27,10 +27,9 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.item.toExpirationDate
 import com.android.sharemate.resources.C
 import java.time.LocalDate
-import java.time.ZoneId
-import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -313,13 +312,10 @@ class FridgeScreenTest {
   }
 
   private fun itemExpiringIn(days: Long) =
-      Item(
-          id = "milk",
-          name = "Milk",
-          expirationDate =
-              Date.from(
-                  LocalDate.now().plusDays(days).atStartOfDay(ZoneId.systemDefault()).toInstant()))
-
+    Item(
+      id = "milk",
+      name = "Milk",
+      expirationDate = LocalDate.now().plusDays(days).toExpirationDate())
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
