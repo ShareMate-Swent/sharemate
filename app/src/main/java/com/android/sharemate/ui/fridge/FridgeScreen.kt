@@ -39,11 +39,11 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.text.DateFormat
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.delay
+import com.android.sharemate.model.item.ExpiryStatus
+import com.android.sharemate.model.item.expiryStatus
+import com.android.sharemate.model.item.formatExpirationDate
+import java.util.Date
 
 @Composable
 fun FridgeScreen(
@@ -401,33 +401,16 @@ fun FridgeItem(
             }
       }
 }
-
-private enum class ExpiryStatus {
-  EXPIRED,
-  SOON,
-  NORMAL,
-}
-
-private fun java.util.Date?.expiryStatus(): ExpiryStatus {
-  if (this == null) return ExpiryStatus.NORMAL
-
-  val today = LocalDate.now()
-  val expiryDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-  val daysUntilExpiry = ChronoUnit.DAYS.between(today, expiryDate)
-  return when {
-    daysUntilExpiry < 0 -> ExpiryStatus.EXPIRED
-    daysUntilExpiry <= 3 -> ExpiryStatus.SOON
-    else -> ExpiryStatus.NORMAL
-  }
-}
-
-private fun java.util.Date.expiryDescription(status: ExpiryStatus): String {
-  val formattedDate = DateFormat.getDateInstance(DateFormat.MEDIUM).format(this)
-  return when (status) {
-    ExpiryStatus.EXPIRED -> "Expired on $formattedDate"
-    ExpiryStatus.SOON -> "Expires soon: $formattedDate"
-    ExpiryStatus.NORMAL -> "Expires $formattedDate"
-  }
+@Composable
+private fun expiryDescription(date: Date, status: ExpiryStatus): String {
+  val formatted = date.formatExpirationDate()
+  return stringResource(
+    when (status) {
+      ExpiryStatus.EXPIRED -> R.string.fridge_expired_on
+      ExpiryStatus.SOON -> R.string.fridge_expires_soon
+      ExpiryStatus.NORMAL -> R.string.fridge_expires
+    },
+    formatted)
 }
 
 @Preview(showBackground = true)

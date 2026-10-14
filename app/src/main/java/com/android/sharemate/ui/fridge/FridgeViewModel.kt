@@ -11,10 +11,8 @@ import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeParseException
-import java.util.Date
+import com.android.sharemate.model.item.toExpirationDateOrNull
+import com.android.sharemate.model.item.toExpirationInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.currentCoroutineContext
@@ -321,10 +319,7 @@ class FridgeViewModel(
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
-          expirationDateInput =
-              item.expirationDate
-                  ?.let { it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString() }
-                  .orEmpty(),
+          expirationDateInput = item.expirationDate?.toExpirationInput().orEmpty(),
           formError = null)
     }
   }
@@ -356,21 +351,15 @@ class FridgeViewModel(
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }
       return
     }
+    val input = state.expirationDateInput.trim()
     val expirationDate =
-        try {
-          val input = state.expirationDateInput.trim()
-          if (input.isEmpty()) null
-          else {
-            if (!input.matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}"))) {
-              mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-              return
-            }
-            Date.from(LocalDate.parse(input).atStartOfDay(ZoneOffset.UTC).toInstant())
+      if (input.isEmpty()) null
+      else
+        input.toExpirationDateOrNull()
+          ?: run {
+            mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
+            return
           }
-        } catch (exception: DateTimeParseException) {
-          mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-          return
-        }
     val quantity = state.itemQuantity.trim().toIntOrNull()
     if (quantity == null || quantity <= 0) {
       mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
