@@ -40,7 +40,13 @@
     <string name="fridge_cancel">Cancel</string>
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
+
     <string name="household_choice_title">Set up your fridge</string>
+    <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
+    <string name="create_a_household_description">Start a new shared fridge and invite your roommates.</string>
+    <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
+    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="share_invite_code">Share</string>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
@@ -59,7 +65,22 @@
     <string name="invalid_invite_code">This code doesn\'t exist. Check it with your roommate.</string>
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="household_retry">Try again</string>
+    <string name="settings_title">Settings</string>
+    <string name="leave_household">Leave household</string>
+    <string name="leave_household_title">Leave household?</string>
+    <string name="leave_household_message">You will no longer see %1$s\'s fridge. The other members keep the household and its items. You can join again with the invite code.</string>
+    <string name="leave_household_failed">Could not leave the household. Check your connection and try again.</string>
+    <string name="leave_household_no_session">Your session has ended. Sign in again to leave the household.</string>
+    <string name="leave">Leave</string>
+    <string name="cancel">Cancel</string>
     <string name="back">Back</string>
+    <string name="fridge_image_description">Photo of %1$s</string>
+    <string name="fridge_image_placeholder">Generic food image</string>
+    <string name="fridge_image_source">Image source</string>
+    <string name="fridge_image_license">License</string>
+    <string name="fridge_image_author">Author</string>
+    <string name="fridge_image_openverse">Image search powered by Openverse</string>
+
     <string name="fridge_remove">Delete</string>
     <string name="fridge_remove_description">Delete %1$s</string>
     <string name="fridge_remove_title">Delete item permanently?</string>

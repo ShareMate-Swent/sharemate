@@ -1,3 +1,5 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
@@ -5,6 +7,17 @@ plugins {
     alias(libs.plugins.sonar)
     id("jacoco")
     id("com.google.gms.google-services")
+}
+
+val ciKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+val ciKeystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+val ciKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+val ciKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+val ciSigningValues = listOf(ciKeystorePath, ciKeystorePassword, ciKeyAlias, ciKeyPassword)
+val ciSigningConfigured = ciSigningValues.all { !it.isNullOrBlank() }
+
+require(ciSigningValues.all { it.isNullOrBlank() } || ciSigningConfigured) {
+    "Set all CI signing environment variables or leave them unset."
 }
 
 // AGP configures JaCoCo during evaluation; keep the report engine aligned afterward.
@@ -29,6 +42,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (ciSigningConfigured) {
+            create("ci") {
+                storeFile = file(checkNotNull(ciKeystorePath))
+                storePassword = checkNotNull(ciKeystorePassword)
+                keyAlias = checkNotNull(ciKeyAlias)
+                keyPassword = checkNotNull(ciKeyPassword)
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -42,6 +66,9 @@ android {
         debug {
             enableUnitTestCoverage = true
             enableAndroidTestCoverage = true
+            if (ciSigningConfigured) {
+                signingConfig = signingConfigs.getByName("ci")
+            }
         }
     }
 
@@ -132,6 +159,9 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 }
 
 dependencies {
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.google.identity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -160,6 +190,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
+    implementation(libs.coil.compose)
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)

@@ -65,6 +65,7 @@ class FirebaseItemRepositoryEmulatorTest {
     assertEquals(original.copy(id = id), await(doc.get(Source.SERVER)).toItemOrNull())
     // Metadata belongs to other features and must survive ordinary item edits.
     adminPatch(id, JSONObject().put("imageUrl", field("stringValue", "https://example.org/milk")))
+    await(doc.update("imageUrl", "https://example.org/milk"))
     confirm(repository.updateItem(id, ItemEdit(" Oat milk ", 2, null, null)))
     val edited =
         original.copy(

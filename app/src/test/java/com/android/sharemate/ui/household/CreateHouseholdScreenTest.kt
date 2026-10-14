@@ -1,7 +1,9 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import android.content.Context
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
@@ -24,6 +26,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -46,12 +49,14 @@ class CreateHouseholdScreenTest {
         )
       }
     }
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.BACK).performClick()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithText("ABC123").assertIsDisplayed()
+    // The confirmation has no back arrow: the household already exists at this point.
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.BACK).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
-    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.BACK).performClick()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).performClick()
     assertEquals(1, continueCount)
     assertEquals(1, back)
@@ -101,6 +106,24 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithText("ABC123").assertIsDisplayed()
   }
 
+  @Test
+  fun shareOpensChooserWithInviteCode() {
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(createViewModel(), onContinue = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).performClick()
+
+    val chooser = shadowOf(composeTestRule.activity).nextStartedActivity
+    assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+    val send = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+    assertEquals(Intent.ACTION_SEND, send?.action)
+    assertEquals("text/plain", send?.type)
+    assertEquals("ABC123", send?.getStringExtra(Intent.EXTRA_TEXT))
+  }
+
   private fun createViewModel(repository: TestHouseholdRepository = TestHouseholdRepository()) =
       CreateHouseholdViewModel(repository, TestAuthRepository())
 
@@ -111,6 +134,9 @@ class CreateHouseholdScreenTest {
     override suspend fun signIn(email: String, password: String) = Unit
 
     override suspend fun signUp(email: String, password: String) = Unit
+
+    override suspend fun signInWithGoogle(idToken: String) =
+        error("Google sign-in is not used by this fake")
 
     override fun signOut() = Unit
   }
@@ -127,6 +153,8 @@ class CreateHouseholdScreenTest {
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
         delegate.joinHousehold(inviteCode, userId)
+
+    override suspend fun leaveHousehold(userId: String) = delegate.leaveHousehold(userId)
 
     override suspend fun getHousehold(householdId: String) = delegate.getHousehold(householdId)
 

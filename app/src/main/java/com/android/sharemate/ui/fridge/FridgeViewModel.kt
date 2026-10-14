@@ -4,8 +4,10 @@ package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -15,6 +17,8 @@ import java.time.format.DateTimeParseException
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,12 +36,14 @@ enum class FridgeSortOrder {
 class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
-    private val householdId: String,
+    private val householdId: String?,
+    private val foodImageSelector: FoodImageSelector
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
+  private val latestStatusWrites = mutableMapOf<String, Any>()
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
@@ -78,10 +84,15 @@ class FridgeViewModel(
 
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
-    require(householdId.isNotBlank()) { "A real household ID is required" }
+    require(householdId == null || householdId.isNotBlank()) {
+      "A household ID must be non-blank when provided"
+    }
     viewModelScope.launch {
       try {
-        itemRepository.getSharedItems(householdId).collect { items ->
+        val inventory =
+            if (householdId == null) itemRepository.getPrivateItems(userId)
+            else itemRepository.getSharedItems(householdId)
+        inventory.collect { items ->
           mutableUiState.update { state ->
             val pending = state.pendingRemovalItem
             val stale =
@@ -212,6 +223,9 @@ class FridgeViewModel(
         state.items.firstOrNull {
           it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
         } ?: return
+    // Invalidate older confirmations as soon as this action is accepted, before launching it.
+    val operation = Any()
+    latestStatusWrites[itemId] = operation
     mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds + itemId) }
     viewModelScope.launch {
       try {
@@ -224,7 +238,10 @@ class FridgeViewModel(
             if (write.cause is CancellationException) throw write.cause
             reportStatusError(item.name, false)
           }
-          is ItemWrite.Queued -> trackConfirmation(write) { reportStatusError(item.name, true) }
+          is ItemWrite.Queued ->
+              trackConfirmation(write) {
+                if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
+              }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -354,28 +371,40 @@ class FridgeViewModel(
           mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
           return
         }
+    val quantity = state.itemQuantity.trim().toIntOrNull()
+    if (quantity == null || quantity <= 0) {
+      mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
+      return
+    }
     if (state.editingItemId != null) {
-      val quantity = state.itemQuantity.trim().toIntOrNull()
-      if (quantity == null || quantity <= 0) {
-        mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
-        return
-      }
       saveEdit(
           state.editingItemId,
           ItemEdit(
               name, quantity, state.itemCategory.trim().takeIf(String::isNotEmpty), expirationDate))
       return
     }
-    val item =
+    val draftItem =
         Item(
             name = name,
             ownerId = userId,
             householdId = householdId,
+            quantity = quantity,
             expirationDate = expirationDate,
             category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
+        val image =
+            try {
+              ItemImage.fromSelection(foodImageSelector.select(name, personalPhotoReference = null))
+            } catch (exception: CancellationException) {
+              throw exception
+            } catch (exception: Exception) {
+              // Image lookup is optional and must not prevent saving the food.
+              null
+            }
+        currentCoroutineContext().ensureActive()
+        val item = draftItem.copy(image = image)
         val itemId = itemRepository.addItem(item)
         if (itemId.isNullOrBlank()) {
           mutableUiState.update {
@@ -389,6 +418,7 @@ class FridgeViewModel(
                     else it.items + item.copy(id = itemId),
                 isSaving = false,
                 isAddItemDialogOpen = false,
+                itemQuantity = "1",
                 itemName = "",
                 itemCategory = "",
                 expirationDateInput = "",
@@ -475,6 +505,7 @@ class FridgeViewModel(
   override fun onCleared() {
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
+    latestStatusWrites.clear()
     mutableUiState.update { it.copy(pendingStatusIds = emptySet()) }
   }
 

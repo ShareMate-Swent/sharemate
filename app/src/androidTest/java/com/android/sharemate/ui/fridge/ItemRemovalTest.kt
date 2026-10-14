@@ -12,8 +12,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -156,6 +160,7 @@ class ItemRemovalTest {
   private fun requestRemoval(item: Item) {
     composeTestRule
         .onNodeWithTag("${C.Tag.fridge_remove_prefix}${item.id}")
+        .performScrollTo()
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
@@ -171,7 +176,13 @@ class ItemRemovalTest {
   }
 
   private fun showFridge(repository: TestItemRepository): FridgeViewModel {
-    val viewModel = FridgeViewModel(repository, "test-user", "test-household")
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }

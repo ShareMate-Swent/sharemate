@@ -39,6 +39,14 @@ class InMemoryHouseholdRepository : HouseholdRepository {
     }
   }
 
+  override suspend fun leaveHousehold(userId: String) {
+    require(userId.isNotBlank()) { "User ID must not be blank" }
+
+    households.replaceAll { _, household ->
+      household.copy(memberIds = household.memberIds - userId)
+    }
+  }
+
   override suspend fun getHousehold(householdId: String): Household? = households[householdId]
 
   override suspend fun getHouseholdForUser(userId: String): Household? =
