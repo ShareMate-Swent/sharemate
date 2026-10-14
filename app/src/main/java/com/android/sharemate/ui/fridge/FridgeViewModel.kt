@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class FridgeSortOrder {
   EXPIRATION_DATE,
@@ -39,6 +40,10 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector
 ) : ViewModel() {
+  private companion object {
+    const val IMAGE_LOOKUP_TIMEOUT_MS = 3_000L
+  }
+
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
@@ -339,7 +344,11 @@ class FridgeViewModel(
       try {
         val image =
             try {
-              ItemImage.fromSelection(foodImageSelector.select(name, personalPhotoReference = null))
+              // The image is optional: spend at most three seconds looking it up.
+              withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
+                ItemImage.fromSelection(
+                    foodImageSelector.select(name, personalPhotoReference = null))
+              }
             } catch (exception: CancellationException) {
               throw exception
             } catch (exception: Exception) {

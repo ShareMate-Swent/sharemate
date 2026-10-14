@@ -6,20 +6,36 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
-import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.io.InputStream
-import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.Timeout
+import okio.buffer
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -36,7 +52,7 @@ import org.junit.runner.RunWith
 class OpenverseFoodImageRepositoryTest {
   @Test
   fun searchReturnsImageAndAttributionOffTheCallingThread() = runBlocking {
-    val connection = SimulatedConnection()
+    val connection = SimulatedCall()
     val callingThread = Thread.currentThread()
 
     val result = repository(connection).searchByTitle("  soupe à l'oignon & pain  ")
@@ -57,40 +73,39 @@ class OpenverseFoodImageRepositoryTest {
     assertEquals("api.openverse.org", connection.requestedUrl?.host)
     assertEquals("https", connection.requestedUrl?.protocol)
     assertEquals("/v1/images/", connection.requestedUrl?.path)
-    assertEquals(
-        "q=soupe+%C3%A0+l%27oignon+%26+pain&license=cc0,by&page_size=20&filter_dead=true",
-        connection.requestedUrl?.query)
-    assertNull(connection.getRequestProperty("Authorization"))
+    assertEquals("soupe à l'oignon & pain", connection.request().url.queryParameter("q"))
+    assertEquals("cc0,by", connection.request().url.queryParameter("license"))
+    assertEquals("20", connection.request().url.queryParameter("page_size"))
+    assertEquals("true", connection.request().url.queryParameter("filter_dead"))
+    assertNull(connection.request().header("Authorization"))
     assertNotSame(callingThread, connection.requestThread)
     assertTrue(connection.streamClosed)
-    assertTrue(connection.disconnected)
+    assertTrue(connection.bodyClosed)
   }
 
   @Test
   fun emptyResultsAreDistinctFromFailure() = runBlocking {
-    val connection = SimulatedConnection(body = """{"results": []}""")
+    val connection = SimulatedCall(body = """{"results": []}""")
 
     assertSame(NotFound, repository(connection).searchByTitle("soupe"))
     assertTrue(connection.streamClosed)
-    assertTrue(connection.disconnected)
+    assertTrue(connection.bodyClosed)
   }
 
   @Test
   fun networkFailureReturnsAnExplicitFailureAndReleasesConnection() = runBlocking {
     for (error in listOf(IOException("Simulated network failure"), SocketTimeoutException())) {
-      val connection = SimulatedConnection(onRead = { throw error })
+      val connection = SimulatedCall(onRead = { throw error })
 
       assertEquals(Failure(Reason.NETWORK), repository(connection).searchByTitle("soupe"))
-      assertTrue(connection.disconnected)
+      assertTrue(connection.bodyClosed)
     }
   }
 
   @Test
   fun connectionOpeningFailureReturnsAnExplicitFailure() = runBlocking {
     val repository =
-        OpenverseFoodImageRepository(Dispatchers.IO) {
-          throw IOException("Simulated connection failure")
-        }
+        OpenverseFoodImageRepository(Call.Factory { throw IOException("Simulated call failure") })
 
     assertEquals(Failure(Reason.NETWORK), repository.searchByTitle("soupe"))
   }
@@ -98,7 +113,7 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun emptyAndBlankTitlesDoNotOpenAConnection() = runBlocking {
     for (title in listOf("", " \n\t ")) {
-      val connection = SimulatedConnection()
+      val connection = SimulatedCall()
 
       assertEquals(Failure(Reason.EMPTY_TITLE), repository(connection).searchByTitle(title))
       assertNull(connection.requestedUrl)
@@ -115,22 +130,21 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun httpErrorsKeepTheirStatusAndDoNotParseTheBody() = runBlocking {
     for (status in listOf(401, 429, 503)) {
-      val connection = SimulatedConnection(status = status, body = "not JSON")
+      val connection = SimulatedCall(status = status, body = "not JSON")
 
       assertEquals(Failure(Reason.HTTP, status), repository(connection).searchByTitle("soupe"))
       assertFalse(connection.streamOpened)
       assertEquals(1, connection.openCount)
-      assertTrue(connection.disconnected)
+      assertTrue(connection.bodyClosed)
     }
   }
 
   @Test
   fun redirectsRemainExplicitHttpFailures() = runBlocking {
-    val connection = SimulatedConnection(status = 302)
+    val connection = SimulatedCall(status = 302)
 
     assertEquals(Failure(Reason.HTTP, 302), repository(connection).searchByTitle("soupe"))
-    assertFalse(connection.instanceFollowRedirects)
-    assertTrue(connection.disconnected)
+    assertTrue(connection.bodyClosed)
   }
 
   @Test
@@ -144,11 +158,11 @@ class OpenverseFoodImageRepositoryTest {
             """{"results": {}}""",
             """{"results": "not an array"}""")
     for (body in invalidBodies) {
-      val connection = SimulatedConnection(body = body)
+      val connection = SimulatedCall(body = body)
 
       assertEquals(Failure(Reason.INVALID_RESPONSE), repository(connection).searchByTitle("soupe"))
       assertTrue(connection.streamClosed)
-      assertTrue(connection.disconnected)
+      assertTrue(connection.bodyClosed)
     }
   }
 
@@ -160,7 +174,7 @@ class OpenverseFoodImageRepositoryTest {
       for (field in optionalFields) {
         if (value == null) photo.remove(field) else photo.put(field, value)
       }
-      val connection = SimulatedConnection(body = response(photo))
+      val connection = SimulatedCall(body = response(photo))
 
       val found = repository(connection).searchByTitle("Titre recherché") as Found
 
@@ -183,7 +197,7 @@ class OpenverseFoodImageRepositoryTest {
             .put("license_url", "https://creativecommons.org/licenses/by/4.0/")
             .put("creator", JSONObject.NULL)
             .put("creator_url", "/relative-author")
-    val connection = SimulatedConnection(body = response(photo))
+    val connection = SimulatedCall(body = response(photo))
 
     val found = repository(connection).searchByTitle("soupe") as Found
 
@@ -216,7 +230,7 @@ class OpenverseFoodImageRepositoryTest {
                 image().put("license", "by-nc"),
                 firstUsable,
                 laterUsable)
-    val connection = SimulatedConnection(body = response(*entries.toTypedArray()))
+    val connection = SimulatedCall(body = response(*entries.toTypedArray()))
 
     val found = repository(connection).searchByTitle("soupe") as Found
 
@@ -231,7 +245,7 @@ class OpenverseFoodImageRepositoryTest {
         val incomplete = image()
         if (value == null) incomplete.remove(field) else incomplete.put(field, value)
         val complete = image().put("title", "Crédits exploitables")
-        val connection = SimulatedConnection(body = response(incomplete, complete))
+        val connection = SimulatedCall(body = response(incomplete, complete))
 
         val found = repository(connection).searchByTitle("soupe") as Found
 
@@ -244,7 +258,7 @@ class OpenverseFoodImageRepositoryTest {
   fun invalidAttributionLinksAreSkipped() = runBlocking {
     for (field in listOf("foreign_landing_url", "license_url")) {
       for (value in listOf("/relative", "https:///missing-host", "javascript:alert(1)")) {
-        val connection = SimulatedConnection(body = response(image().put(field, value)))
+        val connection = SimulatedCall(body = response(image().put(field, value)))
 
         assertSame(NotFound, repository(connection).searchByTitle("soupe"))
       }
@@ -254,7 +268,7 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun licensesOtherThanCc0AndCcByAreRejectedEvenIfReturnedByTheApi() = runBlocking {
     for (license in listOf("by-sa", "by-nc", "by-nd", "by-nc-sa", "by-nc-nd", "pdm", "unknown")) {
-      val connection = SimulatedConnection(body = response(image().put("license", license)))
+      val connection = SimulatedCall(body = response(image().put("license", license)))
 
       assertSame(NotFound, repository(connection).searchByTitle("soupe"))
     }
@@ -263,7 +277,7 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun noUsableResultsAreReportedAsNotFound() = runBlocking {
     val connection =
-        SimulatedConnection(
+        SimulatedCall(
             body =
                 response(
                     JSONObject(),
@@ -273,7 +287,7 @@ class OpenverseFoodImageRepositoryTest {
 
     assertSame(NotFound, repository(connection).searchByTitle("soupe"))
     assertTrue(connection.streamClosed)
-    assertTrue(connection.disconnected)
+    assertTrue(connection.bodyClosed)
   }
 
   @Test
@@ -282,7 +296,7 @@ class OpenverseFoodImageRepositoryTest {
         image()
             .put("url", "http://images.example.org/food.jpg")
             .put("foreign_landing_url", "http://example.org/photos/123/")
-    val connection = SimulatedConnection(body = response(photo))
+    val connection = SimulatedCall(body = response(photo))
 
     val found = repository(connection).searchByTitle("soupe") as Found
 
@@ -293,7 +307,7 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun cancellationIsPropagatedAndReleasesConnection() = runBlocking {
     val cancellation = CancellationException("Simulated cancellation")
-    val connection = SimulatedConnection(onRead = { throw cancellation })
+    val connection = SimulatedCall(onRead = { throw cancellation })
 
     try {
       repository(connection).searchByTitle("soupe")
@@ -302,7 +316,7 @@ class OpenverseFoodImageRepositoryTest {
       // La récupération des traces de coroutines peut copier l'exception.
       assertEquals(cancellation.message, exception.message)
     }
-    assertTrue(connection.disconnected)
+    assertTrue(connection.bodyClosed)
   }
 
   @Test
@@ -310,7 +324,7 @@ class OpenverseFoodImageRepositoryTest {
     val started = CompletableDeferred<Unit>()
     val releaseRead = CountDownLatch(1)
     val connection =
-        SimulatedConnection(
+        SimulatedCall(
             onRead = {
               started.complete(Unit)
               check(releaseRead.await(5, TimeUnit.SECONDS)) { "Test did not release the response" }
@@ -329,16 +343,98 @@ class OpenverseFoodImageRepositoryTest {
     withTimeout(5_000) { search.join() }
 
     assertTrue(search.isCancelled)
-    assertTrue(connection.disconnected)
+    assertTrue(connection.isCanceled())
+    withTimeout(5_000) { connection.responseDelivered.await() }
+    assertTrue(connection.bodyClosed)
   }
 
-  private fun repository(connection: SimulatedConnection): OpenverseFoodImageRepository =
-      OpenverseFoodImageRepository(Dispatchers.IO) { url ->
-        connection.requestedUrl = url
-        connection.requestThread = Thread.currentThread()
-        connection.openCount++
-        connection
+  private fun repository(connection: SimulatedCall): OpenverseFoodImageRepository =
+      OpenverseFoodImageRepository(
+          Call.Factory { request ->
+            connection.originalRequest = request
+            connection.requestedUrl = request.url.toUrl()
+            connection.openCount++
+            connection
+          })
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun timeoutCancelsTheCallWithoutWaitingForCallbackAndClosesLateResponse() = runTest {
+    val connection = SimulatedCall(deferResponse = true)
+    val result = async { withTimeoutOrNull(3_000) { repository(connection).searchByTitle("Milk") } }
+    runCurrent()
+    assertFalse(result.isCompleted)
+    advanceTimeBy(3_000)
+    runCurrent()
+    assertNull(result.await())
+    assertTrue(connection.isCanceled())
+    // A late success must still close its body and cannot replace the timeout result.
+    connection.deliverResponse()
+    assertTrue(connection.bodyClosed)
+    assertFalse(connection.streamOpened)
+  }
+
+  @Test
+  fun asynchronousNetworkFailureIsReported() = runBlocking {
+    val connection = SimulatedCall(deferResponse = true)
+    val result = async { repository(connection).searchByTitle("Milk") }
+    kotlinx.coroutines.yield()
+    connection.callback.onFailure(connection, IOException("Offline"))
+    assertEquals(Failure(Reason.NETWORK), result.await())
+  }
+
+  @Test
+  fun deadlineClosesRealSocketWhileResponseBodyIsStalled() = runBlocking {
+    // Only loopback traffic: no Openverse or other external service is contacted.
+    val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+    val headersSent = CompletableDeferred<Unit>()
+    val peerClosed = CompletableDeferred<Boolean>()
+    val client = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
+    var call: Call? = null
+    val serverThread = Thread {
+      try {
+        server.accept().use { socket ->
+          socket.soTimeout = 5_000
+          val input = socket.getInputStream().bufferedReader()
+          while (!input.readLine().isNullOrEmpty()) {
+            /* Read HTTP request headers. */
+          }
+          socket.getOutputStream().apply {
+            write("HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n".toByteArray())
+            flush()
+          }
+          // Leave the body stalled; cancellation must close the socket, not wait 30 seconds.
+          headersSent.complete(Unit)
+          peerClosed.complete(input.read() == -1)
+        }
+      } catch (exception: Exception) {
+        headersSent.completeExceptionally(exception)
+        peerClosed.completeExceptionally(exception)
       }
+    }
+    serverThread.start()
+    try {
+      val repository =
+          OpenverseFoodImageRepository(
+              Call.Factory { request ->
+                client
+                    .newCall(
+                        request.newBuilder().url("http://127.0.0.1:${server.localPort}/").build())
+                    .also { call = it }
+              })
+      val result = async { withTimeoutOrNull(3_000) { repository.searchByTitle("Milk") } }
+      withTimeout(5_000) { headersSent.await() }
+      assertNull(withTimeout(5_000) { result.await() })
+      assertTrue(call!!.isCanceled())
+      assertTrue(withTimeout(5_000) { peerClosed.await() })
+    } finally {
+      call?.cancel()
+      server.close()
+      serverThread.join(5_000)
+      client.connectionPool.evictAll()
+      client.dispatcher.executorService.shutdownNow()
+    }
+  }
 
   private fun image(): JSONObject =
       JSONObject(SUCCESS_BODY).getJSONArray("results").getJSONObject(0)
@@ -346,40 +442,85 @@ class OpenverseFoodImageRepositoryTest {
   private fun response(vararg results: Any): String =
       JSONObject().put("results", JSONArray(results.toList())).toString()
 
-  private class SimulatedConnection(
+  private class SimulatedCall(
       private val status: Int = 200,
-      body: String = SUCCESS_BODY,
+      private val body: String = SUCCESS_BODY,
+      private val deferResponse: Boolean = false,
       private val onRead: () -> Unit = {}
-  ) : HttpURLConnection(URL("https://api.openverse.org/v1/images/")) {
+  ) : Call {
+    val responseDelivered = CompletableDeferred<Unit>()
     var openCount = 0
     var requestedUrl: URL? = null
     var requestThread: Thread? = null
-    var disconnected = false
+    @Volatile var bodyClosed = false
     var streamOpened = false
     var streamClosed = false
-    private val responseStream =
-        object : ByteArrayInputStream(body.toByteArray(Charsets.UTF_8)) {
-          override fun close() {
-            streamClosed = true
-            super.close()
+    lateinit var originalRequest: Request
+    lateinit var callback: Callback
+    @Volatile private var cancelled = false
+    private var executed = false
+
+    override fun request() = originalRequest
+
+    override fun execute(): Response = error("Only asynchronous calls are supported")
+
+    override fun enqueue(responseCallback: Callback) {
+      executed = true
+      callback = responseCallback
+      if (!deferResponse) Thread { deliverResponse() }.start()
+    }
+
+    fun deliverResponse() {
+      requestThread = Thread.currentThread()
+      val source =
+          object : ForwardingSource(Buffer().writeUtf8(body)) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                  onRead()
+                  streamOpened = true
+                  return super.read(sink, byteCount)
+                }
+
+                override fun close() {
+                  streamClosed = true
+                  bodyClosed = true
+                  super.close()
+                }
+              }
+              .buffer()
+      val responseBody =
+          object : ResponseBody() {
+            override fun contentType() = null
+
+            override fun contentLength() = -1L
+
+            override fun source(): BufferedSource = source
           }
+      callback.onResponse(
+          this,
+          Response.Builder()
+              .request(originalRequest)
+              .protocol(Protocol.HTTP_1_1)
+              .code(status)
+              .message("Simulated response")
+              .body(responseBody)
+              .build())
+      responseDelivered.complete(Unit)
+    }
+
+    override fun cancel() {
+      cancelled = true
+    }
+
+    override fun isCanceled() = cancelled
+
+    override fun isExecuted() = executed
+
+    override fun timeout() = Timeout.NONE
+
+    override fun clone(): Call =
+        SimulatedCall(status, body, deferResponse, onRead).also {
+          it.originalRequest = originalRequest
         }
-
-    override fun getResponseCode(): Int = status
-
-    override fun getInputStream(): InputStream {
-      onRead()
-      streamOpened = true
-      return responseStream
-    }
-
-    override fun connect() {}
-
-    override fun disconnect() {
-      disconnected = true
-    }
-
-    override fun usingProxy(): Boolean = false
   }
 
   companion object {

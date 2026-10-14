@@ -191,6 +191,7 @@ dependencies {
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
     implementation(libs.coil.compose)
+    implementation(libs.okhttp)
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)

@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -1174,6 +1176,61 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun lookupDeadlineSavesOnceWithoutImageAndIgnoresLateResult() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    imageRepository.gate = gate
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    advanceTimeBy(2_999)
+    assertTrue(repository.addedItems.isEmpty())
+    assertTrue(vm.uiState.value.isSaving)
+
+    advanceTimeBy(1)
+    runCurrent()
+    assertTrue(imageRepository.cancelled)
+    assertNull(repository.addedItems.single().image)
+    assertEquals("Milk", vm.uiState.value.items.single().name)
+    assertFalse(vm.uiState.value.isSaving)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertNull(vm.uiState.value.formError)
+
+    gate.complete(Unit)
+    runCurrent()
+    assertEquals(1, repository.addedItems.size)
+    assertNull(vm.uiState.value.items.single().image)
+  }
+
+  @Test
+  fun imageFoundBeforeDeadlineIsSavedAndItsTimeoutDoesNotCancelTheWrite() = runTest {
+    val searchGate = CompletableDeferred<Unit>()
+    val saveGate = CompletableDeferred<Unit>()
+    imageRepository.gate = searchGate
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    repository.addGate = saveGate
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    advanceTimeBy(2_999)
+    searchGate.complete(Unit)
+    runCurrent()
+    advanceTimeBy(5_000)
+    runCurrent()
+    assertTrue(vm.uiState.value.isSaving)
+    assertFalse(imageRepository.cancelled)
+    assertEquals(remoteImage().url, repository.addedItems.single().image?.reference)
+    saveGate.complete(Unit)
+    runCurrent()
+    assertFalse(vm.uiState.value.isSaving)
+    assertNull(vm.uiState.value.formError)
+  }
+
+  @Test
   fun pendingLookupPreventsDuplicateSearchesAndSaves() = runTest {
     val searchGate = CompletableDeferred<Unit>()
     val saveGate = CompletableDeferred<Unit>()
@@ -1226,7 +1283,10 @@ class FridgeViewModelTest {
     runCurrent()
 
     assertTrue(saveJob.isCancelled)
-    assertSame(cancellation, completionCause)
+    // Crossing the timeout coroutine can copy the exception to recover its stack trace.
+    assertTrue(completionCause is CancellationException)
+    assertEquals(cancellation.message, completionCause?.message)
+    assertTrue(generateSequence(completionCause) { it.cause }.any { it === cancellation })
     assertTrue(repository.addedItems.isEmpty())
     assertNull(viewModel.uiState.value.formError)
     assertFalse(viewModel.uiState.value.isSaving)
@@ -1248,6 +1308,9 @@ class FridgeViewModelTest {
 
     viewModelStore.clear()
     runCurrent()
+    advanceTimeBy(3_000)
+    runCurrent()
+    assertTrue(imageRepository.cancelled)
     gate.complete(Unit)
     runCurrent()
 
@@ -1294,12 +1357,18 @@ class FridgeViewModelTest {
     var result: FoodImageSearchResult = FoodImageSearchResult.NotFound
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
+    var cancelled = false
 
     override suspend fun searchByTitle(title: String): FoodImageSearchResult {
       titles += title
-      gate?.await()
-      failure?.let { throw it }
-      return result
+      try {
+        gate?.await()
+        failure?.let { throw it }
+        return result
+      } catch (exception: CancellationException) {
+        cancelled = true
+        throw exception
+      }
     }
   }
 }
