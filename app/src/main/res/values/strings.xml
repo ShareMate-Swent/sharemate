@@ -74,7 +74,6 @@
     <string name="leave">Leave</string>
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>
-
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
@@ -82,10 +81,11 @@
     <string name="fridge_image_author">Author</string>
     <string name="fridge_image_openverse">Image search powered by Openverse</string>
 
-    <string name="fridge_remove">Remove</string>
-    <string name="fridge_remove_description">Remove %1$s</string>
-    <string name="fridge_remove_title">Remove item?</string>
-    <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
-    <string name="fridge_removing">Removing…</string>
-    <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
+    <string name="fridge_remove">Delete</string>
+    <string name="fridge_remove_description">Delete %1$s</string>
+    <string name="fridge_remove_title">Delete item permanently?</string>
+    <string name="fridge_remove_confirmation">Permanently delete %1$s from the fridge? This cannot be undone.</string>
+    <string name="fridge_removing">Deleting…</string>
+    <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
+    <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
 </resources>

@@ -41,6 +41,7 @@ class FridgeViewModel(
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
+  private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
 
@@ -92,7 +93,19 @@ class FridgeViewModel(
             if (householdId == null) itemRepository.getPrivateItems(userId)
             else itemRepository.getSharedItems(householdId)
         inventory.collect { items ->
-          mutableUiState.update { it.copy(items = items, isLoading = false, loadFailed = false) }
+          mutableUiState.update { state ->
+            val pending = state.pendingRemovalItem
+            val stale =
+                !state.isDeleting && pending != null && activeItem(items, pending.id) == null
+            state.copy(
+                items = items,
+                pendingDeletionIds =
+                    state.pendingDeletionIds.intersect(items.map { it.id }.toSet()),
+                isLoading = false,
+                loadFailed = false,
+                pendingRemovalItem = if (stale) null else pending,
+                removalFailed = if (stale) false else state.removalFailed)
+          }
         }
       } catch (exception: CancellationException) {
         throw exception
@@ -108,10 +121,11 @@ class FridgeViewModel(
         state.isSaving ||
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
+        itemId in state.pendingDeletionIds ||
         itemId in state.pendingStatusIds ||
         itemId.isBlank())
         return
-    val item = state.items.firstOrNull { it.id == itemId } ?: return
+    val item = activeItem(state.items, itemId) ?: return
     mutableUiState.update { it.copy(pendingRemovalItem = item, removalFailed = false) }
   }
 
@@ -124,30 +138,70 @@ class FridgeViewModel(
     val state = uiState.value
     if (state.isDeleting) return
     val item = state.pendingRemovalItem ?: return
-    if (state.items.none { it.id == item.id }) {
-      cancelRemoval()
-      return
+    if (item.id in state.pendingDeletionIds) return
+    val operation = Any().also { deletionOperations[item.id] = it }
+    // Register before submission: a local snapshot can arrive before Queued is returned.
+    mutableUiState.update {
+      it.copy(
+          isDeleting = true,
+          removalFailed = false,
+          pendingDeletionIds = it.pendingDeletionIds + item.id)
     }
-    mutableUiState.update { it.copy(isDeleting = true, removalFailed = false) }
     viewModelScope.launch {
       try {
-        if (itemRepository.deleteItem(item.id)) {
-          mutableUiState.update {
-            it.copy(
-                items = it.items.filterNot { saved -> saved.id == item.id },
-                pendingRemovalItem = null,
-                isDeleting = false,
-                removalFailed = false)
+        if (activeItem(uiState.value.items, item.id) == null) {
+          releaseDeletion(item.id, operation, failed = false)
+          mutableUiState.update { it.copy(pendingRemovalItem = null) }
+          return@launch
+        }
+        when (val write = itemRepository.deleteItemQueued(item.id)) {
+          is ItemWrite.Rejected -> {
+            if (write.cause is CancellationException) throw write.cause
+            releaseDeletion(item.id, operation, failed = true)
           }
-        } else {
-          mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
+          is ItemWrite.Queued -> {
+            mutableUiState.update {
+              it.copy(pendingRemovalItem = null, isDeleting = false, removalFailed = false)
+            }
+            trackConfirmation(
+                write, onComplete = { deletionOperations.remove(item.id, operation) }) {
+                  if (deletionOperations.remove(item.id, operation)) {
+                    mutableUiState.update {
+                      it.copy(
+                          pendingDeletionIds = it.pendingDeletionIds - item.id,
+                          removalSyncError = FridgeRemovalSyncError(item.name))
+                    }
+                  }
+                }
+          }
         }
       } catch (exception: CancellationException) {
-        mutableUiState.update { it.copy(isDeleting = false) }
+        releaseDeletion(item.id, operation, failed = false)
         throw exception
       } catch (exception: Exception) {
-        mutableUiState.update { it.copy(isDeleting = false, removalFailed = true) }
+        releaseDeletion(item.id, operation, failed = true)
       }
+    }
+  }
+
+  private fun activeItem(items: List<Item>, itemId: String): Item? =
+      items.firstOrNull {
+        it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
+      }
+
+  private fun releaseDeletion(itemId: String, operation: Any, failed: Boolean) {
+    if (!deletionOperations.remove(itemId, operation)) return
+    mutableUiState.update {
+      it.copy(
+          isDeleting = false,
+          removalFailed = failed,
+          pendingDeletionIds = it.pendingDeletionIds - itemId)
+    }
+  }
+
+  fun dismissRemovalSyncError(error: FridgeRemovalSyncError) {
+    mutableUiState.update {
+      if (it.removalSyncError === error) it.copy(removalSyncError = null) else it
     }
   }
 
@@ -162,6 +216,7 @@ class FridgeViewModel(
         state.isDeleting ||
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
+        itemId in state.pendingDeletionIds ||
         itemId in state.pendingStatusIds)
         return
     val item =
@@ -252,6 +307,7 @@ class FridgeViewModel(
         state.isAddItemDialogOpen ||
         state.pendingRemovalItem != null ||
         state.isDeleting ||
+        itemId in state.pendingDeletionIds ||
         itemId in state.pendingStatusIds)
         return
     val item =
@@ -380,9 +436,7 @@ class FridgeViewModel(
 
   private fun saveEdit(itemId: String, edit: ItemEdit) {
     val state = uiState.value
-    if (state.items.none {
-      it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
-    }) {
+    if (itemId in state.pendingDeletionIds || activeItem(state.items, itemId) == null) {
       mutableUiState.update { it.copy(formError = FridgeFormError.SAVE_FAILED) }
       return
     }
@@ -421,7 +475,11 @@ class FridgeViewModel(
   }
 
   // Observe each queued write independently without a waiting job while offline.
-  private fun trackConfirmation(write: ItemWrite.Queued, onFailure: () -> Unit) {
+  private fun trackConfirmation(
+      write: ItemWrite.Queued,
+      onComplete: () -> Unit = {},
+      onFailure: () -> Unit,
+  ) {
     val operation = Any()
     confirmationHandlers[operation] = null
     val handler =
@@ -437,6 +495,7 @@ class FridgeViewModel(
                 onFailure()
               }
             }
+            onComplete()
           }
         }
     if (operation in confirmationHandlers) confirmationHandlers[operation] = handler

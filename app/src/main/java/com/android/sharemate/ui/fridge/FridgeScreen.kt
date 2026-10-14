@@ -71,6 +71,7 @@ fun FridgeScreen(
     onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
+    onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
@@ -135,6 +136,18 @@ fun FridgeScreen(
           color = MaterialTheme.colorScheme.error,
           modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_status_error))
     }
+    uiState.removalSyncError?.let { error ->
+      LaunchedEffect(error, uiState.isAddItemDialogOpen, uiState.pendingRemovalItem) {
+        if (!uiState.isAddItemDialogOpen && uiState.pendingRemovalItem == null) {
+          delay(8_000)
+          onDismissRemovalSyncError(error)
+        }
+      }
+      Text(
+          stringResource(R.string.fridge_remove_sync_failed, error.itemName),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_removal_sync_error))
+    }
     Box(
         modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
         contentAlignment = Alignment.Center) {
@@ -151,6 +164,7 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds &&
                                 item.status == ItemStatus.ACTIVE,
                         onEdit = { onEditItem?.invoke(item.id) },
@@ -160,6 +174,7 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isAddItemDialogOpen &&
                                 uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds,
                         onStatusChange = { onStatusChange?.invoke(item.id, it) },
                         removalEnabled =
@@ -167,6 +182,8 @@ fun FridgeScreen(
                                 !uiState.isDeleting &&
                                 !uiState.isSaving &&
                                 !uiState.isAddItemDialogOpen &&
+                                uiState.pendingRemovalItem == null &&
+                                item.id !in uiState.pendingDeletionIds &&
                                 item.id !in uiState.pendingStatusIds,
                         onRemove = { onRemoveItem?.invoke(item.id) })
                   }
@@ -269,6 +286,7 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onDismissEditSyncError = viewModel::dismissEditSyncError,
       onStatusChange = viewModel::setItemStatus,
       onDismissStatusError = viewModel::dismissStatusError,
+      onDismissRemovalSyncError = viewModel::dismissRemovalSyncError,
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
