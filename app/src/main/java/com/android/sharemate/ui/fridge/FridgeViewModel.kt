@@ -353,13 +353,15 @@ class FridgeViewModel(
     }
     val input = state.expirationDateInput.trim()
     val expirationDate =
-      if (input.isEmpty()) null
-      else
-        input.toExpirationDateOrNull()
-          ?: run {
-            mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-            return
-          }
+        if (input.isEmpty()) null
+        else
+            input.toExpirationDateOrNull()
+                ?: run {
+                  mutableUiState.update {
+                    it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE)
+                  }
+                  return
+                }
     val quantity = state.itemQuantity.trim().toIntOrNull()
     if (quantity == null || quantity <= 0) {
       mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }

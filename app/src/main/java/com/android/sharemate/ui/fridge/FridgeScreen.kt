@@ -35,15 +35,15 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
-import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
-import kotlinx.coroutines.delay
-import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.expiryStatus
 import com.android.sharemate.model.item.formatExpirationDate
+import com.android.sharemate.resources.C
+import com.android.sharemate.ui.theme.SampleAppTheme
 import java.util.Date
+import kotlinx.coroutines.delay
 
 @Composable
 fun FridgeScreen(
@@ -401,16 +401,17 @@ fun FridgeItem(
             }
       }
 }
+
 @Composable
 private fun expiryDescription(date: Date, status: ExpiryStatus): String {
   val formatted = date.formatExpirationDate()
   return stringResource(
-    when (status) {
-      ExpiryStatus.EXPIRED -> R.string.fridge_expired_on
-      ExpiryStatus.SOON -> R.string.fridge_expires_soon
-      ExpiryStatus.NORMAL -> R.string.fridge_expires
-    },
-    formatted)
+      when (status) {
+        ExpiryStatus.EXPIRED -> R.string.fridge_expired_on
+        ExpiryStatus.SOON -> R.string.fridge_expires_soon
+        ExpiryStatus.NORMAL -> R.string.fridge_expires
+      },
+      formatted)
 }
 
 @Preview(showBackground = true)

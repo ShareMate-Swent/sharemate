@@ -14,7 +14,9 @@ enum class ExpiryStatus {
   NORMAL,
 }
 
-/** Un item est "SOON" s'il expire dans ce nombre de jours (inclus). Réutilisable pour les notifs. */
+/**
+ * Un item est "SOON" s'il expire dans ce nombre de jours (inclus). Réutilisable pour les notifs.
+ */
 const val EXPIRY_SOON_THRESHOLD_DAYS = 3L
 
 private val ISO_DATE_INPUT = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -43,10 +45,10 @@ fun String.toExpirationDateOrNull(): Date? {
 
 /** Positif = pas encore périmé, 0 = aujourd'hui, négatif = déjà périmé. */
 fun Date.daysUntilExpiry(today: LocalDate = LocalDate.now()): Long =
-  ChronoUnit.DAYS.between(today, toExpirationLocalDate())
+    ChronoUnit.DAYS.between(today, toExpirationLocalDate())
 
 fun Date.formatExpirationDate(): String =
-  toExpirationLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+    toExpirationLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
 
 fun Date?.expiryStatus(today: LocalDate = LocalDate.now()): ExpiryStatus {
   if (this == null) return ExpiryStatus.NORMAL
@@ -63,11 +65,11 @@ fun Date?.expiryStatus(today: LocalDate = LocalDate.now()): ExpiryStatus {
  * moins urgent. Prévu pour ExpirationDatesNotification.
  */
 fun List<Item>.expiringWithin(
-  days: Long = EXPIRY_SOON_THRESHOLD_DAYS,
-  today: LocalDate = LocalDate.now()
+    days: Long = EXPIRY_SOON_THRESHOLD_DAYS,
+    today: LocalDate = LocalDate.now()
 ): List<Item> =
-  filter { it.status == ItemStatus.ACTIVE }
-    .mapNotNull { item -> item.expirationDate?.let { item to it.daysUntilExpiry(today) } }
-    .filter { (_, daysLeft) -> daysLeft <= days }
-    .sortedBy { (_, daysLeft) -> daysLeft }
-    .map { (item, _) -> item }
+    filter { it.status == ItemStatus.ACTIVE }
+        .mapNotNull { item -> item.expirationDate?.let { item to it.daysUntilExpiry(today) } }
+        .filter { (_, daysLeft) -> daysLeft <= days }
+        .sortedBy { (_, daysLeft) -> daysLeft }
+        .map { (item, _) -> item }
