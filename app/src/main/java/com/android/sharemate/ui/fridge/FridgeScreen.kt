@@ -328,13 +328,15 @@ fun FridgeItem(
         ExpiryStatus.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
         ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
       }
+  val expirationDescription =
+      item.expirationDate?.let { date -> date.expiryDescription(expiryStatus) }
 
   Surface(
       modifier =
           modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}").semantics {
             contentDescription = buildString {
               append(item.name)
-              item.expirationDate?.let { append(", ${it.expiryDescription(expiryStatus)}") }
+              expirationDescription?.let { append(", $it") }
             }
           },
       shape = RoundedCornerShape(12.dp),
@@ -349,7 +351,7 @@ fun FridgeItem(
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                       Text(item.name, style = MaterialTheme.typography.titleMedium)
                       item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
-                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+                      expirationDescription?.let { Text(it) }
                     }
               }
 
@@ -403,8 +405,8 @@ fun FridgeItem(
 }
 
 @Composable
-private fun expiryDescription(date: Date, status: ExpiryStatus): String {
-  val formatted = date.formatExpirationDate()
+private fun Date.expiryDescription(status: ExpiryStatus): String {
+  val formatted = formatExpirationDate()
   return stringResource(
       when (status) {
         ExpiryStatus.EXPIRED -> R.string.fridge_expired_on

@@ -40,6 +40,9 @@
     <string name="fridge_cancel">Cancel</string>
     <string name="fridge_item_category">Category: %1$s</string>
     <string name="fridge_item_expiration">Expires: %1$s</string>
+    <string name="fridge_expires">Expires: %1$s</string>
+    <string name="fridge_expires_soon">Expires soon: %1$s</string>
+    <string name="fridge_expired_on">Expired on %1$s</string>
 
     <string name="household_choice_title">Set up your fridge</string>
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
