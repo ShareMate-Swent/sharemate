@@ -361,10 +361,10 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun timeoutCancelsTheCallWithoutWaitingForCallbackAndClosesLateResponse() = runTest {
     val connection = SimulatedCall(deferResponse = true)
-    val result = async { withTimeoutOrNull(3_000) { repository(connection).searchByTitle("Milk") } }
+    val result = async { withTimeoutOrNull(5_000) { repository(connection).searchByTitle("Milk") } }
     runCurrent()
     assertFalse(result.isCompleted)
-    advanceTimeBy(3_000)
+    advanceTimeBy(5_000)
     runCurrent()
     assertNull(result.await())
     assertTrue(connection.isCanceled())
@@ -394,7 +394,8 @@ class OpenverseFoodImageRepositoryTest {
     val serverThread = Thread {
       try {
         server.accept().use { socket ->
-          socket.soTimeout = 5_000
+          // Test watchdog must outlast the five-second lookup deadline.
+          socket.soTimeout = 10_000
           val input = socket.getInputStream().bufferedReader()
           while (!input.readLine().isNullOrEmpty()) {
             /* Read HTTP request headers. */
@@ -422,15 +423,15 @@ class OpenverseFoodImageRepositoryTest {
                         request.newBuilder().url("http://127.0.0.1:${server.localPort}/").build())
                     .also { call = it }
               })
-      val result = async { withTimeoutOrNull(3_000) { repository.searchByTitle("Milk") } }
-      withTimeout(5_000) { headersSent.await() }
-      assertNull(withTimeout(5_000) { result.await() })
+      val result = async { withTimeoutOrNull(5_000) { repository.searchByTitle("Milk") } }
+      withTimeout(10_000) { headersSent.await() }
+      assertNull(withTimeout(10_000) { result.await() })
       assertTrue(call!!.isCanceled())
-      assertTrue(withTimeout(5_000) { peerClosed.await() })
+      assertTrue(withTimeout(10_000) { peerClosed.await() })
     } finally {
       call?.cancel()
       server.close()
-      serverThread.join(5_000)
+      serverThread.join(10_000)
       client.connectionPool.evictAll()
       client.dispatcher.executorService.shutdownNow()
     }

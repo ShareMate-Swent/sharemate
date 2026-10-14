@@ -1185,7 +1185,7 @@ class FridgeViewModelTest {
     vm.updateName("Milk")
     vm.saveItem()
     runCurrent()
-    advanceTimeBy(2_999)
+    advanceTimeBy(4_999)
     assertTrue(repository.addedItems.isEmpty())
     assertTrue(vm.uiState.value.isSaving)
 
@@ -1216,7 +1216,7 @@ class FridgeViewModelTest {
     vm.updateName("Milk")
     vm.saveItem()
     runCurrent()
-    advanceTimeBy(2_999)
+    advanceTimeBy(4_999)
     searchGate.complete(Unit)
     runCurrent()
     advanceTimeBy(5_000)
@@ -1308,7 +1308,7 @@ class FridgeViewModelTest {
 
     viewModelStore.clear()
     runCurrent()
-    advanceTimeBy(3_000)
+    advanceTimeBy(5_000)
     runCurrent()
     assertTrue(imageRepository.cancelled)
     gate.complete(Unit)
