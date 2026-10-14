@@ -51,16 +51,14 @@ fun AddItemDialog(
                   enabled = !uiState.isSaving,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_name_input))
-              if (uiState.editingItemId != null) {
-                OutlinedTextField(
-                    value = uiState.itemQuantity,
-                    onValueChange = onQuantityChange,
-                    label = { Text(stringResource(R.string.fridge_quantity)) },
-                    isError = uiState.formError == FridgeFormError.INVALID_QUANTITY,
-                    enabled = !uiState.isSaving,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_quantity_input))
-              }
+              OutlinedTextField(
+                  value = uiState.itemQuantity,
+                  onValueChange = onQuantityChange,
+                  label = { Text(stringResource(R.string.fridge_quantity)) },
+                  isError = uiState.formError == FridgeFormError.INVALID_QUANTITY,
+                  enabled = !uiState.isSaving,
+                  singleLine = true,
+                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_quantity_input))
               OutlinedTextField(
                   value = uiState.itemCategory,
                   onValueChange = onCategoryChange,

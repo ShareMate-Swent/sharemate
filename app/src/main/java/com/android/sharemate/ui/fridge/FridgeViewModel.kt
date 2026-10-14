@@ -315,12 +315,12 @@ class FridgeViewModel(
           mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
           return
         }
+    val quantity = state.itemQuantity.trim().toIntOrNull()
+    if (quantity == null || quantity <= 0) {
+      mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
+      return
+    }
     if (state.editingItemId != null) {
-      val quantity = state.itemQuantity.trim().toIntOrNull()
-      if (quantity == null || quantity <= 0) {
-        mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
-        return
-      }
       saveEdit(
           state.editingItemId,
           ItemEdit(
@@ -332,6 +332,7 @@ class FridgeViewModel(
             name = name,
             ownerId = userId,
             householdId = householdId,
+            quantity = quantity,
             expirationDate = expirationDate,
             category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
@@ -361,6 +362,7 @@ class FridgeViewModel(
                     else it.items + item.copy(id = itemId),
                 isSaving = false,
                 isAddItemDialogOpen = false,
+                itemQuantity = "1",
                 itemName = "",
                 itemCategory = "",
                 expirationDateInput = "",

@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -291,5 +292,31 @@ class FridgeItemTest {
 
   private class PendingImage(val source: String, val size: Size) {
     val succeeds = CompletableDeferred<Boolean>()
+  }
+
+  @Test
+  fun attributionLinkWithoutBrowserDoesNotCrash() {
+    val url = "https://example.org/photo"
+    val attemptedLinks = mutableListOf<String>()
+    val failingHandler =
+        object : UriHandler {
+          override fun openUri(uri: String) {
+            attemptedLinks += uri
+            throw IllegalArgumentException(
+                "Cannot open link", ActivityNotFoundException("No browser installed"))
+          }
+        }
+
+    compose.setContent {
+      CompositionLocalProvider(LocalUriHandler provides failingHandler) {
+        SampleAppTheme(dynamicColor = false) { FridgeImageCredits(remote().copy(sourceUrl = url)) }
+      }
+    }
+
+    compose.onNodeWithText("Image source").performClick()
+    compose.waitForIdle()
+
+    assertEquals(listOf(url), attemptedLinks)
+    compose.onNodeWithText("Image source").assertIsDisplayed()
   }
 }
