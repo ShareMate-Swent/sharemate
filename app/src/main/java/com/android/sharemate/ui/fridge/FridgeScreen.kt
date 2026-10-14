@@ -300,7 +300,7 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onConfirmRemoval = viewModel::confirmRemoval,
   )
 }
-
+//
 @Composable
 fun FridgeItem(
     item: Item,
