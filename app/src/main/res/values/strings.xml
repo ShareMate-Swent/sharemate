@@ -1,7 +1,7 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <resources>
-    <string name="app_name">SampleApp</string>
+    <string name="app_name">ShareMate</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
 
