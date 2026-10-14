@@ -312,10 +312,11 @@ class FridgeScreenTest {
   }
 
   private fun itemExpiringIn(days: Long) =
-    Item(
-      id = "milk",
-      name = "Milk",
-      expirationDate = LocalDate.now().plusDays(days).toExpirationDate())
+      Item(
+          id = "milk",
+          name = "Milk",
+          expirationDate = LocalDate.now().plusDays(days).toExpirationDate())
+
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
