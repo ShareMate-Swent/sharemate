@@ -344,7 +344,7 @@ class FridgeViewModel(
       try {
         val image =
             try {
-              // The image is optional: spend at most three seconds looking it up.
+              // The image is optional: spend at most five seconds looking it up.
               withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
                 ItemImage.fromSelection(
                     foodImageSelector.select(name, personalPhotoReference = null))
