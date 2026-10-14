@@ -4,8 +4,10 @@ package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -15,6 +17,8 @@ import java.time.format.DateTimeParseException
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +36,8 @@ enum class FridgeSortOrder {
 class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
-    private val householdId: String,
+    private val householdId: String?,
+    private val foodImageSelector: FoodImageSelector
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
@@ -78,10 +83,15 @@ class FridgeViewModel(
 
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
-    require(householdId.isNotBlank()) { "A real household ID is required" }
+    require(householdId == null || householdId.isNotBlank()) {
+      "A household ID must be non-blank when provided"
+    }
     viewModelScope.launch {
       try {
-        itemRepository.getSharedItems(householdId).collect { items ->
+        val inventory =
+            if (householdId == null) itemRepository.getPrivateItems(userId)
+            else itemRepository.getSharedItems(householdId)
+        inventory.collect { items ->
           mutableUiState.update { it.copy(items = items, isLoading = false, loadFailed = false) }
         }
       } catch (exception: CancellationException) {
@@ -317,7 +327,7 @@ class FridgeViewModel(
               name, quantity, state.itemCategory.trim().takeIf(String::isNotEmpty), expirationDate))
       return
     }
-    val item =
+    val draftItem =
         Item(
             name = name,
             ownerId = userId,
@@ -328,6 +338,17 @@ class FridgeViewModel(
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
+        val image =
+            try {
+              ItemImage.fromSelection(foodImageSelector.select(name, personalPhotoReference = null))
+            } catch (exception: CancellationException) {
+              throw exception
+            } catch (exception: Exception) {
+              // Image lookup is optional and must not prevent saving the food.
+              null
+            }
+        currentCoroutineContext().ensureActive()
+        val item = draftItem.copy(image = image)
         val itemId = itemRepository.addItem(item)
         if (itemId.isNullOrBlank()) {
           mutableUiState.update {

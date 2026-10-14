@@ -157,9 +157,33 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
               householdId = getString("householdId")?.takeIf { it.isNotBlank() },
               expirationDate = getTimestamp("expirationDate")?.toDate(),
               category = getString("category")?.takeIf { it.isNotBlank() },
+              image = getItemImageOrNull(),
               quantity = quantity,
               status = status)
     } catch (_: RuntimeException) {
       // A malformed document must not terminate a flow containing other valid items.
       null
     }
+
+private fun DocumentSnapshot.getItemImageOrNull(): ItemImage? {
+  val values = get("image") as? Map<*, *> ?: return null
+  val origin =
+      (values["origin"] as? String)?.let { runCatching { ItemImageOrigin.valueOf(it) }.getOrNull() }
+          ?: return null
+  val reference = (values["reference"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+
+  return ItemImage(
+      origin = origin,
+      reference = reference,
+      author = values.optionalImageString("author"),
+      sourceName = values.optionalImageString("sourceName"),
+      sourceUrl = values.optionalImageString("sourceUrl"),
+      title = values.optionalImageString("title"),
+      license = values.optionalImageString("license"),
+      licenseUrl = values.optionalImageString("licenseUrl"),
+      licenseVersion = values.optionalImageString("licenseVersion"),
+      authorUrl = values.optionalImageString("authorUrl"))
+}
+
+private fun Map<*, *>.optionalImageString(key: String): String? =
+    (this[key] as? String)?.takeIf { it.isNotBlank() }

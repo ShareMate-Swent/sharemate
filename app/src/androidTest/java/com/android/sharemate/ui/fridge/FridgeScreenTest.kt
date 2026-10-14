@@ -18,6 +18,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -147,7 +150,12 @@ class FridgeScreenTest {
   private fun showScreen(items: List<Item> = inventory) {
     compose.runOnUiThread {
       repository = ScreenItemRepository(items)
-      viewModel = FridgeViewModel(repository, "alice", "household")
+      val imageRepository =
+          object : FoodImageRepository {
+            override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+          }
+      viewModel =
+          FridgeViewModel(repository, "alice", "household", FoodImageSelector(imageRepository))
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
