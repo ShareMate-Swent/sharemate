@@ -10,7 +10,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -99,7 +98,18 @@ class MainUserFlowE2ETest {
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
-    compose.onNodeWithContentDescription("Remove $itemName").performClick()
+    val itemTag =
+        compose
+            .onAllNodes(
+                SemanticsMatcher("fridge item") {
+                  it.config.contains(SemanticsProperties.TestTag) &&
+                      it.config[SemanticsProperties.TestTag].startsWith(C.Tag.fridge_item_prefix)
+                })
+            .fetchSemanticsNodes()
+            .single()
+            .config[SemanticsProperties.TestTag]
+    val itemId = itemTag.removePrefix(C.Tag.fridge_item_prefix)
+    compose.onNodeWithTag("${C.Tag.fridge_remove_prefix}$itemId").performClick()
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
 
