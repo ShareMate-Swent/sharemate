@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com> -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
-        <activity
-            android:name="com.android.sharemate.MainUserFlowTestActivity"
-            android:exported="false" />
-    </application>
-</manifest>
