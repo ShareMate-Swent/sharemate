@@ -27,8 +27,8 @@ import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.UUID
 import org.junit.Rule
-import org.junit.rules.ExternalResource
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
