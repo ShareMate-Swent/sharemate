@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate
 
 import android.os.Bundle
@@ -59,7 +60,7 @@ import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
   private val authRepository: AuthRepository by lazy {
     FirebaseAuthRepository(FirebaseAuth.getInstance())
   }
@@ -71,6 +72,8 @@ class MainActivity : ComponentActivity() {
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
   }
+
+  protected open fun createFoodImageSelector() = FoodImageSelector(OpenverseFoodImageRepository())
 
   private val authViewModel: AuthViewModel by viewModels {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
@@ -152,8 +155,7 @@ class MainActivity : ComponentActivity() {
                                         itemRepository = itemRepository,
                                         userId = session.uid,
                                         householdId = household.id,
-                                        foodImageSelector =
-                                            FoodImageSelector(OpenverseFoodImageRepository()))
+                                        foodImageSelector = createFoodImageSelector())
                                   }
                                 })
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
