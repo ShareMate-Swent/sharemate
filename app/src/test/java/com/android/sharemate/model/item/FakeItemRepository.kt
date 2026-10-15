@@ -19,6 +19,9 @@ class FakeItemRepository : ItemRepository {
   var readFailure: Exception? = null
   var addGate: CompletableDeferred<Unit>? = null
   val deletedItemIds = mutableListOf<String>()
+  val queuedDeletionIds = mutableListOf<String>()
+  var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
+  var deleteException: Exception? = null
   var returnFalseOnDelete = false
   var deleteFailure: Exception? = null
   var deleteGate: CompletableDeferred<Unit>? = null
@@ -98,6 +101,9 @@ class FakeItemRepository : ItemRepository {
   }
 
   override fun deleteItemQueued(itemId: String): ItemWrite {
+    deletedItemIds += itemId
+    queuedDeletionIds += itemId
+    deleteException?.let { throw it }
     if (itemId.isBlank() || '/' in itemId) {
       return ItemWrite.Rejected(IllegalArgumentException("A document ID is required"))
     }
@@ -105,9 +111,8 @@ class FakeItemRepository : ItemRepository {
       return ItemWrite.Rejected(it)
     }
     if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
-    deletedItemIds += itemId
     if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
-    return ItemWrite.Queued(CompletableDeferred(Result.success(Unit)))
+    return ItemWrite.Queued(deleteConfirmation ?: CompletableDeferred(Result.success(Unit)))
   }
 
   private fun change(

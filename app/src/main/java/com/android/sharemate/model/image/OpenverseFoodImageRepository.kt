@@ -5,17 +5,24 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CALL_TIMEOUT_MS
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CONNECT_TIMEOUT_MS
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_READ_TIMEOUT_MS
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URISyntaxException
-import java.net.URL
-import java.net.URLEncoder
 import java.util.Locale
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -23,52 +30,68 @@ import org.json.JSONObject
  * Recherche anonyme Openverse limitée aux licences CC0 et CC BY. Le premier résultat exploitable
  * est une suggestion dont la pertinence n'est pas garantie. Aucun fichier image n'est téléchargé.
  */
-class OpenverseFoodImageRepository
-internal constructor(
-    private val ioDispatcher: CoroutineDispatcher,
-    private val connectionFactory: (URL) -> HttpURLConnection
-) : FoodImageRepository {
-  constructor() : this(Dispatchers.IO, { it.openConnection() as HttpURLConnection })
+class OpenverseFoodImageRepository internal constructor(private val callFactory: Call.Factory) :
+    FoodImageRepository {
+  constructor() : this(client)
 
-  override suspend fun searchByTitle(title: String): FoodImageSearchResult =
-      withContext(ioDispatcher) {
-        ensureActive()
-        val query = title.trim()
-        if (query.isEmpty()) return@withContext Failure(Reason.EMPTY_TITLE)
+  override suspend fun searchByTitle(title: String): FoodImageSearchResult {
+    currentCoroutineContext().ensureActive()
+    val query = title.trim()
+    if (query.isEmpty()) return Failure(Reason.EMPTY_TITLE)
+    val url =
+        "https://api.openverse.org/v1/images/"
+            .toHttpUrl()
+            .newBuilder()
+            .addQueryParameter("q", query)
+            .addQueryParameter("license", "cc0,by")
+            .addQueryParameter("page_size", "20")
+            .addQueryParameter("filter_dead", "true")
+            .build()
+    val request = Request.Builder().url(url).header("Accept", "application/json").build()
+    return try {
+      awaitResult(callFactory.newCall(request))
+    } catch (exception: IOException) {
+      currentCoroutineContext().ensureActive()
+      Failure(Reason.NETWORK)
+    } catch (exception: JSONException) {
+      Failure(Reason.INVALID_RESPONSE)
+    }
+  }
 
-        val url =
-            URL(
-                "https://api.openverse.org/v1/images/?q=${URLEncoder.encode(query, "UTF-8")}" +
-                    "&license=cc0,by&page_size=20&filter_dead=true")
-        try {
-          val connection = connectionFactory(url)
-          try {
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5_000
-            connection.readTimeout = 5_000
-            // Un changement d'endpoint doit rester un résultat HTTP explicite.
-            connection.instanceFollowRedirects = false
-            connection.setRequestProperty("Accept", "application/json")
-            val status = connection.responseCode
-            ensureActive()
-            if (status !in 200..299) {
-              Failure(Reason.HTTP, status)
-            } else {
-              val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-              ensureActive()
-              parseResponse(body)
-            }
-          } finally {
-            connection.disconnect()
-          }
-        } catch (exception: IOException) {
-          ensureActive()
-          Failure(Reason.NETWORK)
-        } catch (exception: JSONException) {
-          ensureActive()
-          Failure(Reason.INVALID_RESPONSE)
-        }
+  private suspend fun awaitResult(call: Call): FoodImageSearchResult =
+      suspendCancellableCoroutine { continuation ->
+        // Cancellation releases the caller promptly and aborts the underlying network request.
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(
+            object : Callback {
+              override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+              }
+
+              override fun onResponse(call: Call, response: Response) {
+                // Consume/close the body on OkHttp's worker, never on the UI thread.
+                val result = runCatching {
+                  response.use {
+                    continuation.context.ensureActive()
+                    if (!it.isSuccessful) Failure(Reason.HTTP, it.code)
+                    else parseResponse(it.body?.string().orEmpty())
+                  }
+                }
+                continuation.resumeWith(result)
+              }
+            })
       }
+
+  private companion object {
+    val client =
+        OkHttpClient.Builder()
+            .connectTimeout(HTTP_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(HTTP_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .callTimeout(HTTP_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+  }
 
   private fun parseResponse(body: String): FoodImageSearchResult {
     val results = JSONObject(body).getJSONArray("results")

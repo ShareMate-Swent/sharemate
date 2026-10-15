@@ -3,8 +3,16 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.image.FoodImage
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
 import java.io.IOException
 import java.time.LocalDate
@@ -15,10 +23,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -36,6 +46,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FridgeViewModelTest {
   private val repository = FakeItemRepository()
+  private val imageRepository = FakeFoodImageRepository()
+  private val imageSelector = FoodImageSelector(imageRepository)
   private val viewModelStore = ViewModelStore()
 
   @Before
@@ -581,6 +593,86 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun offlineRemovalReappliesFiltersAndSortingWithoutAwaitingConfirmation() = runTest {
+    Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+    val apple = milk.copy(id = "apple", name = "Apple", category = "Dairy")
+    val cheese = milk.copy(id = "cheese", name = "Cheese", category = "Dairy")
+    repository.emitItems(listOf(cheese, apple, bread))
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    repository.deleteConfirmation = confirmation
+    val vm = viewModel()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
+    vm.setCategoryFilter("Dairy")
+    vm.setSortOrder(FridgeSortOrder.NAME)
+    runCurrent()
+    vm.requestRemoval(apple.id)
+    repository.emitItems(listOf(bread, apple, cheese))
+    runCurrent()
+    vm.confirmRemoval()
+    assertTrue(vm.uiState.value.pendingDeletionIds.isEmpty())
+    vm.confirmRemoval()
+    runCurrent()
+    assertEquals(listOf(apple.id), repository.queuedDeletionIds)
+    assertEquals(listOf(cheese), vm.visibleItems.value)
+    assertEquals(listOf(bread, cheese), vm.uiState.value.items)
+    assertNull(vm.uiState.value.pendingRemovalItem)
+    assertFalse(vm.uiState.value.isDeleting)
+    assertFalse(confirmation.isCompleted)
+    vm.requestRemoval(cheese.id)
+    assertEquals(cheese, vm.uiState.value.pendingRemovalItem)
+  }
+
+  @Test
+  fun removalRejectionRollbackPreservesNewerDialogDraftAndErrorIdentity() = runTest {
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    val vm = loaded(milk, bread)
+    repository.deleteConfirmation = first
+    delete(vm, milk)
+    repository.deleteConfirmation = second
+    delete(vm, bread)
+    second.complete(Result.failure(IOException("Newer rejection")))
+    repository.emitItems(listOf(bread))
+    runCurrent()
+    val newerError = vm.uiState.value.removalSyncError!!
+    assertEquals("Bread", newerError.itemName)
+    vm.requestRemoval(bread.id)
+    first.completeExceptionally(IOException("Older rejection"))
+    repository.emitItems(listOf(milk, bread))
+    runCurrent()
+    assertEquals(bread, vm.uiState.value.pendingRemovalItem)
+    assertEquals(listOf(milk, bread), vm.uiState.value.items)
+    vm.dismissRemovalSyncError(newerError)
+    assertEquals("Milk", vm.uiState.value.removalSyncError?.itemName)
+    vm.cancelRemoval()
+    vm.openEditItemDialog(bread.id)
+    vm.updateName("Unsaved draft")
+    vm.dismissRemovalSyncError(vm.uiState.value.removalSyncError!!)
+    assertEquals("Unsaved draft", vm.uiState.value.itemName)
+    assertNull(vm.uiState.value.removalSyncError)
+  }
+
+  @Test
+  fun cancelledAndDetachedRemovalConfirmationsNeverReportFailure() = runTest {
+    for (clear in listOf(false, true)) {
+      val confirmation = CompletableDeferred<Result<Unit>>()
+      repository.deleteConfirmation = confirmation
+      val vm = loaded(milk)
+      delete(vm, milk)
+      if (clear) {
+        viewModelStore.clear()
+        assertFalse(confirmation.isCancelled)
+        confirmation.complete(Result.failure(IOException("Rejected after clear")))
+      } else confirmation.cancel()
+      runCurrent()
+      assertNull(vm.uiState.value.removalSyncError)
+      assertFalse(vm.uiState.value.removalFailed)
+      assertFalse(vm.uiState.value.isDeleting)
+      assertTrue(vm.uiState.value.items.isEmpty())
+    }
+  }
+
+  @Test
   fun cancelledRemovalResetsPendingWithoutReportingFailure() = runTest {
     repository.emitItems(listOf(milk))
     repository.deleteFailure = CancellationException("Deletion cancelled")
@@ -616,9 +708,10 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun successfulRemovalUpdatesLocalStateWithoutWaitingForSnapshot() = runTest {
+  fun successfulRemovalUsesQueuedDeletionAndWaitsForLocalSnapshot() = runTest {
     repository.emitItems(listOf(milk, bread))
     repository.emitOnDelete = false
+    repository.deleteConfirmation = CompletableDeferred()
     val viewModel = viewModel()
     runCurrent()
     viewModel.requestRemoval(milk.id)
@@ -626,10 +719,53 @@ class FridgeViewModelTest {
     runCurrent()
 
     assertEquals(listOf(milk.id), repository.deletedItemIds)
+    assertEquals(listOf(milk.id), repository.queuedDeletionIds)
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    viewModel.requestRemoval(milk.id)
+    viewModel.confirmRemoval()
+    viewModel.openEditItemDialog(milk.id)
+    ItemStatus.entries.forEach { viewModel.setItemStatus(milk.id, it) }
+    runCurrent()
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
+    assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertTrue(repository.edits.isEmpty())
+    viewModel.openEditItemDialog(bread.id)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+    viewModel.dismissAddItemDialog()
+    repository.statusConfirmation = CompletableDeferred()
+    viewModel.setItemStatus(bread.id, ItemStatus.EATEN)
+    runCurrent()
+    assertEquals(listOf(bread.id to ItemStatus.EATEN), repository.statusChanges)
+    val old = repository.deleteConfirmation!!
+    assertFalse(old.isCompleted)
+    repository.emitItems(listOf(bread))
+    runCurrent()
     assertEquals(listOf(bread), viewModel.uiState.value.items)
     assertNull(viewModel.uiState.value.pendingRemovalItem)
     assertFalse(viewModel.uiState.value.isDeleting)
     assertFalse(viewModel.uiState.value.removalFailed)
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
+    repository.emitItems(listOf(milk, bread)) // Rollback, then a newer deletion of the same ID.
+    runCurrent()
+    repository.deleteConfirmation = CompletableDeferred()
+    delete(viewModel, milk)
+    old.complete(Result.failure(IOException("Old rejection")))
+    runCurrent()
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    delete(viewModel, milk)
+    assertEquals(listOf(milk.id, milk.id), repository.deletedItemIds)
+    assertEquals(listOf(milk, bread), viewModel.uiState.value.items)
+    repository.deleteConfirmation!!.complete(Result.failure(IOException("New rejection")))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
+    repository.deleteConfirmation = CompletableDeferred()
+    delete(viewModel, milk)
+    repository.deleteConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(setOf(milk.id), viewModel.uiState.value.pendingDeletionIds)
+    repository.emitItems(listOf(bread))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
   }
 
   @Test
@@ -660,6 +796,7 @@ class FridgeViewModelTest {
     assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
     assertTrue(viewModel.uiState.value.removalFailed)
     assertFalse(viewModel.uiState.value.isDeleting)
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
     repository.returnFalseOnDelete = false
     viewModel.confirmRemoval()
     runCurrent()
@@ -671,7 +808,7 @@ class FridgeViewModelTest {
   @Test
   fun removalExceptionRetainsTheItemAndAllowsRetry() = runTest {
     repository.emitItems(listOf(milk))
-    repository.deleteFailure = IOException("Delete failed")
+    repository.deleteException = IOException("Delete failed")
     val viewModel = viewModel()
     runCurrent()
     viewModel.requestRemoval(milk.id)
@@ -684,7 +821,8 @@ class FridgeViewModelTest {
     assertFalse(viewModel.uiState.value.isDeleting)
     assertNull(viewModel.uiState.value.formError)
     assertFalse(viewModel.uiState.value.isSaving)
-    repository.deleteFailure = null
+    assertTrue(viewModel.uiState.value.pendingDeletionIds.isEmpty())
+    repository.deleteException = null
     viewModel.confirmRemoval()
     runCurrent()
     assertTrue(viewModel.uiState.value.items.isEmpty())
@@ -693,8 +831,6 @@ class FridgeViewModelTest {
   @Test
   fun pendingRemovalPreventsDuplicateRequestsAndCancellation() = runTest {
     repository.emitItems(listOf(milk, bread))
-    val gate = CompletableDeferred<Unit>()
-    repository.deleteGate = gate
     val viewModel = viewModel()
     runCurrent()
     viewModel.requestRemoval(milk.id)
@@ -702,31 +838,73 @@ class FridgeViewModelTest {
     viewModel.confirmRemoval()
     viewModel.cancelRemoval()
     viewModel.requestRemoval(bread.id)
-    runCurrent()
-
-    assertEquals(listOf(milk.id), repository.deletedItemIds)
     assertTrue(viewModel.uiState.value.isDeleting)
     assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
     assertEquals(listOf(milk, bread), viewModel.uiState.value.items)
-    gate.complete(Unit)
     runCurrent()
+    assertEquals(listOf(milk.id), repository.deletedItemIds)
     assertEquals(listOf(bread), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isDeleting)
   }
 
   @Test
+  fun inactiveItemsCannotBeRequestedForRemovalAndInvalidateOpenConfirmation() = runTest {
+    val vm = viewModel()
+    for (status in listOf(ItemStatus.EATEN, ItemStatus.DISCARDED)) {
+      repository.emitItems(listOf(milk.copy(status = status)))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      repository.emitItems(listOf(milk))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      assertEquals(milk, vm.uiState.value.pendingRemovalItem)
+      repository.emitItems(listOf(milk.copy(status = status)))
+      runCurrent()
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      vm.confirmRemoval()
+      runCurrent()
+    }
+    assertTrue(repository.deletedItemIds.isEmpty())
+  }
+
+  @Test
+  fun inventoryChangeBeforeQueuedRemovalStartsPreventsDeletionAndReleasesLock() = runTest {
+    val vm = viewModel()
+    for (updatedItems in listOf(emptyList(), listOf(milk.copy(status = ItemStatus.EATEN)))) {
+      repository.emitItems(listOf(milk, bread))
+      runCurrent()
+      vm.requestRemoval(milk.id)
+      // Queue the snapshot before the deletion coroutine, while confirmation still sees Milk.
+      repository.emitItems(updatedItems)
+      vm.confirmRemoval()
+      assertTrue(vm.uiState.value.isDeleting)
+      runCurrent()
+      assertFalse(vm.uiState.value.isDeleting)
+      assertNull(vm.uiState.value.pendingRemovalItem)
+      assertFalse(vm.uiState.value.removalFailed)
+    }
+    assertTrue(repository.deletedItemIds.isEmpty())
+    repository.emitItems(listOf(bread))
+    runCurrent()
+    delete(vm, bread)
+    assertEquals(listOf(bread.id), repository.queuedDeletionIds)
+  }
+
+  @Test
   fun unknownAndBlankIdsNeverDelete() = runTest {
-    repository.emitItems(listOf(milk))
+    val inactive = bread.copy(status = ItemStatus.EATEN)
+    repository.emitItems(listOf(milk, inactive, milk.copy(id = "foreign", householdId = "other")))
     val viewModel = viewModel()
     runCurrent()
-    listOf("unknown", "", " ").forEach { id ->
+    listOf("unknown", "", " ", inactive.id, "foreign").forEach { id ->
       viewModel.requestRemoval(id)
       viewModel.confirmRemoval()
     }
     runCurrent()
     assertTrue(repository.deletedItemIds.isEmpty())
     assertNull(viewModel.uiState.value.pendingRemovalItem)
-    assertEquals(listOf(milk), viewModel.uiState.value.items)
+    assertEquals(listOf(milk, inactive), viewModel.uiState.value.items)
   }
 
   @Test
@@ -737,6 +915,7 @@ class FridgeViewModelTest {
     viewModel.requestRemoval(milk.id)
     repository.emitItems(emptyList())
     runCurrent()
+    assertNull(viewModel.uiState.value.pendingRemovalItem)
     viewModel.confirmRemoval()
     runCurrent()
 
@@ -762,18 +941,29 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
   }
 
-  private fun viewModel(): FridgeViewModel =
-      FridgeViewModel(repository, "test-user", "test-household").also {
+  private fun TestScope.loaded(vararg items: Item): FridgeViewModel {
+    repository.emitItems(items.toList())
+    return viewModel().also { runCurrent() }
+  }
+
+  private fun TestScope.delete(vm: FridgeViewModel, item: Item) {
+    vm.requestRemoval(item.id)
+    vm.confirmRemoval()
+    runCurrent()
+  }
+
+  private fun viewModel(householdId: String? = "test-household"): FridgeViewModel =
+      FridgeViewModel(repository, "test-user", householdId, imageSelector).also {
         viewModelStore.put("fridge", it)
       }
 
   @Test
   fun realNonBlankContextIsRequired() {
     assertThrows(IllegalArgumentException::class.java) {
-      FridgeViewModel(repository, " ", "test-household")
+      FridgeViewModel(repository, " ", "test-household", imageSelector)
     }
     assertThrows(IllegalArgumentException::class.java) {
-      FridgeViewModel(repository, "test-user", "")
+      FridgeViewModel(repository, "test-user", "", imageSelector)
     }
     assertTrue(repository.requestedHouseholdIds.isEmpty())
     assertTrue(repository.requestedUserIds.isEmpty())
@@ -791,6 +981,42 @@ class FridgeViewModelTest {
     assertTrue(repository.requestedUserIds.isEmpty())
     assertEquals(listOf(shared), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun withoutHouseholdObservesOnlyCurrentUsersPrivateItems() = runTest {
+    val privateItem = Item(id = "private", name = "Milk", ownerId = "test-user")
+    repository.emitItems(
+        listOf(
+            privateItem,
+            Item(id = "other-user", ownerId = "other-user"),
+            Item(id = "shared", ownerId = "test-user", householdId = "test-household")))
+    val viewModel = viewModel(householdId = null)
+    runCurrent()
+
+    assertEquals(listOf("test-user"), repository.requestedUserIds)
+    assertTrue(repository.requestedHouseholdIds.isEmpty())
+    assertEquals(listOf(privateItem), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun withoutHouseholdSavesPrivateItemAndSearchesForImage() = runTest {
+    val viewModel = viewModel(householdId = null)
+    runCurrent()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    runCurrent()
+
+    val saved = repository.addedItems.single()
+    assertEquals("test-user", saved.ownerId)
+    assertNull(saved.householdId)
+    assertFalse(saved.isShared)
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertEquals(listOf(saved.copy(id = "item-1")), viewModel.uiState.value.items)
+    assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertNull(viewModel.uiState.value.formError)
   }
 
   @Test
@@ -845,6 +1071,7 @@ class FridgeViewModelTest {
     viewModel.saveItem()
     runCurrent()
 
+    assertTrue(imageRepository.titles.isEmpty())
     assertEquals(FridgeFormError.NAME_REQUIRED, viewModel.uiState.value.formError)
     assertTrue(repository.addedItems.isEmpty())
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
@@ -863,6 +1090,7 @@ class FridgeViewModelTest {
       assertEquals(FridgeFormError.INVALID_EXPIRATION_DATE, viewModel.uiState.value.formError)
     }
     assertTrue(repository.addedItems.isEmpty())
+    assertTrue(imageRepository.titles.isEmpty())
   }
 
   @Test
@@ -1144,6 +1372,261 @@ class FridgeViewModelTest {
     runCurrent()
     assertEquals(listOf(matching, anotherMatch), viewModel.visibleItems.value)
     collection.cancel()
+  }
+
+  @Test
+  fun remoteImageAndAllCreditsArePassedToTheRepository() = runTest {
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("  Milk  ")
+    viewModel.saveItem()
+    runCurrent()
+
+    val expected =
+        ItemImage(
+            origin = ItemImageOrigin.REMOTE_IMAGE,
+            reference = "https://images.example.org/milk.jpg",
+            author = "Jane Doe",
+            sourceName = "Photo library",
+            sourceUrl = "https://example.org/photos/42",
+            title = "Fresh milk",
+            license = "by",
+            licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+            licenseVersion = "4.0",
+            authorUrl = "https://example.org/jane")
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertEquals(expected, repository.addedItems.single().image)
+    assertEquals(expected, viewModel.uiState.value.items.single().image)
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertNull(viewModel.uiState.value.formError)
+  }
+
+  @Test fun noImageResultStillSavesTheItemWithoutAnImage() = runTest { assertSavesWithoutImage() }
+
+  @Test
+  fun networkFailureResultStillSavesTheItemWithoutAnImage() = runTest {
+    imageRepository.result = FoodImageSearchResult.Failure(FoodImageSearchResult.Reason.NETWORK)
+    assertSavesWithoutImage()
+  }
+
+  @Test
+  fun thrownLookupFailureStillSavesTheItemWithoutAnImage() = runTest {
+    imageRepository.failure = IOException("Lookup failed")
+    assertSavesWithoutImage()
+  }
+
+  private fun TestScope.assertSavesWithoutImage() {
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    runCurrent()
+
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertNull(repository.addedItems.single().image)
+    assertEquals("Milk", viewModel.uiState.value.items.single().name)
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
+    assertNull(viewModel.uiState.value.formError)
+  }
+
+  @Test
+  fun lookupDeadlineSavesOnceWithoutImageAndIgnoresLateResult() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    imageRepository.gate = gate
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS - 1)
+    assertTrue(repository.addedItems.isEmpty())
+    assertTrue(vm.uiState.value.isSaving)
+
+    advanceTimeBy(1)
+    runCurrent()
+    assertTrue(imageRepository.cancelled)
+    assertNull(repository.addedItems.single().image)
+    assertEquals("Milk", vm.uiState.value.items.single().name)
+    assertFalse(vm.uiState.value.isSaving)
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertNull(vm.uiState.value.formError)
+
+    gate.complete(Unit)
+    runCurrent()
+    assertEquals(1, repository.addedItems.size)
+    assertNull(vm.uiState.value.items.single().image)
+  }
+
+  @Test
+  fun imageFoundBeforeDeadlineIsSavedAndItsTimeoutDoesNotCancelTheWrite() = runTest {
+    val searchGate = CompletableDeferred<Unit>()
+    val saveGate = CompletableDeferred<Unit>()
+    imageRepository.gate = searchGate
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    repository.addGate = saveGate
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS - 1)
+    searchGate.complete(Unit)
+    runCurrent()
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS)
+    runCurrent()
+    assertTrue(vm.uiState.value.isSaving)
+    assertFalse(imageRepository.cancelled)
+    assertEquals(remoteImage().url, repository.addedItems.single().image?.reference)
+    saveGate.complete(Unit)
+    runCurrent()
+    assertFalse(vm.uiState.value.isSaving)
+    assertNull(vm.uiState.value.formError)
+  }
+
+  @Test
+  fun pendingLookupPreventsDuplicateSearchesAndSaves() = runTest {
+    val searchGate = CompletableDeferred<Unit>()
+    val saveGate = CompletableDeferred<Unit>()
+    imageRepository.gate = searchGate
+    imageRepository.result = FoodImageSearchResult.Found(remoteImage())
+    repository.addGate = saveGate
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    viewModel.saveItem()
+    assertTrue(viewModel.uiState.value.isSaving)
+    runCurrent()
+    viewModel.saveItem()
+    viewModel.updateName("Bread")
+    viewModel.dismissAddItemDialog()
+    runCurrent()
+
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertTrue(repository.addedItems.isEmpty())
+    assertTrue(viewModel.uiState.value.isSaving)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+    assertEquals("Milk", viewModel.uiState.value.itemName)
+
+    searchGate.complete(Unit)
+    runCurrent()
+    assertEquals(1, repository.addedItems.size)
+    assertTrue(viewModel.uiState.value.isSaving)
+    viewModel.saveItem()
+    saveGate.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertEquals(1, repository.addedItems.size)
+    assertEquals(1, viewModel.uiState.value.items.size)
+    assertFalse(viewModel.uiState.value.isSaving)
+  }
+
+  @Test
+  fun lookupCancellationIsPropagatedWithoutSavingOrReportingAnError() = runTest {
+    val cancellation = CancellationException("Lookup cancelled")
+    imageRepository.failure = cancellation
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    val saveJob = viewModel.viewModelScope.coroutineContext.job.children.last()
+    var completionCause: Throwable? = null
+    saveJob.invokeOnCompletion { completionCause = it }
+    runCurrent()
+
+    assertTrue(saveJob.isCancelled)
+    // Crossing the timeout coroutine can copy the exception to recover its stack trace.
+    assertTrue(completionCause is CancellationException)
+    assertEquals(cancellation.message, completionCause?.message)
+    assertTrue(generateSequence(completionCause) { it.cause }.any { it === cancellation })
+    assertTrue(repository.addedItems.isEmpty())
+    assertNull(viewModel.uiState.value.formError)
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+    assertEquals("Milk", viewModel.uiState.value.itemName)
+  }
+
+  @Test
+  fun clearingViewModelCancelsPendingLookupWithoutSaving() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    imageRepository.gate = gate
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(listOf("Milk"), imageRepository.titles)
+    assertTrue(viewModel.uiState.value.isSaving)
+
+    viewModelStore.clear()
+    runCurrent()
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS)
+    runCurrent()
+    assertTrue(imageRepository.cancelled)
+    gate.complete(Unit)
+    runCurrent()
+
+    assertTrue(repository.addedItems.isEmpty())
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertNull(viewModel.uiState.value.formError)
+  }
+
+  @Test
+  fun saveCancellationIsPropagatedWithoutReportingAnError() = runTest {
+    val cancellation = CancellationException("Save cancelled")
+    repository.addFailure = cancellation
+    val viewModel = viewModel()
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.saveItem()
+    val saveJob = viewModel.viewModelScope.coroutineContext.job.children.last()
+    var completionCause: Throwable? = null
+    saveJob.invokeOnCompletion { completionCause = it }
+    runCurrent()
+
+    assertTrue(saveJob.isCancelled)
+    assertSame(cancellation, completionCause)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertNull(viewModel.uiState.value.formError)
+    assertFalse(viewModel.uiState.value.isSaving)
+    assertEquals("Milk", viewModel.uiState.value.itemName)
+  }
+
+  private fun remoteImage() =
+      FoodImage(
+          url = "https://images.example.org/milk.jpg",
+          author = "Jane Doe",
+          sourceName = "Photo library",
+          sourceUrl = "https://example.org/photos/42",
+          title = "Fresh milk",
+          license = "by",
+          licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+          licenseVersion = "4.0",
+          authorUrl = "https://example.org/jane")
+
+  private class FakeFoodImageRepository : FoodImageRepository {
+    val titles = mutableListOf<String>()
+    var result: FoodImageSearchResult = FoodImageSearchResult.NotFound
+    var failure: Exception? = null
+    var gate: CompletableDeferred<Unit>? = null
+    var cancelled = false
+
+    override suspend fun searchByTitle(title: String): FoodImageSearchResult {
+      titles += title
+      try {
+        gate?.await()
+        failure?.let { throw it }
+        return result
+      } catch (exception: CancellationException) {
+        cancelled = true
+        throw exception
+      }
+    }
   }
 }
 

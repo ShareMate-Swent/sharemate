@@ -157,7 +157,7 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
               householdId = getString("householdId")?.takeIf { it.isNotBlank() },
               expirationDate = getTimestamp("expirationDate")?.toDate(),
               category = getString("category")?.takeIf { it.isNotBlank() },
-              image = toItemImageOrNull(),
+              image = getItemImageOrNull(),
               quantity = quantity,
               status = status)
     } catch (_: RuntimeException) {
@@ -165,20 +165,25 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
       null
     }
 
-/** Ignore malformed optional image metadata without dropping an otherwise valid item. */
-private fun DocumentSnapshot.toItemImageOrNull(): ItemImage? {
-  val data = get("image") as? Map<*, *> ?: return null
-  val reference = (data["reference"] as? String)?.takeIf(String::isNotBlank) ?: return null
-  val origin = ItemImageOrigin.values().firstOrNull { it.name == data["origin"] } ?: return null
+private fun DocumentSnapshot.getItemImageOrNull(): ItemImage? {
+  val values = get("image") as? Map<*, *> ?: return null
+  val origin =
+      (values["origin"] as? String)?.let { runCatching { ItemImageOrigin.valueOf(it) }.getOrNull() }
+          ?: return null
+  val reference = (values["reference"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+
   return ItemImage(
       origin = origin,
       reference = reference,
-      author = data["author"] as? String,
-      sourceName = data["sourceName"] as? String,
-      sourceUrl = data["sourceUrl"] as? String,
-      title = data["title"] as? String,
-      license = data["license"] as? String,
-      licenseUrl = data["licenseUrl"] as? String,
-      licenseVersion = data["licenseVersion"] as? String,
-      authorUrl = data["authorUrl"] as? String)
+      author = values.optionalImageString("author"),
+      sourceName = values.optionalImageString("sourceName"),
+      sourceUrl = values.optionalImageString("sourceUrl"),
+      title = values.optionalImageString("title"),
+      license = values.optionalImageString("license"),
+      licenseUrl = values.optionalImageString("licenseUrl"),
+      licenseVersion = values.optionalImageString("licenseVersion"),
+      authorUrl = values.optionalImageString("authorUrl"))
 }
+
+private fun Map<*, *>.optionalImageString(key: String): String? =
+    (this[key] as? String)?.takeIf { it.isNotBlank() }

@@ -1,7 +1,7 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <resources>
-    <string name="app_name">SampleApp</string>
+    <string name="app_name">ShareMate</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
 
@@ -17,6 +17,9 @@
     <string name="fridge_card_expired">Expired: %1$s</string>
     <string name="fridge_card_expiring_soon">Expires soon: %1$s</string>
     <string name="fridge_category_all">All</string>
+    <string name="fridge_category_fruits">Fruits</string>
+    <string name="fridge_category_vegetables">Vegetables</string>
+    <string name="fridge_category_canned_goods">Canned goods</string>
     <string name="fridge_sort">Sort</string>
     <string name="fridge_sort_expiration_date">Expiry date</string>
     <string name="fridge_sort_name">Name</string>
@@ -86,7 +89,6 @@
     <string name="leave">Leave</string>
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>
-
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
@@ -94,10 +96,11 @@
     <string name="fridge_image_author">Author</string>
     <string name="fridge_image_openverse">Image search powered by Openverse</string>
 
-    <string name="fridge_remove">Remove</string>
-    <string name="fridge_remove_description">Remove %1$s</string>
-    <string name="fridge_remove_title">Remove item?</string>
-    <string name="fridge_remove_confirmation">Remove %1$s from the fridge? This cannot be undone.</string>
-    <string name="fridge_removing">Removing…</string>
-    <string name="fridge_remove_failed">Could not remove the item. Please try again.</string>
+    <string name="fridge_remove">Delete</string>
+    <string name="fridge_remove_description">Delete %1$s</string>
+    <string name="fridge_remove_title">Delete item permanently?</string>
+    <string name="fridge_remove_confirmation">Permanently delete %1$s from the fridge? This cannot be undone.</string>
+    <string name="fridge_removing">Deleting…</string>
+    <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
+    <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
 </resources>

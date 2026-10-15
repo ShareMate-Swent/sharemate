@@ -12,8 +12,13 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImageRepository
+import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -115,23 +120,44 @@ class ItemRemovalTest {
   }
 
   @Test
-  fun pendingDeletionDisablesConfirmationAndCancel() {
-    val gate = CompletableDeferred<Unit>()
-    val repository = TestItemRepository(listOf(milk)).apply { deleteGate = gate }
+  fun offlineDeletionClosesConfirmationWithoutAwaitingServer() {
+    val gate = CompletableDeferred<Result<Unit>>()
+    val repository =
+        TestItemRepository(listOf(milk, bread)).apply {
+          deleteConfirmation = gate
+          emitOnDelete = false
+        }
     val viewModel = showFridge(repository)
     requestRemoval(milk)
     composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { viewModel.uiState.value.isDeleting }
-
-    composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).assertIsNotEnabled()
-    composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_remove).assertIsNotEnabled()
+    composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isDeleting }
+    for (item in listOf(milk, bread)) {
+      composeTestRule
+          .onNodeWithTag("fridge_item_actions_${item.id}")
+          .performScrollTo()
+          .performClick()
+      listOf(
+              C.Tag.fridge_edit_prefix,
+              C.Tag.fridge_remove_prefix,
+              C.Tag.fridge_eaten_prefix,
+              C.Tag.fridge_discard_prefix)
+          .forEach {
+            val action = composeTestRule.onNodeWithTag(it + item.id)
+            if (item.id == milk.id) action.assertIsNotEnabled() else action.assertIsEnabled()
+          }
+      Espresso.pressBack()
+    }
+    requestRemoval(bread)
+    composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_remove).performClick()
+    composeTestRule.runOnIdle { repository.items.value = emptyList() }
+    waitForRemoval(viewModel, milk.id)
     composeTestRule.runOnIdle {
       viewModel.confirmRemoval()
       viewModel.cancelRemoval()
       assertEquals(listOf(milk.id), repository.deletedIds)
-      assertEquals(listOf(milk), viewModel.uiState.value.items)
-      assertEquals(milk, viewModel.uiState.value.pendingRemovalItem)
-      gate.complete(Unit)
+      assertTrue(viewModel.uiState.value.items.isEmpty())
+      assertTrue(!gate.isCompleted)
+      gate.complete(Result.success(Unit))
     }
     waitForRemoval(viewModel, milk.id)
     composeTestRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertDoesNotExist()
@@ -158,7 +184,13 @@ class ItemRemovalTest {
   }
 
   private fun showFridge(repository: TestItemRepository): FridgeViewModel {
-    val viewModel = FridgeViewModel(repository, "test-user", "test-household")
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }
@@ -167,6 +199,8 @@ class ItemRemovalTest {
       SampleAppTheme(dynamicColor = false) {
         FridgeScreen(
             uiState = state,
+            onEditItem = viewModel::openEditItemDialog,
+            onStatusChange = viewModel::setItemStatus,
             onRemoveItem = viewModel::requestRemoval,
             onCancelRemoval = viewModel::cancelRemoval,
             onConfirmRemoval = viewModel::confirmRemoval)
@@ -177,10 +211,12 @@ class ItemRemovalTest {
   }
 
   private class TestItemRepository(initialItems: List<Item>) : ItemRepository {
-    private val items = MutableStateFlow(initialItems)
+    val items = MutableStateFlow(initialItems)
     val deletedIds = mutableListOf<String>()
+    var emitOnDelete = true
+
     var returnFalseOnDelete = false
-    var deleteGate: CompletableDeferred<Unit>? = null
+    var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
@@ -194,18 +230,16 @@ class ItemRemovalTest {
     override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
         error("Not used in this test")
 
-    override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
+    override fun deleteItemQueued(itemId: String): ItemWrite {
+      deletedIds += itemId
+      if (returnFalseOnDelete) return ItemWrite.Rejected(IllegalStateException("Delete failed"))
+      if (emitOnDelete) items.value = items.value.filterNot { it.id == itemId }
+      return ItemWrite.Queued(deleteConfirmation ?: CompletableDeferred(Result.success(Unit)))
+    }
 
     override suspend fun addItem(item: Item): String? =
         throw UnsupportedOperationException("Item creation is not used by removal tests")
 
-    override suspend fun deleteItem(itemId: String): Boolean {
-      deletedIds += itemId
-      deleteGate?.await()
-      if (returnFalseOnDelete) return false
-      val existed = items.value.any { it.id == itemId }
-      items.value = items.value.filterNot { it.id == itemId }
-      return existed
-    }
+    override suspend fun deleteItem(itemId: String): Boolean = error("Must use queued deletion")
   }
 }
