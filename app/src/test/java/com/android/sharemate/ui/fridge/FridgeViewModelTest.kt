@@ -8,6 +8,7 @@ import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -15,7 +16,6 @@ import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
 import java.io.IOException
 import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -377,8 +377,7 @@ class FridgeViewModelTest {
             name = "Cheese",
             quantity = 4,
             category = "Dairy",
-            expirationDate =
-                Date.from(LocalDate.parse("2026-12-31").atStartOfDay(ZoneOffset.UTC).toInstant()))
+            expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 12, 31)))
     assertEquals(listOf(expected, bread), vm.uiState.value.items)
     assertEquals(1, repository.edits.size)
     assertEquals(milk.id, repository.edits.single().first)
@@ -1033,8 +1032,7 @@ class FridgeViewModelTest {
             name = "Milk",
             ownerId = "test-user",
             householdId = "test-household",
-            expirationDate =
-                Date.from(LocalDate.of(2026, 10, 12).atStartOfDay(ZoneOffset.UTC).toInstant()),
+            expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 10, 12)),
             category = "Dairy")
     assertEquals(listOf(expected), repository.addedItems)
     assertEquals(listOf(expected.copy(id = "item-1")), viewModel.uiState.value.items)
@@ -1102,7 +1100,7 @@ class FridgeViewModelTest {
     runCurrent()
 
     assertEquals(
-        Date.from(LocalDate.of(2024, 2, 29).atStartOfDay(ZoneOffset.UTC).toInstant()),
+        ExpirationDates.toDate(LocalDate.of(2024, 2, 29)),
         repository.addedItems.single().expirationDate)
   }
 

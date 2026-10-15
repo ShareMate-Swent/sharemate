@@ -35,14 +35,13 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.text.DateFormat
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import java.util.Date
 import kotlinx.coroutines.delay
 
 @Composable
@@ -315,7 +314,7 @@ fun FridgeItem(
 ) {
   val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   val editDescription = stringResource(R.string.fridge_edit_description, item.name)
-  val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
+  val expiryStatus = remember(item.expirationDate) { ExpirationDates.status(item.expirationDate) }
   val containerColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer
@@ -334,7 +333,7 @@ fun FridgeItem(
           modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}").semantics {
             contentDescription = buildString {
               append(item.name)
-              item.expirationDate?.let { append(", ${it.expiryDescription(expiryStatus)}") }
+              item.expirationDate?.let { append(", ${expiryDescription(it, expiryStatus)}") }
             }
           },
       shape = RoundedCornerShape(12.dp),
@@ -349,7 +348,7 @@ fun FridgeItem(
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                       Text(item.name, style = MaterialTheme.typography.titleMedium)
                       item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
-                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
+                      item.expirationDate?.let { Text(expiryDescription(it, expiryStatus)) }
                     }
               }
 
@@ -402,36 +401,17 @@ fun FridgeItem(
       }
 }
 
-private enum class ExpiryStatus {
-  EXPIRED,
-  SOON,
-  NORMAL,
-}
-
-private fun java.util.Date?.expiryStatus(): ExpiryStatus {
-  if (this == null) return ExpiryStatus.NORMAL
-
-  val today = LocalDate.now()
-  val expiryDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-  val daysUntilExpiry = ChronoUnit.DAYS.between(today, expiryDate)
-  return when {
-    daysUntilExpiry < 0 -> ExpiryStatus.EXPIRED
-    daysUntilExpiry <= 3 -> ExpiryStatus.SOON
-    else -> ExpiryStatus.NORMAL
-  }
-}
-
-private fun java.util.Date.expiryDescription(status: ExpiryStatus): String {
-  val formattedDate = DateFormat.getDateInstance(DateFormat.MEDIUM).format(this)
-  return when (status) {
-    ExpiryStatus.EXPIRED -> "Expired on $formattedDate"
-    ExpiryStatus.SOON -> "Expires soon: $formattedDate"
-    ExpiryStatus.NORMAL -> "Expires $formattedDate"
-  }
-}
-
 @Preview(showBackground = true)
 @Composable
 private fun FridgeScreenPreview() {
   SampleAppTheme(dynamicColor = false) { FridgeScreen() }
+}
+
+private fun expiryDescription(date: Date, status: ExpiryStatus): String {
+  val formatted = ExpirationDates.formatDisplay(date)
+  return when (status) {
+    ExpiryStatus.EXPIRED -> "Expired on $formatted"
+    ExpiryStatus.SOON -> "Expires soon: $formatted"
+    ExpiryStatus.NORMAL -> "Expires $formatted"
+  }
 }

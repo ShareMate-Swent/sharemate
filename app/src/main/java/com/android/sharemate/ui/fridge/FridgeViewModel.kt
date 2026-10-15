@@ -5,16 +5,14 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeParseException
-import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.currentCoroutineContext
@@ -321,10 +319,7 @@ class FridgeViewModel(
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
-          expirationDateInput =
-              item.expirationDate
-                  ?.let { it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString() }
-                  .orEmpty(),
+          expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
   }
@@ -357,19 +352,13 @@ class FridgeViewModel(
       return
     }
     val expirationDate =
-        try {
-          val input = state.expirationDateInput.trim()
-          if (input.isEmpty()) null
-          else {
-            if (!input.matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}"))) {
-              mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-              return
-            }
-            Date.from(LocalDate.parse(input).atStartOfDay(ZoneOffset.UTC).toInstant())
+        when (val parsed = ExpirationDates.parse(state.expirationDateInput)) {
+          ExpirationInput.Empty -> null
+          is ExpirationInput.Valid -> parsed.date
+          ExpirationInput.Invalid -> {
+            mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
+            return
           }
-        } catch (exception: DateTimeParseException) {
-          mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-          return
         }
     val quantity = state.itemQuantity.trim().toIntOrNull()
     if (quantity == null || quantity <= 0) {
