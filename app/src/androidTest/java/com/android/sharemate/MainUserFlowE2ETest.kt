@@ -65,9 +65,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
 
-    compose.waitUntil(15_000) {
-      compose.onAllNodesWithTag(HouseholdChoiceTestTags.CREATE).fetchSemanticsNodes().isNotEmpty()
-    }
+    waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
     compose.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput(householdName)
     compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
@@ -138,9 +136,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
 
-    compose.waitUntil(15_000) {
-      compose.onAllNodesWithTag(HouseholdChoiceTestTags.CREATE).fetchSemanticsNodes().isNotEmpty()
-    }
+    waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
     compose.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput(householdName)
     compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
@@ -200,9 +196,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag("auth_password").performTextInput(password)
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
-    compose.waitUntil(15_000) {
-      compose.onAllNodesWithTag(HouseholdChoiceTestTags.JOIN).fetchSemanticsNodes().isNotEmpty()
-    }
+    waitForHouseholdChoice(HouseholdChoiceTestTags.JOIN)
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput(inviteCode)
     compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
@@ -211,5 +205,20 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
+  }
+
+  private fun waitForHouseholdChoice(testTag: String) {
+    compose.waitUntil(15_000) {
+      compose.onAllNodesWithTag(testTag).fetchSemanticsNodes().isNotEmpty() ||
+          compose.onAllNodesWithTag("auth_error").fetchSemanticsNodes().isNotEmpty() ||
+          compose.onAllNodesWithTag("household_retry").fetchSemanticsNodes().isNotEmpty()
+    }
+
+    val authError =
+        compose.onAllNodesWithTag("auth_error").fetchSemanticsNodes().firstOrNull()?.let { node ->
+          node.config[SemanticsProperties.Text].joinToString { it.text }
+        }
+    check(authError == null) { "Sign-up failed: $authError" }
+    compose.onNodeWithTag(testTag).assertIsDisplayed()
   }
 }
