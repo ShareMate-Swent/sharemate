@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -99,7 +100,7 @@ class MainUserFlowE2ETest {
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
-    compose.onNodeWithText("Remove").performClick()
+    compose.onNodeWithContentDescription("Remove $itemName").performClick()
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
 
