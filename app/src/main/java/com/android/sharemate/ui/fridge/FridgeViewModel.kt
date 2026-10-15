@@ -41,7 +41,10 @@ class FridgeViewModel(
     private val foodImageSelector: FoodImageSelector
 ) : ViewModel() {
   private companion object {
-    const val IMAGE_LOOKUP_TIMEOUT_MS = 5_000L
+    // Defines how long item creation may wait for an optional image.
+    // OkHttp's callTimeout separately limits the HTTP call;
+    // Firebase saving is outside this lookup timeout.
+    const val IMAGE_LOOKUP_TIMEOUT_MS = 10_000L
   }
 
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
