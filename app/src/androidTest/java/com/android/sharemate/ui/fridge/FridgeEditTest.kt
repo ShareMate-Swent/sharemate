@@ -18,6 +18,7 @@ import com.android.sharemate.R
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -26,7 +27,6 @@ import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,7 +121,7 @@ class FridgeEditTest {
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
     compose.onNodeWithText("Cheese").assertIsDisplayed()
     compose.runOnIdle {
-      val date = Date.from(LocalDate.of(2026, 12, 31).atStartOfDay(ZoneOffset.UTC).toInstant())
+      val date = ExpirationDates.toDate(LocalDate.of(2026, 12, 31))
       assertEquals(listOf(item.id to ItemEdit("Cheese", 4, "Protein", date)), repository.edits)
       assertEquals(
           listOf(
