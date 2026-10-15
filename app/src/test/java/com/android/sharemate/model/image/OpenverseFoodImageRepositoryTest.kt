@@ -6,6 +6,7 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -327,7 +328,9 @@ class OpenverseFoodImageRepositoryTest {
         SimulatedCall(
             onRead = {
               started.complete(Unit)
-              check(releaseRead.await(5, TimeUnit.SECONDS)) { "Test did not release the response" }
+              check(releaseRead.await(TEST_WATCHDOG_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                "Test did not release the response"
+              }
               throw IOException("Simulated interrupted request")
             })
     val search = launch {
@@ -335,16 +338,16 @@ class OpenverseFoodImageRepositoryTest {
       fail("Cancelled search must not return a result")
     }
     try {
-      withTimeout(5_000) { started.await() }
+      withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { started.await() }
       search.cancel()
     } finally {
       releaseRead.countDown()
     }
-    withTimeout(5_000) { search.join() }
+    withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { search.join() }
 
     assertTrue(search.isCancelled)
     assertTrue(connection.isCanceled())
-    withTimeout(5_000) { connection.responseDelivered.await() }
+    withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { connection.responseDelivered.await() }
     assertTrue(connection.bodyClosed)
   }
 
@@ -361,10 +364,12 @@ class OpenverseFoodImageRepositoryTest {
   @Test
   fun timeoutCancelsTheCallWithoutWaitingForCallbackAndClosesLateResponse() = runTest {
     val connection = SimulatedCall(deferResponse = true)
-    val result = async { withTimeoutOrNull(5_000) { repository(connection).searchByTitle("Milk") } }
+    val result = async {
+      withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) { repository(connection).searchByTitle("Milk") }
+    }
     runCurrent()
     assertFalse(result.isCompleted)
-    advanceTimeBy(5_000)
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS)
     runCurrent()
     assertNull(result.await())
     assertTrue(connection.isCanceled())
@@ -389,13 +394,14 @@ class OpenverseFoodImageRepositoryTest {
     val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
     val headersSent = CompletableDeferred<Unit>()
     val peerClosed = CompletableDeferred<Boolean>()
-    val client = OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build()
+    val client =
+        OkHttpClient.Builder().readTimeout(STALLED_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS).build()
     var call: Call? = null
     val serverThread = Thread {
       try {
         server.accept().use { socket ->
-          // Test watchdog must outlast the five-second lookup deadline.
-          socket.soTimeout = 10_000
+          // Test watchdog must outlast the lookup deadline.
+          socket.soTimeout = TEST_WATCHDOG_TIMEOUT_MS.toInt()
           val input = socket.getInputStream().bufferedReader()
           while (!input.readLine().isNullOrEmpty()) {
             /* Read HTTP request headers. */
@@ -404,7 +410,7 @@ class OpenverseFoodImageRepositoryTest {
             write("HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n".toByteArray())
             flush()
           }
-          // Leave the body stalled; cancellation must close the socket, not wait 30 seconds.
+          // Leave the body stalled; cancellation must close the socket before the read timeout.
           headersSent.complete(Unit)
           peerClosed.complete(input.read() == -1)
         }
@@ -423,15 +429,17 @@ class OpenverseFoodImageRepositoryTest {
                         request.newBuilder().url("http://127.0.0.1:${server.localPort}/").build())
                     .also { call = it }
               })
-      val result = async { withTimeoutOrNull(5_000) { repository.searchByTitle("Milk") } }
-      withTimeout(10_000) { headersSent.await() }
-      assertNull(withTimeout(10_000) { result.await() })
+      val result = async {
+        withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) { repository.searchByTitle("Milk") }
+      }
+      withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { headersSent.await() }
+      assertNull(withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { result.await() })
       assertTrue(call!!.isCanceled())
-      assertTrue(withTimeout(10_000) { peerClosed.await() })
+      assertTrue(withTimeout(TEST_WATCHDOG_TIMEOUT_MS) { peerClosed.await() })
     } finally {
       call?.cancel()
       server.close()
-      serverThread.join(10_000)
+      serverThread.join(TEST_WATCHDOG_TIMEOUT_MS)
       client.connectionPool.evictAll()
       client.dispatcher.executorService.shutdownNow()
     }
@@ -525,6 +533,10 @@ class OpenverseFoodImageRepositoryTest {
   }
 
   companion object {
+    // Leave room for scheduling and cleanup after the lookup deadline.
+    private const val TEST_WATCHDOG_TIMEOUT_MS = IMAGE_LOOKUP_TIMEOUT_MS * 2
+    private const val STALLED_READ_TIMEOUT_MS = TEST_WATCHDOG_TIMEOUT_MS * 2
+
     private const val SUCCESS_BODY =
         """{
           "results": [{

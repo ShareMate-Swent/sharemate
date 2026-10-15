@@ -5,6 +5,9 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CALL_TIMEOUT_MS
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CONNECT_TIMEOUT_MS
+import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_READ_TIMEOUT_MS
 import java.io.IOException
 import java.net.URI
 import java.net.URISyntaxException
@@ -82,9 +85,9 @@ class OpenverseFoodImageRepository internal constructor(private val callFactory:
   private companion object {
     val client =
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .callTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(HTTP_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(HTTP_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .callTimeout(HTTP_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
             .build()

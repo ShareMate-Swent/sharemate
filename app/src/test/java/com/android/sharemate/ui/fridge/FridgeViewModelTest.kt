@@ -8,6 +8,7 @@ import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -1184,7 +1185,7 @@ class FridgeViewModelTest {
     vm.updateName("Milk")
     vm.saveItem()
     runCurrent()
-    advanceTimeBy(4_999)
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS - 1)
     assertTrue(repository.addedItems.isEmpty())
     assertTrue(vm.uiState.value.isSaving)
 
@@ -1215,10 +1216,10 @@ class FridgeViewModelTest {
     vm.updateName("Milk")
     vm.saveItem()
     runCurrent()
-    advanceTimeBy(4_999)
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS - 1)
     searchGate.complete(Unit)
     runCurrent()
-    advanceTimeBy(5_000)
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS)
     runCurrent()
     assertTrue(vm.uiState.value.isSaving)
     assertFalse(imageRepository.cancelled)
@@ -1307,7 +1308,7 @@ class FridgeViewModelTest {
 
     viewModelStore.clear()
     runCurrent()
-    advanceTimeBy(5_000)
+    advanceTimeBy(IMAGE_LOOKUP_TIMEOUT_MS)
     runCurrent()
     assertTrue(imageRepository.cancelled)
     gate.complete(Unit)

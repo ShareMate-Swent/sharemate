@@ -5,6 +5,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -40,13 +41,6 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector
 ) : ViewModel() {
-  private companion object {
-    // Defines how long item creation may wait for an optional image.
-    // OkHttp's callTimeout separately limits the HTTP call;
-    // Firebase saving is outside this lookup timeout.
-    const val IMAGE_LOOKUP_TIMEOUT_MS = 10_000L
-  }
-
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
@@ -347,7 +341,7 @@ class FridgeViewModel(
       try {
         val image =
             try {
-              // The image is optional: spend at most five seconds looking it up.
+              // The optional lookup has its own budget; saving below is not timed out.
               withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
                 ItemImage.fromSelection(
                     foodImageSelector.select(name, personalPhotoReference = null))
