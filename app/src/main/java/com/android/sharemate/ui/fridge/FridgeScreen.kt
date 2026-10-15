@@ -2,20 +2,18 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,26 +23,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import coil.ImageLoader
-import coil.imageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.text.DateFormat
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.delay
 
+/** Displays the fridge inventory with caller-provided state and actions. */
 @Composable
 fun FridgeScreen(
     modifier: Modifier = Modifier,
@@ -74,12 +64,17 @@ fun FridgeScreen(
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
-  Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
+  val screenModifier =
+      modifier
+          .fillMaxSize()
+          .background(MaterialTheme.colorScheme.surface)
+          .testTag(C.Tag.fridge_screen_container)
+  Column(modifier = screenModifier) {
     Text(
         text = stringResource(R.string.fridge_title),
         modifier =
             Modifier.align(Alignment.CenterHorizontally)
-                .padding(vertical = 24.dp)
+                .padding(vertical = FridgeLayout.headerVerticalPadding)
                 .testTag(C.Tag.fridge_title),
         style = MaterialTheme.typography.headlineSmall)
 
@@ -92,17 +87,10 @@ fun FridgeScreen(
         onSortOrderChange = onSortOrderChange,
         onCategoryFilterChange = onCategoryFilterChange,
         onOwnerFilterChange = onOwnerFilterChange,
+        onAddItem = onAddItem,
+        isSaving = uiState.isSaving,
     )
 
-    Button(
-        onClick = { onAddItem?.invoke() },
-        enabled = onAddItem != null && !uiState.isSaving,
-        modifier =
-            Modifier.align(Alignment.End)
-                .padding(horizontal = 24.dp, vertical = 8.dp)
-                .testTag(C.Tag.fridge_add_item)) {
-          Text(stringResource(R.string.fridge_add_item))
-        }
     uiState.editSyncError?.let { error ->
       LaunchedEffect(error, uiState.isAddItemDialogOpen) {
         if (!uiState.isAddItemDialogOpen) {
@@ -149,12 +137,19 @@ fun FridgeScreen(
           modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_removal_sync_error))
     }
     Box(
-        modifier = Modifier.fillMaxWidth().weight(1f).padding(24.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .weight(1f)
+                .padding(
+                    horizontal = FridgeLayout.horizontalPadding,
+                    vertical = FridgeLayout.gridVerticalPadding),
         contentAlignment = Alignment.Center) {
           if (activeItems.isNotEmpty()) {
-            LazyColumn(
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                horizontalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing),
+                verticalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing)) {
                   items(activeItems, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
@@ -251,6 +246,7 @@ fun FridgeScreen(
   }
 }
 
+/** Connects the fridge presentation to its existing inventory ViewModel. */
 @Composable
 fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
   val uiState by viewModel.uiState.collectAsState()
@@ -299,135 +295,6 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onCancelRemoval = viewModel::cancelRemoval,
       onConfirmRemoval = viewModel::confirmRemoval,
   )
-}
-
-@Composable
-fun FridgeItem(
-    item: Item,
-    modifier: Modifier = Modifier,
-    removalEnabled: Boolean = false,
-    onRemove: () -> Unit = {},
-    editEnabled: Boolean = false,
-    onEdit: () -> Unit = {},
-    statusEnabled: Boolean = false,
-    onStatusChange: (ItemStatus) -> Unit = {},
-    imageLoader: ImageLoader = LocalContext.current.imageLoader,
-) {
-  val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
-  val editDescription = stringResource(R.string.fridge_edit_description, item.name)
-  val expiryStatus = remember(item.expirationDate) { item.expirationDate.expiryStatus() }
-  val containerColor =
-      when (expiryStatus) {
-        ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer
-        ExpiryStatus.SOON -> MaterialTheme.colorScheme.tertiaryContainer
-        ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.surfaceVariant
-      }
-  val contentColor =
-      when (expiryStatus) {
-        ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.onErrorContainer
-        ExpiryStatus.SOON -> MaterialTheme.colorScheme.onTertiaryContainer
-        ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
-      }
-
-  Surface(
-      modifier =
-          modifier.fillMaxWidth().testTag("${C.Tag.fridge_item_prefix}${item.id}").semantics {
-            contentDescription = buildString {
-              append(item.name)
-              item.expirationDate?.let { append(", ${it.expiryDescription(expiryStatus)}") }
-            }
-          },
-      shape = RoundedCornerShape(12.dp),
-      color = containerColor,
-      contentColor = contentColor) {
-        Column(
-            modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FridgeItemImage(item, imageLoader)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                      Text(item.name, style = MaterialTheme.typography.titleMedium)
-                      item.category?.let { Text(stringResource(R.string.fridge_item_category, it)) }
-                      item.expirationDate?.let { Text(it.expiryDescription(expiryStatus)) }
-                    }
-              }
-
-              FridgeImageCredits(item.image)
-
-              Row {
-                TextButton(
-                    onClick = onEdit,
-                    enabled = editEnabled,
-                    modifier =
-                        Modifier.testTag(C.Tag.fridge_edit_prefix + item.id).semantics {
-                          contentDescription = editDescription
-                        }) {
-                      Text(stringResource(R.string.fridge_edit_item))
-                    }
-                TextButton(
-                    onClick = onRemove,
-                    enabled = removalEnabled,
-                    modifier =
-                        Modifier.testTag("${C.Tag.fridge_remove_prefix}${item.id}").semantics {
-                          contentDescription = removeDescription
-                        }) {
-                      Text(stringResource(R.string.fridge_remove))
-                    }
-              }
-
-              if (item.status == ItemStatus.ACTIVE) {
-                Row {
-                  listOf(
-                          ItemStatus.EATEN to R.string.fridge_eaten,
-                          ItemStatus.DISCARDED to R.string.fridge_discarded)
-                      .forEach { (status, resource) ->
-                        val label = stringResource(resource)
-                        val description =
-                            stringResource(R.string.fridge_status_description, item.name, label)
-                        TextButton(
-                            onClick = { onStatusChange(status) },
-                            enabled = statusEnabled,
-                            modifier =
-                                Modifier.testTag(
-                                        (if (status == ItemStatus.EATEN) C.Tag.fridge_eaten_prefix
-                                        else C.Tag.fridge_discard_prefix) + item.id)
-                                    .semantics { contentDescription = description }) {
-                              Text(label)
-                            }
-                      }
-                }
-              }
-            }
-      }
-}
-
-private enum class ExpiryStatus {
-  EXPIRED,
-  SOON,
-  NORMAL,
-}
-
-private fun java.util.Date?.expiryStatus(): ExpiryStatus {
-  if (this == null) return ExpiryStatus.NORMAL
-
-  val today = LocalDate.now()
-  val expiryDate = toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
-  val daysUntilExpiry = ChronoUnit.DAYS.between(today, expiryDate)
-  return when {
-    daysUntilExpiry < 0 -> ExpiryStatus.EXPIRED
-    daysUntilExpiry <= 3 -> ExpiryStatus.SOON
-    else -> ExpiryStatus.NORMAL
-  }
-}
-
-private fun java.util.Date.expiryDescription(status: ExpiryStatus): String {
-  val formattedDate = DateFormat.getDateInstance(DateFormat.MEDIUM).format(this)
-  return when (status) {
-    ExpiryStatus.EXPIRED -> "Expired on $formattedDate"
-    ExpiryStatus.SOON -> "Expires soon: $formattedDate"
-    ExpiryStatus.NORMAL -> "Expires $formattedDate"
-  }
 }
 
 @Preview(showBackground = true)

@@ -7,7 +7,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,15 +15,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,21 +33,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.android.sharemate.R
+import com.android.sharemate.resources.C
 
-/** Displays existing fridge filters, or disabled controls when callbacks are unavailable. */
+/** Displays inventory filters and separate, disabled shared/personal presentation controls. */
 @Composable
 internal fun FridgeControls(
     sortOrder: FridgeSortOrder?,
@@ -57,177 +57,216 @@ internal fun FridgeControls(
     onSortOrderChange: ((FridgeSortOrder) -> Unit)?,
     onCategoryFilterChange: ((String?) -> Unit)?,
     onOwnerFilterChange: ((String?) -> Unit)?,
+    onAddItem: (() -> Unit)?,
+    isSaving: Boolean,
 ) {
   val hasFunctionalFilters =
       sortOrder != null &&
           onSortOrderChange != null &&
           onCategoryFilterChange != null &&
           onOwnerFilterChange != null
+  val availableCategories = (categories + listOfNotNull(selectedCategory)).distinct()
+  val categoryEnabled = hasFunctionalFilters && availableCategories.isNotEmpty()
 
-  if (hasFunctionalFilters) {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      FilterChip(
-          selected = sortOrder == FridgeSortOrder.EXPIRATION_DATE,
-          onClick = { onSortOrderChange?.invoke(FridgeSortOrder.EXPIRATION_DATE) },
-          label = { Text("Expiry date") },
-      )
-      FilterChip(
-          selected = sortOrder == FridgeSortOrder.NAME,
-          onClick = { onSortOrderChange?.invoke(FridgeSortOrder.NAME) },
-          label = { Text("Name") },
-      )
-      ItemFilterChip(
-          label = "Category",
-          selectedValue = selectedCategory,
-          options = categories,
-          onSelected = { onCategoryFilterChange?.invoke(it) },
-      )
-      ItemFilterChip(
-          label = "Owner",
-          selectedValue = selectedOwnerId,
-          options = ownerIds,
-          onSelected = { onOwnerFilterChange?.invoke(it) },
-      )
-    }
-  } else {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      listOf(
-              R.string.fridge_category_all,
-              R.string.fridge_category_fruits,
-              R.string.fridge_category_vegetables,
-              R.string.fridge_category_canned_goods)
-          .forEachIndexed { index, label ->
-            val isSelected = index == 0
-            Surface(
-                modifier =
-                    Modifier.semantics(mergeDescendants = true) {
-                      selected = isSelected
-                      disabled()
-                    },
-                shape = RoundedCornerShape(8.dp),
-                color =
-                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer
-                    else MaterialTheme.colorScheme.surface,
-                border =
-                    if (isSelected) null
-                    else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                  Row(
-                      modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      verticalAlignment = Alignment.CenterVertically) {
-                        if (isSelected) {
-                          Icon(Icons.Default.Check, null, modifier = Modifier.size(18.dp))
-                        }
-                        Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
-                      }
-                }
-          }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-          Row(
-              modifier = Modifier.semantics(mergeDescendants = true) { disabled() },
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
-              verticalAlignment = Alignment.CenterVertically) {
-                Icon(SortIcon, null, tint = MaterialTheme.colorScheme.primary)
-                Text(
-                    stringResource(R.string.fridge_sort),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.labelLarge)
-              }
-          Spacer(Modifier.weight(1f))
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .horizontalScroll(rememberScrollState())
+              .padding(horizontal = FridgeLayout.categoryHorizontalPadding),
+      horizontalArrangement = Arrangement.spacedBy(FridgeLayout.chipSpacing)) {
+        CategoryChip(
+            label = stringResource(R.string.fridge_category_all),
+            selected = selectedCategory == null,
+            enabled = categoryEnabled,
+            tag = "fridge_filter_category_all",
+            showCheckmark = selectedCategory == null,
+            onClick = { onCategoryFilterChange?.invoke(null) })
+        availableCategories.forEach { category ->
+          CategoryChip(
+              label = category,
+              selected = selectedCategory == category,
+              enabled = hasFunctionalFilters,
+              tag = "fridge_filter_category_$category",
+              onClick = { onCategoryFilterChange?.invoke(category) })
+        }
+      }
+
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .padding(
+                  horizontal = FridgeLayout.horizontalPadding,
+                  vertical = FridgeLayout.controlsVerticalPadding),
+      horizontalArrangement = Arrangement.spacedBy(FridgeLayout.controlSpacing),
+      verticalAlignment = Alignment.CenterVertically) {
+        SortControl(sortOrder, hasFunctionalFilters, onSortOrderChange)
+        Box(Modifier.weight(1f)) {
+          OwnerControl(selectedOwnerId, ownerIds, hasFunctionalFilters, onOwnerFilterChange)
+        }
+        TextButton(
+            onClick = { onAddItem?.invoke() },
+            enabled = onAddItem != null && !isSaving,
+            modifier = Modifier.testTag(C.Tag.fridge_add_item)) {
+              Text(
+                  stringResource(R.string.fridge_add_item),
+                  style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
+            }
+        IconButton(onClick = {}, enabled = false) {
           Icon(
               Icons.AutoMirrored.Filled.List,
               stringResource(R.string.fridge_view_options),
-              modifier = Modifier.semantics { disabled() },
               tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    Row(
-        modifier = Modifier.padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-          listOf(R.string.fridge_yours, R.string.fridge_shared).forEach { label ->
-            Row(
-                modifier = Modifier.semantics(mergeDescendants = true) { disabled() },
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                  RadioButton(
-                      selected = false,
-                      onClick = null,
-                      enabled = false,
-                      modifier = Modifier.size(18.dp),
-                      colors =
-                          RadioButtonDefaults.colors(
-                              disabledUnselectedColor = MaterialTheme.colorScheme.onSurfaceVariant))
-                  Text(stringResource(label), style = MaterialTheme.typography.labelMedium)
-                }
+      }
+
+  OwnershipControls()
+}
+
+@Composable
+private fun CategoryChip(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    tag: String,
+    showCheckmark: Boolean = false,
+    onClick: () -> Unit,
+) {
+  FilterChip(
+      selected = selected,
+      enabled = enabled,
+      onClick = onClick,
+      label = {
+        Text(
+            label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
+      },
+      modifier = Modifier.testTag(tag),
+      shape = RoundedCornerShape(FridgeLayout.chipCornerRadius),
+      border =
+          if (selected) null
+          else BorderStroke(FridgeLayout.chipBorderWidth, MaterialTheme.colorScheme.outlineVariant),
+      colors =
+          FilterChipDefaults.filterChipColors(
+              containerColor = MaterialTheme.colorScheme.surface,
+              labelColor = MaterialTheme.colorScheme.onSurface,
+              selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+              selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+              selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+              disabledContainerColor = MaterialTheme.colorScheme.surface,
+              disabledSelectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+              disabledLabelColor = MaterialTheme.colorScheme.onSurface,
+              disabledLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer),
+      leadingIcon =
+          if (showCheckmark) {
+            { Icon(Icons.Default.Check, null, modifier = Modifier.size(FridgeLayout.iconSize)) }
+          } else null)
+}
+
+@Composable
+private fun SortControl(
+    sortOrder: FridgeSortOrder?,
+    enabled: Boolean,
+    onSelected: ((FridgeSortOrder) -> Unit)?,
+) {
+  var expanded by remember { mutableStateOf(false) }
+  Box {
+    TextButton(onClick = { expanded = true }, enabled = enabled) {
+      Icon(Icons.Default.SwapVert, null, modifier = Modifier.size(FridgeLayout.iconSize))
+      Text(
+          stringResource(R.string.fridge_sort),
+          modifier = Modifier.padding(start = FridgeLayout.controlSpacing),
+          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+      listOf(
+              FridgeSortOrder.EXPIRATION_DATE to R.string.fridge_sort_expiration_date,
+              FridgeSortOrder.NAME to R.string.fridge_sort_name)
+          .forEach { (order, label) ->
+            DropdownMenuItem(
+                text = { Text(stringResource(label)) },
+                modifier = Modifier.semantics { selected = sortOrder == order },
+                onClick = {
+                  onSelected?.invoke(order)
+                  expanded = false
+                })
           }
-        }
+    }
   }
 }
 
 @Composable
-private fun ItemFilterChip(
-    label: String,
-    selectedValue: String?,
-    options: List<String>,
-    onSelected: (String?) -> Unit,
+private fun OwnerControl(
+    selectedOwnerId: String?,
+    ownerIds: List<String>,
+    enabled: Boolean,
+    onSelected: ((String?) -> Unit)?,
 ) {
   var expanded by remember { mutableStateOf(false) }
-  val chipLabel = selectedValue?.let { "$label: $it" } ?: label
-
+  val label =
+      if (selectedOwnerId == null) stringResource(R.string.fridge_owner_filter)
+      else stringResource(R.string.fridge_owner_filter_selected, selectedOwnerId)
   Box {
-    FilterChip(
-        selected = selectedValue != null,
-        enabled = options.isNotEmpty() || selectedValue != null,
+    TextButton(
         onClick = { expanded = true },
-        label = { Text(chipLabel) },
-    )
+        enabled = enabled && (ownerIds.isNotEmpty() || selectedOwnerId != null),
+        modifier =
+            Modifier.semantics {
+              selected = selectedOwnerId != null
+              contentDescription = label
+            }) {
+          Text(
+              label,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
+        }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
       DropdownMenuItem(
-          text = { Text(if (label == "Category") "All categories" else "All owners") },
-          modifier = Modifier.testTag("fridge_filter_${label.lowercase()}_all"),
+          text = { Text(stringResource(R.string.fridge_owner_filter_all)) },
+          modifier = Modifier.testTag("fridge_filter_owner_all"),
           onClick = {
-            onSelected(null)
+            onSelected?.invoke(null)
             expanded = false
-          },
-      )
-      options.forEach { option ->
+          })
+      ownerIds.forEach { ownerId ->
         DropdownMenuItem(
-            text = { Text(option) },
-            modifier = Modifier.testTag("fridge_filter_${label.lowercase()}_$option"),
+            text = { Text(ownerId) },
+            modifier = Modifier.testTag("fridge_filter_owner_$ownerId"),
             onClick = {
-              onSelected(option)
+              onSelected?.invoke(ownerId)
               expanded = false
-            },
-        )
+            })
       }
     }
   }
 }
 
-private fun outlineIcon(name: String, pathData: String): ImageVector =
-    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
-        .addPath(
-            pathData = PathParser().parsePathString(pathData).toNodes(),
-            fill = null,
-            stroke = SolidColor(Color.Black),
-            strokeLineWidth = 1.8f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeJoin.Round)
-        .build()
-
-private val SortIcon =
-    outlineIcon("Sort", "M7,4 V16 M3,8 L7,4 L11,8 M17,8 V20 M13,16 L17,20 L21,16")
+@Composable
+private fun OwnershipControls() {
+  Row(
+      modifier = Modifier.padding(horizontal = FridgeLayout.horizontalPadding),
+      horizontalArrangement = Arrangement.spacedBy(FridgeLayout.ownershipSpacing)) {
+        listOf(R.string.fridge_yours, R.string.fridge_shared).forEach { label ->
+          Row(
+              modifier =
+                  Modifier.semantics(mergeDescendants = true) {
+                    disabled()
+                    selected = false
+                    role = Role.RadioButton
+                  },
+              horizontalArrangement = Arrangement.spacedBy(FridgeLayout.ownershipLabelSpacing),
+              verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.RadioButtonUnchecked,
+                    null,
+                    modifier = Modifier.size(FridgeLayout.ownershipIconSize),
+                    tint =
+                        if (label == R.string.fridge_yours) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline)
+                Text(
+                    stringResource(label),
+                    style =
+                        MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal))
+              }
+        }
+      }
+}
