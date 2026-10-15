@@ -2,6 +2,7 @@
 package com.android.sharemate
 
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -55,7 +56,7 @@ class MainUserFlowE2ETest {
     val householdName = "Shared Home"
     val itemName = "Milk"
 
-    compose.waitUntil(10_000) {
+    waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
@@ -70,12 +71,12 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput(householdName)
     compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
 
-    compose.waitUntil(15_000) {
+    waitUntil("household creation confirmation") {
       compose.onAllNodesWithTag(CreateHouseholdTestTags.CONTINUE).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
 
-    compose.waitUntil(15_000) {
+    waitUntil("fridge after household creation") {
       compose
           .onAllNodes(hasTestTag(NavigationTestTags.FRIDGE_TAB))
           .fetchSemanticsNodes()
@@ -93,7 +94,7 @@ class MainUserFlowE2ETest {
     Espresso.closeSoftKeyboard()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
 
-    compose.waitUntil(15_000) {
+    waitUntil("item creation dialog dismissal") {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
@@ -102,7 +103,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
 
-    compose.waitUntil(15_000) {
+    waitUntil("removed item disappearing") {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isEmpty()
     }
     compose
@@ -113,7 +114,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
 
-    compose.waitUntil(10_000) {
+    waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
@@ -127,7 +128,7 @@ class MainUserFlowE2ETest {
     val householdName = "Shared Home"
     val itemName = "Shared Milk"
 
-    compose.waitUntil(10_000) {
+    waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
@@ -140,7 +141,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
     compose.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput(householdName)
     compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
-    compose.waitUntil(15_000) {
+    waitUntil("household creation confirmation") {
       compose.onAllNodesWithTag(CreateHouseholdTestTags.CONTINUE).fetchSemanticsNodes().isNotEmpty()
     }
 
@@ -159,7 +160,7 @@ class MainUserFlowE2ETest {
             .single { it.matches(Regex("[A-HJ-NP-Z2-9]{6}")) }
 
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
-    compose.waitUntil(15_000) {
+    waitUntil("fridge after household creation") {
       compose.onAllNodesWithTag(NavigationTestTags.FRIDGE_TAB).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
@@ -171,7 +172,7 @@ class MainUserFlowE2ETest {
         .performTextReplacement(LocalDate.now().plusDays(7).toString())
     Espresso.closeSoftKeyboard()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
-    compose.waitUntil(15_000) {
+    waitUntil("item creation dialog dismissal and item visibility") {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty() &&
           compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
     }
@@ -179,10 +180,10 @@ class MainUserFlowE2ETest {
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
-    compose.waitUntil(10_000) {
+    waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
-    compose.waitUntil(10_000) {
+    waitUntil("sign-up action enabled", 10_000) {
       compose
           .onAllNodesWithTag("auth_welcome_signup")
           .fetchSemanticsNodes()
@@ -208,7 +209,7 @@ class MainUserFlowE2ETest {
   }
 
   private fun waitForHouseholdChoice(testTag: String) {
-    compose.waitUntil(15_000) {
+    waitUntil("household choice after sign-up") {
       compose.onAllNodesWithTag(testTag).fetchSemanticsNodes().isNotEmpty() ||
           compose.onAllNodesWithTag("auth_error").fetchSemanticsNodes().isNotEmpty() ||
           compose.onAllNodesWithTag("household_retry").fetchSemanticsNodes().isNotEmpty()
@@ -220,5 +221,28 @@ class MainUserFlowE2ETest {
         }
     check(authError == null) { "Sign-up failed: $authError" }
     compose.onNodeWithTag(testTag).assertIsDisplayed()
+  }
+
+  private fun waitUntil(
+      description: String,
+      timeoutMillis: Long = 15_000,
+      condition: () -> Boolean,
+  ) {
+    try {
+      compose.waitUntil(timeoutMillis, condition)
+    } catch (failure: ComposeTimeoutException) {
+      val screenText =
+          compose
+              .onAllNodes(
+                  SemanticsMatcher("has text semantics") {
+                    it.config.contains(SemanticsProperties.Text)
+                  },
+                  useUnmergedTree = true,
+              )
+              .fetchSemanticsNodes()
+              .flatMap { it.config[SemanticsProperties.Text] }
+              .joinToString { it.text }
+      throw AssertionError("Timed out waiting for $description. Screen text: $screenText", failure)
+    }
   }
 }
