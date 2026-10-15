@@ -3,7 +3,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <activity
-            android:name=".MainUserFlowTestActivity"
+            android:name="com.android.sharemate.MainUserFlowTestActivity"
             android:exported="false" />
     </application>
 </manifest>
