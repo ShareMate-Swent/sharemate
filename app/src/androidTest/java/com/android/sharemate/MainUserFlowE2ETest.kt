@@ -47,7 +47,7 @@ class MainUserFlowE2ETest {
         }
       }
 
-  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainUserFlowTestActivity>()
 
   @Test
   fun mainUserCreatesHouseholdAddsAndRemovesItemThenSignsOut() {
