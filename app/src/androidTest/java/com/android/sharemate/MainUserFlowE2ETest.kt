@@ -103,6 +103,7 @@ class MainUserFlowE2ETest {
             .onAllNodes(
                 SemanticsMatcher("fridge item") {
                   it.config.contains(SemanticsProperties.TestTag) &&
+                      it.config[SemanticsProperties.TestTag] != C.Tag.fridge_item_list &&
                       it.config[SemanticsProperties.TestTag].startsWith(C.Tag.fridge_item_prefix)
                 })
             .fetchSemanticsNodes()
