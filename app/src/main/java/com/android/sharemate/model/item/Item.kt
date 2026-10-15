@@ -4,7 +4,7 @@ package com.android.sharemate.model.item
 import java.util.Date
 
 /**
- * Représente un aliment ou un reçu dans l'application.
+ * Représente un aliment ou un reçu dans l'application
  *
  * @property id Identifiant unique de l'item (généré par Firestore).
  * @property name Nom de l'aliment (ex: "Lait").
