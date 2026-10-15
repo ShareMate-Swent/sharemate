@@ -4,7 +4,7 @@ There can be a lot of problems when sharing a flat with roommates such as managi
 [ShareMate-Mockups](https://www.figma.com/design/uMFTyLKhCPxhzw0zugspWH/ShareMate-%E2%80%93-Mockups)
 
 ## Architecture Diagram
-Diagram is on excalidraw.com : https://excalidraw.com/#json=oJNWNA1egaUjzyXRmVJ8a,Alk3vRA7hRePmeSkGVn-Iw
+Diagram is on excalidraw.com : https://excalidraw.com/#json=SJDfZED2NSJZ1G_u6iT8D,NjCbWBaDos40ic95UA-FOA
 
 ## Good Code review process :
 https://github.com/swent-epfl/public/blob/main/project/README.md#reviewing-code
