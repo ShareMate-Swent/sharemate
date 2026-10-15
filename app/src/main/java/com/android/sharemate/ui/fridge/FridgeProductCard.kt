@@ -42,16 +42,12 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
-import java.text.SimpleDateFormat
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
-import java.util.Locale
-import java.util.TimeZone
 
 /** Compact inventory tile reusing the shared image renderer and attribution components. */
 @Composable
@@ -66,31 +62,23 @@ fun FridgeItem(
     onStatusChange: (ItemStatus) -> Unit = {},
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
 ) {
-  val daysUntilExpiry =
-      item.expirationDate?.let {
-        ChronoUnit.DAYS.between(
-            LocalDate.now(), it.toInstant().atZone(ZoneId.systemDefault()).toLocalDate())
-      }
+  val expiryStatus = ExpirationDates.status(item.expirationDate)
   val expiryColor =
-      when {
-        daysUntilExpiry == null || daysUntilExpiry > 3 -> MaterialTheme.colorScheme.onSurfaceVariant
-        daysUntilExpiry < 0 -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.tertiary
+      when (expiryStatus) {
+        ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
+        ExpiryStatus.SOON -> MaterialTheme.colorScheme.tertiary
+        ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
       }
   val expiryText =
       item.expirationDate?.let {
-        val date =
-            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                .apply { timeZone = TimeZone.getTimeZone("UTC") }
-                .format(it)
-        stringResource(R.string.fridge_card_expiration, date)
+        stringResource(R.string.fridge_card_expiration, ExpirationDates.formatCompact(it))
       }
   val expiryDescription =
       expiryText?.let {
-        when {
-          daysUntilExpiry!! < 0 -> stringResource(R.string.fridge_card_expired, it)
-          daysUntilExpiry <= 3 -> stringResource(R.string.fridge_card_expiring_soon, it)
-          else -> it
+        when (expiryStatus) {
+          ExpiryStatus.EXPIRED -> stringResource(R.string.fridge_card_expired, it)
+          ExpiryStatus.SOON -> stringResource(R.string.fridge_card_expiring_soon, it)
+          ExpiryStatus.NORMAL -> it
         }
       }
   Column(

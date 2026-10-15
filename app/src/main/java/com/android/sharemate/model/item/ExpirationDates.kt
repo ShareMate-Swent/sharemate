@@ -2,6 +2,7 @@
 package com.android.sharemate.model.item
 
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
@@ -59,6 +60,12 @@ object ExpirationDates {
   /** Localized text for the item card, formatted on the stored UTC day. */
   fun formatDisplay(date: Date, locale: Locale = Locale.getDefault()): String =
       DateFormat.getDateInstance(DateFormat.MEDIUM, locale)
+          .apply { timeZone = TimeZone.getTimeZone("UTC") }
+          .format(date)
+
+  /** Compact `dd/MM/yyyy` text for the item card, formatted on the stored UTC day. */
+  fun formatCompact(date: Date, locale: Locale = Locale.getDefault()): String =
+      SimpleDateFormat("dd/MM/yyyy", locale)
           .apply { timeZone = TimeZone.getTimeZone("UTC") }
           .format(date)
 

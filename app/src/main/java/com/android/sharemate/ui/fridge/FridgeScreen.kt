@@ -28,13 +28,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
-import com.android.sharemate.model.item.ExpirationDates
-import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.util.Date
 import kotlinx.coroutines.delay
 
 /** Displays the fridge inventory with caller-provided state and actions. */
