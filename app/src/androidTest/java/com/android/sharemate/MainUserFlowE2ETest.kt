@@ -26,25 +26,26 @@ import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.UUID
-import org.junit.After
-import org.junit.Before
 import org.junit.Rule
+import org.junit.rules.ExternalResource
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainUserFlowE2ETest {
-  @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0)
+  val firebaseEmulator =
+      object : ExternalResource() {
+        override fun before() {
+          FirebaseEmulator.clear()
+        }
 
-  @Before
-  fun setUp() {
-    FirebaseEmulator.clear()
-  }
+        override fun after() {
+          FirebaseEmulator.clear()
+        }
+      }
 
-  @After
-  fun tearDown() {
-    FirebaseEmulator.clear()
-  }
+  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun mainUserCreatesHouseholdAddsAndRemovesItemThenSignsOut() {
