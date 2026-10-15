@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -26,25 +27,26 @@ import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.UUID
-import org.junit.After
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainUserFlowE2ETest {
-  @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 0)
+  val firebaseEmulator =
+      object : ExternalResource() {
+        override fun before() {
+          FirebaseEmulator.clear()
+        }
 
-  @Before
-  fun setUp() {
-    FirebaseEmulator.clear()
-  }
+        override fun after() {
+          FirebaseEmulator.clear()
+        }
+      }
 
-  @After
-  fun tearDown() {
-    FirebaseEmulator.clear()
-  }
+  @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun mainUserCreatesHouseholdAddsAndRemovesItemThenSignsOut() {
@@ -98,7 +100,7 @@ class MainUserFlowE2ETest {
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
-    compose.onNodeWithText("Remove").performClick()
+    compose.onNodeWithContentDescription("Remove $itemName").performClick()
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
 
