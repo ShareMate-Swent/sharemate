@@ -5,6 +5,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class FridgeSortOrder {
   EXPIRATION_DATE,
@@ -396,7 +398,11 @@ class FridgeViewModel(
       try {
         val image =
             try {
-              ItemImage.fromSelection(foodImageSelector.select(name, personalPhotoReference = null))
+              // The optional lookup has its own budget; saving below is not timed out.
+              withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
+                ItemImage.fromSelection(
+                    foodImageSelector.select(name, personalPhotoReference = null))
+              }
             } catch (exception: CancellationException) {
               throw exception
             } catch (exception: Exception) {
