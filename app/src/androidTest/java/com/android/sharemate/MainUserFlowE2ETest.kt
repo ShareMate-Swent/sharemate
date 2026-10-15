@@ -77,9 +77,9 @@ class MainUserFlowE2ETest {
 
     compose.waitUntil(15_000) {
       compose
-        .onAllNodes(hasTestTag(NavigationTestTags.FRIDGE_TAB))
-        .fetchSemanticsNodes()
-        .isNotEmpty()
+          .onAllNodes(hasTestTag(NavigationTestTags.FRIDGE_TAB))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
     }
     compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
@@ -88,8 +88,8 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("2")
     compose.onNodeWithTag(C.Tag.fridge_category_input).performTextInput("Dairy")
     compose
-      .onNodeWithTag(C.Tag.fridge_expiration_input)
-      .performTextReplacement(LocalDate.now().plusDays(7).toString())
+        .onNodeWithTag(C.Tag.fridge_expiration_input)
+        .performTextReplacement(LocalDate.now().plusDays(7).toString())
     Espresso.closeSoftKeyboard()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
 
@@ -106,9 +106,9 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isEmpty()
     }
     compose
-      .onNodeWithTag(C.Tag.fridge_empty)
-      .assertIsDisplayed()
-      .assertTextEquals("Your fridge is empty")
+        .onNodeWithTag(C.Tag.fridge_empty)
+        .assertIsDisplayed()
+        .assertTextEquals("Your fridge is empty")
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
@@ -147,18 +147,18 @@ class MainUserFlowE2ETest {
     }
 
     val inviteCode =
-      compose
-        .onAllNodes(
-          SemanticsMatcher("has visible text") {
-            it.config.contains(SemanticsProperties.Text)
-          },
-          useUnmergedTree = true,
-        )
-        .fetchSemanticsNodes()
-        .asSequence()
-        .flatMap { it.config[SemanticsProperties.Text].asSequence() }
-        .map { it.text }
-        .single { it.matches(Regex("[A-HJ-NP-Z2-9]{6}")) }
+        compose
+            .onAllNodes(
+                SemanticsMatcher("has visible text") {
+                  it.config.contains(SemanticsProperties.Text)
+                },
+                useUnmergedTree = true,
+            )
+            .fetchSemanticsNodes()
+            .asSequence()
+            .flatMap { it.config[SemanticsProperties.Text].asSequence() }
+            .map { it.text }
+            .single { it.matches(Regex("[A-HJ-NP-Z2-9]{6}")) }
 
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
     compose.waitUntil(15_000) {
@@ -169,13 +169,13 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("1")
     compose.onNodeWithTag(C.Tag.fridge_category_input).performTextInput("Dairy")
     compose
-      .onNodeWithTag(C.Tag.fridge_expiration_input)
-      .performTextReplacement(LocalDate.now().plusDays(7).toString())
+        .onNodeWithTag(C.Tag.fridge_expiration_input)
+        .performTextReplacement(LocalDate.now().plusDays(7).toString())
     Espresso.closeSoftKeyboard()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     compose.waitUntil(15_000) {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty() &&
-              compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
+          compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
@@ -186,11 +186,11 @@ class MainUserFlowE2ETest {
     }
     compose.waitUntil(10_000) {
       compose
-        .onAllNodesWithTag("auth_welcome_signup")
-        .fetchSemanticsNodes()
-        .singleOrNull()
-        ?.config
-        ?.contains(SemanticsProperties.Disabled) == false
+          .onAllNodesWithTag("auth_welcome_signup")
+          .fetchSemanticsNodes()
+          .singleOrNull()
+          ?.config
+          ?.contains(SemanticsProperties.Disabled) == false
     }
 
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
