@@ -1,11 +1,11 @@
 package com.android.sharemate.model.item
 
-import org.junit.After
-import org.junit.Assert
-import org.junit.Test
 import java.time.LocalDate
 import java.util.Locale
 import java.util.TimeZone
+import org.junit.After
+import org.junit.Assert
+import org.junit.Test
 
 class ExpirationDatesTest {
   private val originalZone = TimeZone.getDefault()
@@ -29,16 +29,14 @@ class ExpirationDatesTest {
     Assert.assertEquals(expected, ExpirationDates.parse("2026-10-12"))
     Assert.assertEquals(expected, ExpirationDates.parse("  2026-10-12  "))
     Assert.assertEquals(
-      86_400_000L, (ExpirationDates.parse("1970-01-02") as ExpirationInput.Valid).date.time
-    )
+        86_400_000L, (ExpirationDates.parse("1970-01-02") as ExpirationInput.Valid).date.time)
   }
 
   @Test
   fun leapDayIsAcceptedOnlyInLeapYears() {
     Assert.assertEquals(
-      ExpirationInput.Valid(ExpirationDates.toDate(LocalDate.of(2024, 2, 29))),
-      ExpirationDates.parse("2024-02-29")
-    )
+        ExpirationInput.Valid(ExpirationDates.toDate(LocalDate.of(2024, 2, 29))),
+        ExpirationDates.parse("2024-02-29"))
     Assert.assertEquals(ExpirationInput.Invalid, ExpirationDates.parse("2025-02-29"))
   }
 
@@ -54,9 +52,8 @@ class ExpirationDatesTest {
     val day = LocalDate.of(2026, 12, 31)
     Assert.assertEquals("2026-12-31", ExpirationDates.formatInput(ExpirationDates.toDate(day)))
     Assert.assertEquals(
-      ExpirationInput.Valid(ExpirationDates.toDate(day)),
-      ExpirationDates.parse(ExpirationDates.formatInput(ExpirationDates.toDate(day)))
-    )
+        ExpirationInput.Valid(ExpirationDates.toDate(day)),
+        ExpirationDates.parse(ExpirationDates.formatInput(ExpirationDates.toDate(day))))
   }
 
   @Test
@@ -83,10 +80,7 @@ class ExpirationDatesTest {
           Assert.assertEquals(zone, "2026-10-16", ExpirationDates.formatInput(date))
           Assert.assertEquals(zone, "Oct 16, 2026", ExpirationDates.formatDisplay(date, Locale.US))
           Assert.assertEquals(
-            zone,
-            ExpirationInput.Valid(date),
-            ExpirationDates.parse("2026-10-16")
-          )
+              zone, ExpirationInput.Valid(date), ExpirationDates.parse("2026-10-16"))
         }
   }
 }
