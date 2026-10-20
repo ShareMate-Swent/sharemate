@@ -138,6 +138,7 @@ jobs:
           TAG="ci-${GITHUB_RUN_NUMBER}"
           cp "$APK_PATH" sharemate.apk
           gh release create "$TAG" sharemate.apk \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "ShareMate CI build #${GITHUB_RUN_NUMBER}" \
             --notes "Automatically built from main commit ${GITHUB_SHA}." \
