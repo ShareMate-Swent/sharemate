@@ -39,6 +39,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.FoodImageSelector
@@ -155,7 +156,8 @@ open class MainActivity : ComponentActivity() {
                                         itemRepository = itemRepository,
                                         userId = session.uid,
                                         householdId = household.id,
-                                        foodImageSelector = createFoodImageSelector())
+                                        foodImageSelector = createFoodImageSelector(),
+                                        barcodeScanner = MlKitBarcodeScanner(applicationContext))
                                   }
                                 })
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
