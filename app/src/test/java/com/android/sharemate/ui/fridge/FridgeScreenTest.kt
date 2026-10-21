@@ -108,7 +108,13 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -243,7 +249,13 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -273,7 +285,13 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {

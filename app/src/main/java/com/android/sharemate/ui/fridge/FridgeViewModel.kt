@@ -4,6 +4,8 @@ package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.ExpirationDates
@@ -14,6 +16,10 @@ import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.product.ProductLookupResult.Failure
+import com.android.sharemate.model.product.ProductLookupResult.Reason
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,7 +43,9 @@ class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
     private val householdId: String?,
-    private val foodImageSelector: FoodImageSelector
+    private val foodImageSelector: FoodImageSelector,
+    private val barcodeScanner: BarcodeScanner,
+    private val productCatalogRepository: ProductCatalogRepository
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
@@ -301,6 +309,22 @@ class FridgeViewModel(
     }
   }
 
+  /**
+   * Decodes an image and looks up its barcode in the product catalog.
+   *
+   * The caller receives the catalog result directly and decides how to apply any returned details
+   * to its form. A scan that finds no barcode is reported as [Reason.INVALID_BARCODE].
+   */
+  suspend fun lookupProductFromImage(imageUri: String): ProductLookupResult {
+    if (imageUri.isBlank()) return Failure(Reason.INVALID_BARCODE)
+    val barcode =
+        when (val result = barcodeScanner.scan(imageUri)) {
+          is BarcodeScanResult.Found -> result.value.trim().takeIf(String::isNotEmpty)
+          BarcodeScanResult.NotFound -> null
+        } ?: return Failure(Reason.INVALID_BARCODE)
+    return productCatalogRepository.lookupByBarcode(barcode)
+  }
+
   fun openEditItemDialog(itemId: String) {
     val state = uiState.value
     if (state.isSaving ||
@@ -501,6 +525,7 @@ class FridgeViewModel(
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
     latestStatusWrites.clear()
+    barcodeScanner.close()
     mutableUiState.update { it.copy(pendingStatusIds = emptySet()) }
   }
 

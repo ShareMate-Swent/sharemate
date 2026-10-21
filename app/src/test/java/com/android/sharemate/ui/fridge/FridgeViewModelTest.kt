@@ -4,6 +4,8 @@ package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -15,6 +17,12 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.product.ProductDetails
+import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.product.ProductLookupResult.Failure
+import com.android.sharemate.model.product.ProductLookupResult.Found
+import com.android.sharemate.model.product.ProductLookupResult.Reason
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -49,6 +57,23 @@ class FridgeViewModelTest {
   private val imageRepository = FakeFoodImageRepository()
   private val imageSelector = FoodImageSelector(imageRepository)
   private val viewModelStore = ViewModelStore()
+  private var scanResult: BarcodeScanResult = BarcodeScanResult.NotFound
+  private var scanException: Exception? = null
+  private var catalogResult: ProductLookupResult = ProductLookupResult.NotFound
+  private val scannedImageUris = mutableListOf<String>()
+  private val lookedUpBarcodes = mutableListOf<String>()
+  private val barcodeScanner = BarcodeScanner { imageUri ->
+    scannedImageUris += imageUri
+    scanException?.let { throw it }
+    scanResult
+  }
+  private val productCatalogRepository =
+      object : ProductCatalogRepository {
+        override suspend fun lookupByBarcode(barcode: String): ProductLookupResult {
+          lookedUpBarcodes += barcode
+          return catalogResult
+        }
+      }
 
   @Before
   fun setUp() {
@@ -907,6 +932,65 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun lookupProductFromImageScansThenReturnsCatalogDetails() = runTest {
+    val imageUri = "content://photos/barcode/42"
+    val product = ProductDetails("1234567890123", "Oat milk", "Oat Co")
+    scanResult = BarcodeScanResult.Found(" 1234567890123 ")
+    catalogResult = Found(product)
+    val vm = viewModel()
+
+    assertEquals(Found(product), vm.lookupProductFromImage(imageUri))
+    assertEquals(listOf(imageUri), scannedImageUris)
+    assertEquals(listOf("1234567890123"), lookedUpBarcodes)
+  }
+
+  @Test
+  fun lookupProductFromImageReturnsNotFoundWhenImageHasNoBarcode() = runTest {
+    val vm = viewModel()
+
+    assertEquals(Failure(Reason.INVALID_BARCODE), vm.lookupProductFromImage("content://photo/42"))
+    assertEquals(1, scannedImageUris.size)
+    assertTrue(lookedUpBarcodes.isEmpty())
+  }
+
+  @Test
+  fun lookupProductFromImageReturnsCatalogNotFound() = runTest {
+    scanResult = BarcodeScanResult.Found("1234567890123")
+    catalogResult = ProductLookupResult.NotFound
+    val vm = viewModel()
+
+    assertEquals(ProductLookupResult.NotFound, vm.lookupProductFromImage("content://photo/42"))
+    assertEquals(listOf("1234567890123"), lookedUpBarcodes)
+  }
+
+  @Test
+  fun lookupProductFromImageReturnsCatalogFailureUnchanged() = runTest {
+    scanResult = BarcodeScanResult.Found("1234567890123")
+    catalogResult = Failure(Reason.NETWORK)
+    val vm = viewModel()
+
+    assertEquals(Failure(Reason.NETWORK), vm.lookupProductFromImage("content://photo/42"))
+    assertEquals(listOf("1234567890123"), lookedUpBarcodes)
+  }
+
+  @Test
+  fun lookupProductFromImagePropagatesScannerFailures() = runTest {
+    val failure = IOException("Unreadable image")
+    scanException = failure
+    val vm = viewModel()
+
+    val actual =
+        try {
+          vm.lookupProductFromImage("content://photo/42")
+          null
+        } catch (exception: IOException) {
+          exception
+        }
+    assertSame(failure, actual)
+    assertTrue(lookedUpBarcodes.isEmpty())
+  }
+
+  @Test
   fun anItemRemovedFromTheInventoryBeforeConfirmationNeverDeletes() = runTest {
     repository.emitItems(listOf(milk))
     val viewModel = viewModel()
@@ -952,17 +1036,29 @@ class FridgeViewModelTest {
   }
 
   private fun viewModel(householdId: String? = "test-household"): FridgeViewModel =
-      FridgeViewModel(repository, "test-user", householdId, imageSelector).also {
-        viewModelStore.put("fridge", it)
-      }
+      FridgeViewModel(
+              repository,
+              "test-user",
+              householdId,
+              imageSelector,
+              barcodeScanner,
+              productCatalogRepository)
+          .also { viewModelStore.put("fridge", it) }
 
   @Test
   fun realNonBlankContextIsRequired() {
     assertThrows(IllegalArgumentException::class.java) {
-      FridgeViewModel(repository, " ", "test-household", imageSelector)
+      FridgeViewModel(
+          repository,
+          " ",
+          "test-household",
+          imageSelector,
+          barcodeScanner,
+          productCatalogRepository)
     }
     assertThrows(IllegalArgumentException::class.java) {
-      FridgeViewModel(repository, "test-user", "", imageSelector)
+      FridgeViewModel(
+          repository, "test-user", "", imageSelector, barcodeScanner, productCatalogRepository)
     }
     assertTrue(repository.requestedHouseholdIds.isEmpty())
     assertTrue(repository.requestedUserIds.isEmpty())

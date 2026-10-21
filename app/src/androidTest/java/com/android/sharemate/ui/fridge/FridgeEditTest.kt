@@ -58,7 +58,14 @@ class FridgeEditTest {
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
-    val vm = FridgeViewModel(repository, "user", "household", FoodImageSelector(imageRepository))
+    val vm =
+        FridgeViewModel(
+            repository,
+            "user",
+            "household",
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()

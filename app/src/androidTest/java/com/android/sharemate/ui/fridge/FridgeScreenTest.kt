@@ -155,7 +155,13 @@ class FridgeScreenTest {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
           }
       viewModel =
-          FridgeViewModel(repository, "alice", "household", FoodImageSelector(imageRepository))
+          FridgeViewModel(
+              repository,
+              "alice",
+              "household",
+              FoodImageSelector(imageRepository),
+              testBarcodeScanner(),
+              testProductCatalogRepository())
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {

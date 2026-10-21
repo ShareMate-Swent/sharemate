@@ -182,7 +182,12 @@ class ItemRemovalTest {
         }
     val viewModel =
         FridgeViewModel(
-            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
+            repository,
+            "test-user",
+            "test-household",
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }
