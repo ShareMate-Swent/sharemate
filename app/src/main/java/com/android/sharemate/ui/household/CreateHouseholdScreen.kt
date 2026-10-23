@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -14,11 +15,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -32,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,11 +53,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 
 /** Test tags used by [CreateHouseholdScreen]. */
 object CreateHouseholdTestTags {
@@ -62,9 +71,11 @@ object CreateHouseholdTestTags {
   const val CONTINUE = "create_household_continue"
   const val LOADING = "create_household_loading"
   const val ERROR = "create_household_error"
+  const val TYPE_PRIVATE = "create_household_type_private"
+  const val TYPE_SHARED = "create_household_type_shared"
 }
 
-/** Screen for creating a household and sharing its invite code. */
+/** Screen for creating a private or shared household fridge. */
 @Composable
 fun CreateHouseholdScreen(
     viewModel: CreateHouseholdViewModel,
@@ -79,9 +90,18 @@ fun CreateHouseholdScreen(
               .padding(horizontal = 24.dp, vertical = 16.dp),
   ) {
     if (state.inviteCode == null) {
-      CreateHouseholdForm(state, viewModel, onBack)
+      BoxWithConstraints(Modifier.fillMaxSize()) {
+        Column(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight),
+        ) {
+          CreateHouseholdForm(state, viewModel, onBack)
+        }
+      }
     } else {
-      HouseholdReady(state.inviteCode, onContinue)
+      HouseholdReady(state.inviteCode, state.type, onContinue)
     }
   }
 }
@@ -132,6 +152,12 @@ private fun ColumnScope.CreateHouseholdForm(
       enabled = !state.isLoading,
       singleLine = true,
   )
+  Spacer(Modifier.height(16.dp))
+  Text(stringResource(R.string.fridge_type), style = MaterialTheme.typography.titleSmall)
+  Column(Modifier.selectableGroup()) {
+    FridgeTypeOption(FridgeType.SHARED, state, viewModel::updateType)
+    FridgeTypeOption(FridgeType.PRIVATE, state, viewModel::updateType)
+  }
   state.error?.let {
     Spacer(Modifier.height(8.dp))
     Text(
@@ -160,7 +186,52 @@ private fun ColumnScope.CreateHouseholdForm(
 }
 
 @Composable
-private fun ColumnScope.HouseholdReady(inviteCode: String, onContinue: () -> Unit) {
+private fun FridgeTypeOption(
+    type: FridgeType,
+    state: CreateHouseholdUiState,
+    onSelect: (FridgeType) -> Unit,
+) {
+  val isPrivate = type == FridgeType.PRIVATE
+  val selected = state.type == type
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .testTag(
+                  if (isPrivate) CreateHouseholdTestTags.TYPE_PRIVATE
+                  else CreateHouseholdTestTags.TYPE_SHARED)
+              .selectable(
+                  selected = selected,
+                  enabled = !state.isLoading,
+                  role = Role.RadioButton,
+                  onClick = { onSelect(type) },
+              )
+              .padding(vertical = 8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    RadioButton(selected = selected, onClick = null, enabled = !state.isLoading)
+    Spacer(Modifier.width(12.dp))
+    Column {
+      Text(
+          stringResource(
+              if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared))
+      Text(
+          stringResource(
+              if (isPrivate) R.string.fridge_type_private_description
+              else R.string.fridge_type_shared_description),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+  }
+}
+
+@Composable
+private fun ColumnScope.HouseholdReady(
+    inviteCode: String,
+    type: FridgeType,
+    onContinue: () -> Unit,
+) {
+  val isPrivate = type == FridgeType.PRIVATE
   val colors = MaterialTheme.colorScheme
   val clipboard = LocalClipboardManager.current
   val context = LocalContext.current
@@ -182,7 +253,10 @@ private fun ColumnScope.HouseholdReady(inviteCode: String, onContinue: () -> Uni
   }
   Spacer(Modifier.height(24.dp))
   Text(
-      text = stringResource(R.string.household_ready_title),
+      text =
+          stringResource(
+              if (isPrivate) R.string.private_fridge_ready_title
+              else R.string.household_ready_title),
       style = MaterialTheme.typography.headlineMedium,
       fontWeight = FontWeight.Bold,
       textAlign = TextAlign.Center,
@@ -190,62 +264,76 @@ private fun ColumnScope.HouseholdReady(inviteCode: String, onContinue: () -> Uni
   )
   Spacer(Modifier.height(12.dp))
   Text(
-      text = stringResource(R.string.household_ready_description),
+      text =
+          stringResource(
+              if (isPrivate) R.string.private_fridge_ready_description
+              else R.string.household_ready_description),
       style = MaterialTheme.typography.bodyLarge,
       color = colors.onSurfaceVariant,
       textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
   )
-  Spacer(Modifier.weight(1f))
-  Surface(
+  Spacer(Modifier.height(12.dp))
+  Text(
+      text =
+          stringResource(
+              if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared),
+      style = MaterialTheme.typography.labelLarge,
+      textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(28.dp),
-      color = colors.surfaceContainerLowest,
-      border = BorderStroke(1.dp, colors.primaryContainer),
-      shadowElevation = 2.dp,
-  ) {
-    Column(
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+  )
+  Spacer(Modifier.weight(1f))
+  if (!isPrivate) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerLowest,
+        border = BorderStroke(1.dp, colors.primaryContainer),
+        shadowElevation = 2.dp,
     ) {
-      Text(
-          text = stringResource(R.string.household_invite_code),
-          style = MaterialTheme.typography.labelLarge,
-          color = colors.onSurfaceVariant,
-      )
-      Spacer(Modifier.height(8.dp))
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = inviteCode,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = colors.onPrimaryContainer,
-        )
-        Spacer(Modifier.width(8.dp))
-        IconButton(
-            onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
-            modifier = Modifier.testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),
-            colors =
-                IconButtonDefaults.iconButtonColors(
-                    containerColor = colors.primaryContainer, contentColor = colors.primary),
-        ) {
-          Icon(
-              imageVector = Icons.Default.ContentCopy,
-              contentDescription = stringResource(R.string.copy_invite_code),
-          )
-        }
-      }
-      TextButton(
-          onClick = {
-            val send =
-                Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, inviteCode)
-            context.startActivity(Intent.createChooser(send, null))
-          },
-          modifier = Modifier.testTag(CreateHouseholdTestTags.SHARE_INVITE_CODE),
+      Column(
+          modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
       ) {
-        Text(stringResource(R.string.share_invite_code))
+        Text(
+            text = stringResource(R.string.household_invite_code),
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+              text = inviteCode,
+              style = MaterialTheme.typography.headlineLarge,
+              fontWeight = FontWeight.Bold,
+              color = colors.onPrimaryContainer,
+          )
+          Spacer(Modifier.width(8.dp))
+          IconButton(
+              onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
+              modifier = Modifier.testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),
+              colors =
+                  IconButtonDefaults.iconButtonColors(
+                      containerColor = colors.primaryContainer, contentColor = colors.primary),
+          ) {
+            Icon(
+                imageVector = Icons.Default.ContentCopy,
+                contentDescription = stringResource(R.string.copy_invite_code),
+            )
+          }
+        }
+        TextButton(
+            onClick = {
+              val send =
+                  Intent(Intent.ACTION_SEND)
+                      .setType("text/plain")
+                      .putExtra(Intent.EXTRA_TEXT, inviteCode)
+              context.startActivity(Intent.createChooser(send, null))
+            },
+            modifier = Modifier.testTag(CreateHouseholdTestTags.SHARE_INVITE_CODE),
+        ) {
+          Text(stringResource(R.string.share_invite_code))
+        }
       }
     }
   }

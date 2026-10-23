@@ -4,6 +4,7 @@ package com.android.sharemate.ui.household
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthRepository
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +25,7 @@ data class CreateHouseholdUiState(
     val isLoading: Boolean = false,
     val inviteCode: String? = null,
     val error: CreateHouseholdError? = null,
+    val type: FridgeType = FridgeType.SHARED,
 )
 
 /** Creates a household for the currently authenticated user. */
@@ -39,6 +41,13 @@ class CreateHouseholdViewModel(
     if (!state.value.isLoading) mutableState.update { it.copy(name = name, error = null) }
   }
 
+  /** Selects the fridge type before creation starts. */
+  fun updateType(type: FridgeType) {
+    if (!state.value.isLoading && state.value.inviteCode == null) {
+      mutableState.update { it.copy(type = type, error = null) }
+    }
+  }
+
   /** Creates a household when the entered name and current session are valid. */
   fun createHousehold() {
     val current = state.value
@@ -51,8 +60,8 @@ class CreateHouseholdViewModel(
         if (session == null) {
           mutableState.update { it.copy(error = CreateHouseholdError.NO_SESSION) }
         } else {
-          val household = householdRepository.createHousehold(name, session.uid)
-          mutableState.update { it.copy(inviteCode = household.inviteCode) }
+          val household = householdRepository.createHousehold(name, session.uid, current.type)
+          mutableState.update { it.copy(inviteCode = household.inviteCode, type = household.type) }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
