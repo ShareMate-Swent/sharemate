@@ -42,8 +42,10 @@ service cloud.firestore {
       function isValidNewHousehold() {
         let household = request.resource.data;
         let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
-        return household.keys().hasOnly(fields)
+        return household.keys().hasOnly(fields.concat(['type']))
             && household.keys().hasAll(fields)
+            // Legacy documents omit type. This validates the schema, not private-fridge access.
+            && household.get('type', 'SHARED') in ['PRIVATE', 'SHARED']
             && household.id == householdId
             && household.name is string
             && household.name.size() > 0

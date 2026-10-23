@@ -4,9 +4,10 @@ package com.android.sharemate.model.household
 import java.util.Date
 
 /**
- * Represents a household and the fridge shared by its members.
+ * Represents a household and its private or shared fridge.
  *
- * Every fridge is a household: a private fridge is simply a household with a single member.
+ * The fridge type is explicit and independent of the current member count. The type alone does not
+ * enforce access; authorization must be enforced by security rules.
  *
  * @property id Unique household identifier.
  * @property name Household display name.
@@ -14,6 +15,7 @@ import java.util.Date
  * @property memberIds User identifiers belonging to the household.
  * @property createdBy User identifier of the household creator.
  * @property createdAt Time at which the household was created.
+ * @property type Fridge type, defaulting to shared for existing households without a stored type.
  */
 data class Household(
     val id: String = "",
@@ -21,5 +23,6 @@ data class Household(
     val inviteCode: String = "",
     val memberIds: List<String> = emptyList(),
     val createdBy: String = "",
-    val createdAt: Date? = null
+    val createdAt: Date? = null,
+    val type: FridgeType = FridgeType.SHARED
 )

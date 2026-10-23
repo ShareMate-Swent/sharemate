@@ -63,6 +63,12 @@ class HouseholdRepositoryFirestoreTest {
     assertEquals(listOf(creatorId), household.memberIds)
     assertEquals(creatorId, household.createdBy)
     assertNotNull(household.createdAt)
+    assertEquals(FridgeType.SHARED, household.type)
+    assertEquals(
+        "SHARED",
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(household.id).get())
+            .getString("type"))
     assertEquals(household, storedHousehold)
     assertEquals(household.id, storedUser.getString("householdId"))
     assertEquals("Creator", storedUser.getString("displayName"))
