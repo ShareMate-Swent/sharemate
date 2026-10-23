@@ -52,6 +52,7 @@
     <string name="create_household_title">Create a household</string>
     <string name="create_household_description">Give your household a name. You can change it later.</string>
     <string name="fridge_type">Fridge type</string>
+    <string name="fridge_type_label">Fridge type: %1$s</string>
     <string name="fridge_type_shared">Shared</string>
     <string name="fridge_type_shared_description">Invite your roommates to use this fridge together.</string>
     <string name="fridge_type_private">Private</string>
