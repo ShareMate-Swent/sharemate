@@ -10,6 +10,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -85,6 +86,28 @@ class HouseholdRepositoryFirestoreTest {
 
     assertTrue(userSnapshot.exists())
     assertEquals(household.id, userSnapshot.getString("householdId"))
+  }
+
+  @Test
+  fun createPrivateHouseholdPersistsTypeAndRejectsAnotherUserJoining() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val household = repository.createHousehold("My fridge", owner, FridgeType.PRIVATE)
+    val snapshot =
+        Tasks.await(
+            firestore.collection(FirestoreCollections.HOUSEHOLDS).document(household.id).get())
+    assertEquals(FridgeType.PRIVATE, household.type)
+    assertEquals("PRIVATE", snapshot.getString("type"))
+    assertEquals(household, snapshot.toObject(Household::class.java))
+
+    val outsider = FirebaseEmulator.signInAs("outsider")
+    val failure =
+        assertThrows(FirebaseFirestoreException::class.java) {
+          runBlocking { repository.joinHousehold(household.inviteCode, outsider) }
+        }
+    assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, failure.code)
+    assertUserDocumentDoesNotExist(outsider)
+    FirebaseEmulator.signInAs("owner")
+    assertEquals(listOf(owner), repository.getHousehold(household.id)?.memberIds)
   }
 
   @Test

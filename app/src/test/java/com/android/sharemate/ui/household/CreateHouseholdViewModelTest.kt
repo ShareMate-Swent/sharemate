@@ -4,6 +4,7 @@ package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
@@ -52,6 +53,7 @@ class CreateHouseholdViewModelTest {
     viewModel.createHousehold()
     advanceUntilIdle()
     assertEquals(listOf("Shared kitchen"), repository.createdNames)
+    assertEquals(listOf(FridgeType.SHARED), repository.createdTypes)
     assertEquals("ABC123", viewModel.state.value.inviteCode)
     assertFalse(viewModel.state.value.isLoading)
   }
@@ -68,16 +70,19 @@ class CreateHouseholdViewModelTest {
   @Test
   fun failureCanBeRetried() = runTest {
     val viewModel = CreateHouseholdViewModel(repository, auth)
+    viewModel.updateType(FridgeType.PRIVATE)
     repository.failure = IllegalStateException("unavailable")
     viewModel.updateName("Kitchen")
     viewModel.createHousehold()
     advanceUntilIdle()
     assertEquals(CreateHouseholdError.CREATION_FAILED, viewModel.state.value.error)
+    assertEquals(FridgeType.PRIVATE, viewModel.state.value.type)
     repository.failure = null
     viewModel.createHousehold()
     advanceUntilIdle()
     assertEquals("ABC123", viewModel.state.value.inviteCode)
     assertEquals(2, repository.createCalls.get())
+    assertEquals(listOf(FridgeType.PRIVATE, FridgeType.PRIVATE), repository.createdTypes)
   }
 
   @Test
@@ -109,14 +114,40 @@ class CreateHouseholdViewModelTest {
     val viewModel = CreateHouseholdViewModel(repository, auth)
     repository.gate = CompletableDeferred()
     viewModel.updateName("Kitchen")
+    viewModel.updateType(FridgeType.PRIVATE)
     viewModel.createHousehold()
+    // Change before the coroutine runs as well as while the repository is suspended.
+    viewModel.updateType(FridgeType.SHARED)
     advanceUntilIdle()
+    viewModel.updateType(FridgeType.SHARED)
     viewModel.createHousehold()
     assertTrue(viewModel.state.value.isLoading)
     assertEquals(1, repository.createCalls.get())
+    assertEquals(listOf(FridgeType.PRIVATE), repository.createdTypes)
+    assertEquals(FridgeType.PRIVATE, viewModel.state.value.type)
     repository.gate!!.complete(Unit)
     advanceUntilIdle()
     assertFalse(viewModel.state.value.isLoading)
+  }
+
+  @Test
+  fun choiceCanChangeBeforeCreationButIsFrozenAfterSuccess() = runTest {
+    val viewModel = CreateHouseholdViewModel(repository, auth)
+    assertEquals(FridgeType.SHARED, viewModel.state.value.type)
+    viewModel.updateType(FridgeType.PRIVATE)
+    viewModel.updateType(FridgeType.SHARED)
+    viewModel.updateType(FridgeType.PRIVATE)
+    viewModel.updateName("My fridge")
+    viewModel.createHousehold()
+    advanceUntilIdle()
+
+    viewModel.updateType(FridgeType.SHARED)
+    viewModel.createHousehold()
+    advanceUntilIdle()
+
+    assertEquals(FridgeType.PRIVATE, viewModel.state.value.type)
+    assertEquals(listOf(FridgeType.PRIVATE), repository.createdTypes)
+    assertEquals(1, repository.createCalls.get())
   }
 
   private class FakeAuthRepository(session: AuthSession?) : AuthRepository {
@@ -138,16 +169,22 @@ class CreateHouseholdViewModelTest {
   private class RecordingRepository : HouseholdRepository {
     private val delegate = InMemoryHouseholdRepository()
     val createdNames = mutableListOf<String>()
+    val createdTypes = mutableListOf<FridgeType>()
     val createCalls = AtomicInteger()
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
 
-    override suspend fun createHousehold(name: String, creatorId: String): Household {
+    override suspend fun createHousehold(
+        name: String,
+        creatorId: String,
+        type: FridgeType
+    ): Household {
       createCalls.incrementAndGet()
       createdNames += name
+      createdTypes += type
       gate?.await()
       failure?.let { throw it }
-      return Household(inviteCode = "ABC123", name = name, createdBy = creatorId)
+      return Household(inviteCode = "ABC123", name = name, createdBy = creatorId, type = type)
     }
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
