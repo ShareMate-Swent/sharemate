@@ -1,6 +1,8 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.auth
 
+import android.net.Uri
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
@@ -8,6 +10,7 @@ import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -130,6 +133,62 @@ class FirebaseAuthRepositoryUnitTest {
             fail("Google task cancellation must propagate")
           } catch (_: CancellationException) {}
         }
+      }
+
+  @Test
+  fun googleUserExposesProfileAndGoogleProvider() {
+    val photo = mock(Uri::class.java)
+    `when`(photo.toString()).thenReturn("https://example.org/photo.png")
+    val user = user(providers = listOf("firebase", "google.com"), name = "Inge", photo = photo)
+
+    assertEquals(
+        AuthSession(
+            uid = "uid",
+            email = "student@example.org",
+            displayName = "Inge",
+            photoUrl = "https://example.org/photo.png",
+            provider = SignInProvider.GOOGLE),
+        user.toAuthSession())
+  }
+
+  @Test
+  fun emailUserHasEmailProviderAndNoProfile() {
+    assertEquals(
+        AuthSession("uid", "student@example.org", provider = SignInProvider.EMAIL),
+        user(providers = listOf("firebase", "password")).toAuthSession())
+  }
+
+  @Test
+  fun blankProfileValuesBecomeMissing() {
+    val photo = mock(Uri::class.java)
+    `when`(photo.toString()).thenReturn("")
+    val session = user(providers = listOf("google.com"), name = "  ", photo = photo).toAuthSession()
+
+    assertNull(session.displayName)
+    assertNull(session.photoUrl)
+  }
+
+  @Test
+  fun googleWinsWhenBothProvidersAreLinkedAndOthersAreUnknown() {
+    assertEquals(
+        SignInProvider.GOOGLE,
+        user(providers = listOf("password", "google.com")).toAuthSession().provider)
+    assertEquals(
+        SignInProvider.UNKNOWN, user(providers = listOf("firebase")).toAuthSession().provider)
+    assertEquals(SignInProvider.UNKNOWN, user(providers = emptyList()).toAuthSession().provider)
+  }
+
+  private fun user(providers: List<String>, name: String? = null, photo: Uri? = null) =
+      mock(FirebaseUser::class.java).also { user ->
+        val infos =
+            providers.map { id ->
+              mock(UserInfo::class.java).also { `when`(it.providerId).thenReturn(id) }
+            }
+        `when`(user.uid).thenReturn("uid")
+        `when`(user.email).thenReturn("student@example.org")
+        `when`(user.displayName).thenReturn(name)
+        `when`(user.photoUrl).thenReturn(photo)
+        doReturn(infos).`when`(user).providerData
       }
 
   @Test
