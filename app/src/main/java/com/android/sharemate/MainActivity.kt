@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.os.Bundle
@@ -56,6 +57,7 @@ import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.SettingsScreen
+import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -183,8 +185,19 @@ open class MainActivity : ComponentActivity() {
                                   }
                                 })
                     val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
+                    val settingsViewModel: SettingsViewModel =
+                        viewModel(
+                            key = "settings_${session.uid}_${household.id}",
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    SettingsViewModel(
+                                        authRepository, householdRepository, household)
+                                  }
+                                })
+                    val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
                     SettingsScreen(
-                        householdName = household.name,
+                        householdName = settingsState.householdName,
                         leaveState = leaveState,
                         onLeaveHousehold = leaveViewModel::requestLeave,
                         onCancelLeave = leaveViewModel::cancel,
