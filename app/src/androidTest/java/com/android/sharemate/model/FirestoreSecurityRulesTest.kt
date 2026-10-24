@@ -1,7 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.utils.FirebaseEmulator
@@ -117,6 +119,72 @@ class FirestoreSecurityRulesTest {
     assertDenied(householdReference(valid.id).set(valid))
 
     Tasks.await(createHousehold(valid))
+  }
+
+  @Test
+  fun explicitFridgeTypesArePersistedAndReadByRepository() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("creator")
+    for (type in FridgeType.entries) {
+      val household =
+          Household(
+              id = type.name,
+              name = "Home",
+              inviteCode = type.name,
+              memberIds = listOf(userId),
+              createdBy = userId,
+              createdAt = Date(),
+              type = type)
+
+      Tasks.await(createHousehold(household))
+
+      assertEquals(type.name, Tasks.await(householdReference(household.id).get()).getString("type"))
+      assertEquals(household, repository.getHousehold(household.id))
+      assertDenied(householdReference(household.id).update("type", "INVALID"))
+      assertDenied(
+          householdReference(household.id)
+              .update("type", if (type == FridgeType.PRIVATE) "SHARED" else "PRIVATE"))
+    }
+  }
+
+  @Test
+  fun legacyHouseholdWithoutTypeRemainsReadableAndJoinableAsShared() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val household = Household("legacy", "Home", "ABCDEF", listOf(userId), userId, Date())
+    val legacyData =
+        mapOf(
+            "id" to household.id,
+            "name" to household.name,
+            "inviteCode" to household.inviteCode,
+            "memberIds" to household.memberIds,
+            "createdBy" to household.createdBy,
+            "createdAt" to household.createdAt)
+    Tasks.await(createHousehold(household, legacyData))
+
+    assertEquals(household, repository.getHousehold(household.id))
+    assertEquals(household, repository.getHouseholdForUser(userId))
+    val memberId = FirebaseEmulator.signInAs("member")
+    val joined = repository.joinHousehold(household.inviteCode, memberId)
+
+    assertEquals(FridgeType.SHARED, joined.type)
+    assertEquals(listOf(userId, memberId), joined.memberIds)
+  }
+
+  @Test
+  fun householdCreationRejectsMalformedFridgeTypes() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val household = Household("invalid", "Home", "ABCDEF", listOf(userId), userId, Date())
+    val data =
+        mapOf(
+            "id" to household.id,
+            "name" to household.name,
+            "inviteCode" to household.inviteCode,
+            "memberIds" to household.memberIds,
+            "createdBy" to household.createdBy,
+            "createdAt" to household.createdAt)
+
+    for (invalidType in listOf(null, "", "private", "UNKNOWN", 1L, listOf("SHARED"))) {
+      assertDenied(createHousehold(household, data + ("type" to invalidType)))
+    }
   }
 
   @Test
@@ -369,10 +437,10 @@ class FirestoreSecurityRulesTest {
   }
 
   /** Writes the same batch as the repository, for the signed-in user. */
-  private fun createHousehold(household: Household): Task<Void> =
+  private fun createHousehold(household: Household, data: Any = household): Task<Void> =
       firestore
           .batch()
-          .set(householdReference(household.id), household)
+          .set(householdReference(household.id), data)
           .set(inviteCodeReference(household.inviteCode), mapOf("householdId" to household.id))
           .set(
               userReference(checkNotNull(FirebaseEmulator.auth.uid)),
