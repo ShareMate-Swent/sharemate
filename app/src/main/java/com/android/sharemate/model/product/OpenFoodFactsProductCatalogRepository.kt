@@ -31,7 +31,9 @@ internal constructor(
   override suspend fun lookupByBarcode(barcode: String): ProductLookupResult {
     currentCoroutineContext().ensureActive()
     val normalizedBarcode = barcode.trim()
-    if (normalizedBarcode.isEmpty()) return Failure(Reason.INVALID_BARCODE)
+    if (normalizedBarcode.length !in 8..14 || normalizedBarcode.any { it !in '0'..'9' }) {
+      return Failure(Reason.INVALID_BARCODE)
+    }
 
     val url =
         baseUrl

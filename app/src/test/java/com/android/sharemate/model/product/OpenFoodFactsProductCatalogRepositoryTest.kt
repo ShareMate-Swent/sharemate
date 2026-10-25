@@ -51,37 +51,54 @@ class OpenFoodFactsProductCatalogRepositoryTest {
   }
 
   @Test
-  fun emptyBarcodeDoesNotMakeARequest() = runBlocking {
-    assertEquals(Failure(Reason.INVALID_BARCODE), repository.lookupByBarcode(" \t "))
+  fun invalidBarcodesDoNotMakeARequest() = runBlocking {
+    listOf(" \t ", "abc", "12", "1234567", "123456789012345", "1234567a", "1234 5678")
+        .forEach { barcode ->
+          assertEquals(Failure(Reason.INVALID_BARCODE), repository.lookupByBarcode(barcode))
+        }
     assertEquals(0, server.requestCount)
+  }
+
+  @Test
+  fun acceptsEightAndFourteenDigitBarcodesAndPreservesLeadingZeroes() = runBlocking {
+    val barcodes = listOf("00000000", "00000000000000")
+    barcodes.forEach { barcode ->
+      server.enqueue(MockResponse().setBody("""{"status":1,"product":{"product_name":"Rice"}}"""))
+
+      assertEquals(
+          Found(ProductDetails(barcode, "Rice", null)),
+          repository.lookupByBarcode(barcode))
+      assertEquals("/api/v2/product/$barcode?fields=product_name%2Cbrands", server.takeRequest().path)
+    }
   }
 
   @Test
   fun catalogMissIsDistinctFromMalformedResponse() = runBlocking {
     server.enqueue(MockResponse().setBody("""{"status":0,"status_verbose":"product not found"}"""))
 
-    assertEquals(NotFound, repository.lookupByBarcode("123"))
+    assertEquals(NotFound, repository.lookupByBarcode("12345678"))
   }
 
   @Test
   fun preservesAvailableProductFieldsWhenOneIsMissing() = runBlocking {
     server.enqueue(MockResponse().setBody("""{"status":1,"product":{"product_name":"Rice"}}"""))
 
-    assertEquals(Found(ProductDetails("123", "Rice", null)), repository.lookupByBarcode("123"))
+    assertEquals(
+        Found(ProductDetails("12345678", "Rice", null)), repository.lookupByBarcode("12345678"))
   }
 
   @Test
   fun httpErrorsKeepTheirStatus() = runBlocking {
     server.enqueue(MockResponse().setResponseCode(503).setBody("not JSON"))
 
-    assertEquals(Failure(Reason.HTTP, 503), repository.lookupByBarcode("123"))
+    assertEquals(Failure(Reason.HTTP, 503), repository.lookupByBarcode("12345678"))
   }
 
   @Test
   fun networkErrorsAreReportedExplicitly() = runBlocking {
     server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
 
-    assertEquals(Failure(Reason.NETWORK), repository.lookupByBarcode("123"))
+    assertEquals(Failure(Reason.NETWORK), repository.lookupByBarcode("12345678"))
   }
 
   @Test
@@ -97,7 +114,7 @@ class OpenFoodFactsProductCatalogRepositoryTest {
 
     malformedBodies.forEach { body ->
       server.enqueue(MockResponse().setBody(body))
-      assertEquals(Failure(Reason.INVALID_RESPONSE), repository.lookupByBarcode("123"))
+      assertEquals(Failure(Reason.INVALID_RESPONSE), repository.lookupByBarcode("12345678"))
     }
   }
 }
