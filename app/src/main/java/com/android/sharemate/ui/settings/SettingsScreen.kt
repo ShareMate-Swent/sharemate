@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,13 +44,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.ui.household.CopyInviteCodeButton
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import com.android.sharemate.ui.navigation.NavigationTestTags
@@ -65,6 +70,11 @@ object SettingsTestTags {
   const val SWITCH_GOOGLE_ACCOUNT = "settings_switch_google_account"
   const val SWITCH_LOADING = "settings_switch_loading"
   const val ACCOUNT_ERROR = "settings_account_error"
+  const val HOUSEHOLD_CARD = "settings_household_card"
+  const val HOUSEHOLD_NAME = "settings_household_name"
+  const val HOUSEHOLD_MEMBERS = "settings_household_members"
+  const val INVITE_CODE = "settings_invite_code"
+  const val COPY_INVITE_CODE = "settings_copy_invite_code"
   const val LEAVE_HOUSEHOLD = "settings_leave_household"
   const val SIGN_OUT = "settings_sign_out"
   const val LEAVE_DIALOG = "settings_leave_dialog"
@@ -77,7 +87,7 @@ object SettingsTestTags {
 private val CardShape = RoundedCornerShape(24.dp)
 
 /**
- * Settings of the signed-in user: their profile, their account and leaving the household.
+ * Settings of the signed-in user: their profile, their account and their household.
  *
  * @param state Profile, account and household shown on the screen.
  * @param leaveState State of the leave confirmation.
@@ -112,14 +122,9 @@ fun SettingsScreen(
     ProfileHeader(state)
     Spacer(Modifier.height(24.dp))
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
-    // Moves into the Household card in task 21.4.
-    TextButton(
-        onClick = onLeaveHousehold,
-        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        modifier = Modifier.padding(vertical = 16.dp).testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
-    ) {
-      Text(stringResource(R.string.leave_household))
-    }
+    Spacer(Modifier.height(16.dp))
+    HouseholdCard(state, onLeaveHousehold)
+    Spacer(Modifier.height(24.dp))
   }
   if (leaveState.isConfirming) {
     LeaveHouseholdDialog(state.householdName, leaveState, onCancelLeave, onConfirmLeave)
@@ -262,6 +267,79 @@ private fun AccountCard(
   }
 }
 
+/** The household's name, member count and invite code, with Leave household. */
+@Composable
+private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
+  Card(
+      shape = CardShape,
+      colors = CardDefaults.cardColors(containerColor = colors.surface),
+      border = BorderStroke(1.dp, colors.outlineVariant),
+      modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.HOUSEHOLD_CARD),
+  ) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text(
+          text = stringResource(R.string.settings_household),
+          style = MaterialTheme.typography.titleMedium,
+          color = colors.onSurface,
+      )
+      Row(
+          horizontalArrangement = Arrangement.spacedBy(16.dp),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        AccountIcon(Icons.Outlined.Home)
+        Column {
+          Text(
+              text = state.householdName,
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = colors.onSurface,
+              modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_NAME),
+          )
+          Text(
+              text =
+                  pluralStringResource(
+                      R.plurals.settings_members, state.memberCount, state.memberCount),
+              style = MaterialTheme.typography.bodyMedium,
+              color = colors.onSurfaceVariant,
+              modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_MEMBERS),
+          )
+        }
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.settings_invite_code),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = state.inviteCode,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = colors.onPrimaryContainer,
+            modifier = Modifier.testTag(SettingsTestTags.INVITE_CODE),
+        )
+        Spacer(Modifier.width(8.dp))
+        CopyInviteCodeButton(
+            inviteCode = state.inviteCode,
+            modifier = Modifier.testTag(SettingsTestTags.COPY_INVITE_CODE),
+        )
+      }
+      OutlinedButton(
+          onClick = onLeaveHousehold,
+          colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
+          border = BorderStroke(1.dp, colors.error),
+          modifier =
+              Modifier.fillMaxWidth().height(48.dp).testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
+      ) {
+        Text(stringResource(R.string.leave_household))
+      }
+    }
+  }
+}
+
+/** Icon in a rounded box, shown at the start of the Account and Household cards. */
 @Composable
 private fun AccountIcon(icon: ImageVector) {
   Box(
