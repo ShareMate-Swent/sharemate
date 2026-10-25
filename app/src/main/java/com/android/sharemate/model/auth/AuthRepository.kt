@@ -4,7 +4,12 @@ package com.android.sharemate.model.auth
 
 import kotlinx.coroutines.flow.Flow
 
-/** How the user signed in. [UNKNOWN] covers providers the app does not offer. */
+/**
+ * Sign-in method linked to the account. An account can have several (Firebase may link Google to an
+ * existing email account with the same address); [GOOGLE] wins whenever a Google account is linked,
+ * so this is not necessarily the method used for the current sign-in. [UNKNOWN] covers providers
+ * the app does not offer.
+ */
 enum class SignInProvider {
   GOOGLE,
   EMAIL,
@@ -19,7 +24,7 @@ enum class SignInProvider {
  * @property email Account email, if the provider shares one.
  * @property displayName Account name, e.g. from the Google profile; null for email accounts.
  * @property photoUrl Account photo URL, e.g. from the Google profile; null if there is none.
- * @property provider How the user signed in.
+ * @property provider Sign-in method linked to the account; see [SignInProvider].
  */
 data class AuthSession(
     val uid: String,
