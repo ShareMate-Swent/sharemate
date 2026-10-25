@@ -52,10 +52,10 @@ class OpenFoodFactsProductCatalogRepositoryTest {
 
   @Test
   fun invalidBarcodesDoNotMakeARequest() = runBlocking {
-    listOf(" \t ", "abc", "12", "1234567", "123456789012345", "1234567a", "1234 5678")
-        .forEach { barcode ->
-          assertEquals(Failure(Reason.INVALID_BARCODE), repository.lookupByBarcode(barcode))
-        }
+    listOf(" \t ", "abc", "12", "1234567", "123456789012345", "1234567a", "1234 5678").forEach {
+        barcode ->
+      assertEquals(Failure(Reason.INVALID_BARCODE), repository.lookupByBarcode(barcode))
+    }
     assertEquals(0, server.requestCount)
   }
 
@@ -74,7 +74,10 @@ class OpenFoodFactsProductCatalogRepositoryTest {
 
   @Test
   fun catalogMissIsDistinctFromMalformedResponse() = runBlocking {
-    server.enqueue(MockResponse().setBody("""{"status":0,"status_verbose":"product not found"}"""))
+    server.enqueue(
+        MockResponse()
+            .setResponseCode(404)
+            .setBody("""{"status":0,"status_verbose":"product not found"}"""))
 
     assertEquals(NotFound, repository.lookupByBarcode("12345678"))
   }
@@ -92,6 +95,19 @@ class OpenFoodFactsProductCatalogRepositoryTest {
     server.enqueue(MockResponse().setResponseCode(503).setBody("not JSON"))
 
     assertEquals(Failure(Reason.HTTP, 503), repository.lookupByBarcode("12345678"))
+  }
+
+  @Test
+  fun malformedAndUnexpectedNotFoundResponsesKeepTheirHttpStatus() = runBlocking {
+    listOf(
+            "not JSON",
+            """{"status":1,"product":{"product_name":"Unexpected"}}""",
+            """{"status":2}""")
+        .forEach { body ->
+          server.enqueue(MockResponse().setResponseCode(404).setBody(body))
+
+          assertEquals(Failure(Reason.HTTP, 404), repository.lookupByBarcode("12345678"))
+        }
   }
 
   @Test

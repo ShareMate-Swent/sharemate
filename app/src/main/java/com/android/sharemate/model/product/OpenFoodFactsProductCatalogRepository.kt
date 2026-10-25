@@ -74,7 +74,12 @@ internal constructor(
                 val result = runCatching {
                   response.use {
                     continuation.context.ensureActive()
-                    if (!it.isSuccessful) Failure(Reason.HTTP, it.code)
+                    if (it.code == 404) {
+                      val parsed =
+                          runCatching { parseResponse(it.body?.string().orEmpty(), barcode) }
+                              .getOrNull()
+                      if (parsed == NotFound) NotFound else Failure(Reason.HTTP, it.code)
+                    } else if (!it.isSuccessful) Failure(Reason.HTTP, it.code)
                     else parseResponse(it.body?.string().orEmpty(), barcode)
                   }
                 }
