@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.household.InviteCodeGenerator
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -13,10 +14,12 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import java.util.concurrent.ExecutionException
+import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
@@ -40,6 +43,60 @@ class PrivateFridgeSecurityRulesTest {
   @Before fun setUp() = FirebaseEmulator.clear()
 
   @After fun tearDown() = FirebaseEmulator.clear()
+
+  @Test
+  fun creatingHouseholdRetriesCodeHiddenByAnotherUsersPrivateFridge() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val seed = 172
+    val firstCode = InviteCodeGenerator(Random(seed)).generate()
+    val existing =
+        Household("private", "Private", firstCode, listOf(owner), owner, Date(), FridgeType.PRIVATE)
+    Tasks.await(writeFridge(existing))
+    val outsider = FirebaseEmulator.signInAs("outsider")
+    assertDenied(codes.document(firstCode).get())
+
+    val created =
+        HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(seed)))
+            .createHousehold("New Home", outsider)
+
+    assertEquals(outsider, created.createdBy)
+    assertNotEquals(firstCode, created.inviteCode)
+    assertEquals(created, repository.getHousehold(created.id))
+    assertEquals(created.id, Tasks.await(users.document(outsider).get()).getString("householdId"))
+    assertEquals(
+        created.id, Tasks.await(codes.document(created.inviteCode).get()).getString("householdId"))
+    FirebaseEmulator.signInAs("owner")
+    assertEquals(existing, repository.getHousehold(existing.id))
+    assertEquals(existing.id, Tasks.await(codes.document(firstCode).get()).getString("householdId"))
+  }
+
+  @Test
+  fun repeatedHiddenCodeExhaustionDoesNotWriteOrOverwritePrivateFridge() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val constantRandom =
+        object : Random() {
+          override fun nextBits(bitCount: Int): Int = 0
+        }
+    val code = InviteCodeGenerator(constantRandom).generate()
+    val existing =
+        Household("private", "Private", code, listOf(owner), owner, Date(), FridgeType.PRIVATE)
+    Tasks.await(writeFridge(existing))
+    val outsider = FirebaseEmulator.signInAs("outsider")
+    assertDenied(codes.document(code).get())
+
+    assertThrows(IllegalStateException::class.java) {
+      runBlocking {
+        HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(constantRandom))
+            .createHousehold("New Home", outsider)
+      }
+    }
+
+    assertNull(repository.getHouseholdForUser(outsider))
+    assertFalse(Tasks.await(users.document(outsider).get()).exists())
+    FirebaseEmulator.signInAs("owner")
+    assertEquals(existing, repository.getHousehold(existing.id))
+    assertEquals(existing.id, Tasks.await(codes.document(code).get()).getString("householdId"))
+  }
 
   @Test
   fun ownerCanReadQueryLeaveAndRejoinPrivateFridge() = runBlocking {
