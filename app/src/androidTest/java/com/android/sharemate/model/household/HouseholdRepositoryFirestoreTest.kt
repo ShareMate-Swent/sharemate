@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -63,6 +64,12 @@ class HouseholdRepositoryFirestoreTest {
     assertEquals(listOf(creatorId), household.memberIds)
     assertEquals(creatorId, household.createdBy)
     assertNotNull(household.createdAt)
+    assertEquals(FridgeType.SHARED, household.type)
+    assertEquals(
+        "SHARED",
+        Tasks.await(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(household.id).get())
+            .getString("type"))
     assertEquals(household, storedHousehold)
     assertEquals(household.id, storedUser.getString("householdId"))
     assertEquals("Creator", storedUser.getString("displayName"))
