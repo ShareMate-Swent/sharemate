@@ -66,9 +66,9 @@ class OpenFoodFactsProductCatalogRepositoryTest {
       server.enqueue(MockResponse().setBody("""{"status":1,"product":{"product_name":"Rice"}}"""))
 
       assertEquals(
-          Found(ProductDetails(barcode, "Rice", null)),
-          repository.lookupByBarcode(barcode))
-      assertEquals("/api/v2/product/$barcode?fields=product_name%2Cbrands", server.takeRequest().path)
+          Found(ProductDetails(barcode, "Rice", null)), repository.lookupByBarcode(barcode))
+      assertEquals(
+          "/api/v2/product/$barcode?fields=product_name%2Cbrands", server.takeRequest().path)
     }
   }
 
