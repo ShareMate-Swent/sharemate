@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -61,6 +62,7 @@ import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
   private val authRepository: AuthRepository by lazy {
@@ -196,13 +198,21 @@ open class MainActivity : ComponentActivity() {
                                   }
                                 })
                     val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+                    val settingsScope = rememberCoroutineScope()
                     SettingsScreen(
-                        householdName = settingsState.householdName,
+                        state = settingsState,
                         leaveState = leaveState,
                         onLeaveHousehold = leaveViewModel::requestLeave,
                         onCancelLeave = leaveViewModel::cancel,
                         onConfirmLeave = leaveViewModel::confirmLeave,
                         onLeft = onMembershipChanged,
+                        onSwitchGoogleAccount = {
+                          settingsScope.launch {
+                            settingsViewModel.switchGoogleAccount {
+                              googleSignIn.getIdToken(this@MainActivity)
+                            }
+                          }
+                        },
                         onSignOut = authViewModel::signOut)
                   }
                 }

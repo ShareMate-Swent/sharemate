@@ -3,6 +3,8 @@ package com.android.sharemate.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.auth.AuthError
+import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.auth.SignInProvider
@@ -16,6 +18,13 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** Why switching to another Google account failed. */
+enum class SettingsAccountError {
+  GOOGLE_UNAVAILABLE,
+  NETWORK,
+  SWITCH_FAILED
+}
+
 /**
  * Everything the Settings screen shows: the signed-in profile, its account and its household.
  *
@@ -26,6 +35,8 @@ import kotlinx.coroutines.launch
  * @property householdName Name of the user's household.
  * @property memberCount Number of members of the household, the user included.
  * @property inviteCode Code other users enter to join the household.
+ * @property isSwitchingAccount Whether a Google account switch is in progress.
+ * @property accountError The last account switch failure, cleared by the next attempt.
  */
 data class SettingsUiState(
     val email: String? = null,
@@ -35,6 +46,8 @@ data class SettingsUiState(
     val householdName: String = "",
     val memberCount: Int = 0,
     val inviteCode: String = "",
+    val isSwitchingAccount: Boolean = false,
+    val accountError: SettingsAccountError? = null,
 )
 
 /**
@@ -62,6 +75,47 @@ class SettingsViewModel(
       }
     }
     refreshHousehold()
+  }
+
+  /**
+   * Signs in with another Google account without signing out first, so cancelling the account
+   * picker keeps the current session. Firebase then replaces the user, and the household gate loads
+   * the new user's household.
+   *
+   * The picker runs in the caller's UI scope; only the sign-in uses the retained ViewModel scope.
+   */
+  suspend fun switchGoogleAccount(tokenProvider: suspend () -> String?) {
+    if (state.value.isSwitchingAccount) return
+    mutableState.update { it.copy(isSwitchingAccount = true, accountError = null) }
+    var handedOff = false
+    try {
+      val token = tokenProvider() ?: return
+      if (token.isBlank()) throw AuthException(AuthError.INVALID_CREDENTIALS)
+      viewModelScope.launch { signInWithGoogle(token) }
+      handedOff = true
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: AuthException) {
+      mutableState.update { it.copy(accountError = failure.error.toAccountError()) }
+    } catch (_: Exception) {
+      mutableState.update { it.copy(accountError = SettingsAccountError.GOOGLE_UNAVAILABLE) }
+    } finally {
+      if (!handedOff) mutableState.update { it.copy(isSwitchingAccount = false) }
+    }
+  }
+
+  private suspend fun signInWithGoogle(token: String) {
+    try {
+      authRepository.signInWithGoogle(token)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: AuthException) {
+      mutableState.update { it.copy(accountError = failure.error.toAccountError()) }
+    } catch (_: Exception) {
+      mutableState.update { it.copy(accountError = SettingsAccountError.SWITCH_FAILED) }
+    } finally {
+      mutableState.update { it.copy(isSwitchingAccount = false) }
+    }
   }
 
   /** Fetches the household again, without starting duplicate requests. */
@@ -96,3 +150,10 @@ private fun SettingsUiState.withHousehold(household: Household) =
         memberCount = household.memberIds.size,
         inviteCode = household.inviteCode,
     )
+
+private fun AuthError.toAccountError() =
+    when (this) {
+      AuthError.GOOGLE_UNAVAILABLE -> SettingsAccountError.GOOGLE_UNAVAILABLE
+      AuthError.NETWORK -> SettingsAccountError.NETWORK
+      else -> SettingsAccountError.SWITCH_FAILED
+    }
