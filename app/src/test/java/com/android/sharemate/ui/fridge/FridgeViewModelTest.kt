@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -729,6 +730,41 @@ class FridgeViewModelTest {
     assertTrue(scanJob.isCancelled)
     assertFalse(vm.uiState.value.isScanningBarcode)
     assertFalse(vm.uiState.value.barcodeScanFailed)
+  }
+
+  @Test
+  fun barcodeScanResultIsIgnoredAfterDismissAndReopen() = runTest {
+    val oldScan = CompletableDeferred<BarcodeScanResult>()
+    val newScan = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = oldScan
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/old-barcode")
+    runCurrent()
+
+    vm.dismissAddItemDialog()
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+
+    vm.openAddItemDialog()
+    vm.updateName("New item")
+    barcodeScanner.gate = newScan
+    vm.scanBarcodeImage("content://images/new-barcode")
+    runCurrent()
+    assertTrue(vm.uiState.value.isScanningBarcode)
+
+    oldScan.complete(BarcodeScanResult.Found("OLD-CODE"))
+    runCurrent()
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+    assertTrue(vm.uiState.value.isScanningBarcode)
+    assertEquals("New item", vm.uiState.value.itemName)
+    assertNull(vm.uiState.value.barcodeValue)
+    assertFalse(vm.uiState.value.barcodeScanFailed)
+
+    newScan.complete(BarcodeScanResult.Found("NEW-CODE"))
+    runCurrent()
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertEquals("NEW-CODE", vm.uiState.value.barcodeValue)
   }
 
   @Test
