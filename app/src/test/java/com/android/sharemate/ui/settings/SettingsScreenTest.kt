@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import org.junit.Assert.assertEquals
@@ -183,6 +184,21 @@ class SettingsScreenTest {
         .assertTextEquals("Rue de Lausanne flat")
     composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("3 members")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertTextEquals("K7XM4P")
+  }
+
+  @Test
+  fun privateHouseholdHidesTheInviteCodeButKeepsLeaveHousehold() {
+    showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .performScrollTo()
+        .assertTextEquals("Rue de Lausanne flat")
+    composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(SettingsTestTags.COPY_INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performScrollTo().performClick()
+
+    assertEquals(1, leaveRequests)
   }
 
   @Test

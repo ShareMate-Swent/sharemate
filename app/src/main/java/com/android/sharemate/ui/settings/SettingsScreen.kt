@@ -53,6 +53,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.household.CopyInviteCodeButton
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
@@ -267,7 +268,10 @@ private fun AccountCard(
   }
 }
 
-/** The household's name, member count and invite code, with Leave household. */
+/**
+ * The household's name, member count and invite code, with Leave household. Private households
+ * cannot be joined by anyone else, so their invite code is not shown.
+ */
 @Composable
 private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -306,25 +310,27 @@ private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) 
           )
         }
       }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = stringResource(R.string.settings_invite_code),
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = state.inviteCode,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = colors.onPrimaryContainer,
-            modifier = Modifier.testTag(SettingsTestTags.INVITE_CODE),
-        )
-        Spacer(Modifier.width(8.dp))
-        CopyInviteCodeButton(
-            inviteCode = state.inviteCode,
-            modifier = Modifier.testTag(SettingsTestTags.COPY_INVITE_CODE),
-        )
+      if (state.fridgeType != FridgeType.PRIVATE) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+              text = stringResource(R.string.settings_invite_code),
+              style = MaterialTheme.typography.bodyMedium,
+              color = colors.onSurfaceVariant,
+              modifier = Modifier.weight(1f),
+          )
+          Text(
+              text = state.inviteCode,
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = colors.onPrimaryContainer,
+              modifier = Modifier.testTag(SettingsTestTags.INVITE_CODE),
+          )
+          Spacer(Modifier.width(8.dp))
+          CopyInviteCodeButton(
+              inviteCode = state.inviteCode,
+              modifier = Modifier.testTag(SettingsTestTags.COPY_INVITE_CODE),
+          )
+        }
       }
       OutlinedButton(
           onClick = onLeaveHousehold,

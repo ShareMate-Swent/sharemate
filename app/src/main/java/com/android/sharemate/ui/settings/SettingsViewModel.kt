@@ -8,6 +8,7 @@ import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import kotlinx.coroutines.CancellationException
@@ -35,6 +36,7 @@ enum class SettingsAccountError {
  * @property householdName Name of the user's household.
  * @property memberCount Number of members of the household, the user included.
  * @property inviteCode Code other users enter to join the household.
+ * @property fridgeType Whether the household is private (no one else can join) or shared.
  * @property isSwitchingAccount Whether a Google account switch is in progress.
  * @property accountError The last account switch failure, cleared by the next attempt.
  */
@@ -46,6 +48,7 @@ data class SettingsUiState(
     val householdName: String = "",
     val memberCount: Int = 0,
     val inviteCode: String = "",
+    val fridgeType: FridgeType = FridgeType.SHARED,
     val isSwitchingAccount: Boolean = false,
     val accountError: SettingsAccountError? = null,
 )
@@ -149,6 +152,7 @@ private fun SettingsUiState.withHousehold(household: Household) =
         householdName = household.name,
         memberCount = household.memberIds.size,
         inviteCode = household.inviteCode,
+        fridgeType = household.type,
     )
 
 private fun AuthError.toAccountError() =
