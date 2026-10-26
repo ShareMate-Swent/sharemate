@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import com.google.firebase.firestore.DocumentReference
