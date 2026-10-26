@@ -6,6 +6,7 @@ import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
@@ -93,6 +94,20 @@ class SettingsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(3, viewModel.state.value.memberCount)
+  }
+
+  @Test
+  fun exposesTheFridgeTypeOfTheLoadedAndRefetchedHousehold() = runTest {
+    val privateHousehold = household.copy(type = FridgeType.PRIVATE)
+    households.latest = privateHousehold
+    val viewModel = SettingsViewModel(auth, households, privateHousehold)
+
+    assertEquals(FridgeType.PRIVATE, viewModel.state.value.fridgeType)
+
+    households.latest = household.copy(type = FridgeType.SHARED)
+    advanceUntilIdle()
+
+    assertEquals(FridgeType.SHARED, viewModel.state.value.fridgeType)
   }
 
   @Test

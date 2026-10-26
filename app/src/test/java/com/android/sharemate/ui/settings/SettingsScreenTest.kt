@@ -1,22 +1,28 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.settings
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import org.junit.Assert.assertEquals
@@ -169,11 +175,77 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun householdCardShowsNameMemberCountAndInviteCode() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .performScrollTo()
+        .assertTextEquals("Rue de Lausanne flat")
+    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("3 members")
+    composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertTextEquals("K7XM4P")
+  }
+
+  @Test
+  fun privateHouseholdHidesTheInviteCodeButKeepsLeaveHousehold() {
+    showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .performScrollTo()
+        .assertTextEquals("Rue de Lausanne flat")
+    composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(SettingsTestTags.COPY_INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performScrollTo().performClick()
+
+    assertEquals(1, leaveRequests)
+  }
+
+  @Test
+  fun aSingleMemberIsNotPluralized() {
+    showSettings(settings = googleState.copy(memberCount = 1))
+
+    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("1 member")
+  }
+
+  @Test
+  fun copyButtonPutsTheInviteCodeInTheClipboard() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.COPY_INVITE_CODE)
+        .performScrollTo()
+        .performClick()
+
+    val clipboard =
+        composeTestRule.activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    assertEquals("K7XM4P", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+  }
+
+  @Test
+  fun leaveHouseholdIsInsideTheHouseholdCard() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
+        .assert(hasAnyAncestor(hasTestTag(SettingsTestTags.HOUSEHOLD_CARD)))
+        .performScrollTo()
+        .performClick()
+
+    assertEquals(1, leaveRequests)
+  }
+
+  @Test
   fun confirmationNamesTheHouseholdAndOffersCancelAndLeave() {
     showSettings(LeaveHouseholdUiState(isConfirming = true))
 
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertIsDisplayed()
-    composeTestRule.onNodeWithText("Rue de Lausanne flat", substring = true).assertIsDisplayed()
+    // The name also appears in the Household card; check the one in the dialog.
+    composeTestRule
+        .onNode(
+            hasText("Rue de Lausanne flat", substring = true) and
+                hasAnyAncestor(hasTestTag(SettingsTestTags.LEAVE_DIALOG)))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_ERROR).assertDoesNotExist()
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertTextEquals("Leave")
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).performClick()
