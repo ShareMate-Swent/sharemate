@@ -193,6 +193,7 @@ dependencies {
     implementation(libs.compose.viewmodel)
     implementation(libs.coil.compose)
     implementation(libs.okhttp)
+    testImplementation(libs.mockwebserver)
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)
