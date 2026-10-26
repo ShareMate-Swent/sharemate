@@ -25,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -36,6 +37,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -737,6 +739,7 @@ class FridgeViewModelTest {
     val oldScan = CompletableDeferred<BarcodeScanResult>()
     val newScan = CompletableDeferred<BarcodeScanResult>()
     barcodeScanner.gate = oldScan
+    barcodeScanner.ignoreCancellationUris += "content://images/old-barcode"
     val vm = viewModel()
     vm.openAddItemDialog()
     vm.scanBarcodeImage("content://images/old-barcode")
@@ -765,6 +768,48 @@ class FridgeViewModelTest {
     runCurrent()
     assertFalse(vm.uiState.value.isScanningBarcode)
     assertEquals("NEW-CODE", vm.uiState.value.barcodeValue)
+  }
+
+  @Test
+  fun dismissingBarcodeDialogCancelsTheActiveScanBeforeAnotherStarts() = runTest {
+    val oldScan = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = oldScan
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/old-barcode")
+    runCurrent()
+
+    vm.dismissAddItemDialog()
+    runCurrent()
+
+    assertEquals(listOf("content://images/old-barcode"), barcodeScanner.cancelledUris)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+
+    barcodeScanner.gate = CompletableDeferred()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/new-barcode")
+    runCurrent()
+
+    assertEquals(
+        listOf("content://images/old-barcode", "content://images/new-barcode"),
+        barcodeScanner.scannedUris)
+    assertEquals(listOf("content://images/old-barcode"), barcodeScanner.cancelledUris)
+    assertTrue(vm.uiState.value.isScanningBarcode)
+  }
+
+  @Test
+  fun clearingViewModelCancelsTheActiveBarcodeScan() = runTest {
+    barcodeScanner.gate = CompletableDeferred()
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/barcode")
+    runCurrent()
+
+    viewModelStore.clear()
+    runCurrent()
+
+    assertEquals(listOf("content://images/barcode"), barcodeScanner.cancelledUris)
+    assertTrue(barcodeScanner.closed)
   }
 
   @Test
@@ -1771,15 +1816,26 @@ class FridgeViewModelTest {
     var failure: Exception? = null
     var gate: CompletableDeferred<BarcodeScanResult>? = null
     var closed = false
+    val ignoreCancellationUris = mutableSetOf<String>()
+    val cancelledUris = mutableListOf<String>()
     val scannedUris = mutableListOf<String>()
 
     override suspend fun scan(imageUri: String): BarcodeScanResult {
       scannedUris += imageUri
-      gate?.let {
-        return it.await()
+      try {
+        gate?.let {
+          return if (imageUri in ignoreCancellationUris) {
+            withContext(NonCancellable) { it.await() }
+          } else {
+            it.await()
+          }
+        }
+        failure?.let { throw it }
+        return result
+      } catch (exception: CancellationException) {
+        cancelledUris += imageUri
+        throw exception
       }
-      failure?.let { throw it }
-      return result
     }
 
     override fun close() {

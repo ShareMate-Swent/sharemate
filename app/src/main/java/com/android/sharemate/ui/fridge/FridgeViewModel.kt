@@ -18,7 +18,9 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +51,7 @@ class FridgeViewModel(
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
   private var barcodeDialogGeneration = 0L
+  private var barcodeScanJob: Job? = null
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
@@ -281,6 +284,7 @@ class FridgeViewModel(
         uiState.value.isDeleting)
         return
     barcodeDialogGeneration++
+    cancelBarcodeScan()
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = true,
@@ -299,6 +303,7 @@ class FridgeViewModel(
   fun dismissAddItemDialog() {
     if (uiState.value.isSaving) return
     barcodeDialogGeneration++
+    cancelBarcodeScan()
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = false,
@@ -325,32 +330,42 @@ class FridgeViewModel(
     mutableUiState.update {
       it.copy(isScanningBarcode = true, barcodeValue = null, barcodeScanFailed = false)
     }
-    viewModelScope.launch {
-      try {
-        when (val result = barcodeScanner.scan(imageUri)) {
-          is BarcodeScanResult.Found -> {
-            val value = result.value.trim()
-            updateBarcodeScanState(generation) {
-              it.copy(
-                  isScanningBarcode = false,
-                  barcodeValue = value.takeIf(String::isNotEmpty),
-                  barcodeScanFailed = value.isEmpty())
-            }
-          }
-          BarcodeScanResult.NotFound ->
-              updateBarcodeScanState(generation) {
-                it.copy(isScanningBarcode = false, barcodeScanFailed = true)
+    val scanJob =
+        viewModelScope.launch(start = CoroutineStart.LAZY) {
+          try {
+            when (val result = barcodeScanner.scan(imageUri)) {
+              is BarcodeScanResult.Found -> {
+                val value = result.value.trim()
+                updateBarcodeScanState(generation) {
+                  it.copy(
+                      isScanningBarcode = false,
+                      barcodeValue = value.takeIf(String::isNotEmpty),
+                      barcodeScanFailed = value.isEmpty())
+                }
               }
+              BarcodeScanResult.NotFound ->
+                  updateBarcodeScanState(generation) {
+                    it.copy(isScanningBarcode = false, barcodeScanFailed = true)
+                  }
+            }
+          } catch (exception: CancellationException) {
+            updateBarcodeScanState(generation) { it.copy(isScanningBarcode = false) }
+            throw exception
+          } catch (exception: Exception) {
+            updateBarcodeScanState(generation) {
+              it.copy(isScanningBarcode = false, barcodeValue = null, barcodeScanFailed = true)
+            }
+          } finally {
+            if (barcodeScanJob === currentCoroutineContext()[Job]) barcodeScanJob = null
+          }
         }
-      } catch (exception: CancellationException) {
-        updateBarcodeScanState(generation) { it.copy(isScanningBarcode = false) }
-        throw exception
-      } catch (exception: Exception) {
-        updateBarcodeScanState(generation) {
-          it.copy(isScanningBarcode = false, barcodeValue = null, barcodeScanFailed = true)
-        }
-      }
-    }
+    barcodeScanJob = scanJob
+    scanJob.start()
+  }
+
+  private fun cancelBarcodeScan() {
+    barcodeScanJob?.cancel()
+    barcodeScanJob = null
   }
 
   private fun updateBarcodeScanState(
@@ -562,6 +577,8 @@ class FridgeViewModel(
   }
 
   override fun onCleared() {
+    barcodeDialogGeneration++
+    cancelBarcodeScan()
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
     latestStatusWrites.clear()
