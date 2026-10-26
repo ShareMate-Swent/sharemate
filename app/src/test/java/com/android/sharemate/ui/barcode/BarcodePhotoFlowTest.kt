@@ -1,8 +1,11 @@
 package com.android.sharemate.ui.barcode
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -80,6 +83,54 @@ class BarcodePhotoFlowTest {
       assertFalse(vm.state.value.failed)
       assertFalse(vm.state.value.busy)
     }
+    compose.onNodeWithText("Open app settings").performScrollTo().performClick()
+    compose.runOnIdle {
+      val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
+      assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, intent.action)
+      assertEquals("package:${RuntimeEnvironment.getApplication().packageName}", intent.dataString)
+    }
+  }
+
+  @Test
+  fun unavailableCameraPermissionOrGalleryActivityShowsRecoverableError() {
+    shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
+    val vm = BarcodePhotoViewModel(TestPhotoStore(), SavedStateHandle())
+    val owner =
+        object : ActivityResultRegistryOwner {
+          override val activityResultRegistry =
+              object : ActivityResultRegistry() {
+                override fun <I, O> onLaunch(
+                    requestCode: Int,
+                    contract: ActivityResultContract<I, O>,
+                    input: I,
+                    options: ActivityOptionsCompat?
+                ) {
+                  throw ActivityNotFoundException("No handler")
+                }
+              }
+        }
+    compose.setContent {
+      CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
+        MaterialTheme { BarcodePhotoFlow(vm) }
+      }
+    }
+    for (tag in listOf("barcode_photo_camera", "barcode_photo_gallery")) {
+      compose.runOnIdle { vm.open() }
+      compose.onNodeWithTag(tag).performScrollTo().performClick()
+      compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
+      compose.onNodeWithTag("barcode_photo_cancel").assertIsEnabled()
+      compose.runOnIdle {
+        assertNull(vm.state.value.uri)
+        assertFalse(vm.state.value.busy)
+      }
+    }
+  }
+
+  @Test
+  fun activityLookupSafelyHandlesWrappedNonActivityContexts() {
+    val application = RuntimeEnvironment.getApplication()
+    assertNull(application.findActivity())
+    assertNull(ContextWrapper(ContextWrapper(application)).findActivity())
   }
 
   @Test

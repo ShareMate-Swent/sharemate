@@ -1,5 +1,6 @@
 package com.android.sharemate.ui.barcode
 
+import android.content.Context
 import android.net.Uri
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -21,6 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.sharemate.R
+import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -31,13 +33,16 @@ internal fun BarcodeCamera(
     enabled: Boolean,
     onCapture: (suspend (String) -> Unit) -> Unit,
     onFailure: () -> Unit,
+    providerLoader: (Context) -> ListenableFuture<ProcessCameraProvider> =
+        ProcessCameraProvider::getInstance,
+    imageCaptureFactory: () -> ImageCapture = { ImageCapture.Builder().build() },
 ) {
   val context = LocalContext.current
   val owner = LocalLifecycleOwner.current
   val previewView = remember {
     PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
   }
-  val capture = remember { ImageCapture.Builder().build() }
+  val capture = remember { imageCaptureFactory() }
   val preview = remember { Preview.Builder().build() }
   val executor = remember(context) { ContextCompat.getMainExecutor(context) }
   val failure by rememberUpdatedState(onFailure)
@@ -45,7 +50,7 @@ internal fun BarcodeCamera(
   DisposableEffect(owner) {
     var disposed = false
     var provider: ProcessCameraProvider? = null
-    val future = ProcessCameraProvider.getInstance(context)
+    val future = providerLoader(context)
     future.addListener(
         {
           if (!disposed) {
