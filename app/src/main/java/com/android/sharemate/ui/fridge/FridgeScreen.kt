@@ -71,6 +71,7 @@ fun FridgeScreen(
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
+    onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
@@ -210,6 +211,7 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
+        onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
