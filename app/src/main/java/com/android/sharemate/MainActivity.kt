@@ -3,6 +3,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.core.util.Consumer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -54,6 +56,7 @@ import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
+import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
@@ -98,6 +101,13 @@ open class MainActivity : ComponentActivity() {
                 household,
                 onMembershipChanged ->
               val navController = rememberNavController()
+              // A deep link reaches a running activity as a new intent, which the NavHost
+              // destinations below resolve.
+              DisposableEffect(navController) {
+                val listener = Consumer<Intent> { navController.handleDeepLink(it) }
+                addOnNewIntentListener(listener)
+                onDispose { removeOnNewIntentListener(listener) }
+              }
               DisposableEffect(navController) {
                 onDispose {
                   if (!isChangingConfigurations) {
@@ -147,74 +157,82 @@ open class MainActivity : ComponentActivity() {
                     startDestination = TopLevelDestination.FRIDGE.route,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                 ) {
-                  composable(TopLevelDestination.FRIDGE.route) { entry ->
-                    val fridgeViewModel: FridgeViewModel =
-                        viewModel(
-                            viewModelStoreOwner = entry,
-                            key = "fridge_${session.uid}_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    FridgeViewModel(
-                                        itemRepository = itemRepository,
-                                        userId = session.uid,
-                                        householdId = household.id,
-                                        foodImageSelector = createFoodImageSelector())
-                                  }
-                                })
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      FridgeScreen(viewModel = fridgeViewModel)
-                    }
-                  }
-                  composable(TopLevelDestination.RECIPES.route) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      RecipesScreen()
-                    }
-                  }
-                  composable(TopLevelDestination.RECEIPTS.route) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      ReceiptsScreen()
-                    }
-                  }
-                  composable(TopLevelDestination.SETTINGS.route) {
-                    val leaveViewModel: LeaveHouseholdViewModel =
-                        viewModel(
-                            key = "leave_household_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    LeaveHouseholdViewModel(householdRepository, authRepository)
-                                  }
-                                })
-                    val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
-                    val settingsViewModel: SettingsViewModel =
-                        viewModel(
-                            key = "settings_${session.uid}_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    SettingsViewModel(
-                                        authRepository, householdRepository, household)
-                                  }
-                                })
-                    val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
-                    val settingsScope = rememberCoroutineScope()
-                    SettingsScreen(
-                        state = settingsState,
-                        leaveState = leaveState,
-                        onLeaveHousehold = leaveViewModel::requestLeave,
-                        onCancelLeave = leaveViewModel::cancel,
-                        onConfirmLeave = leaveViewModel::confirmLeave,
-                        onLeft = onMembershipChanged,
-                        onSwitchGoogleAccount = {
-                          settingsScope.launch {
-                            settingsViewModel.switchGoogleAccount {
-                              googleSignIn.getIdToken(this@MainActivity)
-                            }
-                          }
-                        },
-                        onSignOut = authViewModel::signOut)
-                  }
+                  composable(
+                      TopLevelDestination.FRIDGE.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.FRIDGE)) { entry ->
+                        val fridgeViewModel: FridgeViewModel =
+                            viewModel(
+                                viewModelStoreOwner = entry,
+                                key = "fridge_${session.uid}_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        FridgeViewModel(
+                                            itemRepository = itemRepository,
+                                            userId = session.uid,
+                                            householdId = household.id,
+                                            foodImageSelector = createFoodImageSelector())
+                                      }
+                                    })
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          FridgeScreen(viewModel = fridgeViewModel)
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.RECIPES.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          RecipesScreen()
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.RECEIPTS.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          ReceiptsScreen()
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.SETTINGS.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.SETTINGS)) {
+                        val leaveViewModel: LeaveHouseholdViewModel =
+                            viewModel(
+                                key = "leave_household_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        LeaveHouseholdViewModel(householdRepository, authRepository)
+                                      }
+                                    })
+                        val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
+                        val settingsViewModel: SettingsViewModel =
+                            viewModel(
+                                key = "settings_${session.uid}_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        SettingsViewModel(
+                                            authRepository, householdRepository, household)
+                                      }
+                                    })
+                        val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+                        val settingsScope = rememberCoroutineScope()
+                        SettingsScreen(
+                            state = settingsState,
+                            leaveState = leaveState,
+                            onLeaveHousehold = leaveViewModel::requestLeave,
+                            onCancelLeave = leaveViewModel::cancel,
+                            onConfirmLeave = leaveViewModel::confirmLeave,
+                            onLeft = onMembershipChanged,
+                            onSwitchGoogleAccount = {
+                              settingsScope.launch {
+                                settingsViewModel.switchGoogleAccount {
+                                  googleSignIn.getIdToken(this@MainActivity)
+                                }
+                              }
+                            },
+                            onSignOut = authViewModel::signOut)
+                      }
                 }
               }
             }
