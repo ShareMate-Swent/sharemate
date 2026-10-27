@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -30,6 +31,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -41,6 +43,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,17 +59,10 @@ class FridgeViewModelTest {
   private val repository = FakeItemRepository()
   private val imageRepository = FakeFoodImageRepository()
   private val imageSelector = FoodImageSelector(imageRepository)
+  private val barcodeScanner = FakeBarcodeScanner()
   private val viewModelStore = ViewModelStore()
-  private var scanResult: BarcodeScanResult = BarcodeScanResult.NotFound
-  private var scanException: Exception? = null
   private var catalogResult: ProductLookupResult = ProductLookupResult.NotFound
-  private val scannedImageUris = mutableListOf<String>()
   private val lookedUpBarcodes = mutableListOf<String>()
-  private val barcodeScanner = BarcodeScanner { imageUri ->
-    scannedImageUris += imageUri
-    scanException?.let { throw it }
-    scanResult
-  }
   private val productCatalogRepository =
       object : ProductCatalogRepository {
         override suspend fun lookupByBarcode(barcode: String): ProductLookupResult {
@@ -677,6 +673,183 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun barcodeScanStoresDetectedValueAndReportsUnreadableImages() = runTest {
+    val uri = "content://images/barcode"
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    barcodeScanner.result = BarcodeScanResult.Found(" 0123456789012 ")
+
+    vm.scanBarcodeImage(uri)
+    runCurrent()
+    assertEquals("0123456789012", vm.uiState.value.barcodeValue)
+    assertFalse(vm.uiState.value.barcodeScanFailed)
+    assertEquals(listOf(uri), barcodeScanner.scannedUris)
+
+    barcodeScanner.result = BarcodeScanResult.NotFound
+    vm.scanBarcodeImage(uri)
+    runCurrent()
+    assertNull(vm.uiState.value.barcodeValue)
+    assertTrue(vm.uiState.value.barcodeScanFailed)
+
+    barcodeScanner.failure = IOException("Unreadable image")
+    vm.scanBarcodeImage(uri)
+    runCurrent()
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertTrue(vm.uiState.value.barcodeScanFailed)
+
+    viewModelStore.clear()
+    assertTrue(barcodeScanner.closed)
+  }
+
+  @Test
+  fun barcodeScanRequiresAnAddFormAndRejectsConcurrentScans() = runTest {
+    val uri = "content://images/barcode"
+    val vm = loaded(milk)
+    vm.scanBarcodeImage(uri)
+    assertTrue(barcodeScanner.scannedUris.isEmpty())
+
+    vm.openEditItemDialog(milk.id)
+    vm.scanBarcodeImage(uri)
+    assertTrue(barcodeScanner.scannedUris.isEmpty())
+
+    vm.dismissAddItemDialog()
+    val result = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = result
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage(uri)
+    runCurrent()
+    assertTrue(vm.uiState.value.isScanningBarcode)
+
+    vm.scanBarcodeImage(uri)
+    runCurrent()
+    assertEquals(listOf(uri), barcodeScanner.scannedUris)
+
+    result.complete(BarcodeScanResult.Found(" "))
+    runCurrent()
+    assertNull(vm.uiState.value.barcodeValue)
+    assertTrue(vm.uiState.value.barcodeScanFailed)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+  }
+
+  @Test
+  fun cancellingBarcodeScanClearsProgressWithoutReportingUnreadableImage() = runTest {
+    val scannerGate = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = scannerGate
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/barcode")
+    runCurrent()
+    val scanJob = vm.viewModelScope.coroutineContext.job.children.last()
+
+    scanJob.cancel()
+    runCurrent()
+
+    assertTrue(scanJob.isCancelled)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertFalse(vm.uiState.value.barcodeScanFailed)
+  }
+
+  @Test
+  fun barcodeScanResultIsIgnoredAfterDismissAndReopen() = runTest {
+    val oldScan = CompletableDeferred<BarcodeScanResult>()
+    val newScan = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = oldScan
+    barcodeScanner.ignoreCancellationUris += "content://images/old-barcode"
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/old-barcode")
+    runCurrent()
+
+    vm.dismissAddItemDialog()
+    assertFalse(vm.uiState.value.isAddItemDialogOpen)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+
+    vm.openAddItemDialog()
+    vm.updateName("New item")
+    barcodeScanner.gate = newScan
+    vm.scanBarcodeImage("content://images/new-barcode")
+    runCurrent()
+    assertTrue(vm.uiState.value.isScanningBarcode)
+
+    oldScan.complete(BarcodeScanResult.Found("OLD-CODE"))
+    runCurrent()
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+    assertTrue(vm.uiState.value.isScanningBarcode)
+    assertEquals("New item", vm.uiState.value.itemName)
+    assertNull(vm.uiState.value.barcodeValue)
+    assertFalse(vm.uiState.value.barcodeScanFailed)
+
+    newScan.complete(BarcodeScanResult.Found("NEW-CODE"))
+    runCurrent()
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertEquals("NEW-CODE", vm.uiState.value.barcodeValue)
+  }
+
+  @Test
+  fun dismissingBarcodeDialogCancelsTheActiveScanBeforeAnotherStarts() = runTest {
+    val oldScan = CompletableDeferred<BarcodeScanResult>()
+    barcodeScanner.gate = oldScan
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/old-barcode")
+    runCurrent()
+
+    vm.dismissAddItemDialog()
+    runCurrent()
+
+    assertEquals(listOf("content://images/old-barcode"), barcodeScanner.cancelledUris)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+
+    barcodeScanner.gate = CompletableDeferred()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/new-barcode")
+    runCurrent()
+
+    assertEquals(
+        listOf("content://images/old-barcode", "content://images/new-barcode"),
+        barcodeScanner.scannedUris)
+    assertEquals(listOf("content://images/old-barcode"), barcodeScanner.cancelledUris)
+    assertTrue(vm.uiState.value.isScanningBarcode)
+  }
+
+  @Test
+  fun clearingViewModelCancelsTheActiveBarcodeScan() = runTest {
+    barcodeScanner.gate = CompletableDeferred()
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.scanBarcodeImage("content://images/barcode")
+    runCurrent()
+
+    viewModelStore.clear()
+    runCurrent()
+
+    assertEquals(listOf("content://images/barcode"), barcodeScanner.cancelledUris)
+    assertTrue(barcodeScanner.closed)
+  }
+
+  @Test
+  fun barcodeScanIsRejectedWhileAnItemIsBeingSaved() = runTest {
+    val saveGate = CompletableDeferred<Unit>()
+    repository.addGate = saveGate
+    val vm = viewModel()
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    assertTrue(vm.uiState.value.isSaving)
+
+    vm.scanBarcodeImage("content://images/barcode")
+    runCurrent()
+
+    assertTrue(barcodeScanner.scannedUris.isEmpty())
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertFalse(vm.uiState.value.barcodeScanFailed)
+
+    saveGate.complete(Unit)
+    runCurrent()
+  }
+
+  @Test
   fun cancelledAndDetachedRemovalConfirmationsNeverReportFailure() = runTest {
     for (clear in listOf(false, true)) {
       val confirmation = CompletableDeferred<Result<Unit>>()
@@ -935,12 +1108,12 @@ class FridgeViewModelTest {
   fun lookupProductFromImageScansThenReturnsCatalogDetails() = runTest {
     val imageUri = "content://photos/barcode/42"
     val product = ProductDetails("1234567890123", "Oat milk", "Oat Co")
-    scanResult = BarcodeScanResult.Found(" 1234567890123 ")
+    barcodeScanner.result = BarcodeScanResult.Found(" 1234567890123 ")
     catalogResult = Found(product)
     val vm = viewModel()
 
     assertEquals(Found(product), vm.lookupProductFromImage(imageUri))
-    assertEquals(listOf(imageUri), scannedImageUris)
+    assertEquals(listOf(imageUri), barcodeScanner.scannedUris)
     assertEquals(listOf("1234567890123"), lookedUpBarcodes)
   }
 
@@ -949,13 +1122,13 @@ class FridgeViewModelTest {
     val vm = viewModel()
 
     assertEquals(Failure(Reason.INVALID_BARCODE), vm.lookupProductFromImage("content://photo/42"))
-    assertEquals(1, scannedImageUris.size)
+    assertEquals(1, barcodeScanner.scannedUris.size)
     assertTrue(lookedUpBarcodes.isEmpty())
   }
 
   @Test
   fun lookupProductFromImageReturnsCatalogNotFound() = runTest {
-    scanResult = BarcodeScanResult.Found("1234567890123")
+    barcodeScanner.result = BarcodeScanResult.Found("1234567890123")
     catalogResult = ProductLookupResult.NotFound
     val vm = viewModel()
 
@@ -965,7 +1138,7 @@ class FridgeViewModelTest {
 
   @Test
   fun lookupProductFromImageReturnsCatalogFailureUnchanged() = runTest {
-    scanResult = BarcodeScanResult.Found("1234567890123")
+    barcodeScanner.result = BarcodeScanResult.Found("1234567890123")
     catalogResult = Failure(Reason.NETWORK)
     val vm = viewModel()
 
@@ -976,7 +1149,7 @@ class FridgeViewModelTest {
   @Test
   fun lookupProductFromImagePropagatesScannerFailures() = runTest {
     val failure = IOException("Unreadable image")
-    scanException = failure
+    barcodeScanner.failure = failure
     val vm = viewModel()
 
     val actual =
@@ -1060,6 +1233,7 @@ class FridgeViewModelTest {
       FridgeViewModel(
           repository, "test-user", "", imageSelector, barcodeScanner, productCatalogRepository)
     }
+
     assertTrue(repository.requestedHouseholdIds.isEmpty())
     assertTrue(repository.requestedUserIds.isEmpty())
   }
@@ -1720,6 +1894,38 @@ class FridgeViewModelTest {
         cancelled = true
         throw exception
       }
+    }
+  }
+
+  private class FakeBarcodeScanner : BarcodeScanner {
+    var result: BarcodeScanResult = BarcodeScanResult.NotFound
+    var failure: Exception? = null
+    var gate: CompletableDeferred<BarcodeScanResult>? = null
+    var closed = false
+    val ignoreCancellationUris = mutableSetOf<String>()
+    val cancelledUris = mutableListOf<String>()
+    val scannedUris = mutableListOf<String>()
+
+    override suspend fun scan(imageUri: String): BarcodeScanResult {
+      scannedUris += imageUri
+      try {
+        gate?.let {
+          return if (imageUri in ignoreCancellationUris) {
+            withContext(NonCancellable) { it.await() }
+          } else {
+            it.await()
+          }
+        }
+        failure?.let { throw it }
+        return result
+      } catch (exception: CancellationException) {
+        cancelledUris += imageUri
+        throw exception
+      }
+    }
+
+    override fun close() {
+      closed = true
     }
   }
 }
