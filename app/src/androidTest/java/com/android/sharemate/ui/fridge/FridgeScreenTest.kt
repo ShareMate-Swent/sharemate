@@ -18,6 +18,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -155,7 +157,12 @@ class FridgeScreenTest {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
           }
       viewModel =
-          FridgeViewModel(repository, "alice", "household", FoodImageSelector(imageRepository))
+          FridgeViewModel(
+              repository,
+              "alice",
+              "household",
+              FoodImageSelector(imageRepository),
+              BarcodeScanner { BarcodeScanResult.NotFound })
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
