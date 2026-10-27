@@ -44,8 +44,8 @@ import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FoodImageSelector
-import com.android.sharemate.model.image.OpenverseFoodImageRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.resources.C
@@ -78,7 +78,7 @@ open class MainActivity : ComponentActivity() {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
   }
 
-  protected open fun createFoodImageSelector() = FoodImageSelector(OpenverseFoodImageRepository())
+  protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
 
   private val authViewModel: AuthViewModel by viewModels {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }

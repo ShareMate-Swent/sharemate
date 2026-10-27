@@ -96,7 +96,6 @@
     <string name="fridge_image_source">Image source</string>
     <string name="fridge_image_license">License</string>
     <string name="fridge_image_author">Author</string>
-    <string name="fridge_image_openverse">Image search powered by Openverse</string>
 
     <string name="fridge_remove">Delete</string>
     <string name="fridge_remove_description">Delete %1$s</string>
