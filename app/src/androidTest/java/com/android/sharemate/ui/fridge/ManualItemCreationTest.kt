@@ -17,9 +17,12 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -27,12 +30,7 @@ import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import java.text.SimpleDateFormat
 import java.time.LocalDate
-import java.time.ZoneOffset
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,8 +50,7 @@ class ManualItemCreationTest {
     val repository = TestItemRepository()
     val viewModel = showManualEntryScreen(repository)
     val expirationDate = LocalDate.now().plusDays(30)
-    val storedExpirationDate = Date.from(expirationDate.atStartOfDay(ZoneOffset.UTC).toInstant())
-
+    val storedExpirationDate = ExpirationDates.toDate(expirationDate)
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_add_item)
         .assertIsDisplayed()
@@ -112,9 +109,7 @@ class ManualItemCreationTest {
         .onNodeWithText(
             composeTestRule.activity.getString(
                 R.string.fridge_card_expiration,
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                    .apply { timeZone = TimeZone.getTimeZone("UTC") }
-                    .format(storedExpirationDate)))
+                ExpirationDates.formatCompact(storedExpirationDate)))
         .assertIsDisplayed()
     composeTestRule.runOnIdle {
       val expected =
@@ -302,7 +297,11 @@ class ManualItemCreationTest {
         }
     val viewModel =
         FridgeViewModel(
-            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
+            repository,
+            "test-user",
+            "test-household",
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }

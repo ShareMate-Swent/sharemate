@@ -1,4 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.os.Bundle
@@ -20,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -38,6 +41,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.FoodImageSelector
@@ -55,11 +59,13 @@ import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.SettingsScreen
+import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
   private val authRepository: AuthRepository by lazy {
     FirebaseAuthRepository(FirebaseAuth.getInstance())
   }
@@ -71,6 +77,8 @@ class MainActivity : ComponentActivity() {
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
   }
+
+  protected open fun createFoodImageSelector() = FoodImageSelector(OpenverseFoodImageRepository())
 
   private val authViewModel: AuthViewModel by viewModels {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
@@ -152,8 +160,8 @@ class MainActivity : ComponentActivity() {
                                         itemRepository = itemRepository,
                                         userId = session.uid,
                                         householdId = household.id,
-                                        foodImageSelector =
-                                            FoodImageSelector(OpenverseFoodImageRepository()))
+                                        foodImageSelector = createFoodImageSelector(),
+                                        barcodeScanner = MlKitBarcodeScanner(applicationContext))
                                   }
                                 })
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -181,13 +189,32 @@ class MainActivity : ComponentActivity() {
                                   }
                                 })
                     val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
+                    val settingsViewModel: SettingsViewModel =
+                        viewModel(
+                            key = "settings_${session.uid}_${household.id}",
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    SettingsViewModel(
+                                        authRepository, householdRepository, household)
+                                  }
+                                })
+                    val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+                    val settingsScope = rememberCoroutineScope()
                     SettingsScreen(
-                        householdName = household.name,
+                        state = settingsState,
                         leaveState = leaveState,
                         onLeaveHousehold = leaveViewModel::requestLeave,
                         onCancelLeave = leaveViewModel::cancel,
                         onConfirmLeave = leaveViewModel::confirmLeave,
                         onLeft = onMembershipChanged,
+                        onSwitchGoogleAccount = {
+                          settingsScope.launch {
+                            settingsViewModel.switchGoogleAccount {
+                              googleSignIn.getIdToken(this@MainActivity)
+                            }
+                          }
+                        },
                         onSignOut = authViewModel::signOut)
                   }
                 }

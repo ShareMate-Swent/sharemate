@@ -1,10 +1,13 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.auth
 
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -18,7 +21,7 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
       callbackFlow {
             val listener =
                 FirebaseAuth.AuthStateListener { firebaseAuth ->
-                  trySend(firebaseAuth.currentUser?.let { AuthSession(it.uid, it.email) })
+                  trySend(firebaseAuth.currentUser?.toAuthSession())
                 }
             auth.addAuthStateListener(listener)
             awaitClose { auth.removeAuthStateListener(listener) }
@@ -58,6 +61,23 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
       throw AuthException(error)
     }
   }
+}
+
+/** Blank profile values are treated as missing so the UI can fall back to the email. */
+internal fun FirebaseUser.toAuthSession(): AuthSession {
+  val providerIds = providerData.map { it.providerId }
+  return AuthSession(
+      uid = uid,
+      email = email,
+      displayName = displayName?.takeIf { it.isNotBlank() },
+      photoUrl = photoUrl?.toString()?.takeIf { it.isNotBlank() },
+      provider =
+          when {
+            GoogleAuthProvider.PROVIDER_ID in providerIds -> SignInProvider.GOOGLE
+            EmailAuthProvider.PROVIDER_ID in providerIds -> SignInProvider.EMAIL
+            else -> SignInProvider.UNKNOWN
+          },
+  )
 }
 
 internal fun authErrorForCode(code: String): AuthError =

@@ -23,9 +23,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemRepository
@@ -33,8 +36,6 @@ import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import java.time.LocalDate
-import java.time.ZoneId
-import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -154,7 +155,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -309,7 +315,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -350,7 +361,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {
@@ -443,6 +459,31 @@ class FridgeScreenTest {
     composeRule.onNodeWithContentDescription("Expires soon:", substring = true).assertDoesNotExist()
   }
 
+  @Test
+  fun expirationCardKeepsUtcDayInWesternTimeZone() {
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Honolulu"))
+      val expiration = ExpirationDates.toDate(LocalDate.now().plusDays(4))
+      composeRule.setContent {
+        MaterialTheme {
+          FridgeItem(
+              item = Item(id = "utc-item", name = "Milk", expirationDate = expiration),
+              modifier = androidx.compose.ui.Modifier.width(100.dp))
+        }
+      }
+      composeRule
+          .onNodeWithText("Exp.: ${ExpirationDates.formatCompact(expiration)}")
+          .assertIsDisplayed()
+      composeRule
+          .onNodeWithContentDescription("Expires soon:", substring = true)
+          .assertDoesNotExist()
+      composeRule.onNodeWithContentDescription("Expired:", substring = true).assertDoesNotExist()
+    } finally {
+      java.util.TimeZone.setDefault(originalZone)
+    }
+  }
+
   private fun openActions(id: String) {
     composeRule.onNodeWithTag("fridge_item_actions_$id").performClick()
   }
@@ -451,9 +492,7 @@ class FridgeScreenTest {
       Item(
           id = "milk",
           name = "Milk",
-          expirationDate =
-              Date.from(
-                  LocalDate.now().plusDays(days).atStartOfDay(ZoneId.systemDefault()).toInstant()))
+          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)

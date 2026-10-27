@@ -1,23 +1,26 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
+import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeParseException
-import java.util.Date
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,13 +42,16 @@ class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
     private val householdId: String?,
-    private val foodImageSelector: FoodImageSelector
+    private val foodImageSelector: FoodImageSelector,
+    private val barcodeScanner: BarcodeScanner
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
+  private var barcodeDialogGeneration = 0L
+  private var barcodeScanJob: Job? = null
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
   private val categoryFilterState = MutableStateFlow<String?>(null)
@@ -277,6 +283,8 @@ class FridgeViewModel(
         uiState.value.pendingRemovalItem != null ||
         uiState.value.isDeleting)
         return
+    barcodeDialogGeneration++
+    cancelBarcodeScan()
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = true,
@@ -285,12 +293,17 @@ class FridgeViewModel(
           itemName = "",
           itemCategory = "",
           expirationDateInput = "",
+          isScanningBarcode = false,
+          barcodeValue = null,
+          barcodeScanFailed = false,
           formError = null)
     }
   }
 
   fun dismissAddItemDialog() {
     if (uiState.value.isSaving) return
+    barcodeDialogGeneration++
+    cancelBarcodeScan()
     mutableUiState.update {
       it.copy(
           isAddItemDialogOpen = false,
@@ -299,7 +312,69 @@ class FridgeViewModel(
           itemName = "",
           itemCategory = "",
           expirationDateInput = "",
+          isScanningBarcode = false,
+          barcodeValue = null,
+          barcodeScanFailed = false,
           formError = null)
+    }
+  }
+
+  fun scanBarcodeImage(imageUri: String) {
+    val state = uiState.value
+    if (!state.isAddItemDialogOpen ||
+        state.editingItemId != null ||
+        state.isSaving ||
+        state.isScanningBarcode)
+        return
+    val generation = barcodeDialogGeneration
+    mutableUiState.update {
+      it.copy(isScanningBarcode = true, barcodeValue = null, barcodeScanFailed = false)
+    }
+    val scanJob =
+        viewModelScope.launch(start = CoroutineStart.LAZY) {
+          try {
+            when (val result = barcodeScanner.scan(imageUri)) {
+              is BarcodeScanResult.Found -> {
+                val value = result.value.trim()
+                updateBarcodeScanState(generation) {
+                  it.copy(
+                      isScanningBarcode = false,
+                      barcodeValue = value.takeIf(String::isNotEmpty),
+                      barcodeScanFailed = value.isEmpty())
+                }
+              }
+              BarcodeScanResult.NotFound ->
+                  updateBarcodeScanState(generation) {
+                    it.copy(isScanningBarcode = false, barcodeScanFailed = true)
+                  }
+            }
+          } catch (exception: CancellationException) {
+            updateBarcodeScanState(generation) { it.copy(isScanningBarcode = false) }
+            throw exception
+          } catch (exception: Exception) {
+            updateBarcodeScanState(generation) {
+              it.copy(isScanningBarcode = false, barcodeValue = null, barcodeScanFailed = true)
+            }
+          } finally {
+            if (barcodeScanJob === currentCoroutineContext()[Job]) barcodeScanJob = null
+          }
+        }
+    barcodeScanJob = scanJob
+    scanJob.start()
+  }
+
+  private fun cancelBarcodeScan() {
+    barcodeScanJob?.cancel()
+    barcodeScanJob = null
+  }
+
+  private fun updateBarcodeScanState(
+      generation: Long,
+      transform: (FridgeUiState) -> FridgeUiState,
+  ) {
+    if (barcodeDialogGeneration != generation) return
+    mutableUiState.update { state ->
+      if (state.isAddItemDialogOpen && state.editingItemId == null) transform(state) else state
     }
   }
 
@@ -323,10 +398,7 @@ class FridgeViewModel(
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
-          expirationDateInput =
-              item.expirationDate
-                  ?.let { it.toInstant().atZone(ZoneOffset.UTC).toLocalDate().toString() }
-                  .orEmpty(),
+          expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
   }
@@ -359,19 +431,13 @@ class FridgeViewModel(
       return
     }
     val expirationDate =
-        try {
-          val input = state.expirationDateInput.trim()
-          if (input.isEmpty()) null
-          else {
-            if (!input.matches(Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}"))) {
-              mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-              return
-            }
-            Date.from(LocalDate.parse(input).atStartOfDay(ZoneOffset.UTC).toInstant())
+        when (val parsed = ExpirationDates.parse(state.expirationDateInput)) {
+          ExpirationInput.Empty -> null
+          is ExpirationInput.Valid -> parsed.date
+          ExpirationInput.Invalid -> {
+            mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
+            return
           }
-        } catch (exception: DateTimeParseException) {
-          mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_EXPIRATION_DATE) }
-          return
         }
     val quantity = state.itemQuantity.trim().toIntOrNull()
     if (quantity == null || quantity <= 0) {
@@ -428,6 +494,8 @@ class FridgeViewModel(
                 itemName = "",
                 itemCategory = "",
                 expirationDateInput = "",
+                barcodeValue = null,
+                barcodeScanFailed = false,
                 formError = null)
           }
         }
@@ -509,9 +577,12 @@ class FridgeViewModel(
   }
 
   override fun onCleared() {
+    barcodeDialogGeneration++
+    cancelBarcodeScan()
     confirmationHandlers.values.forEach { it?.dispose() }
     confirmationHandlers.clear()
     latestStatusWrites.clear()
+    barcodeScanner.close()
     mutableUiState.update { it.copy(pendingStatusIds = emptySet()) }
   }
 
