@@ -55,6 +55,36 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     }
   }
 
+  override suspend fun updateItemImageIfAbsent(
+      itemId: String,
+      expectedName: String,
+      image: ItemImage
+  ): ItemImageUpdateResult {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemImageUpdateResult.Error(IllegalArgumentException("A document ID is required"))
+    }
+    return try {
+      val document = items.document(itemId)
+      firestore
+          .runTransaction { transaction ->
+            val snapshot = transaction.get(document)
+            if (!snapshot.exists() ||
+                snapshot.getString("name") != expectedName ||
+                snapshot.get("image") != null) {
+              ItemImageUpdateResult.Ignored
+            } else {
+              transaction.update(document, "image", image)
+              ItemImageUpdateResult.Updated
+            }
+          }
+          .await()
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      ItemImageUpdateResult.Error(failure)
+    }
+  }
+
   override suspend fun deleteItem(itemId: String): Boolean {
     return when (val write = deleteItemQueued(itemId)) {
       is ItemWrite.Rejected -> false

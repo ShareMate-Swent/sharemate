@@ -25,6 +25,21 @@ interface ItemRepository {
    */
   suspend fun addItem(item: Item): String?
 
+  /**
+   * Attaches a lookup result only if the item still exists, its persisted name exactly matches
+   * [expectedName] and it has no image. Checks and the image-only write are atomic; image credits
+   * are included in [image]. Pass the saved name used for the lookup, without normalizing it.
+   *
+   * Returns after server confirmation. This operation requires connectivity and is not queued
+   * offline. Cancellation propagates but does not revoke a transaction already submitted to the
+   * SDK.
+   */
+  suspend fun updateItemImageIfAbsent(
+      itemId: String,
+      expectedName: String,
+      image: ItemImage
+  ): ItemImageUpdateResult
+
   /** Supprime un item spécifique. */
   suspend fun deleteItem(itemId: String): Boolean
 
