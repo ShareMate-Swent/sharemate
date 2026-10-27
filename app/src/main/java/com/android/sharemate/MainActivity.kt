@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -49,6 +51,8 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.OpenverseFoodImageRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.notifications.NotificationPermission
+import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
@@ -86,8 +90,12 @@ open class MainActivity : ComponentActivity() {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
   }
 
+  private val notificationPermissionLauncher =
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    NotificationScheduler.schedule(applicationContext)
     setContent {
       SampleAppTheme(dynamicColor = false) {
         AuthHouseholdGate(
@@ -107,6 +115,11 @@ open class MainActivity : ComponentActivity() {
                 val listener = Consumer<Intent> { navController.handleDeepLink(it) }
                 addOnNewIntentListener(listener)
                 onDispose { removeOnNewIntentListener(listener) }
+              }
+              LaunchedEffect(Unit) {
+                if (NotificationPermission.shouldRequest(this@MainActivity)) {
+                  notificationPermissionLauncher.launch(NotificationPermission.PERMISSION)
+                }
               }
               DisposableEffect(navController) {
                 onDispose {
