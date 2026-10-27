@@ -8,7 +8,9 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class MlKitBarcodeScanner
 internal constructor(
@@ -22,7 +24,7 @@ internal constructor(
   private val scanner = lazy(scannerFactory)
 
   override suspend fun scan(imageUri: String): BarcodeScanResult {
-    val image = imageFactory(appContext, Uri.parse(imageUri))
+    val image = withContext(Dispatchers.IO) { imageFactory(appContext, Uri.parse(imageUri)) }
     val value =
         scanner.value.process(image).await().firstNotNullOfOrNull {
           it.rawValue?.takeIf(String::isNotBlank)

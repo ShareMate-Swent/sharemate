@@ -10,6 +10,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -81,7 +82,7 @@ class MlKitBarcodeScannerTest {
       kotlinx.coroutines.runBlocking { scanner.scan("content://photos/error") }
       throw AssertionError("Scanner failures must propagate")
     } catch (actual: IllegalStateException) {
-      assertSame(failure, actual)
+      assertEquals(failure.message, actual.message)
     }
   }
 
@@ -97,8 +98,25 @@ class MlKitBarcodeScannerTest {
       kotlinx.coroutines.runBlocking { scanner.scan("content://photos/missing") }
       throw AssertionError("Image loading failures must propagate")
     } catch (actual: IllegalArgumentException) {
-      assertSame(failure, actual)
+      assertEquals(failure.message, actual.message)
     }
+  }
+
+  @Test
+  fun scanLoadsImageOffTheCallerThread() {
+    val callerThread = Thread.currentThread()
+    var loadThread: Thread? = null
+    val scanner =
+        MlKitBarcodeScanner(context, { error("Scanner must not be created") }) { _, _ ->
+          loadThread = Thread.currentThread()
+          throw IllegalStateException("stop")
+        }
+
+    try {
+      kotlinx.coroutines.runBlocking { scanner.scan("content://photos/a") }
+    } catch (_: IllegalStateException) {}
+
+    assertNotSame(callerThread, loadThread)
   }
 
   @Test
