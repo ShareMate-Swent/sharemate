@@ -12,20 +12,33 @@ service cloud.firestore {
       return /databases/$(database)/documents/$(collection)/$(documentId);
     }
 
+    // Legacy fridges without a type remain shared. Private access follows the immutable creator.
+    function canAccessFridge(household) {
+      return household.get('type', 'SHARED') != 'PRIVATE'
+          || household.createdBy == request.auth.uid;
+    }
+
+    function hasValidPrivateMembers(household) {
+      return household.get('type', 'SHARED') != 'PRIVATE'
+          || household.memberIds.hasOnly([household.createdBy]);
+    }
+
     // A user profile is private to its owner.
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // Lookup from an invite code to its household. A code can be fetched by anyone who knows it,
-    // but codes cannot be listed, so they cannot be enumerated. Codes are immutable.
+    // Shared codes can be fetched by anyone who knows them. Private codes are owner-only.
+    // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
       function pointsToOwnHousehold() {
         let household = getAfter(documentPath('households', request.resource.data.householdId));
         return household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
       }
 
-      allow get: if signedIn();
+      // Missing codes remain readable for collision checks during household creation.
+      allow get: if signedIn() && (resource == null
+          || canAccessFridge(get(documentPath('households', resource.data.householdId)).data));
       allow create: if signedIn()
           && request.resource.data.keys().hasOnly(['householdId'])
           && request.resource.data.householdId is string
@@ -42,14 +55,17 @@ service cloud.firestore {
       function isValidNewHousehold() {
         let household = request.resource.data;
         let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
-        return household.keys().hasOnly(fields)
+        return household.keys().hasOnly(fields.concat(['type']))
             && household.keys().hasAll(fields)
+            // Legacy documents omit type.
+            && household.get('type', 'SHARED') in ['PRIVATE', 'SHARED']
             && household.id == householdId
             && household.name is string
             && household.name.size() > 0
             && household.inviteCode is string
             && household.createdBy == request.auth.uid
             && household.memberIds == [request.auth.uid]
+            && hasValidPrivateMembers(household)
             && household.createdAt is timestamp
             && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
                 == householdId;
@@ -85,15 +101,24 @@ service cloud.firestore {
       }
 
       // Fetching a missing household is allowed so that lookups can return "not found".
-      allow get: if signedIn() && (resource == null || isMember());
+      allow get: if signedIn() && (resource == null
+          || (canAccessFridge(resource.data)
+              && (resource.data.get('type', 'SHARED') == 'PRIVATE' || isMember())));
+      // Membership queries also cover legacy documents without type. Private memberships are
+      // restricted to the creator by every client write, so this cannot expose a private fridge
+      // to another user. Existing/admin-written private documents must preserve that invariant.
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
-      allow update: if signedIn() && (onlyAddsSelf() || onlyRemovesSelf());
+      allow update: if signedIn() && canAccessFridge(resource.data)
+          && hasValidPrivateMembers(request.resource.data)
+          && (onlyAddsSelf() || onlyRemovesSelf());
     }
 
     function isHouseholdMember(householdId) {
-      return householdId != null &&
-        request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+      let household = get(documentPath('households', householdId)).data;
+      return householdId != null && canAccessFridge(household)
+          && (household.get('type', 'SHARED') == 'PRIVATE'
+              || request.auth.uid in household.memberIds);
     }
 
     // Helpers shared by items and receipts. They take the document data as a parameter.

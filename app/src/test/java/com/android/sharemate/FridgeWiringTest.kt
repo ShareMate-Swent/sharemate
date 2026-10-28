@@ -4,6 +4,7 @@ package com.android.sharemate
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStoreOwner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.HouseholdGateViewModel
@@ -23,8 +24,10 @@ class FridgeWiringTest {
   @Test
   fun inventoryIsNotObservedUntilHouseholdIsResolved() {
     compose.onNodeWithTag("household_loading").assertExists()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     assertEquals(emptyList<String>(), firebase.observedHouseholds)
     resolve()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
   }
@@ -39,7 +42,8 @@ class FridgeWiringTest {
 
   @Test
   fun inventoryUpdatesAndTabNavigationDoNotDuplicateObservation() {
-    resolve()
+    resolve(FridgeType.PRIVATE)
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     emit("student-home", "Milk")
     compose.onNodeWithText("Milk").assertExists()
     emit("student-home", "Bread")
@@ -47,6 +51,7 @@ class FridgeWiringTest {
     compose.onNodeWithText("Milk").assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.onNodeWithText("Bread").assertExists()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
     assertEquals(emptyList<String>(), firebase.removedListeners)
@@ -58,13 +63,15 @@ class FridgeWiringTest {
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithText("Sign out").performClick()
     compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
   }
 
   @Test
   fun accountChangeClearsPreviousInventoryAndUsesNewHousehold() {
-    resolve()
+    resolve(FridgeType.PRIVATE)
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     emit("student-home", "Old inventory")
     compose.onNodeWithText("Old inventory").assertExists()
     compose.runOnIdle {
@@ -74,6 +81,7 @@ class FridgeWiringTest {
     compose.waitUntil { firebase.observedHouseholds == listOf("student-home", "other-home") }
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
     compose.onNodeWithText("Old inventory").assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
     emit("other-home", "New inventory")
     compose.onNodeWithText("New inventory").assertExists()
   }
@@ -110,16 +118,17 @@ class FridgeWiringTest {
 
   @Test
   fun activityRecreationRetainsTheInventoryListener() {
-    resolve()
+    resolve(FridgeType.PRIVATE)
     emit("student-home", "Milk")
     compose.activityRule.scenario.recreate()
     compose.onNodeWithText("Milk").assertExists()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
     assertEquals(emptyList<String>(), firebase.removedListeners)
   }
 
-  private fun resolve() {
-    compose.runOnIdle { firebase.resolveInitialHousehold() }
+  private fun resolve(type: FridgeType = FridgeType.SHARED) {
+    compose.runOnIdle { firebase.resolveInitialHousehold(type = type) }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
   }
 

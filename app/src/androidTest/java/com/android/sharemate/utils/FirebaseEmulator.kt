@@ -54,6 +54,8 @@ object FirebaseEmulator {
 
   /** Signs out and deletes every account and document stored in the emulators. */
   fun clear() {
+    auth
+    firestore
     signOut()
     delete("http://$HOST:$AUTH_PORT/emulator/v1/projects/$projectId/accounts")
     delete(

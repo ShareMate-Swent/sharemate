@@ -115,3 +115,31 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew :app:sonar --no-daemon --stacktrace
+
+  publish-release:
+    name: Publish APK release
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sharemate-m1-apk
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_PATH: app-debug.apk
+        run: |
+          TAG="ci-${GITHUB_RUN_NUMBER}"
+          cp "$APK_PATH" sharemate.apk
+          gh release create "$TAG" sharemate.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "ShareMate CI build #${GITHUB_RUN_NUMBER}" \
+            --notes "Automatically built from main commit ${GITHUB_SHA}." \
+            --latest

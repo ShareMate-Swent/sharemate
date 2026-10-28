@@ -58,7 +58,7 @@
 
     <string name="household_choice_title">Set up your fridge</string>
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
-    <string name="create_a_household_description">Start a new shared fridge and invite your roommates.</string>
+    <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
     <string name="household_privacy_note">• Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
@@ -66,6 +66,14 @@
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
     <string name="create_household_description">Give your household a name. You can change it later.</string>
+    <string name="fridge_type">Fridge type</string>
+    <string name="fridge_type_label">Fridge type: %1$s</string>
+    <string name="fridge_type_shared">Shared</string>
+    <string name="fridge_type_shared_description">Invite your roommates to use this fridge together.</string>
+    <string name="fridge_type_private">Private</string>
+    <string name="fridge_type_private_description">Only you can access this fridge.</string>
+    <string name="private_fridge_ready_title">Your private fridge is ready!</string>
+    <string name="private_fridge_ready_description">This fridge is only accessible to you.</string>
     <string name="household_name">Household name</string>
     <string name="household_name_placeholder">e.g. Rue de Lausanne flat</string>
     <string name="create_household">Create household</string>
@@ -81,6 +89,23 @@
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="household_retry">Try again</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_profile_photo">Profile photo</string>
+    <string name="settings_google_account">Google account</string>
+    <string name="settings_email_account">Email account</string>
+    <string name="settings_connected">Connected</string>
+    <string name="settings_signed_in_with_email">Signed in with email</string>
+    <string name="settings_google_description">You\'re signed in with Google. Your shared fridge stays connected to this account.</string>
+    <string name="settings_email_description">You\'re signed in with your email and password. Your shared fridge stays connected to this account.</string>
+    <string name="settings_switch_google_account">Switch Google account</string>
+    <string name="settings_switch_unavailable">Google sign-in isn\'t available on this device right now.</string>
+    <string name="settings_switch_network">Could not switch accounts. Check your connection and try again.</string>
+    <string name="settings_switch_failed">Could not switch to that Google account. Please try again.</string>
+    <string name="settings_household">Household</string>
+    <string name="settings_invite_code">Invite code</string>
+    <plurals name="settings_members">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
     <string name="leave_household">Leave household</string>
     <string name="leave_household_title">Leave household?</string>
     <string name="leave_household_message">You will no longer see %1$s\'s fridge. The other members keep the household and its items. You can join again with the invite code.</string>
@@ -94,7 +119,6 @@
     <string name="fridge_image_source">Image source</string>
     <string name="fridge_image_license">License</string>
     <string name="fridge_image_author">Author</string>
-    <string name="fridge_image_openverse">Image search powered by Openverse</string>
 
     <string name="fridge_remove">Delete</string>
     <string name="fridge_remove_description">Delete %1$s</string>

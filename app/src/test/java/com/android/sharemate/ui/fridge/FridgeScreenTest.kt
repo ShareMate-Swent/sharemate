@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -23,6 +24,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -91,6 +95,27 @@ class FridgeScreenTest {
   }
 
   @Test
+  fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
+    val type = mutableStateOf<FridgeType?>(null)
+    composeRule.setContent {
+      MaterialTheme { FridgeScreen(uiState = FridgeUiState(), fridgeType = type.value) }
+    }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
+    composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Private")
+    composeRule.runOnIdle { type.value = FridgeType.SHARED }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Shared")
+    composeRule.runOnIdle { type.value = null }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
+  }
+
+  @Test
   fun statusActionsAreAccessibleAndForwardTheCorrectLifecycleValue() {
     val changes = mutableListOf<ItemStatus>()
     composeRule.setContent {
@@ -153,7 +178,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -308,7 +338,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -349,7 +384,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {
@@ -440,6 +480,31 @@ class FridgeScreenTest {
 
     composeRule.onNodeWithText("Exp.: ", substring = true).assertIsDisplayed()
     composeRule.onNodeWithContentDescription("Expires soon:", substring = true).assertDoesNotExist()
+  }
+
+  @Test
+  fun expirationCardKeepsUtcDayInWesternTimeZone() {
+    val originalZone = java.util.TimeZone.getDefault()
+    try {
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Honolulu"))
+      val expiration = ExpirationDates.toDate(LocalDate.now().plusDays(4))
+      composeRule.setContent {
+        MaterialTheme {
+          FridgeItem(
+              item = Item(id = "utc-item", name = "Milk", expirationDate = expiration),
+              modifier = androidx.compose.ui.Modifier.width(100.dp))
+        }
+      }
+      composeRule
+          .onNodeWithText("Exp.: ${ExpirationDates.formatCompact(expiration)}")
+          .assertIsDisplayed()
+      composeRule
+          .onNodeWithContentDescription("Expires soon:", substring = true)
+          .assertDoesNotExist()
+      composeRule.onNodeWithContentDescription("Expired:", substring = true).assertDoesNotExist()
+    } finally {
+      java.util.TimeZone.setDefault(originalZone)
+    }
   }
 
   private fun openActions(id: String) {

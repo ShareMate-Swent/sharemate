@@ -47,6 +47,8 @@ In the GitHub repository, open **Settings → Secrets and variables → Actions*
 and create the four secrets listed above. Store the Base64 output in
 `ANDROID_KEYSTORE_BASE64`; enter the remaining values as prompted during
 keystore creation. Once these secrets are present, a push to `main` builds the
-APK with this certificate and uploads it as `sharemate-m1-apk`.
+APK with this certificate and uploads it as `sharemate-m1-apk`. After all CI
+checks pass, the workflow also creates a GitHub release named
+`ShareMate CI build #<run number>` with the APK available as `sharemate.apk`.
 
 Local builds and pull requests continue to use Android's standard debug key.

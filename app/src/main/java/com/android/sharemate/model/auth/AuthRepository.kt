@@ -1,10 +1,38 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.auth
 
 import kotlinx.coroutines.flow.Flow
 
-/** Authentication identity only; household/profile data belongs to its own repository. */
-data class AuthSession(val uid: String, val email: String?)
+/**
+ * Sign-in method linked to the account. An account can have several (Firebase may link Google to an
+ * existing email account with the same address); [GOOGLE] wins whenever a Google account is linked,
+ * so this is not necessarily the method used for the current sign-in. [UNKNOWN] covers providers
+ * the app does not offer.
+ */
+enum class SignInProvider {
+  GOOGLE,
+  EMAIL,
+  UNKNOWN
+}
+
+/**
+ * The authenticated identity, as reported by the sign-in provider. Household data belongs to its
+ * own repository.
+ *
+ * @property uid Unique user identifier.
+ * @property email Account email, if the provider shares one.
+ * @property displayName Account name, e.g. from the Google profile; null for email accounts.
+ * @property photoUrl Account photo URL, e.g. from the Google profile; null if there is none.
+ * @property provider Sign-in method linked to the account; see [SignInProvider].
+ */
+data class AuthSession(
+    val uid: String,
+    val email: String?,
+    val displayName: String? = null,
+    val photoUrl: String? = null,
+    val provider: SignInProvider = SignInProvider.UNKNOWN,
+)
 
 // Keep these names aligned with AuthUiError: UI conversion uses valueOf(name).
 enum class AuthError {

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
 import java.text.DateFormat
@@ -63,7 +64,7 @@ object ExpirationDates {
           .apply { timeZone = TimeZone.getTimeZone("UTC") }
           .format(date)
 
-  /** Compact `dd/MM/yyyy` text for the item card, formatted on the stored UTC day. */
+  /** Compact date for the inventory grid, formatted on the stored UTC day. */
   fun formatCompact(date: Date, locale: Locale = Locale.getDefault()): String =
       SimpleDateFormat("dd/MM/yyyy", locale)
           .apply { timeZone = TimeZone.getTimeZone("UTC") }
