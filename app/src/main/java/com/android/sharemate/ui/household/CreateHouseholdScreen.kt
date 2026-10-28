@@ -28,14 +28,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -49,12 +47,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -233,7 +229,6 @@ private fun ColumnScope.HouseholdReady(
 ) {
   val isPrivate = type == FridgeType.PRIVATE
   val colors = MaterialTheme.colorScheme
-  val clipboard = LocalClipboardManager.current
   val context = LocalContext.current
   Spacer(Modifier.height(48.dp))
   Box(
@@ -309,18 +304,10 @@ private fun ColumnScope.HouseholdReady(
               color = colors.onPrimaryContainer,
           )
           Spacer(Modifier.width(8.dp))
-          IconButton(
-              onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
+          CopyInviteCodeButton(
+              inviteCode = inviteCode,
               modifier = Modifier.testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),
-              colors =
-                  IconButtonDefaults.iconButtonColors(
-                      containerColor = colors.primaryContainer, contentColor = colors.primary),
-          ) {
-            Icon(
-                imageVector = Icons.Default.ContentCopy,
-                contentDescription = stringResource(R.string.copy_invite_code),
-            )
-          }
+          )
         }
         TextButton(
             onClick = {

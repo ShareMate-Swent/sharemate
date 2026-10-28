@@ -20,6 +20,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -131,7 +133,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -266,7 +273,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -296,7 +308,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {

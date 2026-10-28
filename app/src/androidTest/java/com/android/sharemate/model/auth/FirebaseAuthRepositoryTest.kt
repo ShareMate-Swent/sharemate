@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.auth
 
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
@@ -58,6 +59,7 @@ class FirebaseAuthRepositoryTest {
       repository.signUp(email, password)
       val signedUp = repository.session.first { it != null }!!
       assertEquals(email, signedUp.email)
+      assertEquals(SignInProvider.EMAIL, signedUp.provider)
       val logout = async { repository.session.first { it == null } }
       repository.signOut()
       assertNull(logout.await())

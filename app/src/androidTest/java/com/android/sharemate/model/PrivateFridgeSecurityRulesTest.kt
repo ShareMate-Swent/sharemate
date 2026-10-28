@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4

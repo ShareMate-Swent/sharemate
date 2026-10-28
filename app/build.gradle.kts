@@ -168,6 +168,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.mlkit.barcode.scanning)
     testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)
@@ -192,6 +193,7 @@ dependencies {
     implementation(libs.compose.viewmodel)
     implementation(libs.coil.compose)
     implementation(libs.okhttp)
+    testImplementation(libs.mockwebserver)
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)
