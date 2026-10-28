@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.item.Item
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -35,12 +36,15 @@ class FirebaseAuthTestRule(
   private val inventory = mutableMapOf<String, List<Item>>()
   private val callbacks = mutableMapOf<String, MutableList<EventListener<QuerySnapshot>>>()
 
-  fun resolveInitialHousehold(householdId: String? = "student-home") {
-    initialLookup.setResult(householdSnapshot(householdId, "trusted-student-id"))
+  fun resolveInitialHousehold(
+      householdId: String? = "student-home",
+      type: FridgeType = FridgeType.SHARED
+  ) {
+    initialLookup.setResult(householdSnapshot(householdId, "trusted-student-id", type))
   }
 
-  fun setHousehold(userId: String, householdId: String?) {
-    val snapshot = householdSnapshot(householdId, userId)
+  fun setHousehold(userId: String, householdId: String?, type: FridgeType = FridgeType.SHARED) {
+    val snapshot = householdSnapshot(householdId, userId, type)
     `when`(database.collection("households").whereArrayContains("memberIds", userId).limit(1).get())
         .thenReturn(Tasks.forResult(snapshot))
   }
@@ -61,14 +65,18 @@ class FirebaseAuthTestRule(
     callbacks[householdId]?.toList()?.forEach { it.onEvent(itemSnapshot(items), null) }
   }
 
-  private fun householdSnapshot(householdId: String?, userId: String): QuerySnapshot {
+  private fun householdSnapshot(
+      householdId: String?,
+      userId: String,
+      type: FridgeType = FridgeType.SHARED
+  ): QuerySnapshot {
     val snapshot = mock(QuerySnapshot::class.java)
     val documents =
         householdId
             ?.let {
               val document = mock(DocumentSnapshot::class.java)
               `when`(document.toObject(Household::class.java))
-                  .thenReturn(Household(id = it, memberIds = listOf(userId)))
+                  .thenReturn(Household(id = it, memberIds = listOf(userId), type = type))
               listOf(document)
             }
             .orEmpty()

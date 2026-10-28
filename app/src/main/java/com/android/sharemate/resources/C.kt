@@ -11,6 +11,7 @@ object C {
     const val second_screen_container = "second_screen_container"
     const val fridge_screen_container = "fridge_screen_container"
     const val fridge_title = "fridge_title"
+    const val fridge_type = "fridge_type"
     const val fridge_empty = "fridge_empty"
     const val fridge_add_item = "fridge_add_item"
     const val fridge_add_dialog = "fridge_add_dialog"
