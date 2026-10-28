@@ -1,10 +1,12 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import kotlinx.coroutines.tasks.await
@@ -26,7 +28,17 @@ class HouseholdRepositoryFirestore(
     repeat(MAX_INVITE_CODE_ATTEMPTS) {
       val inviteCode = inviteCodeGenerator.generate()
       val existing =
-          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode).get().await()
+          try {
+            firestore
+                .collection(FirestoreCollections.INVITE_CODES)
+                .document(inviteCode)
+                .get()
+                .await()
+          } catch (exception: FirebaseFirestoreException) {
+            // Rules hide private invite codes owned by another user; treat them as unavailable.
+            if (exception.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return@repeat
+            throw exception
+          }
       if (existing.exists()) return@repeat
 
       val householdReference = firestore.collection(FirestoreCollections.HOUSEHOLDS).document()
