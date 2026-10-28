@@ -31,6 +31,6 @@ class NotificationSchedulerWorkTest {
     NotificationScheduler.schedule(context)
     NotificationScheduler.schedule(context)
 
-    assertEquals(NetworkType.CONNECTED, scheduled().single().constraints.requiredNetworkType)
+    assertEquals(NetworkType.NOT_REQUIRED, scheduled().single().constraints.requiredNetworkType)
   }
 }
