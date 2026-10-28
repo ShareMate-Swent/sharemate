@@ -1147,19 +1147,28 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun lookupProductFromImagePropagatesScannerFailures() = runTest {
-    val failure = IOException("Unreadable image")
-    barcodeScanner.failure = failure
+  fun lookupProductFromImageReturnsFailureWhenScannerFails() = runTest {
+    barcodeScanner.failure = IOException("Unreadable image")
+    val vm = viewModel()
+
+    assertEquals(Failure(Reason.INVALID_BARCODE), vm.lookupProductFromImage("content://photo/42"))
+    assertTrue(lookedUpBarcodes.isEmpty())
+  }
+
+  @Test
+  fun lookupProductFromImageRethrowsScannerCancellation() = runTest {
+    val cancellation = CancellationException("cancelled")
+    barcodeScanner.failure = cancellation
     val vm = viewModel()
 
     val actual =
         try {
           vm.lookupProductFromImage("content://photo/42")
           null
-        } catch (exception: IOException) {
+        } catch (exception: CancellationException) {
           exception
         }
-    assertSame(failure, actual)
+    assertSame(cancellation, actual)
     assertTrue(lookedUpBarcodes.isEmpty())
   }
 

@@ -328,13 +328,22 @@ class FridgeViewModel(
    * Decodes an image and looks up its barcode in the product catalog.
    *
    * The caller receives the catalog result directly and decides how to apply any returned details
-   * to its form. A scan that finds no barcode is reported as [Reason.INVALID_BARCODE].
+   * to its form. A scan that finds no barcode or a scanner error is reported as
+   * [Reason.INVALID_BARCODE].
    */
   suspend fun lookupProductFromImage(imageUri: String): ProductLookupResult {
     if (imageUri.isBlank()) return Failure(Reason.INVALID_BARCODE)
+    val scanResult =
+        try {
+          barcodeScanner.scan(imageUri)
+        } catch (exception: CancellationException) {
+          throw exception
+        } catch (exception: Exception) {
+          return Failure(Reason.INVALID_BARCODE)
+        }
     val barcode =
-        when (val result = barcodeScanner.scan(imageUri)) {
-          is BarcodeScanResult.Found -> result.value.trim().takeIf(String::isNotEmpty)
+        when (scanResult) {
+          is BarcodeScanResult.Found -> scanResult.value.trim().takeIf(String::isNotEmpty)
           BarcodeScanResult.NotFound -> null
         } ?: return Failure(Reason.INVALID_BARCODE)
     return productCatalogRepository.lookupByBarcode(barcode)
