@@ -1,6 +1,7 @@
 package com.android.sharemate.model.image
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -16,6 +17,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowBitmapFactory
 
 @RunWith(RobolectricTestRunner::class)
@@ -130,6 +134,55 @@ class BarcodePhotoStoreTest {
       store.validate(capture)
       fail("Deleted capture must not be accepted")
     } catch (_: IOException) {}
+  }
+
+  @Test
+  @Config(shadows = [BoundsOnlyDecoder::class])
+  fun pixelLimitAcceptsBoundaryAndRejectsOversizedMetadataWithoutLeakingCopies() = runTest {
+    val limit = AndroidBarcodePhotoStore.MAX_PIXELS.toInt()
+    for ((width, height) in
+        listOf(1 to limit - 1, 1 to limit, 1 to limit + 1, Int.MAX_VALUE to Int.MAX_VALUE)) {
+      BoundsOnlyDecoder.width = width
+      BoundsOnlyDecoder.height = height
+      val selected = Uri.parse("content://photos/dimensions/$width/$height")
+      val compressed = png()
+      assertTrue(compressed.size < AndroidBarcodePhotoStore.MAX_BYTES)
+      shadowOf(context.contentResolver).registerInputStream(selected, compressed.inputStream())
+      if (width.toLong() * height <= AndroidBarcodePhotoStore.MAX_PIXELS) {
+        val copy = store.importImage(selected.toString())
+        assertTrue(File(Uri.parse(copy).path!!).exists())
+        store.delete(copy)
+      } else {
+        try {
+          store.importImage(selected.toString())
+          fail("Oversized decoder dimensions must be rejected even for a small file")
+        } catch (failure: IOException) {
+          assertEquals("Image exceeds pixel limit", failure.message)
+        }
+      }
+      assertTrue(
+          "No rejected or deleted copies should remain", directory.listFiles().orEmpty().isEmpty())
+    }
+  }
+
+  // Stub only decoder metadata: legacy Robolectric otherwise allocates all pixels even when
+  // inJustDecodeBounds is true. This keeps extreme dimensions and overflow tests memory-safe.
+  @Implements(BitmapFactory::class)
+  class BoundsOnlyDecoder {
+    companion object {
+      var width = 0
+      var height = 0
+
+      @JvmStatic
+      @Implementation
+      fun decodeFile(path: String, options: BitmapFactory.Options): Bitmap? {
+        assertTrue(File(path).isFile)
+        assertTrue("Validation must not decode pixels", options.inJustDecodeBounds)
+        options.outWidth = width
+        options.outHeight = height
+        return null
+      }
+    }
   }
 
   private fun png(): ByteArray {

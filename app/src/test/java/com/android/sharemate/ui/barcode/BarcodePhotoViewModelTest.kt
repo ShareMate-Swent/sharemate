@@ -1,6 +1,7 @@
 package com.android.sharemate.ui.barcode
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.image.BarcodePhotoStore
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -226,7 +227,92 @@ class BarcodePhotoViewModelTest {
     assertEquals(listOf("file:///private/first"), store.deleted)
   }
 
+  @Test
+  fun closedFormIgnoresCaptureAndConfirmationButCanBeReopened() = runTest {
+    vm.select("content://gallery/first")
+    advanceUntilIdle()
+    vm.closePreview()
+    val closed = vm.state.value
+    val validations = store.validated.toList()
+    vm.capture { fail("Closed form must not start the camera") }
+    vm.confirm { fail("Closed form must not hand off an image") }
+    advanceUntilIdle()
+    assertEquals(closed, vm.state.value)
+    assertEquals(0, store.captures)
+    assertEquals(validations, store.validated)
+    assertTrue(store.deleted.isEmpty())
+    assertEquals(false, saved.get<Boolean>(BarcodePhotoViewModel.VISIBLE_KEY))
+    vm.open()
+    vm.capture { assertEquals("file:///private/capture", it) }
+    advanceUntilIdle()
+    val consumed = mutableListOf<String>()
+    vm.confirm { consumed += it }
+    advanceUntilIdle()
+    assertEquals(1, store.captures)
+    assertEquals(listOf("file:///private/capture"), consumed)
+    assertTrue(vm.state.value.confirmed)
+  }
+
+  @Test
+  fun clearingViewModelWaitsForCaptureCallbackBeforeDeletingItsFile() = runTest {
+    val owner = ViewModelStore().apply { put("photo", vm) }
+    val finishing = CompletableDeferred<Unit>()
+    var callbackFinished = false
+    vm.capture {
+      withContext(NonCancellable) {
+        finishing.await()
+        callbackFinished = true
+      }
+    }
+    advanceUntilIdle()
+    assertEquals(1, store.captures)
+    store.afterDelete = { assertTrue(callbackFinished) }
+    owner.clear()
+    advanceUntilIdle()
+    assertFalse(callbackFinished)
+    assertTrue(store.deleted.isEmpty())
+    finishing.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf("file:///private/capture"), store.deleted)
+    assertFalse(vm.state.value.failed)
+  }
+
+  @Test
+  fun clearingViewModelWaitsForCancelledConsumerCleanupBeforeDeletingItsFile() = runTest {
+    val owner = ViewModelStore().apply { put("photo", vm) }
+    vm.select("content://gallery/first")
+    advanceUntilIdle()
+    val finishing = CompletableDeferred<Unit>()
+    var cleanupStarted = false
+    var cleanupFinished = false
+    vm.confirm {
+      try {
+        CompletableDeferred<Unit>().await()
+      } finally {
+        cleanupStarted = true
+        withContext(NonCancellable) {
+          finishing.await()
+          cleanupFinished = true
+        }
+      }
+    }
+    advanceUntilIdle()
+    store.afterDelete = { assertTrue(cleanupFinished) }
+    owner.clear()
+    advanceUntilIdle()
+    assertTrue(cleanupStarted)
+    assertFalse(cleanupFinished)
+    assertTrue(store.deleted.isEmpty())
+    finishing.complete(Unit)
+    advanceUntilIdle()
+    assertTrue(cleanupFinished)
+    assertEquals(listOf("file:///private/first"), store.deleted)
+    assertFalse(vm.state.value.confirmed)
+    assertFalse(vm.state.value.failed)
+  }
+
   private class PhotoStore : BarcodePhotoStore {
+    var captures = 0
     val imports = mutableListOf<String>()
     val deleted = mutableListOf<String>()
     val validated = mutableListOf<String>()
@@ -235,7 +321,10 @@ class BarcodePhotoViewModelTest {
     var validationFailure: Exception? = null
     var afterDelete: () -> Unit = {}
 
-    override suspend fun createCapture() = "file:///private/capture"
+    override suspend fun createCapture(): String {
+      captures++
+      return "file:///private/capture"
+    }
 
     override suspend fun importImage(uri: String): String {
       imports += uri
