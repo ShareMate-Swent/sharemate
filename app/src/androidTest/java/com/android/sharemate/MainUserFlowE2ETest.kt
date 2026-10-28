@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate
 
+import android.Manifest
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
@@ -34,6 +36,10 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainUserFlowE2ETest {
+  @get:Rule(order = 0)
+  val notificationPermission: GrantPermissionRule =
+      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+
   @get:Rule(order = 0)
   val firebaseEmulator =
       object : ExternalResource() {

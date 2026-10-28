@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
+import android.Manifest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
@@ -20,6 +22,10 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
+
+  @get:Rule(order = 0)
+  val notificationPermission: GrantPermissionRule =
+      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
 
   @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule()
 
