@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
@@ -24,10 +25,16 @@ class HouseholdRepositoryFirestore(
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
 
     repeat(MAX_INVITE_CODE_ATTEMPTS) {
-      val inviteCode = inviteCodeGenerator.generate()
-      val existing =
-          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode).get().await()
-      if (existing.exists()) return@repeat
+      val inviteCode = if (type == FridgeType.SHARED) inviteCodeGenerator.generate() else ""
+      if (type == FridgeType.SHARED) {
+        val existing =
+            firestore
+                .collection(FirestoreCollections.INVITE_CODES)
+                .document(inviteCode)
+                .get()
+                .await()
+        if (existing.exists()) return@repeat
+      }
 
       val householdReference = firestore.collection(FirestoreCollections.HOUSEHOLDS).document()
       val household =
@@ -39,13 +46,14 @@ class HouseholdRepositoryFirestore(
               createdBy = creatorId,
               createdAt = Date(),
               type = type)
-      val inviteCodeReference =
-          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
+      val batch = firestore.batch().set(householdReference, household)
+      if (type == FridgeType.SHARED) {
+        val inviteCodeReference =
+            firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
+        batch.set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
+      }
 
-      firestore
-          .batch()
-          .set(householdReference, household)
-          .set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
+      batch
           .set(
               firestore.collection(FirestoreCollections.USERS).document(creatorId),
               mapOf(HOUSEHOLD_ID_FIELD to household.id),

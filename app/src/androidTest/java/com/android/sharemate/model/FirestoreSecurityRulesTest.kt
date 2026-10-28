@@ -129,7 +129,7 @@ class FirestoreSecurityRulesTest {
           Household(
               id = type.name,
               name = "Home",
-              inviteCode = type.name,
+              inviteCode = if (type == FridgeType.PRIVATE) "" else type.name,
               memberIds = listOf(userId),
               createdBy = userId,
               createdAt = Date(),
@@ -437,16 +437,18 @@ class FirestoreSecurityRulesTest {
   }
 
   /** Writes the same batch as the repository, for the signed-in user. */
-  private fun createHousehold(household: Household, data: Any = household): Task<Void> =
-      firestore
-          .batch()
-          .set(householdReference(household.id), data)
-          .set(inviteCodeReference(household.inviteCode), mapOf("householdId" to household.id))
-          .set(
-              userReference(checkNotNull(FirebaseEmulator.auth.uid)),
-              mapOf("householdId" to household.id),
-              SetOptions.merge())
-          .commit()
+  private fun createHousehold(household: Household, data: Any = household): Task<Void> {
+    val batch = firestore.batch().set(householdReference(household.id), data)
+    if (household.type == FridgeType.SHARED) {
+      batch.set(inviteCodeReference(household.inviteCode), mapOf("householdId" to household.id))
+    }
+    return batch
+        .set(
+            userReference(checkNotNull(FirebaseEmulator.auth.uid)),
+            mapOf("householdId" to household.id),
+            SetOptions.merge())
+        .commit()
+  }
 
   private fun userReference(userId: String): DocumentReference =
       firestore.collection(FirestoreCollections.USERS).document(userId)

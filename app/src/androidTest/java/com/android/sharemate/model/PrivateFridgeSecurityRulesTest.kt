@@ -42,25 +42,24 @@ class PrivateFridgeSecurityRulesTest {
   @After fun tearDown() = FirebaseEmulator.clear()
 
   @Test
-  fun ownerCanReadQueryLeaveAndRejoinPrivateFridge() = runBlocking {
+  fun ownerCanReadQueryAndLeavePrivateFridgeWithoutAnInvite() = runBlocking {
     val owner = FirebaseEmulator.signInAs("owner")
     val fridge = createFridge("private", owner, FridgeType.PRIVATE)
 
     assertEquals(fridge, repository.getHousehold(fridge.id))
     assertEquals(fridge, repository.getHouseholdForUser(owner))
-    assertEquals(
-        fridge.id, Tasks.await(codes.document(fridge.inviteCode).get()).getString("householdId"))
+    assertEquals("", fridge.inviteCode)
     repository.leaveHousehold(owner)
 
     assertNull(repository.getHouseholdForUser(owner))
     assertEquals(emptyList<String>(), repository.getHousehold(fridge.id)?.memberIds)
-    assertEquals(fridge, repository.joinHousehold(fridge.inviteCode, owner))
+    assertFalse(Tasks.await(users.document(owner).get()).contains("householdId"))
   }
 
   @Test
   fun outsiderCannotReadPrivateFridgeEvenWithForgedProfileOrKnownCode() = runBlocking {
     val owner = FirebaseEmulator.signInAs("owner")
-    val fridge = createFridge("private", owner, FridgeType.PRIVATE)
+    val fridge = seedLegacyPrivateFridge(owner)
     val outsider = FirebaseEmulator.signInAs("outsider")
     Tasks.await(users.document(outsider).set(mapOf("householdId" to fridge.id)))
 
@@ -107,13 +106,7 @@ class PrivateFridgeSecurityRulesTest {
 
     val invalid =
         Household(
-            "invalid",
-            "Private",
-            "INVALID",
-            listOf(owner, outsider),
-            owner,
-            Date(),
-            FridgeType.PRIVATE)
+            "invalid", "Private", "", listOf(owner, outsider), owner, Date(), FridgeType.PRIVATE)
     assertDenied(writeFridge(invalid))
   }
 
@@ -204,7 +197,13 @@ class PrivateFridgeSecurityRulesTest {
   private fun createFridge(id: String, owner: String, type: FridgeType?): Household {
     val fridge =
         Household(
-            id, "Home", id.uppercase(), listOf(owner), owner, Date(), type ?: FridgeType.SHARED)
+            id,
+            "Home",
+            if (type == FridgeType.PRIVATE) "" else id.uppercase(),
+            listOf(owner),
+            owner,
+            Date(),
+            type ?: FridgeType.SHARED)
     val data: Any =
         if (type != null) fridge
         else
@@ -219,16 +218,65 @@ class PrivateFridgeSecurityRulesTest {
     return fridge
   }
 
-  private fun writeFridge(fridge: Household, data: Any = fridge): Task<Void> =
-      firestore
-          .batch()
-          .set(households.document(fridge.id), data)
-          .set(codes.document(fridge.inviteCode), mapOf("householdId" to fridge.id))
-          .set(
-              users.document(fridge.createdBy),
-              mapOf("householdId" to fridge.id),
-              SetOptions.merge())
-          .commit()
+  @Test
+  fun privateCreationRejectsNonemptyCodesAndNewInviteMappings() {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val invalid =
+        Household("invalid", "Mine", "PRIVATE", listOf(owner), owner, Date(), FridgeType.PRIVATE)
+    assertDenied(households.document(invalid.id).set(invalid))
+    assertDenied(writeFridge(invalid))
+
+    val fridge = createFridge("private", owner, FridgeType.PRIVATE)
+    assertDenied(codes.document("NEWCODE").set(mapOf("householdId" to fridge.id)))
+    assertEquals("", Tasks.await(households.document(fridge.id).get()).getString("inviteCode"))
+    assertFalse(Tasks.await(codes.document("PRIVATE").get()).exists())
+    assertFalse(Tasks.await(codes.document("NEWCODE").get()).exists())
+  }
+
+  @Test
+  fun sharedCreationRequiresAnInviteMapping() {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val shared =
+        Household("shared", "Home", "SHARED", listOf(owner), owner, Date(), FridgeType.SHARED)
+    assertDenied(households.document(shared.id).set(shared))
+    assertDenied(households.document(shared.id).set(shared.copy(inviteCode = "")))
+    Tasks.await(writeFridge(shared))
+    assertEquals(
+        shared.id, Tasks.await(codes.document(shared.inviteCode).get()).getString("householdId"))
+  }
+
+  @Test
+  fun legacyPrivateCodeRemainsReadableByOwnerAfterLeaving() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val fridge = seedLegacyPrivateFridge(owner)
+    assertEquals(
+        fridge.id, Tasks.await(codes.document(fridge.inviteCode).get()).getString("householdId"))
+    assertEquals(fridge, repository.getHousehold(fridge.id))
+    repository.leaveHousehold(owner)
+    assertEquals(
+        fridge.id, Tasks.await(codes.document(fridge.inviteCode).get()).getString("householdId"))
+    assertEquals(fridge, repository.joinHousehold(fridge.inviteCode, owner))
+  }
+
+  private fun seedLegacyPrivateFridge(owner: String): Household {
+    createFridge("private", owner, FridgeType.PRIVATE)
+    FirebaseEmulator.seedLegacyDocument(
+        "households", "private", """{"inviteCode":{"stringValue":"LEGACY"}}""")
+    FirebaseEmulator.seedLegacyDocument(
+        "inviteCodes", "LEGACY", """{"householdId":{"stringValue":"private"}}""")
+    return Tasks.await(households.document("private").get()).toObject(Household::class.java)!!
+  }
+
+  private fun writeFridge(fridge: Household, data: Any = fridge): Task<Void> {
+    val batch = firestore.batch().set(households.document(fridge.id), data)
+    if (fridge.inviteCode.isNotEmpty()) {
+      batch.set(codes.document(fridge.inviteCode), mapOf("householdId" to fridge.id))
+    }
+    return batch
+        .set(
+            users.document(fridge.createdBy), mapOf("householdId" to fridge.id), SetOptions.merge())
+        .commit()
+  }
 
   private fun assertDenied(task: Task<*>) {
     val failure = assertThrows(ExecutionException::class.java) { Tasks.await(task) }

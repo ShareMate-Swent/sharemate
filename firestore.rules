@@ -28,12 +28,13 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // Shared codes can be fetched by anyone who knows them. Private codes are owner-only.
+    // Shared codes can be fetched by anyone who knows them. Legacy private codes are owner-only.
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
       function pointsToOwnHousehold() {
         let household = getAfter(documentPath('households', request.resource.data.householdId));
-        return household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
+        return household.data.get('type', 'SHARED') == 'SHARED'
+            && household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
       }
 
       // Missing codes remain readable for collision checks during household creation.
@@ -50,8 +51,16 @@ service cloud.firestore {
         return request.auth.uid in resource.data.memberIds;
       }
 
-      // The creator is the only initial member, and the invite-code lookup document must be
-      // written in the same batch.
+      // Private fridges have no invite code. Shared codes must map back to this household.
+      function hasValidInviteCode(household) {
+        return (household.get('type', 'SHARED') == 'PRIVATE' && household.inviteCode == '')
+            || (household.get('type', 'SHARED') == 'SHARED'
+                && household.inviteCode.size() > 0
+                && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
+                    == householdId);
+      }
+
+      // The creator is the only initial member; shared fridges also require an invite lookup.
       function isValidNewHousehold() {
         let household = request.resource.data;
         let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
@@ -67,8 +76,7 @@ service cloud.firestore {
             && household.memberIds == [request.auth.uid]
             && hasValidPrivateMembers(household)
             && household.createdAt is timestamp
-            && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
-                == householdId;
+            && hasValidInviteCode(household);
       }
 
       // Membership changes may touch memberIds and nothing else.

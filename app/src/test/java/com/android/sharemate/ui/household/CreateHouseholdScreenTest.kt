@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.household
 
 import android.content.Context
@@ -77,6 +78,36 @@ class CreateHouseholdScreenTest {
   }
 
   @Test
+  fun switchingPrivateBackToSharedUpdatesBothChoicesAndSubmitsShared() {
+    val repository = TestHouseholdRepository()
+    composeTestRule.setContent {
+      MaterialTheme {
+        CreateHouseholdScreen(createViewModel(repository), onContinue = {}, onBack = {})
+      }
+    }
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsNotSelected()
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE)
+        .performClick()
+        .assertIsSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsNotSelected()
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED)
+        .performClick()
+        .assertIsSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsNotSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf(FridgeType.SHARED), repository.createdTypes)
+    composeTestRule.onNodeWithText("ABC123").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertIsDisplayed()
+  }
+
+  @Test
   fun blankNameDisablesCreate() {
     composeTestRule.setContent {
       MaterialTheme { CreateHouseholdScreen(createViewModel(), onContinue = {}, onBack = {}) }
@@ -111,7 +142,7 @@ class CreateHouseholdScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(FridgeType.PRIVATE, viewModel.state.value.type)
-    assertEquals("ABC123", viewModel.state.value.inviteCode)
+    assertEquals("", viewModel.state.value.inviteCode)
   }
 
   @Test
@@ -212,15 +243,21 @@ class CreateHouseholdScreenTest {
   private class TestHouseholdRepository(var failure: Exception? = null) : HouseholdRepository {
     private val delegate = InMemoryHouseholdRepository()
     var gate: CompletableDeferred<Unit>? = null
+    val createdTypes = mutableListOf<FridgeType>()
 
     override suspend fun createHousehold(
         name: String,
         creatorId: String,
         type: FridgeType
     ): Household {
+      createdTypes += type
       gate?.await()
       failure?.let { throw it }
-      return Household(name = name, inviteCode = "ABC123", createdBy = creatorId, type = type)
+      return Household(
+          name = name,
+          inviteCode = if (type == FridgeType.SHARED) "ABC123" else "",
+          createdBy = creatorId,
+          type = type)
     }
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =

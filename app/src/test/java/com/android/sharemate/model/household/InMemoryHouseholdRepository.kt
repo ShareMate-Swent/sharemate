@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import java.util.Date
@@ -20,7 +21,9 @@ class InMemoryHouseholdRepository : HouseholdRepository {
         Household(
             id = UUID.randomUUID().toString(),
             name = name,
-            inviteCode = UUID.randomUUID().toString().take(8).uppercase(),
+            inviteCode =
+                if (type == FridgeType.SHARED) UUID.randomUUID().toString().take(8).uppercase()
+                else "",
             memberIds = listOf(creatorId),
             createdBy = creatorId,
             createdAt = Date(),

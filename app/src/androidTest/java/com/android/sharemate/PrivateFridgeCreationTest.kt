@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate
 
 import android.graphics.Bitmap
@@ -61,6 +62,7 @@ class PrivateFridgeCreationTest {
           .getHouseholdForUser(checkNotNull(FirebaseEmulator.auth.uid))
     }
     assertEquals(FridgeType.PRIVATE, household?.type)
+    assertEquals("", household?.inviteCode)
     assertEquals("My private fridge", household?.name)
     screenshot("private-fridge-confirmation")
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()

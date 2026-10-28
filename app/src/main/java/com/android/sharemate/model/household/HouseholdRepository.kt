@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 /**
@@ -15,6 +16,7 @@ interface HouseholdRepository {
    * Creates a household with [creatorId] as its first member.
    *
    * [type] selects a private or shared fridge; existing callers create a shared fridge by default.
+   * Private fridges have an empty [Household.inviteCode] and no invite-code lookup record.
    *
    * @throws IllegalArgumentException if [name] or [creatorId] is blank.
    * @throws Exception if the data source cannot create the household.
@@ -38,9 +40,9 @@ interface HouseholdRepository {
   /**
    * Removes [userId] from the household they belong to and unlinks it from their profile.
    *
-   * The household and its invite code are kept, even when its last member leaves, so the user can
-   * join again with the same code. When no household lists the user, only a stale household
-   * reference left on their profile is cleared; without one, nothing is written.
+   * The household and any shared invite code are kept, even when its last member leaves, so shared
+   * households can be joined again with the same code. When no household lists the user, only a
+   * stale household reference left on their profile is cleared; without one, nothing is written.
    *
    * @throws IllegalArgumentException if [userId] is blank.
    * @throws Exception if the data source cannot leave the household.
