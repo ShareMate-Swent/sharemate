@@ -11,7 +11,7 @@ data class FoodImage(
     val sourceUrl: String,
     /** Titre original, sans substitution par le titre recherché s'il est absent. */
     val title: String?,
-    /** Identifiant Creative Commons : « cc0 » ou « by ». */
+    /** Identifiant Creative Commons : « cc0 », « by » ou « by-sa ». */
     val license: String,
     val licenseUrl: String,
     val licenseVersion: String?,
