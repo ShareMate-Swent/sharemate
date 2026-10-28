@@ -64,6 +64,15 @@
     <string name="share_invite_code">Share</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
+    <string name="notification_expiration_title">Check your fridge</string>
+    <plurals name="notification_expiration_expired">
+        <item quantity="one">%d item has expired</item>
+        <item quantity="other">%d items have expired</item>
+    </plurals>
+    <plurals name="notification_expiration_soon">
+        <item quantity="one">%d item expires soon</item>
+        <item quantity="other">%d items expire soon</item>
+    </plurals>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
