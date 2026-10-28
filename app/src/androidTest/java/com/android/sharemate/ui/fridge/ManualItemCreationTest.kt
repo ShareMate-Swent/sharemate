@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -104,7 +105,10 @@ class ManualItemCreationTest {
     composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
     composeTestRule.onNodeWithText("Qty: 1 unit").assertIsDisplayed()
     composeTestRule
-        .onNodeWithText("Expires ${ExpirationDates.formatDisplay(storedExpirationDate)}")
+        .onNodeWithText(
+            composeTestRule.activity.getString(
+                R.string.fridge_card_expiration,
+                ExpirationDates.formatCompact(storedExpirationDate)))
         .assertIsDisplayed()
     composeTestRule.runOnIdle {
       val expected =
