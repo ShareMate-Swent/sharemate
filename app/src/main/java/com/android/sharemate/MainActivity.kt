@@ -175,7 +175,7 @@ open class MainActivity : ComponentActivity() {
                                   }
                                 })
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      FridgeScreen(viewModel = fridgeViewModel)
+                      FridgeScreen(viewModel = fridgeViewModel, fridgeType = household.type)
                     }
                   }
                   composable(TopLevelDestination.RECIPES.route) {
