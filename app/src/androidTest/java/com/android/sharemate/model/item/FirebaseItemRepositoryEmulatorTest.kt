@@ -17,6 +17,8 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -50,6 +52,106 @@ class FirebaseItemRepositoryEmulatorTest {
     await(firestore.waitForPendingWrites())
     FirebaseEmulator.clear()
   }
+
+  @Test
+  fun imageAttachmentPreservesAllOtherFieldsAndRoundTripsCredits() = runBlocking {
+    val household = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
+    val original =
+        Item(
+            name = "Milk",
+            ownerId = owner,
+            householdId = household.id,
+            category = "Dairy",
+            expirationDate = Date(1_800_000_000_000),
+            quantity = 4,
+            status = ItemStatus.EATEN)
+    val id = checkNotNull(repository.addItem(original))
+    val doc = document(id)
+    await(doc.update("extraMetadata", mapOf("barcode" to "12345678")))
+    val before = await(doc.get(Source.SERVER)).data!!
+
+    assertEquals(
+        ItemImageUpdateResult.Updated, repository.updateItemImageIfAbsent(id, "Milk", lookupImage))
+
+    val after = await(doc.get(Source.SERVER))
+    assertEquals(before - "image", after.data!! - "image")
+    assertEquals(original.copy(id = id, image = lookupImage), after.toItemOrNull())
+  }
+
+  @Test
+  fun imageAttachmentIgnoresRenamedAndAlreadyIllustratedItems() = runBlocking {
+    val personal = ItemImage(reference = "content://personal")
+    for (original in
+        listOf(
+            Item(name = "Oat milk", ownerId = owner),
+            Item(name = "Milk", ownerId = owner, image = personal),
+            Item(name = "Milk", ownerId = owner, image = lookupImage))) {
+      val id = checkNotNull(repository.addItem(original))
+      val before = await(document(id).get(Source.SERVER)).data
+      assertEquals(
+          ItemImageUpdateResult.Ignored,
+          repository.updateItemImageIfAbsent(id, "Milk", lookupImage.copy(reference = "new")))
+      assertEquals(before, await(document(id).get(Source.SERVER)).data)
+    }
+  }
+
+  @Test
+  fun imageAttachmentIgnoresDeletedItemWithoutRecreatingIt() = runBlocking {
+    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    assertTrue(repository.deleteItem(id))
+    assertEquals(
+        ItemImageUpdateResult.Ignored, repository.updateItemImageIfAbsent(id, "Milk", lookupImage))
+    assertFalse(await(document(id).get(Source.SERVER)).exists())
+  }
+
+  @Test
+  fun imageWriteDeniedByRulesReturnsErrorAndPreservesDocument() = runBlocking {
+    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    // Simulate legacy invalid data: reading is allowed, but any update fails validation.
+    val fields = JSONObject().put("quantity", field("integerValue", "0"))
+    assertEquals(
+        200,
+        adminRequest(
+                id,
+                "PATCH",
+                JSONObject().put("fields", fields).toString(),
+                "?updateMask.fieldPaths=quantity")
+            .first)
+    val before = await(document(id).get(Source.SERVER)).data
+    val result = repository.updateItemImageIfAbsent(id, "Milk", lookupImage)
+    assertEquals(
+        FirebaseFirestoreException.Code.PERMISSION_DENIED,
+        ((result as ItemImageUpdateResult.Error).cause as FirebaseFirestoreException).code)
+    assertEquals(before, await(document(id).get(Source.SERVER)).data)
+  }
+
+  @Test
+  fun competingImageAttachmentsHaveExactlyOneWinner() = runBlocking {
+    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val images = listOf(lookupImage, lookupImage.copy(reference = "https://example.org/other.jpg"))
+    val results =
+        images
+            .map { image -> async { repository.updateItemImageIfAbsent(id, "Milk", image) } }
+            .awaitAll()
+    assertEquals(1, results.count { it == ItemImageUpdateResult.Updated })
+    assertEquals(1, results.count { it == ItemImageUpdateResult.Ignored })
+    assertEquals(
+        images[results.indexOf(ItemImageUpdateResult.Updated)],
+        await(document(id).get(Source.SERVER)).toItemOrNull()?.image)
+  }
+
+  private val lookupImage =
+      ItemImage(
+          origin = ItemImageOrigin.REMOTE_IMAGE,
+          reference = "https://images.example.org/milk.jpg",
+          author = "Jane Doe",
+          sourceName = "Photo library",
+          sourceUrl = "https://example.org/photos/42",
+          title = "Fresh milk",
+          license = "by",
+          licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+          licenseVersion = "4.0",
+          authorUrl = "https://example.org/jane")
 
   @Test
   fun roundTripPartialEditStatusesAndDeletion() = runBlocking {
