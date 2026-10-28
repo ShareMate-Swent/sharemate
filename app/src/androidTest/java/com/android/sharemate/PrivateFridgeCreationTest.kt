@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -17,6 +18,7 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
@@ -67,6 +69,20 @@ class PrivateFridgeCreationTest {
     screenshot("private-fridge-confirmation")
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
     waitFor(NavigationTestTags.FRIDGE_TAB)
+    compose
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Private")
+    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
+    compose.activityRule.scenario.recreate()
+    waitFor(C.Tag.fridge_type)
+    compose
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Private")
+    screenshot("private-fridge-overview")
   }
 
   private fun waitFor(tag: String) {
