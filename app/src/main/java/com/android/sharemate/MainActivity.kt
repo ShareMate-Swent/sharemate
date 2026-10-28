@@ -109,8 +109,6 @@ open class MainActivity : ComponentActivity() {
                 household,
                 onMembershipChanged ->
               val navController = rememberNavController()
-              // A deep link reaches a running activity as a new intent, which the NavHost
-              // destinations below resolve.
               DisposableEffect(navController) {
                 val listener = Consumer<Intent> { navController.handleDeepLink(it) }
                 addOnNewIntentListener(listener)
