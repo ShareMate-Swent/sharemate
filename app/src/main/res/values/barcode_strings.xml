@@ -1,0 +1,15 @@
+<resources>
+    <string name="barcode_photo_title">Barcode photo</string>
+    <string name="barcode_photo_scanner">Barcode Scanner</string>
+    <string name="barcode_photo_manual">or enter details manually</string>
+    <string name="barcode_photo_choose">Take a clear photo of the barcode or choose one from your gallery.</string>
+    <string name="barcode_photo_camera">Take or retake a photo</string>
+    <string name="barcode_photo_gallery">Choose from gallery</string>
+    <string name="barcode_photo_capture">Take photo</string>
+    <string name="barcode_photo_preview">Selected barcode photo</string>
+    <string name="barcode_photo_confirm">Use this photo</string>
+    <string name="barcode_photo_selected">Barcode photo selected</string>
+    <string name="barcode_photo_failed">Unable to use this photo. Try again or choose another image (maximum 20 MB).</string>
+    <string name="barcode_camera_denied">Camera access is needed to take a photo. You can still choose a photo from your gallery.</string>
+    <string name="barcode_camera_settings">Open app settings</string>
+</resources>
