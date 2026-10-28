@@ -14,10 +14,16 @@ interface HouseholdRepository {
   /**
    * Creates a household with [creatorId] as its first member.
    *
+   * [type] selects a private or shared fridge; existing callers create a shared fridge by default.
+   *
    * @throws IllegalArgumentException if [name] or [creatorId] is blank.
    * @throws Exception if the data source cannot create the household.
    */
-  suspend fun createHousehold(name: String, creatorId: String): Household
+  suspend fun createHousehold(
+      name: String,
+      creatorId: String,
+      type: FridgeType = FridgeType.SHARED
+  ): Household
 
   /**
    * Adds [userId] to the household identified by [inviteCode].

@@ -43,7 +43,7 @@
 
     <string name="household_choice_title">Set up your fridge</string>
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
-    <string name="create_a_household_description">Start a new shared fridge and invite your roommates.</string>
+    <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
     <string name="household_privacy_note">• Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
@@ -51,6 +51,13 @@
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
     <string name="create_household_description">Give your household a name. You can change it later.</string>
+    <string name="fridge_type">Fridge type</string>
+    <string name="fridge_type_shared">Shared</string>
+    <string name="fridge_type_shared_description">Invite your roommates to use this fridge together.</string>
+    <string name="fridge_type_private">Private</string>
+    <string name="fridge_type_private_description">Only you can access this fridge.</string>
+    <string name="private_fridge_ready_title">Your private fridge is ready!</string>
+    <string name="private_fridge_ready_description">This fridge is only accessible to you.</string>
     <string name="household_name">Household name</string>
     <string name="household_name_placeholder">e.g. Rue de Lausanne flat</string>
     <string name="create_household">Create household</string>

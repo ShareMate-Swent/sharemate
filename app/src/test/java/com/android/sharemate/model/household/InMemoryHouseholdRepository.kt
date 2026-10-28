@@ -8,7 +8,11 @@ import java.util.UUID
 class InMemoryHouseholdRepository : HouseholdRepository {
   private val households = mutableMapOf<String, Household>()
 
-  override suspend fun createHousehold(name: String, creatorId: String): Household {
+  override suspend fun createHousehold(
+      name: String,
+      creatorId: String,
+      type: FridgeType
+  ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
 
@@ -19,7 +23,8 @@ class InMemoryHouseholdRepository : HouseholdRepository {
             inviteCode = UUID.randomUUID().toString().take(8).uppercase(),
             memberIds = listOf(creatorId),
             createdBy = creatorId,
-            createdAt = Date())
+            createdAt = Date(),
+            type = type)
     households[household.id] = household
     return household
   }

@@ -15,7 +15,11 @@ class HouseholdRepositoryFirestore(
     private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator()
 ) : HouseholdRepository {
 
-  override suspend fun createHousehold(name: String, creatorId: String): Household {
+  override suspend fun createHousehold(
+      name: String,
+      creatorId: String,
+      type: FridgeType
+  ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
 
@@ -33,7 +37,8 @@ class HouseholdRepositoryFirestore(
               inviteCode = inviteCode,
               memberIds = listOf(creatorId),
               createdBy = creatorId,
-              createdAt = Date())
+              createdAt = Date(),
+              type = type)
       val inviteCodeReference =
           firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
 
