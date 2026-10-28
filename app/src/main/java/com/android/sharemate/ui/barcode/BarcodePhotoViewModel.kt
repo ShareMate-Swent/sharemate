@@ -85,20 +85,24 @@ class BarcodePhotoViewModel(
     if (uri != null && state.value.visible) runOperation { replace(store.importImage(uri)) }
   }
 
-  fun capture(takePicture: suspend (String) -> Unit) = runOperation {
-    val uri = store.createCapture()
-    try {
-      takePicture(uri)
-      store.validate(uri)
-      replace(uri)
-    } catch (failure: Throwable) {
-      withContext(NonCancellable) { store.delete(uri) }
-      throw failure
+  fun capture(takePicture: suspend (String) -> Unit) {
+    if (!state.value.visible) return
+    runOperation {
+      val uri = store.createCapture()
+      try {
+        takePicture(uri)
+        store.validate(uri)
+        replace(uri)
+      } catch (failure: Throwable) {
+        withContext(NonCancellable) { store.delete(uri) }
+        throw failure
+      }
     }
   }
 
   /** The consumer may read the URI until this suspending callback completes. No decoding here. */
   fun confirm(consume: (suspend (String) -> Unit)? = null) {
+    if (!state.value.visible) return
     val uri = state.value.uri ?: return
     if (state.value.confirmed) {
       closePreview()

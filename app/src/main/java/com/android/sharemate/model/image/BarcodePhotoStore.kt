@@ -12,6 +12,10 @@ import kotlinx.coroutines.withContext
 
 /** Owns temporary copies only. A confirmed URI remains readable until its form is dismissed. */
 interface BarcodePhotoStore {
+  /**
+   * Returns a private file URI for in-process CameraX output. Never send it to an external camera
+   * intent; external sharing would require a FileProvider content URI instead.
+   */
   suspend fun createCapture(): String
 
   suspend fun importImage(uri: String): String
@@ -79,6 +83,8 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
         BitmapFactory.decodeFile(file.path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0)
             throw IOException("Image cannot be decoded")
+        if (bounds.outWidth.toLong() * bounds.outHeight > MAX_PIXELS)
+            throw IOException("Image exceeds pixel limit")
       }
 
   override suspend fun delete(uri: String) =
@@ -99,5 +105,8 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
 
   companion object {
     const val MAX_BYTES = 20L * 1024 * 1024
+    // Accept up to 50 MP photos while rejecting oversized compressed images before pixel decoding.
+    // Consumers must still downsample to their required resolution before allocating a bitmap.
+    const val MAX_PIXELS = 50_000_000L
   }
 }
