@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
 import com.android.sharemate.model.image.FoodImageSearchResult.Failure
@@ -78,7 +79,7 @@ class FoodImageSelectorTest {
       FoodImage(
           url = "https://images.example.org/food.jpg",
           author = "Jane Doe",
-          sourceName = "Openverse",
+          sourceName = "Wikimedia Commons",
           sourceUrl = "https://example.org/photos/42",
           title = "Soupe",
           license = "cc0",
