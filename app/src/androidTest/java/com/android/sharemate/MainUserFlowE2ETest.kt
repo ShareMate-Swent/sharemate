@@ -88,6 +88,10 @@ class MainUserFlowE2ETest {
           .isNotEmpty()
     }
     compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
+    compose
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Shared")
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
 
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(itemName)
@@ -223,6 +227,10 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
+    compose
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Shared")
   }
 
   private fun waitForHouseholdChoice(testTag: String) {

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
@@ -71,6 +72,8 @@ fun FridgeScreen(
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
+    onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
+    fridgeType: FridgeType? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   Column(modifier = modifier.fillMaxSize().testTag(C.Tag.fridge_screen_container)) {
@@ -81,6 +84,23 @@ fun FridgeScreen(
                 .padding(vertical = 24.dp)
                 .testTag(C.Tag.fridge_title),
         style = MaterialTheme.typography.headlineSmall)
+
+    fridgeType?.let { type ->
+      Text(
+          text =
+              stringResource(
+                  R.string.fridge_type_label,
+                  stringResource(
+                      if (type == FridgeType.PRIVATE) R.string.fridge_type_private
+                      else R.string.fridge_type_shared)),
+          modifier =
+              Modifier.align(Alignment.CenterHorizontally)
+                  .padding(bottom = 8.dp)
+                  .testTag(C.Tag.fridge_type),
+          style = MaterialTheme.typography.labelLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
 
     FridgeControls(
         sortOrder = sortOrder,
@@ -210,6 +230,7 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
+        onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -251,7 +272,11 @@ fun FridgeScreen(
 }
 
 @Composable
-fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
+fun FridgeScreen(
+    viewModel: FridgeViewModel,
+    modifier: Modifier = Modifier,
+    fridgeType: FridgeType? = null,
+) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
   val sortOrder by viewModel.sortOrder.collectAsState()
@@ -297,6 +322,7 @@ fun FridgeScreen(viewModel: FridgeViewModel, modifier: Modifier = Modifier) {
       onRemoveItem = viewModel::requestRemoval,
       onCancelRemoval = viewModel::cancelRemoval,
       onConfirmRemoval = viewModel::confirmRemoval,
+      fridgeType = fridgeType,
   )
 }
 

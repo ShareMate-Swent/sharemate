@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.width
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
@@ -163,8 +164,8 @@ class JoinHouseholdScreenTest {
     private val delegate = InMemoryHouseholdRepository()
     var gate: CompletableDeferred<Unit>? = null
 
-    override suspend fun createHousehold(name: String, creatorId: String) =
-        delegate.createHousehold(name, creatorId)
+    override suspend fun createHousehold(name: String, creatorId: String, type: FridgeType) =
+        delegate.createHousehold(name, creatorId, type)
 
     override suspend fun joinHousehold(inviteCode: String, userId: String): Household {
       gate?.await()

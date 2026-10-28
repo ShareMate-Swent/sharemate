@@ -64,7 +64,11 @@ class FridgeItemTest {
           .components {
             add(
                 Interceptor { chain ->
-                  val request = PendingImage(chain.request.data.toString(), chain.size)
+                  val request =
+                      PendingImage(
+                          chain.request.data.toString(),
+                          chain.size,
+                          chain.request.headers["User-Agent"])
                   pending += request
                   if (request.succeeds.await()) {
                     SuccessResult(ColorDrawable(Color.RED), chain.request, DataSource.MEMORY)
@@ -140,6 +144,8 @@ class FridgeItemTest {
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_image).assertDoesNotExist()
     assertEquals(item.value.image!!.reference, pending.single().source)
+    assertEquals(
+        "ShareMate/1.0 (https://github.com/ShareMate-Swent/sharemate)", pending.single().userAgent)
     val pixels = (80 * context.resources.displayMetrics.density).toInt()
     assertEquals(Size(pixels, pixels), pending.single().size)
 
@@ -264,15 +270,17 @@ class FridgeItemTest {
                     .copy(
                         title = "Fresh milk",
                         author = "Jane Doe",
-                        sourceName = "Photo library",
+                        sourceName = "Wikimedia Commons",
                         sourceUrl = "https://example.org/photo",
-                        license = "by",
+                        license = "by-sa",
                         licenseVersion = "4.0",
-                        licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
+                        licenseUrl = "https://creativecommons.org/licenses/by-sa/4.0/",
                         authorUrl = "https://example.org/jane"))
     show(links = links)
-    compose.onNodeWithText("Fresh milk · Jane Doe · Photo library · CC BY 4.0").assertIsDisplayed()
-    compose.onNodeWithText("Image search powered by Openverse").assertIsDisplayed()
+    compose
+        .onNodeWithText("Fresh milk · Jane Doe · Wikimedia Commons · CC BY-SA 4.0")
+        .assertIsDisplayed()
+    compose.onNodeWithText("Image search powered by Openverse").assertDoesNotExist()
     listOf("Image source", "License", "Author").forEach {
       compose.onNodeWithText(it).performClick()
     }
@@ -290,7 +298,7 @@ class FridgeItemTest {
     compose.onNodeWithText("Image search powered by Openverse").assertDoesNotExist()
   }
 
-  private class PendingImage(val source: String, val size: Size) {
+  private class PendingImage(val source: String, val size: Size, val userAgent: String?) {
     val succeeds = CompletableDeferred<Boolean>()
   }
 

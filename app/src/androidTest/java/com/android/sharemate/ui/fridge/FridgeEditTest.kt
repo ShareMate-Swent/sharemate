@@ -15,12 +15,16 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -58,7 +62,13 @@ class FridgeEditTest {
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
-    val vm = FridgeViewModel(repository, "user", "household", FoodImageSelector(imageRepository))
+    val vm =
+        FridgeViewModel(
+            repository,
+            "user",
+            "household",
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()
@@ -268,6 +278,12 @@ class FridgeEditTest {
     override fun getSharedItems(householdId: String) = items
 
     override fun getPrivateItems(userId: String) = error("Unexpected private query")
+
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
       edits += itemId to edit

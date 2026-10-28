@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
@@ -209,13 +210,18 @@ class AuthHouseholdGateTest {
       }
     }
 
-    override suspend fun createHousehold(name: String, creatorId: String): Household {
+    override suspend fun createHousehold(
+        name: String,
+        creatorId: String,
+        type: FridgeType
+    ): Household {
       creationPending?.await()
       return Household(
               id = "created-home",
               name = name,
               inviteCode = "ABC123",
-              memberIds = listOf(creatorId))
+              memberIds = listOf(creatorId),
+              type = type)
           .also { memberships[creatorId] = it }
     }
 

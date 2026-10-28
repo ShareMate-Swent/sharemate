@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,12 +20,17 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -47,6 +53,27 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class FridgeScreenTest {
   @get:Rule val composeRule = createComposeRule()
+
+  @Test
+  fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
+    val type = mutableStateOf<FridgeType?>(null)
+    composeRule.setContent {
+      MaterialTheme { FridgeScreen(uiState = FridgeUiState(), fridgeType = type.value) }
+    }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
+    composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Private")
+    composeRule.runOnIdle { type.value = FridgeType.SHARED }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Shared")
+    composeRule.runOnIdle { type.value = null }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
+  }
 
   @Test
   fun statusActionsAreAccessibleAndForwardTheCorrectLifecycleValue() {
@@ -108,7 +135,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -243,7 +275,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -273,7 +310,12 @@ class FridgeScreenTest {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
         }
     val viewModel =
-        FridgeViewModel(repository, USER_ID, HOUSEHOLD_ID, FoodImageSelector(imageRepository))
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for ((category, matchingNodes) in listOf("Fruits" to 3, "Vegetables" to 2)) {
@@ -323,6 +365,12 @@ class FridgeScreenTest {
     override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")

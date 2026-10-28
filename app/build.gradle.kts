@@ -159,6 +159,11 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 }
 
 dependencies {
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    // CameraX exposes ListenableFuture; Firestore otherwise supplies Guava only at runtime.
+    implementation(libs.guava)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.google.identity)
@@ -170,6 +175,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.androidx.work.testing)
+    implementation(libs.mlkit.barcode.scanning)
     testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)

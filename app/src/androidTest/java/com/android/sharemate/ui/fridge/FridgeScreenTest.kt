@@ -18,11 +18,15 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -155,7 +159,12 @@ class FridgeScreenTest {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
           }
       viewModel =
-          FridgeViewModel(repository, "alice", "household", FoodImageSelector(imageRepository))
+          FridgeViewModel(
+              repository,
+              "alice",
+              "household",
+              FoodImageSelector(imageRepository),
+              BarcodeScanner { BarcodeScanResult.NotFound })
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
@@ -190,6 +199,12 @@ class FridgeScreenTest {
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && !it.isShared } }
+
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")

@@ -17,12 +17,16 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -294,7 +298,11 @@ class ManualItemCreationTest {
         }
     val viewModel =
         FridgeViewModel(
-            repository, "test-user", "test-household", FoodImageSelector(imageRepository))
+            repository,
+            "test-user",
+            "test-household",
+            FoodImageSelector(imageRepository),
+            BarcodeScanner { BarcodeScanResult.NotFound })
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
@@ -315,6 +323,12 @@ class ManualItemCreationTest {
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
+
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
