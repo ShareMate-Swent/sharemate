@@ -4,6 +4,7 @@ package com.android.sharemate.model.item
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
@@ -78,6 +79,15 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     }
   }
 
+  override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
+      submit(itemId) {
+        // Older SDK writes serialized the derived isShared getter. Remove that redundant field
+        // atomically with the authoritative value; existing documents need no bulk migration.
+        items
+            .document(itemId)
+            .update(mapOf("sharing" to sharing.name, "shared" to FieldValue.delete()))
+      }
+
   override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
       submit(itemId) { items.document(itemId).update("status", status.name) }
 
@@ -148,18 +158,25 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
       val status =
           if (!contains("status")) ItemStatus.ACTIVE
           else ItemStatus.values().firstOrNull { it.name == get("status") }
-      if (name == null || ownerId == null || quantity == null || status == null) null
+      val householdId = getString("householdId")?.takeIf { it.isNotBlank() }
+      val sharing =
+          if (!contains("sharing")) {
+            if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED
+          } else ItemSharing.values().firstOrNull { it.name == get("sharing") }
+      if (name == null || ownerId == null || quantity == null || status == null || sharing == null)
+          null
       else
           Item(
               id = id,
               name = name,
               ownerId = ownerId,
-              householdId = getString("householdId")?.takeIf { it.isNotBlank() },
+              householdId = householdId,
               expirationDate = getTimestamp("expirationDate")?.toDate(),
               category = getString("category")?.takeIf { it.isNotBlank() },
               image = getItemImageOrNull(),
               quantity = quantity,
-              status = status)
+              status = status,
+              sharing = sharing)
     } catch (_: RuntimeException) {
       // A malformed document must not terminate a flow containing other valid items.
       null

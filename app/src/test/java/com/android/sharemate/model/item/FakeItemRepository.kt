@@ -37,7 +37,9 @@ class FakeItemRepository : ItemRepository {
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
-    return items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+    return items.map { current ->
+      current.filter { it.ownerId == userId && it.householdId == null }
+    }
   }
 
   override fun getSharedItems(householdId: String): Flow<List<Item>> {
@@ -90,6 +92,9 @@ class FakeItemRepository : ItemRepository {
           expirationDate = edit.expirationDate)
     }
   }
+
+  override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
+      change(itemId) { it.copy(sharing = sharing) }
 
   override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
     statusChanges += itemId to status
