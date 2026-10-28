@@ -6,6 +6,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.household.InviteCodeGenerator
+import com.android.sharemate.model.household.PrivateHouseholdLeaveException
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -95,18 +96,29 @@ class PrivateFridgeSecurityRulesTest {
   }
 
   @Test
-  fun ownerCanReadQueryAndLeavePrivateFridgeWithoutAnInvite() = runBlocking {
+  fun ownerCannotLeavePrivateFridgeThroughRepositoryOrDirectWrite() = runBlocking {
     val owner = FirebaseEmulator.signInAs("owner")
     val fridge = createFridge("private", owner, FridgeType.PRIVATE)
 
     assertEquals(fridge, repository.getHousehold(fridge.id))
     assertEquals(fridge, repository.getHouseholdForUser(owner))
     assertEquals("", fridge.inviteCode)
-    repository.leaveHousehold(owner)
+    assertThrows(PrivateHouseholdLeaveException::class.java) {
+      runBlocking { repository.leaveHousehold(owner) }
+    }
+    assertDenied(
+        firestore
+            .batch()
+            .update(households.document(fridge.id), "memberIds", FieldValue.arrayRemove(owner))
+            .set(
+                users.document(owner),
+                mapOf("householdId" to FieldValue.delete()),
+                SetOptions.merge())
+            .commit())
 
-    assertNull(repository.getHouseholdForUser(owner))
-    assertEquals(emptyList<String>(), repository.getHousehold(fridge.id)?.memberIds)
-    assertFalse(Tasks.await(users.document(owner).get()).contains("householdId"))
+    assertEquals(fridge, repository.getHouseholdForUser(owner))
+    assertEquals(listOf(owner), repository.getHousehold(fridge.id)?.memberIds)
+    assertEquals(fridge.id, Tasks.await(users.document(owner).get()).getString("householdId"))
   }
 
   @Test
@@ -164,7 +176,7 @@ class PrivateFridgeSecurityRulesTest {
   }
 
   @Test
-  fun privateItemsAndReceiptsAreUsableOnlyByOwnerIncludingAfterLeaving() = runBlocking {
+  fun historicallyUnlinkedPrivateItemsAndReceiptsRemainOwnerOnly() = runBlocking {
     val owner = FirebaseEmulator.signInAs("owner")
     val fridge = createFridge("private", owner, FridgeType.PRIVATE)
     val item = firestore.collection(FirestoreCollections.ITEMS).document("food")
@@ -178,7 +190,8 @@ class PrivateFridgeSecurityRulesTest {
             "totalAmountCents" to 100L)
     Tasks.await(item.set(itemData))
     Tasks.await(receipt.set(receiptData))
-    repository.leaveHousehold(owner)
+    // Preserve access to historical records unlinked before private leaving was disabled.
+    seedUnlinkedPrivateMembership(fridge.id, owner)
     assertEquals("Apple", Tasks.await(item.get()).getString("name"))
     assertEquals("Shop", Tasks.await(receipt.get()).getString("storeName"))
     Tasks.await(item.update("name", "Pear"))
@@ -305,7 +318,10 @@ class PrivateFridgeSecurityRulesTest {
     assertEquals(
         fridge.id, Tasks.await(codes.document(fridge.inviteCode).get()).getString("householdId"))
     assertEquals(fridge, repository.getHousehold(fridge.id))
-    repository.leaveHousehold(owner)
+    assertThrows(PrivateHouseholdLeaveException::class.java) {
+      runBlocking { repository.leaveHousehold(owner) }
+    }
+    seedUnlinkedPrivateMembership(fridge.id, owner)
     assertEquals(
         fridge.id, Tasks.await(codes.document(fridge.inviteCode).get()).getString("householdId"))
     assertEquals(fridge, repository.joinHousehold(fridge.inviteCode, owner))
@@ -318,6 +334,12 @@ class PrivateFridgeSecurityRulesTest {
     FirebaseEmulator.seedLegacyDocument(
         "inviteCodes", code, """{"householdId":{"stringValue":"private"}}""")
     return Tasks.await(households.document("private").get()).toObject(Household::class.java)!!
+  }
+
+  private fun seedUnlinkedPrivateMembership(id: String, owner: String) {
+    FirebaseEmulator.seedLegacyDocument(
+        "households", id, """{"memberIds":{"arrayValue":{"values":[]}}}""")
+    Tasks.await(users.document(owner).set(emptyMap<String, Any>()))
   }
 
   private fun writeFridge(fridge: Household, data: Any = fridge): Task<Void> {

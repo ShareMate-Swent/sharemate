@@ -1,10 +1,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.PrivateHouseholdLeaveException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +17,7 @@ import kotlinx.coroutines.launch
 /** Errors that can occur while leaving a household. */
 enum class LeaveHouseholdError {
   NO_SESSION,
+  PRIVATE_HOUSEHOLD,
   LEAVE_FAILED
 }
 
@@ -58,6 +61,7 @@ class LeaveHouseholdViewModel(
   fun confirmLeave() {
     val current = state.value
     if (!current.isConfirming || current.isLeaving || current.left) return
+    if (current.error == LeaveHouseholdError.PRIVATE_HOUSEHOLD) return
     mutableState.update { it.copy(isLeaving = true, error = null) }
     viewModelScope.launch {
       try {
@@ -70,6 +74,8 @@ class LeaveHouseholdViewModel(
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
+      } catch (_: PrivateHouseholdLeaveException) {
+        mutableState.update { it.copy(error = LeaveHouseholdError.PRIVATE_HOUSEHOLD) }
       } catch (_: Exception) {
         mutableState.update { it.copy(error = LeaveHouseholdError.LEAVE_FAILED) }
       } finally {

@@ -4,6 +4,7 @@ package com.android.sharemate
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,6 +24,7 @@ import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -74,6 +77,17 @@ class PrivateFridgeCreationTest {
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Private")
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose
+        .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
+        .performScrollTo()
+        .assertIsNotEnabled()
+        .performClick()
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertDoesNotExist()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.leave_private_household_blocked))
+        .performScrollTo()
+        .assertIsDisplayed()
+    screenshot("private-fridge-settings")
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.activityRule.scenario.recreate()

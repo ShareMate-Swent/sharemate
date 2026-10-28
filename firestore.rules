@@ -101,7 +101,8 @@ service cloud.firestore {
       function onlyRemovesSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return onlyMemberIdsChange()
+        return resource.data.get('type', 'SHARED') != 'PRIVATE'
+            && onlyMemberIdsChange()
             && request.auth.uid in before
             && after == before.removeAll([request.auth.uid])
             && getAfter(documentPath('users', request.auth.uid)).data.get('householdId', null)

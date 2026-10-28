@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.settings
 
 import androidx.compose.foundation.BorderStroke
@@ -128,7 +129,12 @@ fun SettingsScreen(
     Spacer(Modifier.height(24.dp))
   }
   if (leaveState.isConfirming) {
-    LeaveHouseholdDialog(state.householdName, leaveState, onCancelLeave, onConfirmLeave)
+    LeaveHouseholdDialog(
+        state.householdName,
+        state.fridgeType == FridgeType.PRIVATE,
+        leaveState,
+        onCancelLeave,
+        onConfirmLeave)
   }
 }
 
@@ -270,7 +276,7 @@ private fun AccountCard(
 
 /**
  * The household's name, member count and invite code, with Leave household. Private households
- * cannot be joined by anyone else, so their invite code is not shown.
+ * cannot be joined by anyone else or left, so their invite code is not shown.
  */
 @Composable
 private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) {
@@ -334,12 +340,20 @@ private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) 
       }
       OutlinedButton(
           onClick = onLeaveHousehold,
+          enabled = state.fridgeType != FridgeType.PRIVATE,
           colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
           border = BorderStroke(1.dp, colors.error),
           modifier =
               Modifier.fillMaxWidth().height(48.dp).testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
       ) {
         Text(stringResource(R.string.leave_household))
+      }
+      if (state.fridgeType == FridgeType.PRIVATE) {
+        Text(
+            stringResource(R.string.leave_private_household_blocked),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant,
+        )
       }
     }
   }
@@ -393,51 +407,60 @@ private fun AccountError(error: SettingsAccountError) {
 @Composable
 private fun LeaveHouseholdDialog(
     householdName: String,
+    privateFridge: Boolean,
     state: LeaveHouseholdUiState,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
+  val leaveBlocked = privateFridge || state.error == LeaveHouseholdError.PRIVATE_HOUSEHOLD
   AlertDialog(
       modifier = Modifier.testTag(SettingsTestTags.LEAVE_DIALOG),
       onDismissRequest = { if (!state.isLeaving) onCancel() },
       title = { Text(stringResource(R.string.leave_household_title)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-          Text(stringResource(R.string.leave_household_message, householdName))
-          state.error?.let { error ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-              Icon(
-                  imageVector = Icons.Filled.Error,
-                  contentDescription = null,
-                  tint = colors.error,
-                  modifier = Modifier.size(18.dp),
-              )
-              Text(
-                  text =
-                      stringResource(
-                          when (error) {
-                            LeaveHouseholdError.NO_SESSION -> R.string.leave_household_no_session
-                            LeaveHouseholdError.LEAVE_FAILED -> R.string.leave_household_failed
-                          }),
-                  style = MaterialTheme.typography.labelLarge,
-                  color = colors.error,
-                  modifier = Modifier.testTag(SettingsTestTags.LEAVE_ERROR),
-              )
-            }
-          }
+          Text(
+              if (leaveBlocked) stringResource(R.string.leave_private_household_blocked)
+              else stringResource(R.string.leave_household_message, householdName))
+          state.error
+              ?.takeUnless { leaveBlocked }
+              ?.let { error ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  Icon(
+                      imageVector = Icons.Filled.Error,
+                      contentDescription = null,
+                      tint = colors.error,
+                      modifier = Modifier.size(18.dp),
+                  )
+                  Text(
+                      text =
+                          stringResource(
+                              when (error) {
+                                LeaveHouseholdError.NO_SESSION ->
+                                    R.string.leave_household_no_session
+                                LeaveHouseholdError.PRIVATE_HOUSEHOLD ->
+                                    R.string.leave_private_household_blocked
+                                LeaveHouseholdError.LEAVE_FAILED -> R.string.leave_household_failed
+                              }),
+                      style = MaterialTheme.typography.labelLarge,
+                      color = colors.error,
+                      modifier = Modifier.testTag(SettingsTestTags.LEAVE_ERROR),
+                  )
+                }
+              }
         }
       },
       confirmButton = {
-        if (state.isLeaving) {
+        if (state.isLeaving && !leaveBlocked) {
           CircularProgressIndicator(
               modifier = Modifier.size(24.dp).testTag(SettingsTestTags.LEAVE_LOADING),
               strokeWidth = 2.dp,
           )
-        } else {
+        } else if (!leaveBlocked) {
           TextButton(
               onClick = onConfirm,
               colors = ButtonDefaults.textButtonColors(contentColor = colors.error),

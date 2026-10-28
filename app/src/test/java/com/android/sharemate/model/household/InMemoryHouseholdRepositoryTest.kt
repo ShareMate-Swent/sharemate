@@ -65,6 +65,17 @@ class InMemoryHouseholdRepositoryTest {
   }
 
   @Test
+  fun privateOwnerCannotLeaveOrLoseOtherMemberships() = runBlocking {
+    val privateFridge = repository.createHousehold("Mine", "owner", FridgeType.PRIVATE)
+    val sharedFridge = repository.createHousehold("Shared", "owner")
+    assertThrows(PrivateHouseholdLeaveException::class.java) {
+      runBlocking { repository.leaveHousehold("owner") }
+    }
+    assertEquals(privateFridge, repository.getHousehold(privateFridge.id))
+    assertEquals(sharedFridge, repository.getHousehold(sharedFridge.id))
+  }
+
+  @Test
   fun leavingHouseholdRemovesOnlyThatMemberAndKeepsTheHousehold() = runBlocking {
     val created = repository.createHousehold("Home", "creator")
     repository.joinHousehold(created.inviteCode, "member")

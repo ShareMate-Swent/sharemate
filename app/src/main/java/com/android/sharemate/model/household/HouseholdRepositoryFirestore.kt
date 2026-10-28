@@ -116,6 +116,9 @@ class HouseholdRepositoryFirestore(
             .whereArrayContains(MEMBER_IDS_FIELD, userId)
             .get()
             .await()
+    if (memberships.documents.any { it.getString("type") == FridgeType.PRIVATE.name }) {
+      throw PrivateHouseholdLeaveException()
+    }
     val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
     // memberIds is the source of truth, but a profile can still point at a household that no
     // longer lists the user; clear that copy too so both sides agree after leaving.

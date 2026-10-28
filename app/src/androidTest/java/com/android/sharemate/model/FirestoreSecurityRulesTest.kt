@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -80,6 +81,26 @@ class FirestoreSecurityRulesTest {
     createHouseholdAs("creator")
 
     assertDenied(firestore.collection(FirestoreCollections.HOUSEHOLDS).get())
+  }
+
+  @Test
+  fun staleAvailabilityCheckCannotOverwriteAClaimedCodeOrPartiallyCreateAFridge() {
+    val owner = FirebaseEmulator.signInAs("creator")
+    val first = Household("first", "First", "ABCDEF", listOf(owner), owner, Date())
+    val second = first.copy(id = "second", name = "Second")
+    // Both attempts observe availability before the first attempt commits.
+    assertFalse(Tasks.await(inviteCodeReference(first.inviteCode).get()).exists())
+    assertFalse(Tasks.await(inviteCodeReference(second.inviteCode).get()).exists())
+    Tasks.await(createHousehold(first))
+
+    assertDenied(createHousehold(second))
+
+    assertFalse(Tasks.await(householdReference(second.id).get()).exists())
+    assertEquals(
+        first, Tasks.await(householdReference(first.id).get()).toObject(Household::class.java))
+    assertEquals(
+        first.id, Tasks.await(inviteCodeReference(first.inviteCode).get()).getString("householdId"))
+    assertEquals(first.id, Tasks.await(userReference(owner).get()).getString("householdId"))
   }
 
   @Test

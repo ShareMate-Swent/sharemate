@@ -49,6 +49,9 @@ class InMemoryHouseholdRepository : HouseholdRepository {
 
   override suspend fun leaveHousehold(userId: String) {
     require(userId.isNotBlank()) { "User ID must not be blank" }
+    if (households.values.any { it.type == FridgeType.PRIVATE && userId in it.memberIds }) {
+      throw PrivateHouseholdLeaveException()
+    }
 
     households.replaceAll { _, household ->
       household.copy(memberIds = household.memberIds - userId)

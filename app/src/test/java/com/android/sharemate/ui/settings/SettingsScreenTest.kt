@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.settings
 
 import android.content.ClipboardManager
@@ -187,7 +188,7 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun privateHouseholdHidesTheInviteCodeButKeepsLeaveHousehold() {
+  fun privateHouseholdDisablesLeavingAndExplainsWhy() {
     showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
 
     composeTestRule
@@ -196,9 +197,42 @@ class SettingsScreenTest {
         .assertTextEquals("Rue de Lausanne flat")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(SettingsTestTags.COPY_INVITE_CODE).assertDoesNotExist()
-    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performScrollTo().performClick()
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
+        .performScrollTo()
+        .assertIsNotEnabled()
+        .performClick()
+    composeTestRule
+        .onNode(
+            hasText(composeTestRule.activity.getString(R.string.leave_private_household_blocked)))
+        .performScrollTo()
+        .assertIsDisplayed()
 
-    assertEquals(1, leaveRequests)
+    assertEquals(0, leaveRequests)
+  }
+
+  @Test
+  fun privateConfirmationExplainsRestrictionAndHasNoLeaveAction() {
+    showSettings(
+        LeaveHouseholdUiState(isConfirming = true),
+        settings = googleState.copy(fridgeType = FridgeType.PRIVATE))
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertDoesNotExist()
+    composeTestRule
+        .onNode(
+            hasText(composeTestRule.activity.getString(R.string.leave_private_household_blocked))
+                .and(hasAnyAncestor(hasTestTag(SettingsTestTags.LEAVE_DIALOG))))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
+    assertEquals(1, cancels)
+    assertEquals(0, confirms)
+  }
+
+  @Test
+  fun privateRepositoryRejectionCannotBeRetriedFromDialog() {
+    showSettings(
+        LeaveHouseholdUiState(isConfirming = true, error = LeaveHouseholdError.PRIVATE_HOUSEHOLD))
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).assertIsEnabled()
   }
 
   @Test
