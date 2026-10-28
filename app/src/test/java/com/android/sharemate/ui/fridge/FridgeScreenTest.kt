@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -90,6 +92,27 @@ class FridgeScreenTest {
           .assertIsDisplayed()
       composeRule.onNodeWithTag("fridge_product_square_${it.id}").assertIsDisplayed()
     }
+  }
+
+  @Test
+  fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
+    val type = mutableStateOf<FridgeType?>(null)
+    composeRule.setContent {
+      MaterialTheme { FridgeScreen(uiState = FridgeUiState(), fridgeType = type.value) }
+    }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
+    composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Private")
+    composeRule.runOnIdle { type.value = FridgeType.SHARED }
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_type)
+        .assertIsDisplayed()
+        .assertTextEquals("Fridge type: Shared")
+    composeRule.runOnIdle { type.value = null }
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
   }
 
   @Test

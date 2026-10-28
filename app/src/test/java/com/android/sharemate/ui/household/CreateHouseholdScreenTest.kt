@@ -5,16 +5,24 @@ package com.android.sharemate.ui.household
 import android.content.Context
 import android.content.Intent
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
@@ -50,6 +58,8 @@ class CreateHouseholdScreenTest {
       }
     }
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.BACK).performClick()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsNotSelected()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     composeTestRule.waitForIdle()
@@ -75,6 +85,36 @@ class CreateHouseholdScreenTest {
   }
 
   @Test
+  fun compactHeightAllowsScrollingToSelectTypeAndCreate() {
+    val viewModel = createViewModel()
+    composeTestRule.setContent {
+      MaterialTheme {
+        Box(Modifier.height(320.dp)) {
+          CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {})
+        }
+      }
+    }
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.NAME)
+        .performScrollTo()
+        .performTextInput("My fridge")
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.CREATE)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(FridgeType.PRIVATE, viewModel.state.value.type)
+    assertEquals("ABC123", viewModel.state.value.inviteCode)
+  }
+
+  @Test
   fun loadingIndicatorIsShownWhileCreating() {
     val repository = TestHouseholdRepository()
     val gate = CompletableDeferred<Unit>()
@@ -86,7 +126,35 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.LOADING).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsNotEnabled()
     gate.complete(Unit)
+  }
+
+  @Test
+  fun selectingPrivateShowsPrivateConfirmationWithoutInviteActions() {
+    var continued = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        CreateHouseholdScreen(createViewModel(), onContinue = { continued++ }, onBack = {})
+      }
+    }
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE)
+        .performClick()
+        .assertIsSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsNotSelected()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("My fridge")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithText("Your private fridge is ready!").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Private", useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule.onNodeWithText("ABC123").assertDoesNotExist()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
+    assertEquals(1, continued)
   }
 
   @Test
@@ -145,10 +213,14 @@ class CreateHouseholdScreenTest {
     private val delegate = InMemoryHouseholdRepository()
     var gate: CompletableDeferred<Unit>? = null
 
-    override suspend fun createHousehold(name: String, creatorId: String): Household {
+    override suspend fun createHousehold(
+        name: String,
+        creatorId: String,
+        type: FridgeType
+    ): Household {
       gate?.await()
       failure?.let { throw it }
-      return Household(name = name, inviteCode = "ABC123", createdBy = creatorId)
+      return Household(name = name, inviteCode = "ABC123", createdBy = creatorId, type = type)
     }
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
