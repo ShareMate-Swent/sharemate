@@ -2,8 +2,8 @@
 # Wikimedia Commons food images
 
 `MainActivity.createFoodImageSelector` now uses `CommonsFoodImageRepository`, behind the existing
-`FoodImageRepository` interface. No account or API key is needed. The Openverse implementation remains
-available for compatibility; production does not call it or fall back to it.
+`FoodImageRepository` interface. No account or API key is needed. The former Openverse implementation
+and its provider-specific tests have been removed; there is no fallback to Openverse.
 
 This change is independent of the pending work to look up images after saving. It preserves main's
 creation flow: look up an optional image for at most 20 seconds, then save the item. An error or missing
@@ -67,3 +67,17 @@ Validation executed on 27 October 2026:
   `NoSuchMethodException: android.hardware.input.InputManager.getInstance` from Espresso. The
   deterministic Commons persistence test passed in this run. Full UI validation on CI's API 34
   remains unverified locally: its system image is not installed.
+
+Openverse removal validated on 28 October 2026:
+
+- `./gradlew check ktfmtCheck --console=plain`: passed; 342 unit tests, lint and formatting.
+  The 22 deleted tests covered only the removed Openverse provider; all 15 Commons HTTP tests and
+  the provider-independent selection tests still pass.
+- Full Android run on API 37: 89 tests, 56 passed, 32 failed and one opt-in test skipped. Of the
+  failures, 28 are the Espresso compatibility error above. Four authentication tests failed because
+  their required `adb reverse tcp:9099 tcp:9099` forwarding was missing.
+- After restoring forwarding, all six targeted tests passed: the four authentication tests and
+  both Commons/Firestore tests, including the live image lookup, server reread and thumbnail decode.
+  An earlier targeted attempt was interrupted by an ADB connection loss; the final run completed.
+  The full suite was not rerun after restoring forwarding; API 34 and the updated SonarCloud
+  duplication measurement still require CI validation.
