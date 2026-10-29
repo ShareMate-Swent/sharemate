@@ -20,6 +20,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FridgeLauncherTest : TestCase() {
 
+  @get:Rule(order = 0) val notificationPermission = notificationPermissionRule()
+
   @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule()
 
   @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.utils
 
 import com.google.android.gms.tasks.Tasks
@@ -8,7 +9,9 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.firestore.FirebaseFirestore
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.ExecutionException
+import org.json.JSONObject
 
 /**
  * Gives instrumented tests access to the local Firebase emulators.
@@ -60,6 +63,31 @@ object FirebaseEmulator {
     delete("http://$HOST:$AUTH_PORT/emulator/v1/projects/$projectId/accounts")
     delete(
         "http://$HOST:$FIRESTORE_PORT/emulator/v1/projects/$projectId/databases/(default)/documents")
+  }
+
+  /** Seeds historical data that current client rules intentionally no longer allow creating. */
+  fun seedLegacyDocument(collection: String, id: String, fieldsJson: String) {
+    val mask =
+        JSONObject(fieldsJson).keys().asSequence().joinToString("&") {
+          "updateMask.fieldPaths=" + URLEncoder.encode(it, "UTF-8")
+        }
+    val url =
+        "http://$HOST:$FIRESTORE_PORT/v1/projects/$projectId/databases/(default)/documents/$collection/$id?$mask"
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+      connection.requestMethod = "PATCH"
+      connection.setRequestProperty("Authorization", "Bearer owner")
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.doOutput = true
+      connection.outputStream.use {
+        it.write("{\"fields\":$fieldsJson}".toByteArray(Charsets.UTF_8))
+      }
+      check(connection.responseCode in 200..299) {
+        "Could not seed legacy emulator data: HTTP ${connection.responseCode}"
+      }
+    } finally {
+      connection.disconnect()
+    }
   }
 
   private fun delete(url: String) {
