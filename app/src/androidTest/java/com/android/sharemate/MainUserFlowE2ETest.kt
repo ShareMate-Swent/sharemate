@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
@@ -54,6 +56,8 @@ class MainUserFlowE2ETest {
     val password = "secret123"
     val householdName = "Shared Home"
     val itemName = "Milk"
+    // Lookup cancellation and tab retention are covered by FridgeImageNavigationTest.
+    compose.runOnUiThread { compose.activity.imageLookup = { FoodImageSearchResult.NotFound } }
 
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
@@ -101,6 +105,7 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertIsDisplayed()
 
     val itemTag =
         compose

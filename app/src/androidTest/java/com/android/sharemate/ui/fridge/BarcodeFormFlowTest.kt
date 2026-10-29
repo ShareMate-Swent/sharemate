@@ -191,6 +191,9 @@ class BarcodeFormFlowTest {
     override fun setItemStatus(itemId: String, status: ItemStatus) =
         ItemWrite.Rejected(IllegalStateException())
 
+    override fun setItemSharing(itemId: String, sharing: ItemSharing) =
+        ItemWrite.Rejected(IllegalStateException())
+
     override fun deleteItemQueued(itemId: String) = ItemWrite.Rejected(IllegalStateException())
   }
 }

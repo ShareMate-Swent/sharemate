@@ -8,12 +8,12 @@ import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageSelector
-import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -36,7 +36,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 enum class FridgeSortOrder {
   EXPIRATION_DATE,
@@ -573,22 +572,8 @@ class FridgeViewModel(
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
-        val image =
-            try {
-              // The optional lookup has its own budget; saving below is not timed out.
-              withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
-                ItemImage.fromSelection(
-                    foodImageSelector.select(name, personalPhotoReference = null))
-              }
-            } catch (exception: CancellationException) {
-              throw exception
-            } catch (exception: Exception) {
-              // Image lookup is optional and must not prevent saving the food.
-              null
-            }
         currentCoroutineContext().ensureActive()
-        val item = draftItem.copy(image = image)
-        val itemId = itemRepository.addItem(item)
+        val itemId = itemRepository.addItem(draftItem)
         if (itemId.isNullOrBlank()) {
           mutableUiState.update {
             it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED)
@@ -596,9 +581,6 @@ class FridgeViewModel(
         } else {
           mutableUiState.update {
             it.copy(
-                items =
-                    if (it.items.any { saved -> saved.id == itemId }) it.items
-                    else it.items + item.copy(id = itemId),
                 isSaving = false,
                 isAddItemDialogOpen = false,
                 itemQuantity = "1",
@@ -609,12 +591,37 @@ class FridgeViewModel(
                 barcodeScanFailed = false,
                 formError = null)
           }
+          enrichItemImage(itemId, name)
         }
       } catch (exception: CancellationException) {
         mutableUiState.update { it.copy(isSaving = false) }
         throw exception
       } catch (exception: Exception) {
         mutableUiState.update { it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED) }
+      }
+    }
+  }
+
+  private fun enrichItemImage(itemId: String, savedName: String) {
+    // The navigation entry retains this scope across tabs. Session teardown clears it, cancelling
+    // all lookups (and their network calls). Nothing resumes after process death.
+    viewModelScope.launch {
+      try {
+        val image =
+            ItemImage.fromSelection(foodImageSelector.selectAutomatic(savedName)) ?: return@launch
+        currentCoroutineContext().ensureActive()
+        // Inventory flows own the image update. Never copy a stale item into UI state or retry
+        // creation, including when the transaction ignores the result or fails.
+        when (val result = itemRepository.updateItemImageIfAbsent(itemId, savedName, image)) {
+          ItemImageUpdateResult.Updated,
+          ItemImageUpdateResult.Ignored -> Unit
+          is ItemImageUpdateResult.Error ->
+              if (result.cause is CancellationException) throw result.cause
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // Enrichment is optional; an already successful creation stays successful.
       }
     }
   }

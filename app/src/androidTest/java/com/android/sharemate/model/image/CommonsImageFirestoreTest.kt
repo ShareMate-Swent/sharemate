@@ -19,6 +19,7 @@ import com.android.sharemate.ui.fridge.fridgeImageRequest
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -32,6 +33,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -96,13 +98,23 @@ class CommonsImageFirestoreTest {
     val userId = checkNotNull(FirebaseEmulator.auth.uid)
     val repository = FirebaseItemRepository(firestore)
     val store = ViewModelStore()
+    val lookupStarted = CompletableDeferred<Unit>()
+    val releaseLookup = CompletableDeferred<Unit>()
+    val gatedImages =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String): FoodImageSearchResult {
+            lookupStarted.complete(Unit)
+            releaseLookup.await()
+            return images.searchByTitle(title)
+          }
+        }
     val vm =
         withContext(Dispatchers.Main) {
           FridgeViewModel(
                   repository,
                   userId,
                   null,
-                  FoodImageSelector(images),
+                  FoodImageSelector(gatedImages),
                   BarcodeScanner { BarcodeScanResult.NotFound },
                   testProductCatalogRepository())
               .also { store.put("commons", it) }
@@ -118,10 +130,29 @@ class CommonsImageFirestoreTest {
         vm.saveItem()
       }
       val state =
-          withTimeout(30_000) { vm.uiState.first { !it.isAddItemDialogOpen && !it.isSaving } }
+          withTimeout(15_000) {
+            vm.uiState.first {
+              !it.isAddItemDialogOpen &&
+                  !it.isSaving &&
+                  it.items.any { item -> item.name == "tacos" }
+            }
+          }
       assertFalse(state.loadFailed)
-      val saved = state.items.single { it.name == "tacos" }
-      id = saved.id
+      val placeholder = state.items.single { it.name == "tacos" }
+      id = placeholder.id
+      assertNull("Creation must finish before the lookup is released", placeholder.image)
+      withTimeout(10_000) { lookupStarted.await() }
+      val document = firestore.collection(FirestoreCollections.ITEMS).document(placeholder.id)
+      assertEquals(placeholder, document.get(Source.SERVER).await().toItemOrNull())
+
+      releaseLookup.complete(Unit)
+      val enriched =
+          withTimeout(80_000) {
+            vm.uiState.first { state ->
+              state.items.any { it.id == placeholder.id && it.image != null }
+            }
+          }
+      val saved = enriched.items.single { it.id == placeholder.id }
       assertNotNull("Commons must return an image in this test", saved.image)
       val image = checkNotNull(saved.image)
       assertEquals("Wikimedia Commons", image.sourceName)
@@ -130,8 +161,10 @@ class CommonsImageFirestoreTest {
       assertEquals(3, saved.quantity)
       assertEquals("Prepared food", saved.category)
       assertEquals(userId, saved.ownerId)
+      assertEquals(placeholder.copy(image = saved.image), saved)
+      assertFalse(enriched.isAddItemDialogOpen)
+      assertNull(enriched.formError)
 
-      val document = firestore.collection(FirestoreCollections.ITEMS).document(saved.id)
       assertEquals(saved, document.get(Source.SERVER).await().toItemOrNull())
       withContext(Dispatchers.Main) { store.clear() }
       val reloaded =
@@ -144,6 +177,7 @@ class CommonsImageFirestoreTest {
       assertEquals(saved, reloaded)
       return reloaded
     } finally {
+      releaseLookup.cancel()
       withContext(Dispatchers.Main) { store.clear() }
       id?.let { firestore.collection(FirestoreCollections.ITEMS).document(it).delete().await() }
     }
