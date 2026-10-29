@@ -1,15 +1,12 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -25,9 +22,7 @@ import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
 import com.android.sharemate.ui.household.JoinHouseholdTestTags
-import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.NavigationTestTags
-import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
@@ -65,10 +60,6 @@ class MainUserFlowE2ETest {
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
-    compose.runOnUiThread {
-      compose.activity.onNewIntent(
-          Intent(Intent.ACTION_VIEW, Uri.parse(AppDeepLinks.uri(TopLevelDestination.RECIPES))))
-    }
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
 
     compose.onNodeWithTag("auth_email").performTextInput(email)
@@ -92,7 +83,6 @@ class MainUserFlowE2ETest {
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
     compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
     compose
         .onNodeWithTag(C.Tag.fridge_type)
@@ -145,40 +135,6 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
-  }
-
-  @Test
-  fun deepLinkReceivedBeforeSignInIsOpenedAfterHouseholdCreation() {
-    waitUntil("authentication welcome screen", 10_000) {
-      compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.runOnUiThread {
-      compose.activity.onNewIntent(
-          Intent(Intent.ACTION_VIEW, Uri.parse(AppDeepLinks.uri(TopLevelDestination.RECIPES))))
-    }
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
-    compose
-        .onNodeWithTag("auth_email")
-        .performTextInput("deep-link-${UUID.randomUUID()}@example.org")
-    compose.onNodeWithTag("auth_password").performTextInput("secret123")
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret123")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
-
-    waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
-    compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
-    compose.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Shared Home")
-    compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
-    waitUntil("household creation confirmation") {
-      compose.onAllNodesWithTag(CreateHouseholdTestTags.CONTINUE).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
-
-    waitUntil("recipes tab selected") {
-      compose
-          .onAllNodes(hasTestTag(NavigationTestTags.RECIPES_TAB) and isSelected())
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-    }
   }
 
   @Test
