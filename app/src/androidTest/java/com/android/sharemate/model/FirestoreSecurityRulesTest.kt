@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -83,6 +84,26 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun staleAvailabilityCheckCannotOverwriteAClaimedCodeOrPartiallyCreateAFridge() {
+    val owner = FirebaseEmulator.signInAs("creator")
+    val first = Household("first", "First", "ABCDEF", listOf(owner), owner, Date())
+    val second = first.copy(id = "second", name = "Second")
+    // Both attempts observe availability before the first attempt commits.
+    assertFalse(Tasks.await(inviteCodeReference(first.inviteCode).get()).exists())
+    assertFalse(Tasks.await(inviteCodeReference(second.inviteCode).get()).exists())
+    Tasks.await(createHousehold(first))
+
+    assertDenied(createHousehold(second))
+
+    assertFalse(Tasks.await(householdReference(second.id).get()).exists())
+    assertEquals(
+        first, Tasks.await(householdReference(first.id).get()).toObject(Household::class.java))
+    assertEquals(
+        first.id, Tasks.await(inviteCodeReference(first.inviteCode).get()).getString("householdId"))
+    assertEquals(first.id, Tasks.await(userReference(owner).get()).getString("householdId"))
+  }
+
+  @Test
   fun inviteCodesCannotBeListedUpdatedOrDeleted() {
     val household = createHouseholdAs("creator")
 
@@ -129,7 +150,7 @@ class FirestoreSecurityRulesTest {
           Household(
               id = type.name,
               name = "Home",
-              inviteCode = type.name,
+              inviteCode = if (type == FridgeType.PRIVATE) "" else type.name,
               memberIds = listOf(userId),
               createdBy = userId,
               createdAt = Date(),
@@ -437,16 +458,18 @@ class FirestoreSecurityRulesTest {
   }
 
   /** Writes the same batch as the repository, for the signed-in user. */
-  private fun createHousehold(household: Household, data: Any = household): Task<Void> =
-      firestore
-          .batch()
-          .set(householdReference(household.id), data)
-          .set(inviteCodeReference(household.inviteCode), mapOf("householdId" to household.id))
-          .set(
-              userReference(checkNotNull(FirebaseEmulator.auth.uid)),
-              mapOf("householdId" to household.id),
-              SetOptions.merge())
-          .commit()
+  private fun createHousehold(household: Household, data: Any = household): Task<Void> {
+    val batch = firestore.batch().set(householdReference(household.id), data)
+    if (household.type == FridgeType.SHARED) {
+      batch.set(inviteCodeReference(household.inviteCode), mapOf("householdId" to household.id))
+    }
+    return batch
+        .set(
+            userReference(checkNotNull(FirebaseEmulator.auth.uid)),
+            mapOf("householdId" to household.id),
+            SetOptions.merge())
+        .commit()
+  }
 
   private fun userReference(userId: String): DocumentReference =
       firestore.collection(FirestoreCollections.USERS).document(userId)

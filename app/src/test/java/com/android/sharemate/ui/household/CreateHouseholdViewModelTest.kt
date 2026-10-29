@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -80,7 +81,7 @@ class CreateHouseholdViewModelTest {
     repository.failure = null
     viewModel.createHousehold()
     advanceUntilIdle()
-    assertEquals("ABC123", viewModel.state.value.inviteCode)
+    assertEquals("", viewModel.state.value.inviteCode)
     assertEquals(2, repository.createCalls.get())
     assertEquals(listOf(FridgeType.PRIVATE, FridgeType.PRIVATE), repository.createdTypes)
   }
@@ -184,7 +185,11 @@ class CreateHouseholdViewModelTest {
       createdTypes += type
       gate?.await()
       failure?.let { throw it }
-      return Household(inviteCode = "ABC123", name = name, createdBy = creatorId, type = type)
+      return Household(
+          inviteCode = if (type == FridgeType.SHARED) "ABC123" else "",
+          name = name,
+          createdBy = creatorId,
+          type = type)
     }
 
     override suspend fun joinHousehold(inviteCode: String, userId: String) =
