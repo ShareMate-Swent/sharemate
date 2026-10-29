@@ -135,15 +135,22 @@ service cloud.firestore {
       return data.ownerId == request.auth.uid;
     }
 
+    // Legacy household-access predicate; item sharing does not control read authorization.
     function isShared(data) {
       return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
+    }
+
+    // Missing sharing preserves legacy behavior without conflating fridge membership with sharing.
+    function itemSharing(data) {
+      return data.get('sharing', data.get('householdId', null) == null ? 'PERSONAL' : 'SHARED');
     }
 
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
       let quantity = data.get('quantity', 1);
       let status = data.get('status', 'ACTIVE');
-      return quantity is int && quantity > 0 && quantity <= 2147483647
+      return itemSharing(data) in ['SHARED', 'PERSONAL']
+          && quantity is int && quantity > 0 && quantity <= 2147483647
           && status in ['ACTIVE', 'EATEN', 'DISCARDED']
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
@@ -175,6 +182,7 @@ service cloud.firestore {
       return (isOwner(before) || isShared(before))
           && hasValidItemData(after)
           && after.ownerId == before.ownerId
+          && (itemSharing(after) == itemSharing(before) || isOwner(before))
           && (after.get('householdId', null) == before.get('householdId', null)
               || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
     }
@@ -188,6 +196,8 @@ service cloud.firestore {
     }
 
     match /items/{itemId} {
+      // Image transactions must be able to ignore an item deleted during a lookup.
+      allow get: if signedIn() && resource == null;
       allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
       allow create: if signedIn()
           && hasValidItemData(request.resource.data)

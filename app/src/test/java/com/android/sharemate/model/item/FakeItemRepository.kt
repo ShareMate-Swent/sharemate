@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 class FakeItemRepository : ItemRepository {
   private val items = MutableStateFlow<List<Item>>(emptyList())
@@ -34,10 +35,13 @@ class FakeItemRepository : ItemRepository {
   var statusFailure: Exception? = null
   var statusException: Exception? = null
   var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
+  var imageUpdateFailure: Exception? = null
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
-    return items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+    return items.map { current ->
+      current.filter { it.ownerId == userId && it.householdId == null }
+    }
   }
 
   override fun getSharedItems(householdId: String): Flow<List<Item>> {
@@ -57,6 +61,30 @@ class FakeItemRepository : ItemRepository {
     val itemId = "item-${++nextId}"
     items.value += item.copy(id = itemId)
     return itemId
+  }
+
+  override suspend fun updateItemImageIfAbsent(
+      itemId: String,
+      expectedName: String,
+      image: ItemImage
+  ): ItemImageUpdateResult {
+    if (itemId.isBlank() || '/' in itemId) {
+      return ItemImageUpdateResult.Error(IllegalArgumentException("A document ID is required"))
+    }
+    imageUpdateFailure?.let {
+      return ItemImageUpdateResult.Error(it)
+    }
+    var result: ItemImageUpdateResult = ItemImageUpdateResult.Ignored
+    items.update { current ->
+      result = ItemImageUpdateResult.Ignored
+      current.map {
+        if (it.id == itemId && it.name == expectedName && it.image == null) {
+          result = ItemImageUpdateResult.Updated
+          it.copy(image = image)
+        } else it
+      }
+    }
+    return result
   }
 
   override suspend fun deleteItem(itemId: String): Boolean {
@@ -90,6 +118,9 @@ class FakeItemRepository : ItemRepository {
           expirationDate = edit.expirationDate)
     }
   }
+
+  override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
+      change(itemId) { it.copy(sharing = sharing) }
 
   override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
     statusChanges += itemId to status

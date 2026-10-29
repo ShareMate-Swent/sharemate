@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
+import com.google.firebase.firestore.Exclude
 import java.util.Date
 
 /**
@@ -9,7 +10,7 @@ import java.util.Date
  * @property id Identifiant unique de l'item (généré par Firestore).
  * @property name Nom de l'aliment (ex: "Lait").
  * @property ownerId L'UID Firebase de l'utilisateur qui a créé l'item.
- * @property householdId L'ID du foyer si l'item est partagé. Si null, l'item est strictement privé.
+ * @property householdId L'ID du foyer contenant l'item. Si null, l'item est strictement privé.
  * @property expirationDate Date de péremption de l'aliment.
  * @property category Optional category entered by the user.
  * @property image Optional image reference and attribution; null uses the local placeholder.
@@ -25,8 +26,12 @@ data class Item(
     /** Positive count of units; old documents default to one unit. */
     val quantity: Int = 1,
     val status: ItemStatus = ItemStatus.ACTIVE,
+    /** Legacy household items are shared; standalone items remain owner-only. */
+    val sharing: ItemSharing =
+        if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED,
 ) {
-  /** Helper pour déterminer facilement si un item est partagé ou privé côté UI. */
+  /** Derived for callers only; Firestore persists [sharing] as the single sharing field. */
+  @get:Exclude
   val isShared: Boolean
-    get() = householdId != null
+    get() = householdId != null && sharing == ItemSharing.SHARED
 }

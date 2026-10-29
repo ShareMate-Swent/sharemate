@@ -23,6 +23,8 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -277,6 +279,12 @@ class FridgeEditTest {
 
     override fun getPrivateItems(userId: String) = error("Unexpected private query")
 
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
+
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
       edits += itemId to edit
       editFailure?.let {
@@ -300,6 +308,11 @@ class FridgeEditTest {
     override suspend fun deleteItem(itemId: String) = error("Unexpected deletion")
 
     override fun deleteItemQueued(itemId: String) = error("Unexpected deletion")
+
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
 
     override fun setItemStatus(itemId: String, status: ItemStatus) =
         error("Unexpected status change")
