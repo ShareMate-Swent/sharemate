@@ -4,6 +4,7 @@
 package com.android.sharemate
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,13 +26,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
-import androidx.core.util.Consumer
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -73,6 +75,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
+  private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
+
   private val authRepository: AuthRepository by lazy {
     FirebaseAuthRepository(FirebaseAuth.getInstance())
   }
@@ -96,6 +100,14 @@ open class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    pendingDeepLinkIntent =
+        if (savedInstanceState != null) {
+          savedInstanceState.getString(PENDING_DEEP_LINK_URI)?.let {
+            Intent(Intent.ACTION_VIEW, Uri.parse(it))
+          }
+        } else {
+          intent.takeIf(Intent::isAppDeepLink)
+        }
     NotificationScheduler.schedule(applicationContext)
     setContent {
       SampleAppTheme(dynamicColor = false) {
@@ -110,10 +122,12 @@ open class MainActivity : ComponentActivity() {
                 household,
                 onMembershipChanged ->
               val navController = rememberNavController()
-              DisposableEffect(navController) {
-                val listener = Consumer<Intent> { navController.handleDeepLink(it) }
-                addOnNewIntentListener(listener)
-                onDispose { removeOnNewIntentListener(listener) }
+              val deepLinkIntent = pendingDeepLinkIntent
+              LaunchedEffect(navController, deepLinkIntent) {
+                deepLinkIntent?.let {
+                  navController.handleDeepLink(it)
+                  if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
+                }
               }
               LaunchedEffect(Unit) {
                 if (NotificationPermission.shouldRequest(this@MainActivity)) {
@@ -253,7 +267,27 @@ open class MainActivity : ComponentActivity() {
       }
     }
   }
+
+  public override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (intent.isAppDeepLink()) pendingDeepLinkIntent = intent
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    pendingDeepLinkIntent?.dataString?.let { outState.putString(PENDING_DEEP_LINK_URI, it) }
+    super.onSaveInstanceState(outState)
+  }
+
+  private companion object {
+    const val PENDING_DEEP_LINK_URI = "pending_deep_link_uri"
+  }
 }
+
+private fun Intent.isAppDeepLink(): Boolean =
+    action == Intent.ACTION_VIEW &&
+        data?.scheme == AppDeepLinks.SCHEME &&
+        data?.host == AppDeepLinks.HOST
 
 internal fun clearFridgeNavigation(navController: NavHostController) {
   val fridgeEntry =

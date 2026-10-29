@@ -1,12 +1,10 @@
 package com.android.sharemate
 
-import android.Manifest
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.google.firebase.auth.FirebaseAuth
 import org.junit.Rule
@@ -16,9 +14,7 @@ import org.junit.runner.RunWith
 /** Verifies signed-out entry and Android back navigation on the real application. */
 @RunWith(AndroidJUnit4::class)
 class AuthActivityTest {
-  @get:Rule(order = 0)
-  val notificationPermission: GrantPermissionRule =
-      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+  @get:Rule(order = 0) val notificationPermission = notificationPermissionRule()
 
   @get:Rule(order = 0) val authenticatedUser = AuthenticatedUserRule(signedIn = false)
 

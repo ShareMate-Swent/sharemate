@@ -1,11 +1,13 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate
 
-import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -19,12 +21,13 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
 import com.android.sharemate.ui.household.JoinHouseholdTestTags
+import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
@@ -36,9 +39,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainUserFlowE2ETest {
-  @get:Rule(order = 0)
-  val notificationPermission: GrantPermissionRule =
-      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+  @get:Rule(order = 0) val notificationPermission = notificationPermissionRule()
 
   @get:Rule(order = 0)
   val firebaseEmulator =
@@ -64,6 +65,10 @@ class MainUserFlowE2ETest {
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
+    compose.runOnUiThread {
+      compose.activity.onNewIntent(
+          Intent(Intent.ACTION_VIEW, Uri.parse(AppDeepLinks.uri(TopLevelDestination.RECIPES))))
+    }
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
 
     compose.onNodeWithTag("auth_email").performTextInput(email)
@@ -87,6 +92,8 @@ class MainUserFlowE2ETest {
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
+    compose.onNodeWithTag(NavigationTestTags.RECIPES_TAB).assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
     compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
     compose
         .onNodeWithTag(C.Tag.fridge_type)
