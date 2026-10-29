@@ -5,7 +5,7 @@ import com.google.firebase.firestore.Exclude
 import java.util.Date
 
 /**
- * Représente un aliment ou un reçu dans l'application
+ * Represente un aliment ou un reçu dans l'application
  *
  * @property id Identifiant unique de l'item (généré par Firestore).
  * @property name Nom de l'aliment (ex: "Lait").

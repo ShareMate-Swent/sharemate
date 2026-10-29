@@ -6,8 +6,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.assertHeightIsEqualTo
@@ -43,7 +45,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
+@Config(sdk = [28], qualifiers = "w360dp-h800dp")
 @RunWith(AndroidJUnit4::class)
 class FridgeItemTest {
   @get:Rule val compose = createComposeRule()
@@ -105,7 +109,7 @@ class FridgeItemTest {
                 }
               }) {
             SampleAppTheme(dynamicColor = false) {
-              FridgeItem(item = item.value, imageLoader = loader)
+              FridgeItem(item = item.value, imageLoader = loader, modifier = Modifier.width(120.dp))
             }
           }
     }
@@ -130,8 +134,8 @@ class FridgeItemTest {
     compose
         .onNodeWithTag(C.Tag.fridge_image_placeholder)
         .assertIsDisplayed()
-        .assertWidthIsEqualTo(80.dp)
-        .assertHeightIsEqualTo(80.dp)
+        .assertWidthIsEqualTo(120.dp)
+        .assertHeightIsEqualTo(120.dp)
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertDoesNotExist()
     assertTrue(pending.isEmpty())
   }
@@ -148,7 +152,7 @@ class FridgeItemTest {
     assertEquals(item.value.image!!.reference, pending.single().source)
     assertEquals(
         "ShareMate/1.0 (https://github.com/ShareMate-Swent/sharemate)", pending.single().userAgent)
-    val pixels = (80 * context.resources.displayMetrics.density).toInt()
+    val pixels = (120 * context.resources.displayMetrics.density).toInt()
     assertEquals(Size(pixels, pixels), pending.single().size)
 
     pending.single().succeeds.complete(true)
@@ -156,8 +160,8 @@ class FridgeItemTest {
     compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
     compose
         .onNodeWithTag(C.Tag.fridge_image)
-        .assertWidthIsEqualTo(80.dp)
-        .assertHeightIsEqualTo(80.dp)
+        .assertWidthIsEqualTo(120.dp)
+        .assertHeightIsEqualTo(120.dp)
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertDoesNotExist()
     compose.runOnIdle { item.value = item.value.copy(category = "Dairy") }
@@ -279,6 +283,8 @@ class FridgeItemTest {
                         licenseUrl = "https://creativecommons.org/licenses/by-sa/4.0/",
                         authorUrl = "https://example.org/jane"))
     show(links = links)
+    compose.onNodeWithContentDescription("Actions for Milk").performClick()
+    compose.onNodeWithText("Image details").performClick()
     compose
         .onNodeWithText("Fresh milk · Jane Doe · Wikimedia Commons · CC BY-SA 4.0")
         .assertIsDisplayed()

@@ -6,11 +6,26 @@
     <string name="title_activity_second">SecondActivity</string>
 
     <string name="fridge_title">Fridge</string>
+    <string name="fridge_card_actions">Actions for %1$s</string>
+    <string name="fridge_card_image_details">Image details</string>
+    <string name="fridge_card_close">Close</string>
+    <plurals name="fridge_card_quantity">
+        <item quantity="one">Qty: %1$d unit</item>
+        <item quantity="other">Qty: %1$d units</item>
+    </plurals>
+    <string name="fridge_card_expiration">Exp.: %1$s</string>
+    <string name="fridge_card_expired">Expired: %1$s</string>
+    <string name="fridge_card_expiring_soon">Expires soon: %1$s</string>
     <string name="fridge_category_all">All</string>
     <string name="fridge_category_fruits">Fruits</string>
     <string name="fridge_category_vegetables">Vegetables</string>
     <string name="fridge_category_canned_goods">Canned goods</string>
     <string name="fridge_sort">Sort</string>
+    <string name="fridge_sort_expiration_date">Expiry date</string>
+    <string name="fridge_sort_name">Name</string>
+    <string name="fridge_owner_filter">Owner</string>
+    <string name="fridge_owner_filter_selected">Owner: %1$s</string>
+    <string name="fridge_owner_filter_all">All owners</string>
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
@@ -47,6 +62,17 @@
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
     <string name="household_privacy_note">• Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="notification_channel_expiration_name">Food expiration</string>
+    <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
+    <string name="notification_expiration_title">Check your fridge</string>
+    <plurals name="notification_expiration_expired">
+        <item quantity="one">%d item has expired</item>
+        <item quantity="other">%d items have expired</item>
+    </plurals>
+    <plurals name="notification_expiration_soon">
+        <item quantity="one">%d item expires soon</item>
+        <item quantity="other">%d items expire soon</item>
+    </plurals>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>

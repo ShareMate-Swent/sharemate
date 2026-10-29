@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.item.Item
@@ -102,6 +105,9 @@ class FirebaseAuthTestRule(
   }
 
   override fun before() {
+    // Robolectric does not run the content provider that normally initializes WorkManager.
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext<Context>())
     firebase = mockStatic(FirebaseAuth::class.java)
     firebase.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }.thenReturn(auth)
     firestore = mockStatic(FirebaseFirestore::class.java)
