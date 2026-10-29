@@ -32,6 +32,7 @@ data class FridgeUiState(
 
 enum class BarcodeLookupError {
   UNREADABLE,
+  SCANNER_FAILED,
   NOT_FOUND,
   LOOKUP_FAILED,
   NO_DETAILS,

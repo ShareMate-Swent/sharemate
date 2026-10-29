@@ -1147,11 +1147,11 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun lookupProductFromImageReturnsFailureWhenScannerFails() = runTest {
-    barcodeScanner.failure = IOException("Unreadable image")
+  fun lookupProductFromImageDistinguishesScannerFailureFromMissingBarcode() = runTest {
+    barcodeScanner.failure = IOException("Image access failed")
     val vm = viewModel()
 
-    assertEquals(Failure(Reason.INVALID_BARCODE), vm.lookupProductFromImage("content://photo/42"))
+    assertEquals(Failure(Reason.SCANNER_FAILURE), vm.lookupProductFromImage("content://photo/42"))
     assertTrue(lookedUpBarcodes.isEmpty())
   }
 

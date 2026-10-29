@@ -111,7 +111,10 @@ class BarcodeFormIntegrationTest {
   fun notFoundAndEveryCatalogFailurePreserveManualInputAndAllowRetry() = runTest {
     lookup = { ProductLookupResult.NotFound }
     assertFailure(BarcodeLookupError.NOT_FOUND)
-    for (reason in ProductLookupResult.Reason.entries) {
+    for (reason in
+        ProductLookupResult.Reason.entries.filterNot {
+          it == ProductLookupResult.Reason.SCANNER_FAILURE
+        }) {
       lookup = { ProductLookupResult.Failure(reason) }
       assertFailure(
           if (reason == ProductLookupResult.Reason.INVALID_BARCODE) BarcodeLookupError.UNREADABLE
@@ -131,10 +134,27 @@ class BarcodeFormIntegrationTest {
   fun unreadableImageNeverCallsCatalogAndDoesNotEraseDraft() = runTest {
     scan = { BarcodeScanResult.NotFound }
     assertFailure(BarcodeLookupError.UNREADABLE)
-    scan = { throw IOException("unreadable private file") }
-    assertFailure(BarcodeLookupError.UNREADABLE)
     assertTrue(lookedUp.isEmpty())
     assertEquals("Manual food", vm.uiState.value.itemName)
+  }
+
+  @Test
+  fun scannerExceptionReportsTechnicalFailurePreservesDraftAndAllowsRetry() = runTest {
+    scan = { throw IOException("private image access failed") }
+    assertFailure(BarcodeLookupError.SCANNER_FAILED)
+    assertTrue(lookedUp.isEmpty())
+    assertEquals("Manual food", vm.uiState.value.itemName)
+    assertManualFieldsPreserved()
+    assertTrue(items.addedItems.isEmpty())
+
+    scan = { BarcodeScanResult.Found("0012345678905") }
+    vm.confirmBarcodeImage("file:///same-photo")
+    assertEquals(listOf("file:///same-photo", "file:///same-photo"), scanned)
+    assertEquals(listOf("0012345678905"), lookedUp)
+    assertEquals("Milk — Farm", vm.uiState.value.itemName)
+    assertNull(vm.uiState.value.barcodeLookupError)
+    assertFalse(vm.uiState.value.isScanningBarcode)
+    assertManualFieldsPreserved()
   }
 
   @Test

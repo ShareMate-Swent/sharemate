@@ -60,6 +60,7 @@ fun AddItemDialog(
         stringResource(
             when (it) {
               BarcodeLookupError.UNREADABLE -> R.string.barcode_lookup_unreadable
+              BarcodeLookupError.SCANNER_FAILED -> R.string.barcode_lookup_scanner_failed
               BarcodeLookupError.NOT_FOUND -> R.string.barcode_lookup_not_found
               BarcodeLookupError.LOOKUP_FAILED -> R.string.barcode_lookup_failed
               BarcodeLookupError.NO_DETAILS -> R.string.barcode_lookup_no_details
