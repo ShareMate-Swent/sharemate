@@ -29,9 +29,6 @@ import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
@@ -59,18 +56,8 @@ class MainUserFlowE2ETest {
     val password = "secret123"
     val householdName = "Shared Home"
     val itemName = "Milk"
-    val lookup = CompletableDeferred<FoodImageSearchResult>()
-    val cancelled = CompletableDeferred<Unit>()
-    compose.runOnUiThread {
-      compose.activity.imageLookup = {
-        try {
-          lookup.await()
-        } catch (e: CancellationException) {
-          cancelled.complete(Unit)
-          throw e
-        }
-      }
-    }
+    // Lookup cancellation and tab retention are covered by FridgeImageNavigationTest.
+    compose.runOnUiThread { compose.activity.imageLookup = { FoodImageSearchResult.NotFound } }
 
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
@@ -119,7 +106,6 @@ class MainUserFlowE2ETest {
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertIsDisplayed()
-    compose.runOnIdle { assertFalse(lookup.isCompleted) }
 
     val itemTag =
         compose
@@ -146,15 +132,12 @@ class MainUserFlowE2ETest {
         .assertTextEquals("Your fridge is empty")
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.runOnIdle { assertFalse(cancelled.isCompleted) }
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
 
     waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
-    compose.waitUntil(5_000) { cancelled.isCompleted }
-    lookup.cancel()
   }
 
   @Test
