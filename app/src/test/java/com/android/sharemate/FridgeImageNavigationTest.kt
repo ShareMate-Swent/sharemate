@@ -24,6 +24,7 @@ import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -148,7 +149,8 @@ class FridgeImageNavigationTest {
                                 "owner",
                                 "home",
                                 selector,
-                                BarcodeScanner { BarcodeScanResult.NotFound })
+                                BarcodeScanner { BarcodeScanResult.NotFound },
+                                testProductCatalogRepository())
                           }
                         })
             Text("Fridge")

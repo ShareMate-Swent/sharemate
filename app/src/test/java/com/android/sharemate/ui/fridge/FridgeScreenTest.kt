@@ -24,8 +24,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
-import com.android.sharemate.model.barcode.BarcodeScanResult
-import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -185,7 +183,8 @@ class FridgeScreenTest {
             USER_ID,
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
-            BarcodeScanner { BarcodeScanResult.NotFound })
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -345,7 +344,8 @@ class FridgeScreenTest {
             USER_ID,
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
-            BarcodeScanner { BarcodeScanResult.NotFound })
+            testBarcodeScanner(),
+            testProductCatalogRepository())
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -391,7 +391,8 @@ class FridgeScreenTest {
             USER_ID,
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
-            BarcodeScanner { BarcodeScanResult.NotFound })
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {

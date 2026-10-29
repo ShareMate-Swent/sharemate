@@ -67,7 +67,12 @@ class FridgeImageFirestoreTest {
     val vm =
         withContext(Dispatchers.Main) {
           FridgeViewModel(
-                  repository, owner, null, selector, BarcodeScanner { BarcodeScanResult.NotFound })
+                  repository,
+                  owner,
+                  null,
+                  selector,
+                  BarcodeScanner { BarcodeScanResult.NotFound },
+                  testProductCatalogRepository())
               .also { store.put("fridge", it) }
         }
     withContext(Dispatchers.Main) {

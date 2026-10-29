@@ -16,8 +16,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
-import com.android.sharemate.model.barcode.BarcodeScanResult
-import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -198,7 +196,8 @@ class ItemRemovalTest {
             "test-user",
             "test-household",
             FoodImageSelector(imageRepository),
-            BarcodeScanner { BarcodeScanResult.NotFound })
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }

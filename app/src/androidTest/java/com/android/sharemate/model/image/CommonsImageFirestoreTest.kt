@@ -16,6 +16,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.toItemOrNull
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.fridgeImageRequest
+import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CompletableDeferred
@@ -114,7 +115,8 @@ class CommonsImageFirestoreTest {
                   userId,
                   null,
                   FoodImageSelector(gatedImages),
-                  BarcodeScanner { BarcodeScanResult.NotFound })
+                  BarcodeScanner { BarcodeScanResult.NotFound },
+                  testProductCatalogRepository())
               .also { store.put("commons", it) }
         }
     var id: String? = null

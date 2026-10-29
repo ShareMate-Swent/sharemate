@@ -15,8 +15,6 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
-import com.android.sharemate.model.barcode.BarcodeScanResult
-import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -68,7 +66,8 @@ class FridgeEditTest {
             "user",
             "household",
             FoodImageSelector(imageRepository),
-            BarcodeScanner { BarcodeScanResult.NotFound })
+            testBarcodeScanner(),
+            testProductCatalogRepository())
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()

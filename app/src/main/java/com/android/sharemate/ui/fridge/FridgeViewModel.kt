@@ -17,6 +17,10 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.product.ProductLookupResult.Failure
+import com.android.sharemate.model.product.ProductLookupResult.Reason
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -42,7 +46,8 @@ class FridgeViewModel(
     private val userId: String,
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector,
-    private val barcodeScanner: BarcodeScanner
+    private val barcodeScanner: BarcodeScanner,
+    private val productCatalogRepository: ProductCatalogRepository
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
@@ -316,6 +321,31 @@ class FridgeViewModel(
           barcodeScanFailed = false,
           formError = null)
     }
+  }
+
+  /**
+   * Decodes an image and looks up its barcode in the product catalog.
+   *
+   * The caller receives the catalog result directly and decides how to apply any returned details
+   * to its form. A scan that finds no barcode or a scanner error is reported as
+   * [Reason.INVALID_BARCODE].
+   */
+  suspend fun lookupProductFromImage(imageUri: String): ProductLookupResult {
+    if (imageUri.isBlank()) return Failure(Reason.INVALID_BARCODE)
+    val scanResult =
+        try {
+          barcodeScanner.scan(imageUri)
+        } catch (exception: CancellationException) {
+          throw exception
+        } catch (exception: Exception) {
+          return Failure(Reason.INVALID_BARCODE)
+        }
+    val barcode =
+        when (scanResult) {
+          is BarcodeScanResult.Found -> scanResult.value.trim().takeIf(String::isNotEmpty)
+          BarcodeScanResult.NotFound -> null
+        } ?: return Failure(Reason.INVALID_BARCODE)
+    return productCatalogRepository.lookupByBarcode(barcode)
   }
 
   fun scanBarcodeImage(imageUri: String) {

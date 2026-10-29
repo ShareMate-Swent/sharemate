@@ -20,8 +20,6 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sharemate.model.barcode.BarcodeScanResult
-import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -199,7 +197,8 @@ class FridgeScreenTest {
               "alice",
               "household",
               FoodImageSelector(imageRepository),
-              BarcodeScanner { BarcodeScanResult.NotFound })
+              testBarcodeScanner(),
+              testProductCatalogRepository())
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {

@@ -47,6 +47,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
@@ -54,6 +55,8 @@ import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
+import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -90,6 +93,12 @@ open class MainActivity : ComponentActivity() {
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
+
+  protected open fun createBarcodeScanner(): BarcodeScanner =
+      MlKitBarcodeScanner(applicationContext)
+
+  protected open fun createProductCatalogRepository(): ProductCatalogRepository =
+      OpenFoodFactsProductCatalogRepository()
 
   private val authViewModel: AuthViewModel by viewModels {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
@@ -200,8 +209,9 @@ open class MainActivity : ComponentActivity() {
                                             userId = session.uid,
                                             householdId = household.id,
                                             foodImageSelector = createFoodImageSelector(),
-                                            barcodeScanner =
-                                                MlKitBarcodeScanner(applicationContext))
+                                            barcodeScanner = createBarcodeScanner(),
+                                            productCatalogRepository =
+                                                createProductCatalogRepository())
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
