@@ -72,6 +72,7 @@ fun FridgeScreen(
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
+    onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     fridgeType: FridgeType? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
@@ -229,6 +230,7 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
+        onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->

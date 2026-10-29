@@ -179,6 +179,8 @@ service cloud.firestore {
     }
 
     match /items/{itemId} {
+      // Image transactions must be able to ignore an item deleted during a lookup.
+      allow get: if signedIn() && resource == null;
       allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
       allow create: if signedIn()
           && hasValidItemData(request.resource.data)

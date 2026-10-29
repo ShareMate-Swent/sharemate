@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -28,12 +29,22 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImageHttp
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
 
 private val ThumbnailSize = 80.dp
+
+internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(source)
+        .size(pixels, pixels)
+        // Wikimedia rejects a generic library User-Agent for thumbnail downloads too.
+        .setHeader("User-Agent", FoodImageHttp.USER_AGENT)
+        .crossfade(false)
+        .build()
 
 @Composable
 internal fun FridgeItemImage(item: Item, imageLoader: ImageLoader) {
@@ -47,13 +58,7 @@ internal fun FridgeItemImage(item: Item, imageLoader: ImageLoader) {
         FoodPlaceholder()
       } else {
         val request =
-            remember(context, source, pixels) {
-              ImageRequest.Builder(context)
-                  .data(source)
-                  .size(pixels, pixels)
-                  .crossfade(false)
-                  .build()
-            }
+            remember(context, source, pixels) { fridgeImageRequest(context, source, pixels) }
         val painter =
             rememberAsyncImagePainter(
                 model = request, imageLoader = imageLoader, contentScale = ContentScale.Crop)
@@ -90,6 +95,7 @@ internal fun FridgeImageCredits(image: ItemImage?) {
   val license =
       when (image.license?.lowercase()) {
         "by" -> "CC BY"
+        "by-sa" -> "CC BY-SA"
         "cc0" -> "CC0"
         else -> image.license
       }
@@ -108,8 +114,6 @@ internal fun FridgeImageCredits(image: ItemImage?) {
     CreditLink(image.sourceUrl, stringResource(R.string.fridge_image_source))
     CreditLink(image.licenseUrl, stringResource(R.string.fridge_image_license))
     CreditLink(image.authorUrl, stringResource(R.string.fridge_image_author))
-    Text(
-        stringResource(R.string.fridge_image_openverse), style = MaterialTheme.typography.bodySmall)
   }
 }
 

@@ -23,6 +23,8 @@ import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -196,6 +198,12 @@ class FridgeScreenTest {
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && !it.isShared } }
+
+    override suspend fun updateItemImageIfAbsent(
+        itemId: String,
+        expectedName: String,
+        image: ItemImage
+    ): ItemImageUpdateResult = error("Not used in this test")
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
