@@ -1,10 +1,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.household.PrivateHouseholdLeaveException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,22 @@ class LeaveHouseholdViewModelTest {
   @After
   fun tearDown() {
     Dispatchers.resetMain()
+  }
+
+  @Test
+  fun privateFridgeRejectionDoesNotLeaveOrOfferRetries() = runTest {
+    repository.failure = PrivateHouseholdLeaveException()
+    viewModel.requestLeave()
+    viewModel.confirmLeave()
+    advanceUntilIdle()
+
+    assertEquals(LeaveHouseholdError.PRIVATE_HOUSEHOLD, viewModel.state.value.error)
+    assertTrue(viewModel.state.value.isConfirming)
+    assertFalse(viewModel.state.value.left)
+    assertFalse(viewModel.state.value.isLeaving)
+    viewModel.confirmLeave()
+    advanceUntilIdle()
+    assertEquals(1, repository.leftUserIds.size)
   }
 
   @Test

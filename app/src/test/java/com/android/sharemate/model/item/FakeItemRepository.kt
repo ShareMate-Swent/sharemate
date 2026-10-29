@@ -36,10 +36,13 @@ class FakeItemRepository : ItemRepository {
   var statusException: Exception? = null
   var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
   var imageUpdateFailure: Exception? = null
+  val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
-    return items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+    return items.map { current ->
+      current.filter { it.ownerId == userId && it.householdId == null }
+    }
   }
 
   override fun getSharedItems(householdId: String): Flow<List<Item>> {
@@ -66,6 +69,7 @@ class FakeItemRepository : ItemRepository {
       expectedName: String,
       image: ItemImage
   ): ItemImageUpdateResult {
+    imageUpdates += Triple(itemId, expectedName, image)
     if (itemId.isBlank() || '/' in itemId) {
       return ItemImageUpdateResult.Error(IllegalArgumentException("A document ID is required"))
     }
@@ -116,6 +120,9 @@ class FakeItemRepository : ItemRepository {
           expirationDate = edit.expirationDate)
     }
   }
+
+  override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
+      change(itemId) { it.copy(sharing = sharing) }
 
   override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite {
     statusChanges += itemId to status

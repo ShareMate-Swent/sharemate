@@ -221,7 +221,7 @@ class ItemRemovalTest {
         items.map { current -> current.filter { it.householdId == householdId } }
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+        items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
@@ -231,6 +231,11 @@ class ItemRemovalTest {
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
+
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
 
     override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
         error("Not used in this test")

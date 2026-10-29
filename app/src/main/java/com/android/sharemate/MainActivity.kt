@@ -110,6 +110,7 @@ open class MainActivity : ComponentActivity() {
               val navController = rememberNavController()
               DisposableEffect(navController) {
                 onDispose {
+                  // Session/household teardown cancels the retained fridge's image lookups.
                   if (!isChangingConfigurations) {
                     clearFridgeNavigation(navController)
                   }
@@ -129,6 +130,7 @@ open class MainActivity : ComponentActivity() {
                             onClick = {
                               navController.navigate(destination.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
+                                  // Retain the fridge ViewModel and its image jobs across tabs.
                                   saveState = true
                                 }
                                 launchSingleTop = true

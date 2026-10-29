@@ -15,7 +15,7 @@ interface ItemRepository {
    */
   fun getPrivateItems(userId: String): Flow<List<Item>>
 
-  /** Récupère un flux (Flow) réactif de tous les items partagés pour un foyer donné. */
+  /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
   fun getSharedItems(householdId: String): Flow<List<Item>>
 
   /**
@@ -45,6 +45,13 @@ interface ItemRepository {
 
   /** Updates only editable fields; never transfers ownership or changes sharing. */
   fun updateItem(itemId: String, edit: ItemEdit): ItemWrite
+
+  /**
+   * Updates sharing only, preserving ownerId and householdId. Household visibility is unchanged.
+   * The server permits only the owner to change sharing; observe [ItemWrite] confirmation for
+   * denial.
+   */
+  fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite
 
   /** Changes lifecycle only. ACTIVE also permits undoing an accidental consume/discard. */
   fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite

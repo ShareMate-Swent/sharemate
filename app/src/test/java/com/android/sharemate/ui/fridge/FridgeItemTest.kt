@@ -138,8 +138,10 @@ class FridgeItemTest {
 
   @Test
   fun loadingThenSuccessUsesTheStoredReferenceAndThumbnailDimensions() {
-    item.value = item.value.copy(image = remote())
     show()
+    compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertIsDisplayed()
+    assertTrue(pending.isEmpty())
+    compose.runOnIdle { item.value = item.value.copy(image = remote()) }
     waitForRequest()
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_image).assertDoesNotExist()

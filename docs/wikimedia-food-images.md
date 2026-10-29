@@ -5,9 +5,27 @@
 `FoodImageRepository` interface. No account or API key is needed. The former Openverse implementation
 and its provider-specific tests have been removed; there is no fallback to Openverse.
 
-This change is independent of the pending work to look up images after saving. It preserves main's
-creation flow: look up an optional image for at most 20 seconds, then save the item. An error or missing
-result still saves the item with a placeholder. The separate background-image branch is unchanged.
+After validation, `FridgeViewModel` saves the item with a placeholder and closes the form as soon as
+creation succeeds. It then searches for an image in a separate job and attaches the result through
+`ItemRepository.updateItemImageIfAbsent`. The repository atomically ignores deleted or renamed items
+and items that already have an image. Inventory flows supply the updated image and credits to the UI.
+
+Lookup jobs belong to the retained fridge ViewModel: switching tabs preserves them, while leaving
+the session or household cancels them and their network calls. No work resumes after process death.
+Temporary failures receive at most three attempts, each bounded by the existing 20-second timeout,
+with two-second pauses. Failed lookups, timeouts and failed image writes keep the saved placeholder.
+They never reopen the form or repeat creation. Old placeholder items do not automatically retry.
+
+## Manual verification
+
+1. Run the app and create a new item named `tacos`. The form should close after the save, with a
+   placeholder while lookup is pending.
+2. Switch tabs and return. Lookup should continue, and a successful result should display an image
+   with Commons attribution. A provider failure can leave the placeholder.
+3. Restart the app after the image arrives; the image and credits should still be present.
+4. Delete or rename an item before lookup completes. It must not be recreated or receive an image
+   based on an obsolete name. Existing images must remain unchanged.
+5. Sign out during lookup; no task from that session should continue applying images.
 
 ## Search and attribution
 
@@ -40,7 +58,10 @@ Commons attribution and CC BY-SA without contacting an external image service.
 
 With the Auth and Firestore emulators running, `CommonsImageFirestoreTest` checks creation through the
 ViewModel and rereading the stored image and credits using the server and a fresh repository. Its
-normal test uses a controlled response, so CI does not depend on Commons.
+normal test uses a controlled response, so CI does not depend on Commons. Both tests gate lookup
+until creation is complete and the placeholder is confirmed by a server read, then verify the later
+image through the inventory flow and a fresh Firestore read. Selector, ViewModel and navigation tests
+also cover failures, retry cancellation, tab changes and session teardown without external services.
 
 An opt-in test additionally contacts the real Commons API for "tacos", saves/rereads the result in the
 Firestore emulator, and decodes the returned thumbnail with Coil. Run this explicitly, with an Android
@@ -81,3 +102,16 @@ Openverse removal validated on 28 October 2026:
   An earlier targeted attempt was interrupted by an ADB connection loss; the final run completed.
   The full suite was not rerun after restoring forwarding; API 34 and the updated SonarCloud
   duplication measurement still require CI validation.
+
+
+Background-image integration validated on 29 October 2026, based on main at `649a057`:
+
+- `./gradlew check ktfmtCheck assembleDebug --console=plain`: passed; 412 unit tests, lint,
+  formatting and the debug APK build.
+- Targeted `connectedDebugAndroidTest` with Auth/Firestore emulators and `commonsLive=true`:
+  all 16 tests passed, none skipped. Classes: `CommonsImageFirestoreTest`,
+  `FridgeImageFirestoreTest` and `FirebaseItemRepositoryEmulatorTest`.
+- This verifies server-confirmed placeholder creation before releasing lookup, later image arrival,
+  actual Commons thumbnail decoding and Firestore reread, plus the atomic update safeguards.
+- The complete instrumented UI suite and manual gestures were not rerun for this integration.
+  The previously documented API 37/Espresso limitation remains; API 34 validation requires CI.

@@ -26,20 +26,22 @@ class HouseholdRepositoryFirestore(
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
 
     repeat(MAX_INVITE_CODE_ATTEMPTS) {
-      val inviteCode = inviteCodeGenerator.generate()
-      val existing =
-          try {
-            firestore
-                .collection(FirestoreCollections.INVITE_CODES)
-                .document(inviteCode)
-                .get()
-                .await()
-          } catch (exception: FirebaseFirestoreException) {
-            // Rules hide private invite codes owned by another user; treat them as unavailable.
-            if (exception.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return@repeat
-            throw exception
-          }
-      if (existing.exists()) return@repeat
+      val inviteCode = if (type == FridgeType.SHARED) inviteCodeGenerator.generate() else ""
+      if (type == FridgeType.SHARED) {
+        val existing =
+            try {
+              firestore
+                  .collection(FirestoreCollections.INVITE_CODES)
+                  .document(inviteCode)
+                  .get()
+                  .await()
+            } catch (exception: FirebaseFirestoreException) {
+              // Legacy private invite codes are hidden from other users; retry unavailable codes.
+              if (exception.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return@repeat
+              throw exception
+            }
+        if (existing.exists()) return@repeat
+      }
 
       val householdReference = firestore.collection(FirestoreCollections.HOUSEHOLDS).document()
       val household =
@@ -51,13 +53,14 @@ class HouseholdRepositoryFirestore(
               createdBy = creatorId,
               createdAt = Date(),
               type = type)
-      val inviteCodeReference =
-          firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
+      val batch = firestore.batch().set(householdReference, household)
+      if (type == FridgeType.SHARED) {
+        val inviteCodeReference =
+            firestore.collection(FirestoreCollections.INVITE_CODES).document(inviteCode)
+        batch.set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
+      }
 
-      firestore
-          .batch()
-          .set(householdReference, household)
-          .set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
+      batch
           .set(
               firestore.collection(FirestoreCollections.USERS).document(creatorId),
               mapOf(HOUSEHOLD_ID_FIELD to household.id),
@@ -113,6 +116,9 @@ class HouseholdRepositoryFirestore(
             .whereArrayContains(MEMBER_IDS_FIELD, userId)
             .get()
             .await()
+    if (memberships.documents.any { it.getString("type") == FridgeType.PRIVATE.name }) {
+      throw PrivateHouseholdLeaveException()
+    }
     val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
     // memberIds is the source of truth, but a profile can still point at a household that no
     // longer lists the user; clear that copy too so both sides agree after leaving.

@@ -1,6 +1,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import android.graphics.Bitmap
+import android.graphics.Color
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -8,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,6 +20,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -30,12 +34,16 @@ import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -44,6 +52,78 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ManualItemCreationTest {
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
+
+  @Test
+  fun formClosesWithPlaceholderThenInventoryDisplaysTheImage() {
+    val gate = CompletableDeferred<FoodImageSearchResult>()
+    var calls = 0
+    val repository = TestItemRepository()
+    val viewModel =
+        showManualEntryScreen(
+            repository,
+            object : FoodImageRepository {
+              override suspend fun searchByTitle(title: String): FoodImageSearchResult {
+                calls++
+                return gate.await()
+              }
+            })
+    val file = File(composeTestRule.activity.cacheDir, "manual-item-image.png")
+    val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+    bitmap.eraseColor(Color.RED)
+    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    bitmap.recycle()
+    try {
+      composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+      Espresso.closeSoftKeyboard()
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_save_item)
+          .assertIsDisplayed()
+          .assertIsEnabled()
+          .performClick()
+      composeTestRule.waitUntil(5_000) {
+        !viewModel.uiState.value.isAddItemDialogOpen && viewModel.uiState.value.items.size == 1
+      }
+      composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_image_placeholder).assertIsDisplayed()
+      composeTestRule.runOnIdle {
+        assertNull(repository.submissions.single().image)
+        assertFalse(gate.isCompleted)
+        gate.complete(
+            FoodImageSearchResult.Found(
+                FoodImage(
+                    url = file.toURI().toString(),
+                    author = "Test author",
+                    sourceName = "Test library",
+                    sourceUrl = "https://example.org/source",
+                    title = "Test milk",
+                    license = "cc0",
+                    licenseUrl = "https://creativecommons.org/publicdomain/zero/1.0/",
+                    licenseVersion = "1.0",
+                    authorUrl = null)))
+      }
+      composeTestRule.waitUntil(5_000) {
+        composeTestRule.onAllNodesWithTag(C.Tag.fridge_image).fetchSemanticsNodes().isNotEmpty()
+      }
+      composeTestRule.onNodeWithTag(C.Tag.fridge_image).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_image_placeholder).assertDoesNotExist()
+      // Recomposition and another form must not restart lookup for an existing card.
+      composeTestRule.runOnIdle { viewModel.openAddItemDialog() }
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_cancel_item)
+          .assertIsDisplayed()
+          .assertIsEnabled()
+          .performClick()
+      composeTestRule.runOnIdle {
+        assertEquals(1, calls)
+        assertEquals(
+            file.toURI().toString(), viewModel.uiState.value.items.single().image?.reference)
+      }
+    } finally {
+      gate.cancel()
+      file.delete()
+    }
+  }
 
   @Test
   fun emptyNameIsRejectedAndValidItemIsRendered() {
@@ -289,11 +369,13 @@ class ManualItemCreationTest {
     }
   }
 
-  private fun showManualEntryScreen(repository: TestItemRepository): FridgeViewModel {
-    val imageRepository =
-        object : FoodImageRepository {
-          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
-        }
+  private fun showManualEntryScreen(
+      repository: TestItemRepository,
+      imageRepository: FoodImageRepository =
+          object : FoodImageRepository {
+            override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+          }
+  ): FridgeViewModel {
     val viewModel =
         FridgeViewModel(
             repository,
@@ -318,7 +400,7 @@ class ManualItemCreationTest {
     var addGate: CompletableDeferred<Unit>? = null
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+        items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
@@ -327,10 +409,27 @@ class ManualItemCreationTest {
         itemId: String,
         expectedName: String,
         image: ItemImage
-    ): ItemImageUpdateResult = error("Not used in this test")
+    ): ItemImageUpdateResult {
+      var result: ItemImageUpdateResult = ItemImageUpdateResult.Ignored
+      items.update { current ->
+        result = ItemImageUpdateResult.Ignored
+        current.map {
+          if (it.id == itemId && it.name == expectedName && it.image == null) {
+            result = ItemImageUpdateResult.Updated
+            it.copy(image = image)
+          } else it
+        }
+      }
+      return result
+    }
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
+
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
 
     override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
         error("Not used in this test")
