@@ -144,6 +144,7 @@ class BarcodePhotoViewModelTest {
     vm.confirm { throw IOException("decoder failed") }
     advanceUntilIdle()
     assertTrue(vm.state.value.failed)
+    assertTrue(vm.state.value.confirmationFailed)
     assertTrue(vm.state.value.visible)
     assertFalse(vm.state.value.confirmed)
     assertTrue(store.deleted.isEmpty())
@@ -151,6 +152,22 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     assertTrue(vm.state.value.confirmed)
     assertFalse(vm.state.value.failed)
+    assertFalse(vm.state.value.confirmationFailed)
+  }
+
+  @Test
+  fun replacementFailureDoesNotKeepPreviousConsumerError() = runTest {
+    vm.select("content://gallery/first")
+    advanceUntilIdle()
+    vm.confirm { throw IOException("lookup failed") }
+    advanceUntilIdle()
+    assertTrue(vm.state.value.confirmationFailed)
+    store.importFailure = IOException("unreadable replacement")
+    vm.select("content://gallery/broken")
+    advanceUntilIdle()
+    assertTrue(vm.state.value.failed)
+    assertFalse(vm.state.value.confirmationFailed)
+    assertEquals("file:///private/first", vm.state.value.uri)
   }
 
   @Test

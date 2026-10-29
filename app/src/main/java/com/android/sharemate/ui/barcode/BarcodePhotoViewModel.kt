@@ -27,6 +27,7 @@ data class BarcodePhotoState(
     val page: PhotoPage = PhotoPage.SOURCE,
     val busy: Boolean = false,
     val failed: Boolean = false,
+    val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
 )
 
@@ -57,16 +58,23 @@ class BarcodePhotoViewModel(
       it.copy(
           visible = true,
           page = if (it.uri == null) PhotoPage.SOURCE else PhotoPage.PREVIEW,
-          failed = false)
+          failed = false,
+          confirmationFailed = false)
     }
   }
 
   fun showCamera() {
-    if (!state.value.busy) mutableState.update { it.copy(page = PhotoPage.CAMERA, failed = false) }
+    if (!state.value.busy)
+        mutableState.update {
+          it.copy(page = PhotoPage.CAMERA, failed = false, confirmationFailed = false)
+        }
   }
 
   fun showSources() {
-    if (!state.value.busy) mutableState.update { it.copy(page = PhotoPage.SOURCE, failed = false) }
+    if (!state.value.busy)
+        mutableState.update {
+          it.copy(page = PhotoPage.SOURCE, failed = false, confirmationFailed = false)
+        }
   }
 
   fun closePreview() {
@@ -78,7 +86,7 @@ class BarcodePhotoViewModel(
 
   fun reportFailure() {
     // A failed replacement must not make the previous image eligible for a second handoff.
-    mutableState.update { it.copy(failed = true) }
+    mutableState.update { it.copy(failed = true, confirmationFailed = false) }
   }
 
   fun select(uri: String?) {
@@ -110,7 +118,14 @@ class BarcodePhotoViewModel(
     }
     runOperation {
       store.validate(uri)
-      consume?.invoke(uri)
+      try {
+        consume?.invoke(uri)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        mutableState.update { it.copy(confirmationFailed = true) }
+        throw failure
+      }
       savedState[CONFIRMED_KEY] = true
       savedState[VISIBLE_KEY] = false
       mutableState.update { it.copy(confirmed = true, visible = false) }
@@ -150,7 +165,7 @@ class BarcodePhotoViewModel(
 
   private fun runOperation(action: suspend () -> Unit) {
     if (state.value.busy) return
-    mutableState.update { it.copy(busy = true, failed = false) }
+    mutableState.update { it.copy(busy = true, failed = false, confirmationFailed = false) }
     operation =
         viewModelScope.launch {
           try {
@@ -158,7 +173,7 @@ class BarcodePhotoViewModel(
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
-            reportFailure()
+            mutableState.update { it.copy(failed = true) }
           } finally {
             mutableState.update { it.copy(busy = false) }
           }

@@ -20,6 +20,7 @@ data class FridgeUiState(
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,
     val barcodeScanFailed: Boolean = false,
+    val barcodeLookupError: BarcodeLookupError? = null,
     val isSaving: Boolean = false,
     val formError: FridgeFormError? = null,
     val pendingRemovalItem: Item? = null,
@@ -28,6 +29,16 @@ data class FridgeUiState(
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
 )
+
+enum class BarcodeLookupError {
+  UNREADABLE,
+  NOT_FOUND,
+  LOOKUP_FAILED,
+  NO_DETAILS,
+}
+
+/** Keeps photo confirmation retryable while the form exposes the specific lookup error. */
+class BarcodeLookupException(val error: BarcodeLookupError) : Exception()
 
 enum class FridgeFormError {
   NAME_REQUIRED,

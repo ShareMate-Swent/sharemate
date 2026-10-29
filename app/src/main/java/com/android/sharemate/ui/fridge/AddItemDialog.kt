@@ -55,6 +55,17 @@ fun AddItemDialog(
                 }
               })
   val photo by photoViewModel.state.collectAsState()
+  val lookupError =
+      uiState.barcodeLookupError?.let {
+        stringResource(
+            when (it) {
+              BarcodeLookupError.UNREADABLE -> R.string.barcode_lookup_unreadable
+              BarcodeLookupError.NOT_FOUND -> R.string.barcode_lookup_not_found
+              BarcodeLookupError.LOOKUP_FAILED -> R.string.barcode_lookup_failed
+              BarcodeLookupError.NO_DETAILS -> R.string.barcode_lookup_no_details
+            })
+      }
+  val inputEnabled = !uiState.isSaving && !uiState.isScanningBarcode && !photo.busy
   val activity = LocalContext.current.findActivity()
   DisposableEffect(photoViewModel) {
     onDispose { if (activity?.isChangingConfigurations != true) photoViewModel.discard() }
@@ -62,7 +73,7 @@ fun AddItemDialog(
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.fridge_add_dialog),
       onDismissRequest = {
-        if (!uiState.isSaving && !photo.busy) {
+        if (inputEnabled) {
           photoViewModel.reset()
           onDismiss()
         }
@@ -80,20 +91,26 @@ fun AddItemDialog(
               if (uiState.editingItemId == null) {
                 FilledTonalButton(
                     onClick = photoViewModel::open,
-                    enabled = !uiState.isSaving && !photo.busy,
+                    enabled = inputEnabled,
                     modifier = Modifier.fillMaxWidth().testTag("barcode_photo_open")) {
                       Text(stringResource(R.string.barcode_photo_scanner))
                     }
                 if (photo.confirmed && !photo.failed)
                     Text(stringResource(R.string.barcode_photo_selected))
                 Text(stringResource(R.string.barcode_photo_manual))
+                lookupError?.let {
+                  Text(
+                      it,
+                      color = MaterialTheme.colorScheme.error,
+                      modifier = Modifier.testTag("barcode_lookup_error"))
+                }
               }
               OutlinedTextField(
                   value = uiState.itemName,
                   onValueChange = onNameChange,
                   label = { Text(stringResource(R.string.fridge_item_name)) },
                   isError = uiState.formError == FridgeFormError.NAME_REQUIRED,
-                  enabled = !uiState.isSaving,
+                  enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_name_input))
               OutlinedTextField(
@@ -101,14 +118,14 @@ fun AddItemDialog(
                   onValueChange = onQuantityChange,
                   label = { Text(stringResource(R.string.fridge_quantity)) },
                   isError = uiState.formError == FridgeFormError.INVALID_QUANTITY,
-                  enabled = !uiState.isSaving,
+                  enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_quantity_input))
               OutlinedTextField(
                   value = uiState.itemCategory,
                   onValueChange = onCategoryChange,
                   label = { Text(stringResource(R.string.fridge_item_category_optional)) },
-                  enabled = !uiState.isSaving,
+                  enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_category_input))
               OutlinedTextField(
@@ -117,7 +134,7 @@ fun AddItemDialog(
                   label = { Text(stringResource(R.string.fridge_item_expiration_optional)) },
                   supportingText = { Text(stringResource(R.string.fridge_date_format)) },
                   isError = uiState.formError == FridgeFormError.INVALID_EXPIRATION_DATE,
-                  enabled = !uiState.isSaving,
+                  enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
               uiState.formError?.let { error ->
@@ -139,7 +156,7 @@ fun AddItemDialog(
       confirmButton = {
         TextButton(
             onClick = onSave,
-            enabled = !uiState.isSaving && !photo.busy,
+            enabled = inputEnabled,
             modifier = Modifier.testTag(C.Tag.fridge_save_item)) {
               Text(
                   stringResource(
@@ -152,10 +169,11 @@ fun AddItemDialog(
               photoViewModel.reset()
               onDismiss()
             },
-            enabled = !uiState.isSaving && !photo.busy,
+            enabled = inputEnabled,
             modifier = Modifier.testTag(C.Tag.fridge_cancel_item)) {
               Text(stringResource(R.string.fridge_cancel))
             }
       })
-  BarcodePhotoFlow(photoViewModel, onBarcodeImageConfirmed)
+  BarcodePhotoFlow(
+      photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
 }

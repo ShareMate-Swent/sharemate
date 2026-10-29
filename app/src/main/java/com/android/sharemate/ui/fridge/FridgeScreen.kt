@@ -305,6 +305,7 @@ fun FridgeScreen(
       onCategoryChange = viewModel::updateCategory,
       onExpirationDateChange = viewModel::updateExpirationDate,
       onSaveItem = viewModel::saveItem,
+      onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
       onEditItem = viewModel::openEditItemDialog,
       onQuantityChange = viewModel::updateQuantity,
       onDismissEditSyncError = viewModel::dismissEditSyncError,
