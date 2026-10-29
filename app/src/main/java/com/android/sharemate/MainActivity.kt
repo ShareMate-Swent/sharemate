@@ -3,9 +3,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,8 +24,11 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -48,6 +54,8 @@ import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.notifications.NotificationPermission
+import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
@@ -55,6 +63,7 @@ import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
+import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
@@ -66,6 +75,8 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
+  private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
+
   private val authRepository: AuthRepository by lazy {
     FirebaseAuthRepository(FirebaseAuth.getInstance())
   }
@@ -84,8 +95,20 @@ open class MainActivity : ComponentActivity() {
     viewModelFactory { initializer { AuthViewModel(authRepository, googleSignIn::clearSession) } }
   }
 
+  private val notificationPermissionLauncher =
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    pendingDeepLinkIntent =
+        if (savedInstanceState != null) {
+          savedInstanceState.getString(PENDING_DEEP_LINK_URI)?.let {
+            Intent(Intent.ACTION_VIEW, Uri.parse(it))
+          }
+        } else {
+          intent.takeIf(Intent::isAppDeepLink)
+        }
+    NotificationScheduler.schedule(applicationContext)
     setContent {
       SampleAppTheme(dynamicColor = false) {
         AuthHouseholdGate(
@@ -99,6 +122,18 @@ open class MainActivity : ComponentActivity() {
                 household,
                 onMembershipChanged ->
               val navController = rememberNavController()
+              val deepLinkIntent = pendingDeepLinkIntent
+              LaunchedEffect(navController, deepLinkIntent) {
+                deepLinkIntent?.let {
+                  navController.handleDeepLink(it)
+                  if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
+                }
+              }
+              LaunchedEffect(Unit) {
+                if (NotificationPermission.shouldRequest(this@MainActivity)) {
+                  notificationPermissionLauncher.launch(NotificationPermission.PERMISSION)
+                }
+              }
               DisposableEffect(navController) {
                 onDispose {
                   // Session/household teardown cancels the retained fridge's image lookups.
@@ -150,82 +185,111 @@ open class MainActivity : ComponentActivity() {
                     startDestination = TopLevelDestination.FRIDGE.route,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
                 ) {
-                  composable(TopLevelDestination.FRIDGE.route) { entry ->
-                    val fridgeViewModel: FridgeViewModel =
-                        viewModel(
-                            viewModelStoreOwner = entry,
-                            key = "fridge_${session.uid}_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    FridgeViewModel(
-                                        itemRepository = itemRepository,
-                                        userId = session.uid,
-                                        householdId = household.id,
-                                        foodImageSelector = createFoodImageSelector(),
-                                        barcodeScanner = MlKitBarcodeScanner(applicationContext))
-                                  }
-                                })
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      FridgeScreen(viewModel = fridgeViewModel, fridgeType = household.type)
-                    }
-                  }
-                  composable(TopLevelDestination.RECIPES.route) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      RecipesScreen()
-                    }
-                  }
-                  composable(TopLevelDestination.RECEIPTS.route) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      ReceiptsScreen()
-                    }
-                  }
-                  composable(TopLevelDestination.SETTINGS.route) {
-                    val leaveViewModel: LeaveHouseholdViewModel =
-                        viewModel(
-                            key = "leave_household_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    LeaveHouseholdViewModel(householdRepository, authRepository)
-                                  }
-                                })
-                    val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
-                    val settingsViewModel: SettingsViewModel =
-                        viewModel(
-                            key = "settings_${session.uid}_${household.id}",
-                            factory =
-                                viewModelFactory {
-                                  initializer {
-                                    SettingsViewModel(
-                                        authRepository, householdRepository, household)
-                                  }
-                                })
-                    val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
-                    val settingsScope = rememberCoroutineScope()
-                    SettingsScreen(
-                        state = settingsState,
-                        leaveState = leaveState,
-                        onLeaveHousehold = leaveViewModel::requestLeave,
-                        onCancelLeave = leaveViewModel::cancel,
-                        onConfirmLeave = leaveViewModel::confirmLeave,
-                        onLeft = onMembershipChanged,
-                        onSwitchGoogleAccount = {
-                          settingsScope.launch {
-                            settingsViewModel.switchGoogleAccount {
-                              googleSignIn.getIdToken(this@MainActivity)
-                            }
-                          }
-                        },
-                        onSignOut = authViewModel::signOut)
-                  }
+                  composable(
+                      TopLevelDestination.FRIDGE.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.FRIDGE)) { entry ->
+                        val fridgeViewModel: FridgeViewModel =
+                            viewModel(
+                                viewModelStoreOwner = entry,
+                                key = "fridge_${session.uid}_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        FridgeViewModel(
+                                            itemRepository = itemRepository,
+                                            userId = session.uid,
+                                            householdId = household.id,
+                                            foodImageSelector = createFoodImageSelector(),
+                                            barcodeScanner =
+                                                MlKitBarcodeScanner(applicationContext))
+                                      }
+                                    })
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          FridgeScreen(viewModel = fridgeViewModel, fridgeType = household.type)
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.RECIPES.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          RecipesScreen()
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.RECEIPTS.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          ReceiptsScreen()
+                        }
+                      }
+                  composable(
+                      TopLevelDestination.SETTINGS.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.SETTINGS)) {
+                        val leaveViewModel: LeaveHouseholdViewModel =
+                            viewModel(
+                                key = "leave_household_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        LeaveHouseholdViewModel(householdRepository, authRepository)
+                                      }
+                                    })
+                        val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
+                        val settingsViewModel: SettingsViewModel =
+                            viewModel(
+                                key = "settings_${session.uid}_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        SettingsViewModel(
+                                            authRepository, householdRepository, household)
+                                      }
+                                    })
+                        val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
+                        val settingsScope = rememberCoroutineScope()
+                        SettingsScreen(
+                            state = settingsState,
+                            leaveState = leaveState,
+                            onLeaveHousehold = leaveViewModel::requestLeave,
+                            onCancelLeave = leaveViewModel::cancel,
+                            onConfirmLeave = leaveViewModel::confirmLeave,
+                            onLeft = onMembershipChanged,
+                            onSwitchGoogleAccount = {
+                              settingsScope.launch {
+                                settingsViewModel.switchGoogleAccount {
+                                  googleSignIn.getIdToken(this@MainActivity)
+                                }
+                              }
+                            },
+                            onSignOut = authViewModel::signOut)
+                      }
                 }
               }
             }
       }
     }
   }
+
+  public override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (intent.isAppDeepLink()) pendingDeepLinkIntent = intent
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    pendingDeepLinkIntent?.dataString?.let { outState.putString(PENDING_DEEP_LINK_URI, it) }
+    super.onSaveInstanceState(outState)
+  }
+
+  private companion object {
+    const val PENDING_DEEP_LINK_URI = "pending_deep_link_uri"
+  }
 }
+
+private fun Intent.isAppDeepLink(): Boolean =
+    action == Intent.ACTION_VIEW &&
+        data?.scheme == AppDeepLinks.SCHEME &&
+        data?.host == AppDeepLinks.HOST
 
 internal fun clearFridgeNavigation(navController: NavHostController) {
   val fridgeEntry =

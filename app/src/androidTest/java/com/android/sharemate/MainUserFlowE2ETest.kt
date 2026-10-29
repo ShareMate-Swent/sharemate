@@ -37,6 +37,8 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class MainUserFlowE2ETest {
+  @get:Rule(order = 0) val notificationPermission = notificationPermissionRule()
+
   @get:Rule(order = 0)
   val firebaseEmulator =
       object : ExternalResource() {

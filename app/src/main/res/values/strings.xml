@@ -62,6 +62,8 @@
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
     <string name="household_privacy_note">• Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="notification_channel_expiration_name">Food expiration</string>
+    <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
     <string name="create_a_household">Create a household</string>
     <string name="join_a_household">Join a household</string>
     <string name="create_household_title">Create a household</string>
