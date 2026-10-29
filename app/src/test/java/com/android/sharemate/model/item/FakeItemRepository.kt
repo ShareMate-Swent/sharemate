@@ -36,6 +36,7 @@ class FakeItemRepository : ItemRepository {
   var statusException: Exception? = null
   var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
   var imageUpdateFailure: Exception? = null
+  val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
@@ -66,6 +67,7 @@ class FakeItemRepository : ItemRepository {
       expectedName: String,
       image: ItemImage
   ): ItemImageUpdateResult {
+    imageUpdates += Triple(itemId, expectedName, image)
     if (itemId.isBlank() || '/' in itemId) {
       return ItemImageUpdateResult.Error(IllegalArgumentException("A document ID is required"))
     }
