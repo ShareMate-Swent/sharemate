@@ -25,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -300,6 +301,7 @@ class FridgeViewModel(
           isScanningBarcode = false,
           barcodeValue = null,
           barcodeScanFailed = false,
+          barcodeLookupError = null,
           formError = null)
     }
   }
@@ -319,6 +321,7 @@ class FridgeViewModel(
           isScanningBarcode = false,
           barcodeValue = null,
           barcodeScanFailed = false,
+          barcodeLookupError = null,
           formError = null)
     }
   }
@@ -327,8 +330,8 @@ class FridgeViewModel(
    * Decodes an image and looks up its barcode in the product catalog.
    *
    * The caller receives the catalog result directly and decides how to apply any returned details
-   * to its form. A scan that finds no barcode or a scanner error is reported as
-   * [Reason.INVALID_BARCODE].
+   * to its form. A scan that finds no barcode is reported as [Reason.INVALID_BARCODE]; unexpected
+   * scanner failures use [Reason.SCANNER_FAILURE]. Coroutine cancellation is propagated.
    */
   suspend fun lookupProductFromImage(imageUri: String): ProductLookupResult {
     if (imageUri.isBlank()) return Failure(Reason.INVALID_BARCODE)
@@ -338,7 +341,7 @@ class FridgeViewModel(
         } catch (exception: CancellationException) {
           throw exception
         } catch (exception: Exception) {
-          return Failure(Reason.INVALID_BARCODE)
+          return Failure(Reason.SCANNER_FAILURE)
         }
     val barcode =
         when (scanResult) {
@@ -346,6 +349,84 @@ class FridgeViewModel(
           BarcodeScanResult.NotFound -> null
         } ?: return Failure(Reason.INVALID_BARCODE)
     return productCatalogRepository.lookupByBarcode(barcode)
+  }
+
+  /**
+   * Suspends until the image is no longer needed; never detach this work from photo confirmation.
+   */
+  suspend fun confirmBarcodeImage(imageUri: String): Unit = coroutineScope {
+    val initial = uiState.value
+    if (!initial.isAddItemDialogOpen ||
+        initial.editingItemId != null ||
+        initial.isSaving ||
+        initial.isScanningBarcode) {
+      throw CancellationException("Photo confirmation is no longer available")
+    }
+    val generation = barcodeDialogGeneration
+    val operation = currentCoroutineContext()[Job]
+    barcodeScanJob = operation
+    mutableUiState.update {
+      it.copy(
+          isScanningBarcode = true,
+          barcodeLookupError = null,
+          barcodeScanFailed = false,
+          barcodeValue = null)
+    }
+    try {
+      val result =
+          try {
+            lookupProductFromImage(imageUri)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            Failure(Reason.NETWORK)
+          }
+      currentCoroutineContext().ensureActive()
+      if (generation != barcodeDialogGeneration || !uiState.value.isAddItemDialogOpen) {
+        throw CancellationException("The item form was closed")
+      }
+      val error =
+          when (result) {
+            is ProductLookupResult.Found -> {
+              // The item schema has one editable name, so retain both catalog details there.
+              val name =
+                  listOfNotNull(result.product.name, result.product.brand)
+                      .map(String::trim)
+                      .filter(String::isNotEmpty)
+                      .distinct()
+                      .joinToString(" — ")
+              if (name.isEmpty()) {
+                updateBarcodeScanState(generation) {
+                  it.copy(barcodeValue = result.product.barcode)
+                }
+                BarcodeLookupError.NO_DETAILS
+              } else {
+                updateBarcodeScanState(generation) {
+                  it.copy(
+                      itemName = if (it.itemName == initial.itemName) name else it.itemName,
+                      barcodeValue = result.product.barcode,
+                      formError =
+                          if (it.formError == FridgeFormError.NAME_REQUIRED) null else it.formError)
+                }
+                null
+              }
+            }
+            ProductLookupResult.NotFound -> BarcodeLookupError.NOT_FOUND
+            is Failure ->
+                when (result.reason) {
+                  Reason.INVALID_BARCODE -> BarcodeLookupError.UNREADABLE
+                  Reason.SCANNER_FAILURE -> BarcodeLookupError.SCANNER_FAILED
+                  else -> BarcodeLookupError.LOOKUP_FAILED
+                }
+          }
+      if (error != null) {
+        updateBarcodeScanState(generation) { it.copy(barcodeLookupError = error) }
+        throw BarcodeLookupException(error)
+      }
+    } finally {
+      updateBarcodeScanState(generation) { it.copy(isScanningBarcode = false) }
+      if (barcodeScanJob === operation) barcodeScanJob = null
+    }
   }
 
   fun scanBarcodeImage(imageUri: String) {
@@ -453,7 +534,7 @@ class FridgeViewModel(
 
   fun saveItem() {
     val state = uiState.value
-    if (!state.isAddItemDialogOpen || state.isSaving) return
+    if (!state.isAddItemDialogOpen || state.isSaving || state.isScanningBarcode) return
     val name = state.itemName.trim()
     if (name.isEmpty()) {
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }

@@ -12,4 +12,9 @@
     <string name="barcode_photo_failed">Unable to use this photo. Try again or choose another image (maximum 20 MB).</string>
     <string name="barcode_camera_denied">Camera access is needed to take a photo. You can still choose a photo from your gallery.</string>
     <string name="barcode_camera_settings">Open app settings</string>
+    <string name="barcode_lookup_unreadable">No readable barcode found. Try a clearer photo or cancel to enter details manually.</string>
+    <string name="barcode_lookup_scanner_failed">Barcode scanning failed. Try again or cancel to enter details manually.</string>
+    <string name="barcode_lookup_not_found">Product not found. Try another barcode or cancel to enter details manually.</string>
+    <string name="barcode_lookup_failed">Product lookup failed. Try again or cancel to enter details manually.</string>
+    <string name="barcode_lookup_no_details">The catalog has no name or brand for this product. Cancel to enter details manually.</string>
 </resources>

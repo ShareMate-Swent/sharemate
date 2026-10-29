@@ -17,6 +17,9 @@ sealed interface ProductLookupResult {
     /** The barcode is blank, malformed, or outside the supported length. */
     INVALID_BARCODE,
 
+    /** The scanner could not process the image because of a technical failure. */
+    SCANNER_FAILURE,
+
     /** The catalog could not be reached. */
     NETWORK,
 

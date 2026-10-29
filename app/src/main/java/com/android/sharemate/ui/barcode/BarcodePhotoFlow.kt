@@ -38,6 +38,7 @@ import com.android.sharemate.R
 @Composable
 fun BarcodePhotoFlow(
     viewModel: BarcodePhotoViewModel,
+    confirmationError: String? = null,
     onImageConfirmed: (suspend (String) -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsState()
@@ -86,7 +87,8 @@ fun BarcodePhotoFlow(
                         Modifier.fillMaxWidth().testTag("barcode_photo_loading"))
                 if (state.failed)
                     Text(
-                        stringResource(R.string.barcode_photo_failed),
+                        confirmationError.takeIf { state.confirmationFailed }
+                            ?: stringResource(R.string.barcode_photo_failed),
                         color = MaterialTheme.colorScheme.error)
                 when (state.page) {
                   PhotoPage.CAMERA ->
