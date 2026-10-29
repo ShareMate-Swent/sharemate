@@ -28,12 +28,13 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // Shared codes can be fetched by anyone who knows them. Private codes are owner-only.
+    // Shared codes can be fetched by anyone who knows them. Legacy private codes are owner-only.
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
       function pointsToOwnHousehold() {
         let household = getAfter(documentPath('households', request.resource.data.householdId));
-        return household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
+        return household.data.get('type', 'SHARED') == 'SHARED'
+            && household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
       }
 
       // Missing codes remain readable for collision checks during household creation.
@@ -50,8 +51,16 @@ service cloud.firestore {
         return request.auth.uid in resource.data.memberIds;
       }
 
-      // The creator is the only initial member, and the invite-code lookup document must be
-      // written in the same batch.
+      // Private fridges have no invite code. Shared codes must map back to this household.
+      function hasValidInviteCode(household) {
+        return (household.get('type', 'SHARED') == 'PRIVATE' && household.inviteCode == '')
+            || (household.get('type', 'SHARED') == 'SHARED'
+                && household.inviteCode.size() > 0
+                && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
+                    == householdId);
+      }
+
+      // The creator is the only initial member; shared fridges also require an invite lookup.
       function isValidNewHousehold() {
         let household = request.resource.data;
         let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
@@ -67,8 +76,7 @@ service cloud.firestore {
             && household.memberIds == [request.auth.uid]
             && hasValidPrivateMembers(household)
             && household.createdAt is timestamp
-            && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
-                == householdId;
+            && hasValidInviteCode(household);
       }
 
       // Membership changes may touch memberIds and nothing else.
@@ -93,7 +101,8 @@ service cloud.firestore {
       function onlyRemovesSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return onlyMemberIdsChange()
+        return resource.data.get('type', 'SHARED') != 'PRIVATE'
+            && onlyMemberIdsChange()
             && request.auth.uid in before
             && after == before.removeAll([request.auth.uid])
             && getAfter(documentPath('users', request.auth.uid)).data.get('householdId', null)
@@ -126,15 +135,22 @@ service cloud.firestore {
       return data.ownerId == request.auth.uid;
     }
 
+    // Legacy household-access predicate; item sharing does not control read authorization.
     function isShared(data) {
       return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
+    }
+
+    // Missing sharing preserves legacy behavior without conflating fridge membership with sharing.
+    function itemSharing(data) {
+      return data.get('sharing', data.get('householdId', null) == null ? 'PERSONAL' : 'SHARED');
     }
 
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
       let quantity = data.get('quantity', 1);
       let status = data.get('status', 'ACTIVE');
-      return quantity is int && quantity > 0 && quantity <= 2147483647
+      return itemSharing(data) in ['SHARED', 'PERSONAL']
+          && quantity is int && quantity > 0 && quantity <= 2147483647
           && status in ['ACTIVE', 'EATEN', 'DISCARDED']
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
@@ -166,6 +182,7 @@ service cloud.firestore {
       return (isOwner(before) || isShared(before))
           && hasValidItemData(after)
           && after.ownerId == before.ownerId
+          && (itemSharing(after) == itemSharing(before) || isOwner(before))
           && (after.get('householdId', null) == before.get('householdId', null)
               || (isOwner(before) && isPrivateOrSharedWithMyHousehold(after)));
     }

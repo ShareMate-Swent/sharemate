@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import com.android.sharemate.model.barcode.BarcodeScanResult
@@ -134,15 +135,22 @@ class ItemRemovalTest {
     requestRemoval(milk)
     composeTestRule.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()
     composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isDeleting }
-    listOf(
-            C.Tag.fridge_edit_prefix,
-            C.Tag.fridge_remove_prefix,
-            C.Tag.fridge_eaten_prefix,
-            C.Tag.fridge_discard_prefix)
-        .forEach {
-          composeTestRule.onNodeWithTag(it + milk.id).assertIsNotEnabled()
-          composeTestRule.onNodeWithTag(it + bread.id).assertIsEnabled()
-        }
+    for (item in listOf(milk, bread)) {
+      composeTestRule
+          .onNodeWithTag("fridge_item_actions_${item.id}")
+          .performScrollTo()
+          .performClick()
+      listOf(
+              C.Tag.fridge_edit_prefix,
+              C.Tag.fridge_remove_prefix,
+              C.Tag.fridge_eaten_prefix,
+              C.Tag.fridge_discard_prefix)
+          .forEach {
+            val action = composeTestRule.onNodeWithTag(it + item.id)
+            if (item.id == milk.id) action.assertIsNotEnabled() else action.assertIsEnabled()
+          }
+      Espresso.pressBack()
+    }
     requestRemoval(bread)
     composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_remove).performClick()
     composeTestRule.runOnIdle { repository.items.value = emptyList() }
@@ -162,9 +170,9 @@ class ItemRemovalTest {
   }
 
   private fun requestRemoval(item: Item) {
+    composeTestRule.onNodeWithTag("fridge_item_actions_${item.id}").performClick()
     composeTestRule
         .onNodeWithTag("${C.Tag.fridge_remove_prefix}${item.id}")
-        .performScrollTo()
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
@@ -222,7 +230,7 @@ class ItemRemovalTest {
         items.map { current -> current.filter { it.householdId == householdId } }
 
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.ownerId == userId && !it.isShared } }
+        items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
@@ -232,6 +240,11 @@ class ItemRemovalTest {
 
     override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite =
         error("Not used in this test")
+
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
 
     override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
         error("Not used in this test")

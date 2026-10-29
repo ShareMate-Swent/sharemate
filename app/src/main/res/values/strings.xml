@@ -6,11 +6,26 @@
     <string name="title_activity_second">SecondActivity</string>
 
     <string name="fridge_title">Fridge</string>
+    <string name="fridge_card_actions">Actions for %1$s</string>
+    <string name="fridge_card_image_details">Image details</string>
+    <string name="fridge_card_close">Close</string>
+    <plurals name="fridge_card_quantity">
+        <item quantity="one">Qty: %1$d unit</item>
+        <item quantity="other">Qty: %1$d units</item>
+    </plurals>
+    <string name="fridge_card_expiration">Exp.: %1$s</string>
+    <string name="fridge_card_expired">Expired: %1$s</string>
+    <string name="fridge_card_expiring_soon">Expires soon: %1$s</string>
     <string name="fridge_category_all">All</string>
     <string name="fridge_category_fruits">Fruits</string>
     <string name="fridge_category_vegetables">Vegetables</string>
     <string name="fridge_category_canned_goods">Canned goods</string>
     <string name="fridge_sort">Sort</string>
+    <string name="fridge_sort_expiration_date">Expiry date</string>
+    <string name="fridge_sort_name">Name</string>
+    <string name="fridge_owner_filter">Owner</string>
+    <string name="fridge_owner_filter_selected">Owner: %1$s</string>
+    <string name="fridge_owner_filter_all">All owners</string>
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
@@ -95,6 +110,7 @@
     </plurals>
     <string name="leave_household">Leave household</string>
     <string name="leave_household_title">Leave household?</string>
+    <string name="leave_private_household_blocked">You cannot leave a private fridge because it has no invite code to rejoin. Your fridge and items stay linked to your account.</string>
     <string name="leave_household_message">You will no longer see %1$s\'s fridge. The other members keep the household and its items. You can join again with the invite code.</string>
     <string name="leave_household_failed">Could not leave the household. Check your connection and try again.</string>
     <string name="leave_household_no_session">Your session has ended. Sign in again to leave the household.</string>

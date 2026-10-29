@@ -75,6 +75,7 @@ class FridgeEditTest {
   }
 
   private fun openEdit() {
+    compose.onNodeWithTag("fridge_item_actions_${item.id}").performScrollTo().performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_edit_prefix + item.id)
         .performScrollTo()
@@ -308,6 +309,11 @@ class FridgeEditTest {
     override suspend fun deleteItem(itemId: String) = error("Unexpected deletion")
 
     override fun deleteItemQueued(itemId: String) = error("Unexpected deletion")
+
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
 
     override fun setItemStatus(itemId: String, status: ItemStatus) =
         error("Unexpected status change")

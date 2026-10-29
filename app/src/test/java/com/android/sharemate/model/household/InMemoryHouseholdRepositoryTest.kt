@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
 import kotlinx.coroutines.runBlocking
@@ -18,6 +19,17 @@ class InMemoryHouseholdRepositoryTest {
     assertEquals(listOf("creator"), household.memberIds)
     assertEquals(household, repository.getHousehold(household.id))
     assertEquals(household, repository.getHouseholdForUser("creator"))
+  }
+
+  @Test
+  fun privateHouseholdHasNoInviteCodeAndCannotBeJoined() = runBlocking {
+    val household = repository.createHousehold("Mine", "owner", FridgeType.PRIVATE)
+    assertEquals("", household.inviteCode)
+    assertThrows(IllegalArgumentException::class.java) {
+      runBlocking { repository.joinHousehold(household.inviteCode, "outsider") }
+    }
+    assertEquals(household, repository.getHousehold(household.id))
+    assertNull(repository.getHouseholdForUser("outsider"))
   }
 
   @Test
@@ -50,6 +62,17 @@ class InMemoryHouseholdRepositoryTest {
       assertEquals(firstJoin, secondJoin)
       assertEquals(listOf("creator", "member"), secondJoin.memberIds)
     }
+  }
+
+  @Test
+  fun privateOwnerCannotLeaveOrLoseOtherMemberships() = runBlocking {
+    val privateFridge = repository.createHousehold("Mine", "owner", FridgeType.PRIVATE)
+    val sharedFridge = repository.createHousehold("Shared", "owner")
+    assertThrows(PrivateHouseholdLeaveException::class.java) {
+      runBlocking { repository.leaveHousehold("owner") }
+    }
+    assertEquals(privateFridge, repository.getHousehold(privateFridge.id))
+    assertEquals(sharedFridge, repository.getHousehold(sharedFridge.id))
   }
 
   @Test

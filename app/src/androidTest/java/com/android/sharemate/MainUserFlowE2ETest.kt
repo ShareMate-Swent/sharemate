@@ -1,4 +1,6 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,6 +20,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
@@ -56,6 +59,8 @@ class MainUserFlowE2ETest {
     val password = "secret123"
     val householdName = "Shared Home"
     val itemName = "Milk"
+    // Lookup cancellation and tab retention are covered by FridgeImageNavigationTest.
+    compose.runOnUiThread { compose.activity.imageLookup = { FoodImageSearchResult.NotFound } }
 
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
@@ -103,19 +108,20 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertIsDisplayed()
 
-    val itemTag =
+    val actionsTag =
         compose
             .onAllNodes(
-                SemanticsMatcher("fridge item") {
+                SemanticsMatcher("fridge item actions") {
                   it.config.contains(SemanticsProperties.TestTag) &&
-                      it.config[SemanticsProperties.TestTag] != C.Tag.fridge_item_list &&
-                      it.config[SemanticsProperties.TestTag].startsWith(C.Tag.fridge_item_prefix)
+                      it.config[SemanticsProperties.TestTag].startsWith("fridge_item_actions_")
                 })
             .fetchSemanticsNodes()
             .single()
             .config[SemanticsProperties.TestTag]
-    val itemId = itemTag.removePrefix(C.Tag.fridge_item_prefix)
+    val itemId = actionsTag.removePrefix("fridge_item_actions_")
+    compose.onNodeWithTag(actionsTag).performClick()
     compose.onNodeWithTag("${C.Tag.fridge_remove_prefix}$itemId").performClick()
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_confirm_remove).performClick()

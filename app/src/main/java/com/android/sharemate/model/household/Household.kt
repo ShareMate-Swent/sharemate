@@ -12,7 +12,7 @@ import java.util.Date
  *
  * @property id Unique household identifier.
  * @property name Household display name.
- * @property inviteCode Code that users can use to join the household.
+ * @property inviteCode Code for joining shared households; empty for newly created private fridges.
  * @property memberIds User identifiers belonging to the household.
  * @property createdBy User identifier of the household creator.
  * @property createdAt Time at which the household was created.
