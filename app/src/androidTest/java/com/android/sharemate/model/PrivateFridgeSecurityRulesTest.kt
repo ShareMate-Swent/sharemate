@@ -6,6 +6,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.household.InviteCodeGenerator
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -188,6 +189,10 @@ class PrivateFridgeSecurityRulesTest {
             "storeName" to "Shop",
             "totalAmountCents" to 100L)
     Tasks.await(item.set(itemData))
+    for (sharing in ItemSharing.values()) {
+      Tasks.await(item.update("sharing", sharing.name))
+      assertEquals(sharing.name, Tasks.await(item.get()).getString("sharing"))
+    }
     Tasks.await(receipt.set(receiptData))
     repository.leaveHousehold(owner)
     assertEquals("Apple", Tasks.await(item.get()).getString("name"))
@@ -214,6 +219,7 @@ class PrivateFridgeSecurityRulesTest {
       assertDenied(reference.parent.whereEqualTo("householdId", fridge.id).get())
     }
     assertDenied(item.update("name", "Stolen"))
+    assertDenied(item.update("sharing", "PERSONAL"))
     assertDenied(receipt.update("storeName", "Stolen"))
     assertDenied(item.parent.document("outsider").set(itemData + ("ownerId" to outsider)))
     assertDenied(receipt.parent.document("outsider").set(receiptData + ("ownerId" to outsider)))
@@ -256,6 +262,30 @@ class PrivateFridgeSecurityRulesTest {
             .toSet())
     assertEquals(FridgeType.SHARED, repository.getHousehold(legacy.id)?.type)
     assertDenied(households.document("private").get())
+  }
+
+  @Test
+  fun neitherSharingValueGrantsOutsiderAccessToPrivateFridge() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("sharing-private-owner")
+    val fridge = createFridge("sharing-private", owner, FridgeType.PRIVATE)
+    for (sharing in ItemSharing.values()) {
+      FirebaseEmulator.signInAs("sharing-private-owner")
+      val item = firestore.collection(FirestoreCollections.ITEMS).document(sharing.name)
+      Tasks.await(
+          item.set(
+              mapOf(
+                  "name" to "Milk",
+                  "ownerId" to owner,
+                  "householdId" to fridge.id,
+                  "sharing" to sharing.name)))
+      FirebaseEmulator.signInAs("sharing-private-outsider")
+      assertDenied(item.get())
+      assertDenied(item.parent.whereEqualTo("householdId", fridge.id).get())
+      assertDenied(
+          item.update("sharing", if (sharing == ItemSharing.SHARED) "PERSONAL" else "SHARED"))
+      assertDenied(item.delete())
+    }
+    Unit
   }
 
   private fun createFridge(id: String, owner: String, type: FridgeType?): Household {

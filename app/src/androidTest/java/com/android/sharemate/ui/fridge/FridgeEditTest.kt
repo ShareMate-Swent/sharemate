@@ -309,6 +309,11 @@ class FridgeEditTest {
 
     override fun deleteItemQueued(itemId: String) = error("Unexpected deletion")
 
+    override fun setItemSharing(
+        itemId: String,
+        sharing: com.android.sharemate.model.item.ItemSharing,
+    ): ItemWrite = error("Sharing updates are not used in this test")
+
     override fun setItemStatus(itemId: String, status: ItemStatus) =
         error("Unexpected status change")
   }
