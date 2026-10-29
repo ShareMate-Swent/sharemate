@@ -78,7 +78,11 @@ class ManualItemCreationTest {
       composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
       composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
       Espresso.closeSoftKeyboard()
-      composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performScrollTo().performClick()
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_save_item)
+          .assertIsDisplayed()
+          .assertIsEnabled()
+          .performClick()
       composeTestRule.waitUntil(5_000) {
         !viewModel.uiState.value.isAddItemDialogOpen && viewModel.uiState.value.items.size == 1
       }
@@ -107,7 +111,11 @@ class ManualItemCreationTest {
       composeTestRule.onNodeWithTag(C.Tag.fridge_image_placeholder).assertDoesNotExist()
       // Recomposition and another form must not restart lookup for an existing card.
       composeTestRule.runOnIdle { viewModel.openAddItemDialog() }
-      composeTestRule.onNodeWithTag(C.Tag.fridge_cancel_item).performScrollTo().performClick()
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_cancel_item)
+          .assertIsDisplayed()
+          .assertIsEnabled()
+          .performClick()
       composeTestRule.runOnIdle {
         assertEquals(1, calls)
         assertEquals(
