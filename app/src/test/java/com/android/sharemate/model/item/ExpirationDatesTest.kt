@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
 import java.time.LocalDate
@@ -78,6 +79,7 @@ class ExpirationDatesTest {
           val date = ExpirationDates.toDate(day)
           Assert.assertEquals(zone, day, ExpirationDates.toLocalDate(date))
           Assert.assertEquals(zone, "2026-10-16", ExpirationDates.formatInput(date))
+          Assert.assertEquals(zone, "16/10/2026", ExpirationDates.formatCompact(date, Locale.US))
           Assert.assertEquals(zone, "Oct 16, 2026", ExpirationDates.formatDisplay(date, Locale.US))
           Assert.assertEquals(
               zone, ExpirationInput.Valid(date), ExpirationDates.parse("2026-10-16"))

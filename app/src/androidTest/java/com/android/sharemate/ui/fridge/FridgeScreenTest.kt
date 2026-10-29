@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
@@ -51,11 +53,33 @@ class FridgeScreenTest {
   private lateinit var viewModel: FridgeViewModel
 
   @Test
+  fun compactToolbarCreatesAnItemAndShowsItsQuantityInTheGrid() {
+    showScreen(emptyList())
+    compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("2")
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+    item("saved").assertIsDisplayed()
+    compose.onNodeWithText("Milk").assertIsDisplayed()
+    compose.onNodeWithText("Qty: 2 units").assertIsDisplayed()
+    compose.runOnIdle {
+      val saved = repository.inventory.value.single()
+      assertEquals("Milk", saved.name)
+      assertEquals(2, saved.quantity)
+      assertEquals("alice", saved.ownerId)
+      assertEquals("household", saved.householdId)
+    }
+  }
+
+  @Test
   fun queuedStatusActionsRetainRecordsAndRejectionRestoresAnEditableCard() {
     showScreen()
-    compose.onNodeWithTag(C.Tag.fridge_eaten_prefix + "carrot").performScrollTo().performClick()
+    compose.onNodeWithTag("fridge_item_actions_carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_eaten_prefix + "carrot").performClick()
     item("carrot").assertDoesNotExist()
-    compose.onNodeWithTag(C.Tag.fridge_discard_prefix + "banana").performScrollTo().performClick()
+    compose.onNodeWithTag("fridge_item_actions_banana").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_discard_prefix + "banana").performClick()
     item("banana").assertDoesNotExist()
     compose.runOnIdle {
       assertEquals(
@@ -76,77 +100,88 @@ class FridgeScreenTest {
       assertEquals(
           ItemStatus.DISCARDED, viewModel.uiState.value.items.first { it.id == "banana" }.status)
     }
-    compose.onNodeWithTag(C.Tag.fridge_edit_prefix + "carrot").performScrollTo().performClick()
+    compose.onNodeWithTag("fridge_item_actions_carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_edit_prefix + "carrot").performClick()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
 
   @Test
-  fun sortChipsChangeTheRenderedOrder() {
+  fun sortMenuChangesTheRenderedOrder() {
     showScreen()
+    compose.onNodeWithText("Sort").performClick()
     compose.onNodeWithText("Expiry date").assertIsSelected()
+    compose.onNodeWithText("Name").assertIsNotSelected()
+    compose.onNodeWithText("Expiry date").performClick()
     assertItemOrder("carrot", "banana", "apple")
 
-    compose.onNodeWithText("Name").performClick().assertIsSelected()
-    compose.onNodeWithText("Expiry date").assertIsNotSelected()
+    compose.onNodeWithText("Sort").performClick()
+    compose.onNodeWithText("Name").performClick()
     assertItemOrder("apple", "banana", "carrot")
 
-    compose.onNodeWithText("Expiry date").performClick().assertIsSelected()
+    compose.onNodeWithText("Sort").performClick()
+    compose.onNodeWithText("Name").assertIsSelected()
+    compose.onNodeWithText("Expiry date").assertIsNotSelected().performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
   @Test
-  fun categoryDropdownFiltersItemsAndCanBeCleared() {
+  fun categoryChipsFilterItemsAndCanBeCleared() {
     showScreen()
-    filterChip("Category").performScrollTo().performClick()
-    compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsDisplayed().performClick()
-    filterChip("Category: Fruits").assertIsSelected()
+    compose
+        .onNodeWithTag("fridge_filter_category_Fruits")
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsSelected()
     item("banana").assertIsDisplayed()
     item("apple").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
 
-    filterChip("Category: Fruits").performScrollTo().performClick()
-    compose.onNodeWithTag("fridge_filter_category_all").performClick()
-    filterChip("Category").assertIsNotSelected()
+    compose.onNodeWithTag("fridge_filter_category_all").performScrollTo().performClick()
+    compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsNotSelected()
+    compose.onNodeWithTag("fridge_filter_category_all").assertIsSelected()
     assertItemOrder("carrot", "banana", "apple")
   }
 
   @Test
   fun ownerAndCategoryFiltersCombineAndShowAnEmptyResult() {
     showScreen()
-    filterChip("Owner").performScrollTo().performClick()
+    filterChip("Owner").assertIsDisplayed().performClick()
     compose.onNodeWithTag("fridge_filter_owner_alice").performClick()
     item("banana").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
     item("apple").assertDoesNotExist()
 
-    filterChip("Category").performScrollTo().performClick()
-    compose.onNodeWithTag("fridge_filter_category_Vegetables").performClick()
+    compose.onNodeWithTag("fridge_filter_category_Vegetables").performScrollTo().performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
         .assertTextEquals("No items match the selected filters.")
     item("banana").assertDoesNotExist()
 
-    filterChip("Owner: alice").performScrollTo().performClick()
+    filterChip("Owner: alice").assertIsDisplayed().performClick()
     compose.onNodeWithTag("fridge_filter_owner_all").performClick()
     item("carrot").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
 
-    filterChip("Category: Vegetables").performScrollTo().performClick()
-    compose.onNodeWithTag("fridge_filter_category_all").performClick()
+    compose.onNodeWithTag("fridge_filter_category_all").performScrollTo().performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
   @Test
-  fun emptyInventoryDisablesDropdownsButAllowsAddingItems() {
+  fun emptyInventoryDisablesFiltersButAllowsSortingAndAddingItems() {
     showScreen(emptyList())
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
         .assertTextEquals("Your fridge is empty")
-    filterChip("Category").performScrollTo().assertIsNotEnabled()
-    filterChip("Owner").performScrollTo().assertIsNotEnabled()
-    compose.onNodeWithText("Name").performScrollTo().performClick().assertIsSelected()
+    compose.onNodeWithTag("fridge_filter_category_all").assertIsNotEnabled().assertIsSelected()
+    filterChip("Owner").assertIsNotEnabled()
+    compose.onNodeWithText("Yours").assertIsNotEnabled()
+    compose.onNodeWithText("Shared").assertIsNotEnabled()
+    compose.onNodeWithText("Sort").performClick()
+    compose.onNodeWithText("Name").performClick()
+    compose.runOnIdle { assertEquals(FridgeSortOrder.NAME, viewModel.sortOrder.value) }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
@@ -177,7 +212,6 @@ class FridgeScreenTest {
 
   private fun item(id: String) = compose.onNodeWithTag("${C.Tag.fridge_item_prefix}$id")
 
-  // Item category labels share the chip text but have no selection semantics.
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
   private fun assertItemOrder(vararg ids: String) {
@@ -225,7 +259,10 @@ class FridgeScreenTest {
 
     override fun deleteItemQueued(itemId: String): ItemWrite = error("Not used in this test")
 
-    override suspend fun addItem(item: Item): String? = error("Read-only test repository")
+    override suspend fun addItem(item: Item): String {
+      inventory.value = inventory.value + item.copy(id = "saved")
+      return "saved"
+    }
 
     override suspend fun deleteItem(itemId: String): Boolean = error("Read-only test repository")
   }

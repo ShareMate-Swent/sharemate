@@ -75,6 +75,7 @@ class FridgeEditTest {
   }
 
   private fun openEdit() {
+    compose.onNodeWithTag("fridge_item_actions_${item.id}").performScrollTo().performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_edit_prefix + item.id)
         .performScrollTo()

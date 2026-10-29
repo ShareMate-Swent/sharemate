@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -186,11 +187,12 @@ class ManualItemCreationTest {
     composeTestRule.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
     composeTestRule.onNodeWithTag("${C.Tag.fridge_item_prefix}test-item-1").assertIsDisplayed()
     composeTestRule.onNodeWithText("Milk").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Qty: 1 unit").assertIsDisplayed()
     composeTestRule
-        .onNodeWithText(composeTestRule.activity.getString(R.string.fridge_item_category, "Dairy"))
-        .assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText("Expires ${ExpirationDates.formatDisplay(storedExpirationDate)}")
+        .onNodeWithText(
+            composeTestRule.activity.getString(
+                R.string.fridge_card_expiration,
+                ExpirationDates.formatCompact(storedExpirationDate)))
         .assertIsDisplayed()
     composeTestRule.runOnIdle {
       val expected =
