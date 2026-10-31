@@ -170,7 +170,7 @@ class CommonsImageFirestoreTest {
       val reloaded =
           withTimeout(10_000) {
             FirebaseItemRepository(firestore)
-                .getPrivateItems(userId)
+                .getFridgeItems(userId, null)
                 .first { items -> items.any { it.id == saved.id } }
                 .single { it.id == saved.id }
           }

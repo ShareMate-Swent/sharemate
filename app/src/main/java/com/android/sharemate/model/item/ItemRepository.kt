@@ -17,15 +17,6 @@ interface ItemRepository {
   fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>>
 
   /**
-   * Récupère un flux (Flow) réactif de tous les items privés de l'utilisateur. Le Flow
-   * s'actualisera automatiquement si les données changent en local ou sur le serveur.
-   */
-  fun getPrivateItems(userId: String): Flow<List<Item>>
-
-  /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
-  fun getSharedItems(householdId: String): Flow<List<Item>>
-
-  /**
    * Ajoute un nouvel item (privé ou partagé selon si householdId est défini).
    *
    * @return L'ID généré de l'item, ou null en cas d'erreur.

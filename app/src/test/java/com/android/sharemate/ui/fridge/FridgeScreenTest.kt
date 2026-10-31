@@ -34,6 +34,7 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
@@ -43,6 +44,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -521,11 +523,19 @@ class FridgeScreenTest {
           expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
-    private val sharedItems = MutableStateFlow(items)
+    private val sharedItems =
+        MutableStateFlow(
+            items.map { it.copy(householdId = HOUSEHOLD_ID, sharing = ItemSharing.SHARED) })
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
-
-    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+    override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> =
+        sharedItems.map { items ->
+          items.filter {
+            if (householdId == null) it.ownerId == userId && it.householdId == null
+            else
+                it.householdId == householdId &&
+                    (it.ownerId == userId || it.sharing == ItemSharing.SHARED)
+          }
+        }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

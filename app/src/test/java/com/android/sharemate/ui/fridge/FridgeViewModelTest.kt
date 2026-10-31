@@ -1253,16 +1253,35 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun observesOnlyTheRequestedSharedHousehold() = runTest {
+  fun observesSharedAndOwnPersonalItemsOnlyInTheRequestedHousehold() = runTest {
     val shared = Item(id = "shared", name = "Milk", householdId = "test-household")
+    val ownPersonal =
+        Item(
+            id = "own-personal",
+            name = "Oat milk",
+            ownerId = "test-user",
+            householdId = "test-household",
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
+    val otherPersonal =
+        Item(
+            id = "other-personal",
+            name = "Yogurt",
+            ownerId = "other-user",
+            householdId = "test-household",
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
     repository.emitItems(
-        listOf(shared, Item(id = "other", householdId = "other-household"), Item(id = "private")))
+        listOf(
+            shared,
+            ownPersonal,
+            otherPersonal,
+            Item(id = "other", householdId = "other-household"),
+            Item(id = "private")))
     val viewModel = viewModel()
     runCurrent()
 
     assertEquals(listOf("test-household"), repository.requestedHouseholdIds)
-    assertTrue(repository.requestedUserIds.isEmpty())
-    assertEquals(listOf(shared), viewModel.uiState.value.items)
+    assertEquals(listOf("test-user"), repository.requestedUserIds)
+    assertEquals(listOf(shared, ownPersonal), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 

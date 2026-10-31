@@ -6,6 +6,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
@@ -38,19 +39,25 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> {
-    requestedUserIds += userId
-    return items.map { current ->
-      current.filter { it.ownerId == userId && it.householdId == null }
+  override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> {
+    if (userId.isBlank() || (householdId != null && householdId.isBlank())) {
+      return flowOf(emptyList())
     }
-  }
-
-  override fun getSharedItems(householdId: String): Flow<List<Item>> {
-    requestedHouseholdIds += householdId
+    requestedUserIds += userId
+    if (householdId != null) requestedHouseholdIds += householdId
     readFailure?.let { failure ->
       return flow { throw failure }
     }
-    return items.map { current -> current.filter { it.householdId == householdId } }
+    return items.map { current ->
+      if (householdId == null) {
+        current.filter { it.ownerId == userId && it.householdId == null }
+      } else {
+        current.filter {
+          it.householdId == householdId &&
+              (it.ownerId == userId || it.sharing == ItemSharing.SHARED)
+        }
+      }
+    }
   }
 
   override suspend fun addItem(item: Item): String? {

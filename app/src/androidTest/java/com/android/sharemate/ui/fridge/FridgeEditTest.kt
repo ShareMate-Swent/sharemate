@@ -24,6 +24,7 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
@@ -32,6 +33,7 @@ import java.time.LocalDate
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -275,9 +277,15 @@ class FridgeEditTest {
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String) = items
-
-    override fun getPrivateItems(userId: String) = error("Unexpected private query")
+    override fun getFridgeItems(userId: String, householdId: String?) =
+        items.map { current ->
+          current.filter {
+            if (householdId == null) it.ownerId == userId && it.householdId == null
+            else
+                it.householdId == householdId &&
+                    (it.ownerId == userId || it.sharing == ItemSharing.SHARED)
+          }
+        }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

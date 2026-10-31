@@ -4,6 +4,7 @@ package com.android.sharemate.notifications.expiration
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.notifications.AppNotificationChannel
 import com.android.sharemate.notifications.NotificationRecipient
 import com.android.sharemate.ui.navigation.AppDeepLinks
@@ -29,17 +30,29 @@ class ExpirationNotificationSourceTest {
           },
           today = { today })
 
-  private fun sharedItem(name: String, offsetDays: Long, householdId: String = "home") =
+  private fun item(
+      name: String,
+      offsetDays: Long,
+      householdId: String = "home",
+      ownerId: String = "alice",
+      sharing: ItemSharing = ItemSharing.SHARED
+  ) =
       Item(
           id = name,
           name = name,
-          ownerId = "alice",
+          ownerId = ownerId,
           householdId = householdId,
+          sharing = sharing,
           expirationDate = ExpirationDates.toDate(today.plusDays(offsetDays)))
 
   @Test
   fun buildsOneNotificationOpeningTheFridge() = runTest {
-    repository.emitItems(listOf(sharedItem("old", -1), sharedItem("soon", 2), sharedItem("ok", 30)))
+    repository.emitItems(
+        listOf(
+            item("old", -1),
+            item("soon", 2),
+            item("ok", 30),
+            item("personal", -2, sharing = ItemSharing.PERSONAL)))
 
     val notifications = source.dueNotifications()
 
@@ -48,23 +61,30 @@ class ExpirationNotificationSourceTest {
     assertEquals(ExpirationNotificationSource.KEY, notification.key)
     assertEquals(AppNotificationChannel.EXPIRATION, notification.channel)
     assertEquals("title", notification.title)
-    assertEquals("1/1", notification.text)
+    assertEquals("2/1", notification.text)
     assertEquals(AppDeepLinks.uri(TopLevelDestination.FRIDGE), notification.deepLink)
   }
 
   @Test
-  fun readsTheHouseholdsSharedItems() = runTest {
-    repository.emitItems(listOf(sharedItem("other", -1, householdId = "elsewhere")))
+  fun readsSharedAndOwnPersonalItemsButNotOthersPersonalItems() = runTest {
+    repository.emitItems(
+        listOf(
+            item("shared", -1),
+            item("own-personal", -1, sharing = ItemSharing.PERSONAL),
+            item("other-personal", -1, ownerId = "bob", sharing = ItemSharing.PERSONAL),
+            item("other-fridge", -1, householdId = "elsewhere")))
 
     val notifications = source.dueNotifications()
 
     assertEquals(listOf("home"), repository.requestedHouseholdIds)
-    assertTrue(notifications.isEmpty())
+    assertEquals(listOf("alice"), repository.requestedUserIds)
+    assertEquals(1, notifications.size)
+    assertEquals("2/0", notifications.single().text)
   }
 
   @Test
   fun staysSilentWhenNothingNeedsAttention() = runTest {
-    repository.emitItems(listOf(sharedItem("ok", 30)))
+    repository.emitItems(listOf(item("ok", 30)))
 
     assertTrue(source.dueNotifications().isEmpty())
     assertTrue(formattedSummaries.isEmpty())
@@ -73,7 +93,7 @@ class ExpirationNotificationSourceTest {
   @Test
   fun staysSilentWhenThereIsNoRecipient() = runTest {
     recipient = null
-    repository.emitItems(listOf(sharedItem("old", -1)))
+    repository.emitItems(listOf(item("old", -1)))
 
     assertTrue(source.dueNotifications().isEmpty())
     assertTrue(repository.requestedHouseholdIds.isEmpty())

@@ -10,6 +10,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -92,15 +93,15 @@ class FirebaseItemRepositoryTest {
   }
 
   @Test
-  fun getPrivateItems_returnsEmptyFlow_whenUserIdIsBlank() =
+  fun getFridgeItems_returnsEmptyFlow_whenUserOrHouseholdIdIsBlank() =
       runBlocking<Unit> {
-        val items = repository.getPrivateItems("   ").first()
-        assertTrue(items.isEmpty())
+        assertTrue(repository.getFridgeItems("   ", null).first().isEmpty())
+        assertTrue(repository.getFridgeItems("user-1", " ").first().isEmpty())
       }
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getPrivateItems_emitsFilteredItems() =
+  fun getFridgeItems_withoutHouseholdQueriesOnlyCurrentUsersPrivateItems() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
@@ -115,7 +116,7 @@ class FirebaseItemRepositoryTest {
         val emittedLists = mutableListOf<List<Item>>()
         val job =
             launch(Dispatchers.Unconfined) {
-              repository.getPrivateItems("user-1").collect { emittedLists.add(it) }
+              repository.getFridgeItems("user-1", null).collect { emittedLists.add(it) }
             }
 
         verify(query).addSnapshotListener(any())
@@ -128,18 +129,7 @@ class FirebaseItemRepositoryTest {
         `when`(docPrivate.getString("ownerId")).thenReturn("user-1")
         `when`(docPrivate.getString("householdId")).thenReturn(null)
 
-        val docShared =
-            mock(DocumentSnapshot::class.java).stubRequiredItemFields(ItemSharing.SHARED)
-        `when`(docShared.id).thenReturn("item-2")
-        `when`(docShared.getString("name")).thenReturn("Banana")
-        `when`(docShared.getString("ownerId")).thenReturn("user-1")
-        `when`(docShared.getString("householdId")).thenReturn("household-1")
-
-        val docInvalid = mock(DocumentSnapshot::class.java)
-        `when`(docInvalid.id).thenReturn("item-3")
-        `when`(docInvalid.getString("name")).thenReturn("  ")
-
-        `when`(snapshot.documents).thenReturn(listOf(docPrivate, docShared, docInvalid))
+        `when`(snapshot.documents).thenReturn(listOf(docPrivate))
 
         listenerCaptor.value.onEvent(snapshot, null)
 
@@ -154,7 +144,58 @@ class FirebaseItemRepositoryTest {
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getPrivateItems_handlesError() =
+  fun getFridgeItems_withHouseholdQueriesSharedAndOwnPersonalItems() =
+      runBlocking<Unit> {
+        val householdQuery = mock(Query::class.java)
+        val filteredQuery = mock(Query::class.java)
+        `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(householdQuery)
+        `when`(householdQuery.where(any(Filter::class.java))).thenReturn(filteredQuery)
+
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
+                as ArgumentCaptor<EventListener<QuerySnapshot>>
+        val registration = mock(ListenerRegistration::class.java)
+        `when`(filteredQuery.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
+
+        val emittedLists = mutableListOf<List<Item>>()
+        val job =
+            launch(Dispatchers.Unconfined) {
+              repository.getFridgeItems("user-1", "house-1").collect { emittedLists.add(it) }
+            }
+
+        val snapshot = mock(QuerySnapshot::class.java)
+        val shared = mock(DocumentSnapshot::class.java)
+        `when`(shared.id).thenReturn("item-1")
+        `when`(shared.getString("name")).thenReturn("Carrot")
+        `when`(shared.getString("ownerId")).thenReturn("user-2")
+        `when`(shared.getString("householdId")).thenReturn("house-1")
+        val date = Date(1_000_000_000L)
+        `when`(shared.getTimestamp("expirationDate")).thenReturn(Timestamp(date))
+
+        val personal = mock(DocumentSnapshot::class.java)
+        `when`(personal.id).thenReturn("item-2")
+        `when`(personal.getString("name")).thenReturn("Apple")
+        `when`(personal.getString("ownerId")).thenReturn("user-1")
+        `when`(personal.getString("householdId")).thenReturn("house-1")
+        `when`(personal.contains("sharing")).thenReturn(true)
+        `when`(personal.get("sharing")).thenReturn(ItemSharing.PERSONAL.name)
+
+        `when`(snapshot.documents).thenReturn(listOf(shared, personal))
+        listenerCaptor.value.onEvent(snapshot, null)
+
+        assertEquals(1, emittedLists.size)
+        assertEquals(listOf("item-1", "item-2"), emittedLists[0].map(Item::id))
+        assertEquals("user-2", emittedLists[0][0].ownerId)
+        assertEquals(date, emittedLists[0][0].expirationDate)
+        assertEquals(ItemSharing.PERSONAL, emittedLists[0][1].sharing)
+        verify(householdQuery).where(any(Filter::class.java))
+
+        job.cancel()
+      }
+
+  @Suppress("UNCHECKED_CAST")
+  @Test
+  fun getFridgeItems_propagatesListenerError() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
@@ -163,16 +204,16 @@ class FirebaseItemRepositoryTest {
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
                 as ArgumentCaptor<EventListener<QuerySnapshot>>
-        val registration = mock(ListenerRegistration::class.java)
-        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
+        `when`(query.addSnapshotListener(listenerCaptor.capture()))
+            .thenReturn(mock(ListenerRegistration::class.java))
 
         var caughtError: Throwable? = null
         val job =
             launch(Dispatchers.Unconfined) {
               try {
-                repository.getPrivateItems("user-1").collect {}
-              } catch (e: Exception) {
-                caughtError = e
+                repository.getFridgeItems("user-1", null).collect {}
+              } catch (exception: Exception) {
+                caughtError = exception
               }
             }
 
@@ -181,58 +222,6 @@ class FirebaseItemRepositoryTest {
         listenerCaptor.value.onEvent(null, exception)
 
         assertTrue(caughtError is FirebaseFirestoreException)
-
-        job.cancel()
-      }
-
-  @Test
-  fun getSharedItems_returnsEmptyFlow_whenHouseholdIdIsBlank() =
-      runBlocking<Unit> {
-        val items = repository.getSharedItems("").first()
-        assertTrue(items.isEmpty())
-      }
-
-  @Suppress("UNCHECKED_CAST")
-  @Test
-  fun getSharedItems_emitsItems() =
-      runBlocking<Unit> {
-        val query = mock(Query::class.java)
-        `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(query)
-
-        val listenerCaptor =
-            ArgumentCaptor.forClass(EventListener::class.java)
-                as ArgumentCaptor<EventListener<QuerySnapshot>>
-        val registration = mock(ListenerRegistration::class.java)
-        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
-
-        val emittedLists = mutableListOf<List<Item>>()
-        val job =
-            launch(Dispatchers.Unconfined) {
-              repository.getSharedItems("house-1").collect { emittedLists.add(it) }
-            }
-
-        val snapshot = mock(QuerySnapshot::class.java)
-        val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
-        `when`(doc.id).thenReturn("item-1")
-        `when`(doc.getString("name")).thenReturn("Carrot")
-        `when`(doc.getString("ownerId")).thenReturn("user-2")
-        `when`(doc.getString("householdId")).thenReturn("house-1")
-        val date = Date(1_000_000_000L)
-        `when`(doc.getTimestamp("expirationDate")).thenReturn(Timestamp(date))
-
-        `when`(snapshot.documents).thenReturn(listOf(doc))
-
-        listenerCaptor.value.onEvent(snapshot, null)
-
-        assertEquals(1, emittedLists.size)
-        assertEquals(1, emittedLists[0].size)
-        val emittedItem = emittedLists[0][0]
-        assertEquals("item-1", emittedItem.id)
-        assertEquals("Carrot", emittedItem.name)
-        assertEquals("user-2", emittedItem.ownerId)
-        assertEquals("house-1", emittedItem.householdId)
-        assertEquals(date, emittedItem.expirationDate)
-
         job.cancel()
       }
 

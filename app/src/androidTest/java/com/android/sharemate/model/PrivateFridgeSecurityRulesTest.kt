@@ -6,6 +6,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.household.PrivateHouseholdLeaveException
+import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
@@ -15,12 +16,14 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
 import java.util.concurrent.ExecutionException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -229,6 +232,12 @@ class PrivateFridgeSecurityRulesTest {
                   "quantity" to 1,
                   "status" to "ACTIVE",
                   "sharing" to sharing.name)))
+      assertEquals("Milk", Tasks.await(item.get()).getString("name"))
+      assertTrue(
+          FirebaseItemRepository(firestore)
+              .getFridgeItems(owner, fridge.id)
+              .first { items -> items.any { it.id == sharing.name } }
+              .any { it.id == sharing.name })
       FirebaseEmulator.signInAs("sharing-private-outsider")
       assertDenied(item.get())
       assertDenied(item.parent.whereEqualTo("householdId", fridge.id).get())

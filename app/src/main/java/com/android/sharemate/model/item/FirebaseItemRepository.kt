@@ -35,22 +35,8 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
             .where(
                 Filter.or(
                     Filter.equalTo("sharing", ItemSharing.SHARED.name),
-                    Filter.equalTo("sharing", ItemSharing.PERSONAL.name))))
+                    Filter.equalTo("ownerId", userId))))
   }
-
-  override fun getPrivateItems(userId: String): Flow<List<Item>> =
-      if (userId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null))
-      }
-
-  override fun getSharedItems(householdId: String): Flow<List<Item>> =
-      if (householdId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("householdId", householdId))
-      }
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null
