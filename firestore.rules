@@ -173,6 +173,24 @@ service cloud.firestore {
       return data.sharing;
     }
 
+    function canAccessItemInHousehold(data, householdId) {
+      let household = get(documentPath('households', householdId)).data;
+      return canAccessFridge(household)
+          && (household.get('type', 'SHARED') == 'PRIVATE'
+              ? isOwner(data)
+              : request.auth.uid in household.memberIds
+                  && (isOwner(data) || itemSharing(data) == 'SHARED'));
+    }
+
+    // Items in a fridge are visible only to its current members. Shared-fridge members can
+    // read shared items and their own personal items; private fridges are owner-only.
+    function canAccessItem(data) {
+      let householdId = data.get('householdId', null);
+      return householdId == null
+          ? isOwner(data)
+          : canAccessItemInHousehold(data, householdId);
+    }
+
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
       return data.sharing in ['SHARED', 'PERSONAL']
@@ -205,7 +223,7 @@ service cloud.firestore {
     // Owner or household member can update. ownerId is immutable. householdId can only be
     // changed by the owner, and only to null or to a household the owner belongs to.
     function canUpdateItem(before, after) {
-      return (isOwner(before) || isShared(before))
+      return canAccessItem(before)
           && hasValidItemData(after)
           && after.ownerId == before.ownerId
           && (itemSharing(after) == itemSharing(before) || isOwner(before))
@@ -224,15 +242,15 @@ service cloud.firestore {
     match /items/{itemId} {
       // Image transactions must be able to ignore an item deleted during a lookup.
       allow get: if signedIn() && resource == null;
-      allow read: if signedIn() && (isOwner(resource.data) || isShared(resource.data));
+      allow read: if signedIn() && canAccessItem(resource.data);
       allow create: if signedIn()
           && hasValidItemData(request.resource.data)
           && isOwner(request.resource.data)
           && isPrivateOrSharedWithMyHousehold(request.resource.data);
       allow update: if signedIn() && canUpdateItem(resource.data, request.resource.data);
-      // Items belong to the shared list: any household member can delete them.
+      // Members can delete shared items and owners can delete their own accessible items.
       allow delete: if signedIn()
-          && (resource == null || isOwner(resource.data) || isShared(resource.data));
+          && (resource == null || canAccessItem(resource.data));
     }
 
     match /receipts/{receiptId} {
