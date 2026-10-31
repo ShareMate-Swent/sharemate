@@ -10,6 +10,13 @@ import kotlinx.coroutines.flow.Flow
 interface ItemRepository {
 
   /**
+   * Récupère un flux (Flow) réactif de tous les items visibles par l'utilisateur dans son frigo
+   * actuel. Le Flow s'actualisera automatiquement si les données changent en local ou sur le
+   * serveur.
+   */
+  fun getFridgeItems(userId: String, householdId: String): Flow<List<Item>>
+
+  /**
    * Récupère un flux (Flow) réactif de tous les items privés de l'utilisateur. Le Flow
    * s'actualisera automatiquement si les données changent en local ou sur le serveur.
    */

@@ -5,6 +5,7 @@ import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
@@ -22,13 +23,27 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
+  override fun getFridgeItems(userId: String, householdId: String): Flow<List<Item>> {
+    if (userId.isBlank() || householdId.isBlank()) {
+      return flowOf(emptyList())
+    }
+    if (householdId == "null") {
+      return observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null))
+    }
+    return observe(
+        items
+            .whereEqualTo("householdId", householdId)
+            .where(
+                Filter.or(
+                    Filter.equalTo("sharing", ItemSharing.SHARED.name),
+                    Filter.equalTo("sharing", ItemSharing.PERSONAL.name))))
+  }
+
   override fun getPrivateItems(userId: String): Flow<List<Item>> =
       if (userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null)) {
-          it.filter { item -> item.householdId == null }
-        }
+        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null))
       }
 
   override fun getSharedItems(householdId: String): Flow<List<Item>> =
