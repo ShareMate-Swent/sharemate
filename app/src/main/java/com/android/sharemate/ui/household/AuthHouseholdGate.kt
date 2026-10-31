@@ -24,6 +24,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -71,7 +72,9 @@ fun AuthHouseholdGate(
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         val factory = viewModelFactory {
           initializer { HouseholdGateViewModel(householdRepository, session.uid) }
-          initializer { CreateHouseholdViewModel(householdRepository, authRepository) }
+          initializer {
+            CreateHouseholdViewModel(householdRepository, authRepository, createSavedStateHandle())
+          }
           initializer { JoinHouseholdViewModel(householdRepository, authRepository) }
         }
         val gateViewModel: HouseholdGateViewModel = viewModel(factory = factory)

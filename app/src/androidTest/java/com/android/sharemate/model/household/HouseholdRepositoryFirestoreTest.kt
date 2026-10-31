@@ -11,8 +11,12 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -158,6 +162,185 @@ class HouseholdRepositoryFirestoreTest {
     assertEquals(existing.id, storedHouseholdIdForInviteCode(existing.inviteCode))
     assertNull(repository.getHouseholdForUser(creatorId))
     assertUserDocumentDoesNotExist(creatorId)
+  }
+
+  @Test
+  fun concurrentClaimAfterAvailabilityRetriesAndPreservesWinner() = runBlocking {
+    val loser = FirebaseEmulator.signInAs("loser")
+    var winner: Household? = null
+    var commits = 0
+    val retrying =
+        HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(1234))) { batch ->
+          if (commits++ == 0) {
+            val owner = FirebaseEmulator.signInAs("winner")
+            winner =
+                HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(1234)))
+                    .createHousehold("Winner", owner)
+            FirebaseEmulator.signInAs("loser")
+          }
+          batch.commit().await()
+        }
+    val created = retrying.createHousehold("Loser", loser, operationId = "concurrent")
+    val won = checkNotNull(winner)
+    assertEquals(2, commits)
+    assertNotEquals(won.inviteCode, created.inviteCode)
+    assertEquals(won.id, storedHouseholdIdForInviteCode(won.inviteCode))
+    assertEquals(created.id, storedHouseholdIdForInviteCode(created.inviteCode))
+    assertEquals(
+        created.id,
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document(loser).get())
+            .getString("householdId"))
+    assertEquals(
+        1,
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.HOUSEHOLDS)
+                    .whereArrayContains("memberIds", loser)
+                    .get())
+            .size())
+    FirebaseEmulator.signInAs("winner")
+    assertEquals(won, repository.getHousehold(won.id))
+    assertEquals(
+        won.id,
+        Tasks.await(firestore.collection(FirestoreCollections.USERS).document(won.createdBy).get())
+            .getString("householdId"))
+  }
+
+  @Test
+  fun repeatedConcurrentClaimsExhaustWithoutPartialWrites() = runBlocking {
+    val loser = FirebaseEmulator.signInAs("loser")
+    val winners = mutableListOf<Household>()
+    val winningGenerator = InviteCodeGenerator(Random(1234))
+    val retrying =
+        HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(1234))) { batch ->
+          val owner = FirebaseEmulator.signInAs("winner")
+          winners +=
+              HouseholdRepositoryFirestore(firestore, winningGenerator)
+                  .createHousehold("Winner", owner)
+          FirebaseEmulator.signInAs("loser")
+          batch.commit().await()
+        }
+    assertThrows(IllegalStateException::class.java) {
+      runBlocking { retrying.createHousehold("Loser", loser, operationId = "exhausted") }
+    }
+    assertEquals(10, winners.size)
+    assertNull(repository.getHousehold("${loser}:exhausted"))
+    assertNull(repository.getHouseholdForUser(loser))
+    assertUserDocumentDoesNotExist(loser)
+    winners.forEach { assertEquals(it.id, storedHouseholdIdForInviteCode(it.inviteCode)) }
+  }
+
+  @Test
+  fun lostAcknowledgementAndCancellationReuseCommittedPrivateAndSharedOperations() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    for (type in FridgeType.entries) {
+      for ((suffix, failure) in
+          listOf(
+              "lost" to
+                  FirebaseFirestoreException(
+                      "lost ack", FirebaseFirestoreException.Code.UNAVAILABLE),
+              "cancel" to CancellationException("cancelled after commit"))) {
+        val operation = "${type.name}_$suffix"
+        val uncertain =
+            HouseholdRepositoryFirestore(
+                firestore,
+                commitCreation = { batch ->
+                  batch.commit().await()
+                  throw failure
+                })
+        assertThrows(Exception::class.java) {
+          runBlocking { uncertain.createHousehold("Home", owner, type, operation) }
+        }
+        val original = repository.createHousehold("Home", owner, type, operation)
+        repeat(3) {
+          assertEquals(original, repository.createHousehold("Home", owner, type, operation))
+        }
+        assertEquals("${owner}:$operation", original.id)
+        if (type == FridgeType.SHARED) {
+          assertEquals(original.id, storedHouseholdIdForInviteCode(original.inviteCode))
+        }
+      }
+    }
+    assertEquals(
+        4,
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.HOUSEHOLDS)
+                    .whereArrayContains("memberIds", owner)
+                    .get(Source.SERVER))
+            .size())
+    val old = repository.createHousehold("Home", owner, FridgeType.SHARED, "SHARED_lost")
+    val newer = repository.createHousehold("New", owner, operationId = "deliberate")
+    assertEquals(old, repository.createHousehold("Home", owner, FridgeType.SHARED, "SHARED_lost"))
+    assertEquals(
+        newer.id,
+        Tasks.await(
+                firestore.collection(FirestoreCollections.USERS).document(owner).get(Source.SERVER))
+            .getString("householdId"))
+  }
+
+  @Test
+  fun unrelatedDeniedCommitIsNotRetriedOrPartiallyWritten() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    var commits = 0
+    val unauthorized =
+        HouseholdRepositoryFirestore(firestore, InviteCodeGenerator(Random(1234))) { batch ->
+          commits++
+          batch.commit().await()
+        }
+    val failure =
+        assertThrows(FirebaseFirestoreException::class.java) {
+          runBlocking {
+            unauthorized.createHousehold("Forged", "another-user", operationId = "forged")
+          }
+        }
+    assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, failure.code)
+    assertEquals(1, commits)
+    assertNull(repository.getHousehold("another-user:forged"))
+    assertFalse(
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.INVITE_CODES)
+                    .document(InviteCodeGenerator(Random(1234)).generate())
+                    .get(Source.SERVER))
+            .exists())
+    assertUserDocumentDoesNotExist(owner)
+  }
+
+  @Test
+  fun identicalPrivateReplayCannotRelinkProfileAfterNewerCreation() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    var newerId: String? = null
+    val overlapping =
+        HouseholdRepositoryFirestore(
+            firestore,
+            commitCreation = { batch ->
+              batch.commit().await()
+              val original = checkNotNull(repository.getHousehold("$owner:overlap"))
+              newerId = repository.createHousehold("New", owner, FridgeType.PRIVATE, "newer").id
+              // A paused same-operation request can carry exactly the already-committed payload.
+              firestore
+                  .batch()
+                  .set(
+                      firestore.collection(FirestoreCollections.HOUSEHOLDS).document(original.id),
+                      original)
+                  .set(
+                      firestore.collection(FirestoreCollections.USERS).document(owner),
+                      mapOf("householdId" to original.id),
+                      com.google.firebase.firestore.SetOptions.merge())
+                  .commit()
+                  .await()
+              error("Identical private replay must be rejected by the rules")
+            })
+    val reconciled = overlapping.createHousehold("Old", owner, FridgeType.PRIVATE, "overlap")
+    assertEquals("$owner:overlap", reconciled.id)
+    assertEquals(
+        newerId,
+        Tasks.await(
+                firestore.collection(FirestoreCollections.USERS).document(owner).get(Source.SERVER))
+            .getString("householdId"))
+    assertEquals(
+        reconciled, repository.createHousehold("Old", owner, FridgeType.PRIVATE, "overlap"))
   }
 
   @Test

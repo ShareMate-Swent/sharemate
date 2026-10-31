@@ -119,6 +119,10 @@ service cloud.firestore {
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
       allow update: if signedIn() && canAccessFridge(resource.data)
+          // Legacy private owners may restore missing membership, but identical creation
+          // replays must not relink their profile after a newer creation.
+          && (resource.data.get('type', 'SHARED') == 'SHARED'
+              || request.resource.data.memberIds != resource.data.memberIds)
           && hasValidPrivateMembers(request.resource.data)
           && (onlyAddsSelf() || onlyRemovesSelf());
     }

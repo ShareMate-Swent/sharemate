@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
@@ -145,7 +146,7 @@ private fun ColumnScope.CreateHouseholdForm(
       label = { Text(stringResource(R.string.household_name)) },
       placeholder = { Text(stringResource(R.string.household_name_placeholder)) },
       modifier = Modifier.fillMaxWidth().testTag(CreateHouseholdTestTags.NAME),
-      enabled = !state.isLoading,
+      enabled = !state.isLoading && !state.hasCreationOperation,
       singleLine = true,
   )
   Spacer(Modifier.height(16.dp))
@@ -197,14 +198,17 @@ private fun FridgeTypeOption(
                   else CreateHouseholdTestTags.TYPE_SHARED)
               .selectable(
                   selected = selected,
-                  enabled = !state.isLoading,
+                  enabled = !state.isLoading && !state.hasCreationOperation,
                   role = Role.RadioButton,
                   onClick = { onSelect(type) },
               )
               .padding(vertical = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    RadioButton(selected = selected, onClick = null, enabled = !state.isLoading)
+    RadioButton(
+        selected = selected,
+        onClick = null,
+        enabled = !state.isLoading && !state.hasCreationOperation)
     Spacer(Modifier.width(12.dp))
     Column {
       Text(

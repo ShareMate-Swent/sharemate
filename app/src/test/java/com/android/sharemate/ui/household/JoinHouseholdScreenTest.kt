@@ -164,8 +164,12 @@ class JoinHouseholdScreenTest {
     private val delegate = InMemoryHouseholdRepository()
     var gate: CompletableDeferred<Unit>? = null
 
-    override suspend fun createHousehold(name: String, creatorId: String, type: FridgeType) =
-        delegate.createHousehold(name, creatorId, type)
+    override suspend fun createHousehold(
+        name: String,
+        creatorId: String,
+        type: FridgeType,
+        operationId: String
+    ) = delegate.createHousehold(name, creatorId, type, operationId)
 
     override suspend fun joinHousehold(inviteCode: String, userId: String): Household {
       gate?.await()
