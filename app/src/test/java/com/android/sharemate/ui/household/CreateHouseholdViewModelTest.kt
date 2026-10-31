@@ -3,6 +3,7 @@
 // Co-authored-by: OpenAI Codex
 package com.android.sharemate.ui.household
 
+import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
@@ -151,6 +152,66 @@ class CreateHouseholdViewModelTest {
     assertEquals(1, repository.createCalls.get())
   }
 
+  @Test
+  fun recreationRetriesOriginalRequestAndNewEntryUsesNewOperation() = runTest {
+    for (type in FridgeType.entries) {
+      for (failure in listOf(IllegalStateException("failed"), CancellationException("cancelled"))) {
+        repository = RecordingRepository()
+        repository.failure = failure
+        val saved = SavedStateHandle()
+        val original = CreateHouseholdViewModel(repository, auth, saved)
+        original.updateName(" Kitchen ")
+        original.updateType(type)
+        original.createHousehold()
+        advanceUntilIdle()
+        original.updateName("Changed")
+        original.updateType(
+            if (type == FridgeType.PRIVATE) FridgeType.SHARED else FridgeType.PRIVATE)
+        assertEquals("Kitchen", original.state.value.name)
+        assertEquals(type, original.state.value.type)
+
+        val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+        val recreated = CreateHouseholdViewModel(repository, auth, restored)
+        assertTrue(recreated.state.value.hasCreationOperation)
+        repository.failure = null
+        recreated.createHousehold()
+        advanceUntilIdle()
+        assertEquals(listOf("Kitchen", "Kitchen"), repository.createdNames)
+        assertEquals(listOf(type, type), repository.createdTypes)
+        assertEquals(1, repository.operationIds.distinct().size)
+        val confirmed =
+            CreateHouseholdViewModel(
+                repository,
+                auth,
+                SavedStateHandle(restored.keys().associateWith { restored.get<Any?>(it) }))
+        confirmed.createHousehold()
+        advanceUntilIdle()
+        assertEquals(2, repository.createCalls.get())
+        val newEntry = CreateHouseholdViewModel(repository, auth)
+        newEntry.updateName("Kitchen")
+        newEntry.createHousehold()
+        advanceUntilIdle()
+        assertEquals(2, repository.operationIds.distinct().size)
+      }
+    }
+  }
+
+  @Test
+  fun restoredOperationCannotBeSubmittedAsAnotherUser() = runTest {
+    repository.failure = IllegalStateException("unavailable")
+    val saved = SavedStateHandle()
+    val original = CreateHouseholdViewModel(repository, auth, saved)
+    original.updateName("Kitchen")
+    original.createHousehold()
+    advanceUntilIdle()
+    auth.sessionState.value = AuthSession("other", "other@example.com")
+    val recreated = CreateHouseholdViewModel(repository, auth, saved)
+    recreated.createHousehold()
+    advanceUntilIdle()
+    assertEquals(1, repository.createCalls.get())
+    assertEquals(CreateHouseholdError.CREATION_FAILED, recreated.state.value.error)
+  }
+
   private class FakeAuthRepository(session: AuthSession?) : AuthRepository {
     val sessionState = MutableStateFlow(session)
     override val session: Flow<AuthSession?> = sessionState
@@ -171,6 +232,7 @@ class CreateHouseholdViewModelTest {
     private val delegate = InMemoryHouseholdRepository()
     val createdNames = mutableListOf<String>()
     val createdTypes = mutableListOf<FridgeType>()
+    val operationIds = mutableListOf<String>()
     val createCalls = AtomicInteger()
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
@@ -178,11 +240,13 @@ class CreateHouseholdViewModelTest {
     override suspend fun createHousehold(
         name: String,
         creatorId: String,
-        type: FridgeType
+        type: FridgeType,
+        operationId: String
     ): Household {
       createCalls.incrementAndGet()
       createdNames += name
       createdTypes += type
+      operationIds += operationId
       gate?.await()
       failure?.let { throw it }
       return Household(

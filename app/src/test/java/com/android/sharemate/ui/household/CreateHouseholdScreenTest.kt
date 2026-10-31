@@ -248,7 +248,8 @@ class CreateHouseholdScreenTest {
     override suspend fun createHousehold(
         name: String,
         creatorId: String,
-        type: FridgeType
+        type: FridgeType,
+        operationId: String
     ): Household {
       createdTypes += type
       gate?.await()

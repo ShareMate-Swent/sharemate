@@ -119,6 +119,7 @@ service cloud.firestore {
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
       allow update: if signedIn() && canAccessFridge(resource.data)
+          && resource.data.get('type', 'SHARED') == 'SHARED'
           && hasValidPrivateMembers(request.resource.data)
           && (onlyAddsSelf() || onlyRemovesSelf());
     }

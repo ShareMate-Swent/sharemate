@@ -8,6 +8,8 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.SnapshotMetadata
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.WriteBatch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -36,7 +38,10 @@ class HouseholdPrivateCreationTest {
   fun setUp() {
     `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(households)
     `when`(firestore.collection(FirestoreCollections.USERS)).thenReturn(users)
-    `when`(households.document()).thenReturn(householdReference)
+    `when`(households.document(anyString())).thenReturn(householdReference)
+    val missing = mock(DocumentSnapshot::class.java)
+    `when`(missing.metadata).thenReturn(mock(SnapshotMetadata::class.java))
+    `when`(householdReference.get(Source.SERVER)).thenReturn(Tasks.forResult(missing))
     `when`(householdReference.id).thenReturn("new-household")
     `when`(users.document("creator")).thenReturn(userReference)
     `when`(firestore.batch()).thenReturn(batch)
@@ -88,14 +93,14 @@ class HouseholdPrivateCreationTest {
         `when`(firestore.collection(FirestoreCollections.INVITE_CODES)).thenReturn(codes)
         `when`(generator.generate()).thenReturn("ABC123")
         `when`(codes.document("ABC123")).thenReturn(codeReference)
-        `when`(codeReference.get()).thenReturn(Tasks.forResult(missing))
+        `when`(codeReference.get(Source.SERVER)).thenReturn(Tasks.forResult(missing))
         `when`(batch.set(codeReference, mapOf("householdId" to "new-household"))).thenReturn(batch)
 
         val created = repository.createHousehold("Home", "creator", FridgeType.SHARED)
 
         assertEquals("ABC123", created.inviteCode)
         verify(generator).generate()
-        verify(codeReference).get()
+        verify(codeReference).get(Source.SERVER)
         verify(batch).set(codeReference, mapOf("householdId" to created.id))
         verify(batch).set(householdReference, created)
         verify(batch).commit()
