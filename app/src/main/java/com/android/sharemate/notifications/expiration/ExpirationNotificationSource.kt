@@ -24,7 +24,7 @@ class ExpirationNotificationSource(
 
   override suspend fun dueNotifications(): List<AppNotification> {
     val recipient = recipientProvider.current() ?: return emptyList()
-    val items = itemRepository.getSharedItems(recipient.householdId).first()
+    val items = itemRepository.getFridgeItems(recipient.userId, recipient.householdId).first()
     val summary = ExpirationSummary.of(items, today())
     if (summary.isEmpty) return emptyList()
     val text = formatter.format(summary)
