@@ -23,11 +23,11 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
-  override fun getFridgeItems(userId: String, householdId: String): Flow<List<Item>> {
-    if (userId.isBlank() || householdId.isBlank()) {
+  override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> {
+    if (userId.isBlank() || (householdId != null && householdId.isBlank())) {
       return flowOf(emptyList())
     }
-    if (householdId == "null") {
+    if (householdId == null) {
       return observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null))
     }
     return observe(
