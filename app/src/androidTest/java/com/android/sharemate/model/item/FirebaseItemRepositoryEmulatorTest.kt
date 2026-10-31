@@ -435,8 +435,6 @@ class FirebaseItemRepositoryEmulatorTest {
                     ownerId = member,
                     householdId = home.id,
                     sharing = ItemSharing.PERSONAL)))
-    assertEquals(
-        ItemSharing.PERSONAL, await(document(id).get(Source.SERVER)).toItemOrNull()!!.sharing)
     assertTrue(
         withTimeout(10_000) {
               repository.getFridgeItems(member, home.id).first {

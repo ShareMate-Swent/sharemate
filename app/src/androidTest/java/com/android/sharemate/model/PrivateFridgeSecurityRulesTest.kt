@@ -156,9 +156,13 @@ class PrivateFridgeSecurityRulesTest {
     Tasks.await(receipt.update("storeName", "Other shop"))
     assertEquals(
         listOf("food"),
-        Tasks.await(item.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {
-          it.id
-        })
+        Tasks.await(
+                item.parent
+                    .whereEqualTo("householdId", fridge.id)
+                    .whereEqualTo("ownerId", owner)
+                    .get())
+            .documents
+            .map { it.id })
     assertEquals(
         listOf("receipt"),
         Tasks.await(receipt.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {
