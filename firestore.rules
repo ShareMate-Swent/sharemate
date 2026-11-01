@@ -129,6 +129,33 @@ service cloud.firestore {
           && (onlyAddsSelf() || onlyRemovesSelf());
     }
 
+    // Chat messages: shared household members can read and post as themselves. Messages are
+    // immutable and never deleted by clients. Private fridges have no chat.
+    match /households/{householdId}/messages/{messageId} {
+      function canUseChat() {
+        let household = get(documentPath('households', householdId)).data;
+        return household.get('type', 'SHARED') == 'SHARED'
+            && request.auth.uid in household.memberIds;
+      }
+
+      function isValidNewMessage() {
+        let message = request.resource.data;
+        return message.keys().hasOnly(['id', 'senderId', 'senderName', 'text', 'timestamp'])
+            && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
+            && message.id == messageId
+            && message.senderId == request.auth.uid
+            && message.senderName is string
+            && message.text is string
+            && message.text.size() > 0
+            && message.text.size() <= 2000
+            && message.timestamp is timestamp;
+      }
+
+      allow read: if signedIn() && canUseChat();
+      allow create: if signedIn() && canUseChat() && isValidNewMessage();
+      allow update, delete: if false;
+    }
+
     function isHouseholdMember(householdId) {
       let household = get(documentPath('households', householdId)).data;
       return householdId != null && canAccessFridge(household)

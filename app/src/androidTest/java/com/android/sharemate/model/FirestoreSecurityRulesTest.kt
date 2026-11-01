@@ -442,6 +442,56 @@ class FirestoreSecurityRulesTest {
     assertDenied(receiptRef.update("householdId", null))
   }
 
+  @Test
+  fun memberCanPostAndReadMessagesButNotEditOrDeleteThem() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    val messageRef = messageReference(household.id, "m1")
+
+    Tasks.await(messageRef.set(messageData("m1", memberId)))
+
+    FirebaseEmulator.signInAs("creator")
+    assertEquals("hello", Tasks.await(messageRef.get()).getString("text"))
+    assertDenied(messageRef.update("text", "edited"))
+    assertDenied(messageRef.delete())
+  }
+
+  @Test
+  fun nonMemberCannotReadOrPostMessages() {
+    val household = createHouseholdAs("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+    val messageRef = messageReference(household.id, "m1")
+
+    assertDenied(messageRef.set(messageData("m1", outsiderId)))
+    assertDenied(messageReference(household.id, "m1").get())
+  }
+
+  @Test
+  fun userCannotPostMessageAsSomeoneElseOrWithInvalidContent() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+
+    assertDenied(messageReference(household.id, "m1").set(messageData("m1", "someone-else")))
+    assertDenied(messageReference(household.id, "m2").set(messageData("m2", creatorId, text = "")))
+    assertDenied(
+        messageReference(household.id, "m3").set(messageData("m3", creatorId, "x".repeat(2001))))
+    assertDenied(
+        messageReference(household.id, "m4").set(messageData("m4", creatorId) + ("extra" to 1)))
+    assertDenied(messageReference(household.id, "m5").set(messageData("m4", creatorId)))
+  }
+
+  private fun messageData(id: String, senderId: String, text: String = "hello"): Map<String, Any> =
+      mapOf(
+          "id" to id,
+          "senderId" to senderId,
+          "senderName" to "Sender",
+          "text" to text,
+          "timestamp" to Date())
+
+  private fun messageReference(householdId: String, messageId: String): DocumentReference =
+      householdReference(householdId).collection(FirestoreCollections.MESSAGES).document(messageId)
+
   /** A receipt that satisfies hasValidReceiptData; override fields as needed. */
   private fun receiptData(ownerId: String, householdId: String? = null): Map<String, Any?> =
       buildMap {
