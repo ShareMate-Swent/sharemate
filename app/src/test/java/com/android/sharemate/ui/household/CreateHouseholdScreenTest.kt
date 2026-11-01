@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -192,17 +193,44 @@ class CreateHouseholdScreenTest {
   fun failureCanBeRetriedSuccessfully() {
     val repository = TestHouseholdRepository(IllegalStateException("failure"))
     val viewModel = createViewModel(repository)
+    val recoveryHint = "Go back to change the name or fridge type."
+    var back = 0
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = { back++ }) }
+    }
+    composeTestRule.onNodeWithText(recoveryHint).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithText(recoveryHint).performScrollTo().assertIsDisplayed()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.BACK).performScrollTo().performClick()
+    assertEquals(1, back)
+    repository.failure = null
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithText("ABC123").assertIsDisplayed()
+    composeTestRule.onNodeWithText(recoveryHint).assertDoesNotExist()
+  }
+
+  @Test
+  fun noSessionKeepsFormEditableWithoutCreationRecoveryHint() {
+    val viewModel = CreateHouseholdViewModel(TestHouseholdRepository(), TestAuthRepository(null))
     composeTestRule.setContent {
       MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
     }
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
-    composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.ERROR).assertIsDisplayed()
-    repository.failure = null
-    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
-    composeTestRule.waitForIdle()
-    composeTestRule.onNodeWithText("ABC123").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText("Go back to change the name or fridge type.")
+        .assertDoesNotExist()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).assertIsEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsEnabled()
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsEnabled()
   }
 
   @Test
@@ -226,9 +254,10 @@ class CreateHouseholdScreenTest {
   private fun createViewModel(repository: TestHouseholdRepository = TestHouseholdRepository()) =
       CreateHouseholdViewModel(repository, TestAuthRepository())
 
-  private class TestAuthRepository : AuthRepository {
-    override val session: Flow<AuthSession?> =
-        MutableStateFlow(AuthSession("user-1", "user@example.com"))
+  private class TestAuthRepository(
+      session: AuthSession? = AuthSession("user-1", "user@example.com")
+  ) : AuthRepository {
+    override val session: Flow<AuthSession?> = MutableStateFlow(session)
 
     override suspend fun signIn(email: String, password: String) = Unit
 
@@ -248,7 +277,8 @@ class CreateHouseholdScreenTest {
     override suspend fun createHousehold(
         name: String,
         creatorId: String,
-        type: FridgeType
+        type: FridgeType,
+        operationId: String
     ): Household {
       createdTypes += type
       gate?.await()

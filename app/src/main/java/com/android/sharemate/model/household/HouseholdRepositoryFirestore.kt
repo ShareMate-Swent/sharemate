@@ -8,22 +8,44 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.WriteBatch
 import java.util.Date
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 /** Firestore-backed implementation of [HouseholdRepository]. */
 class HouseholdRepositoryFirestore(
     private val firestore: FirebaseFirestore,
-    private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator()
+    private val inviteCodeGenerator: InviteCodeGenerator = InviteCodeGenerator(),
+    private val commitCreation: suspend (WriteBatch) -> Unit = { it.commit().await() }
 ) : HouseholdRepository {
 
   override suspend fun createHousehold(
       name: String,
       creatorId: String,
-      type: FridgeType
+      type: FridgeType,
+      operationId: String
   ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
+    require(operationId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "Invalid creation operation ID" }
+    val householdReference =
+        firestore.collection(FirestoreCollections.HOUSEHOLDS).document("$creatorId:$operationId")
+
+    suspend fun reconcile(): Household? {
+      val snapshot = householdReference.get(Source.SERVER).await()
+      check(!snapshot.metadata.hasPendingWrites()) { "Creation outcome is still pending" }
+      if (!snapshot.exists()) return null
+      val previous = checkNotNull(snapshot.toObject(Household::class.java))
+      require(previous.createdBy == creatorId && previous.name == name && previous.type == type) {
+        "Creation operation does not match the original request"
+      }
+      return previous
+    }
+    reconcile()?.let {
+      return it
+    }
 
     repeat(MAX_INVITE_CODE_ATTEMPTS) {
       val inviteCode = if (type == FridgeType.SHARED) inviteCodeGenerator.generate() else ""
@@ -33,7 +55,7 @@ class HouseholdRepositoryFirestore(
               firestore
                   .collection(FirestoreCollections.INVITE_CODES)
                   .document(inviteCode)
-                  .get()
+                  .get(Source.SERVER)
                   .await()
             } catch (exception: FirebaseFirestoreException) {
               // Legacy private invite codes are hidden from other users; retry unavailable codes.
@@ -43,7 +65,6 @@ class HouseholdRepositoryFirestore(
         if (existing.exists()) return@repeat
       }
 
-      val householdReference = firestore.collection(FirestoreCollections.HOUSEHOLDS).document()
       val household =
           Household(
               id = householdReference.id,
@@ -60,13 +81,37 @@ class HouseholdRepositoryFirestore(
         batch.set(inviteCodeReference, mapOf(HOUSEHOLD_ID_FIELD to household.id))
       }
 
-      batch
-          .set(
-              firestore.collection(FirestoreCollections.USERS).document(creatorId),
-              mapOf(HOUSEHOLD_ID_FIELD to household.id),
-              SetOptions.merge())
-          .commit()
-          .await()
+      try {
+        commitCreation(
+            batch.set(
+                firestore.collection(FirestoreCollections.USERS).document(creatorId),
+                mapOf(HOUSEHOLD_ID_FIELD to household.id),
+                SetOptions.merge()))
+      } catch (failure: FirebaseFirestoreException) {
+        if (failure.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw failure
+        // Another caller may have completed this same operation. Reconcile it before deciding
+        // whether a shared code was claimed; a denied commit alone is not a collision.
+        try {
+          reconcile()?.let {
+            return it
+          }
+          if (type != FridgeType.SHARED) throw failure
+          val claimed =
+              firestore
+                  .collection(FirestoreCollections.INVITE_CODES)
+                  .document(inviteCode)
+                  .get(Source.SERVER)
+                  .await()
+          check(!claimed.metadata.hasPendingWrites())
+          val claimedBy = claimed.getString(HOUSEHOLD_ID_FIELD)
+          if (claimedBy.isNullOrBlank() || claimedBy == household.id) throw failure
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          throw failure
+        }
+        return@repeat
+      }
       return household
     }
 

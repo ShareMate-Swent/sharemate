@@ -12,14 +12,20 @@ class InMemoryHouseholdRepository : HouseholdRepository {
   override suspend fun createHousehold(
       name: String,
       creatorId: String,
-      type: FridgeType
+      type: FridgeType,
+      operationId: String
   ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
+    val id = "$creatorId:$operationId"
+    households[id]?.let {
+      require(it.createdBy == creatorId && it.name == name && it.type == type)
+      return it
+    }
 
     val household =
         Household(
-            id = UUID.randomUUID().toString(),
+            id = id,
             name = name,
             inviteCode =
                 if (type == FridgeType.SHARED) UUID.randomUUID().toString().take(8).uppercase()

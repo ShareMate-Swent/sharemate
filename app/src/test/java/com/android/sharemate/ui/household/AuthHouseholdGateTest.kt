@@ -8,8 +8,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
@@ -60,6 +62,33 @@ class AuthHouseholdGateTest {
     compose.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
     compose.onNodeWithTag("private_app").assertIsDisplayed()
     assertEquals(listOf("student", "student"), households.lookups)
+  }
+
+  @Test
+  fun failedCreationRestoresOperationAfterViewModelStoreIsLost() {
+    households.creationFailure = IllegalStateException("lost acknowledgement")
+    val content: @Composable () -> Unit = { GateContent() }
+    compose.setContent(content)
+    startCreation()
+    compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).assertIsEnabled()
+    compose.runOnUiThread { compose.activity.viewModelStore.clear() }
+    compose.activityRule.scenario.recreate()
+    compose.activityRule.scenario.onActivity {
+      it.setContent(content = content)
+      it.window.decorView.requestLayout()
+    }
+    compose.waitForIdle()
+    compose
+        .onNodeWithTag(CreateHouseholdTestTags.NAME)
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.EditableText, AnnotatedString("Our home")))
+        .assertIsNotEnabled()
+    compose.runOnIdle { households.creationFailure = null }
+    compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    compose.onNodeWithText("ABC123").assertIsDisplayed()
+    assertEquals(2, households.creationOperations.size)
+    assertEquals(1, households.creationOperations.distinct().size)
   }
 
   @Test
@@ -197,6 +226,8 @@ class AuthHouseholdGateTest {
     val pending = mutableMapOf<String, CompletableDeferred<Unit>>()
     var failure: Exception? = null
     var creationPending: CompletableDeferred<Unit>? = null
+    var creationFailure: Exception? = null
+    val creationOperations = mutableListOf<String>()
 
     override suspend fun getHouseholdForUser(userId: String): Household? {
       lookups.add(userId)
@@ -213,9 +244,12 @@ class AuthHouseholdGateTest {
     override suspend fun createHousehold(
         name: String,
         creatorId: String,
-        type: FridgeType
+        type: FridgeType,
+        operationId: String
     ): Household {
+      creationOperations += operationId
       creationPending?.await()
+      creationFailure?.let { throw it }
       return Household(
               id = "created-home",
               name = name,

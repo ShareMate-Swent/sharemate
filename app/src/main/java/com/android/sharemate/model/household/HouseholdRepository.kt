@@ -3,6 +3,8 @@
 // Co-authored-by: OpenAI Codex
 package com.android.sharemate.model.household
 
+import java.util.UUID
+
 /** A private fridge must stay linked to its owner because it has no invitation-based recovery. */
 class PrivateHouseholdLeaveException : IllegalStateException("Private fridges cannot be left")
 
@@ -21,13 +23,19 @@ interface HouseholdRepository {
    * [type] selects a private or shared fridge; existing callers create a shared fridge by default.
    * Private fridges have an empty [Household.inviteCode] and no invite-code lookup record.
    *
+   * Retain [operationId] with the original name, creator and type across retries, including
+   * cancellation and process recreation. Reusing it returns the original household without
+   * relinking the profile. A new ID explicitly starts a different creation operation; the default
+   * is appropriate only when no earlier attempt needs reconciliation.
+   *
    * @throws IllegalArgumentException if [name] or [creatorId] is blank.
    * @throws Exception if the data source cannot create the household.
    */
   suspend fun createHousehold(
       name: String,
       creatorId: String,
-      type: FridgeType = FridgeType.SHARED
+      type: FridgeType = FridgeType.SHARED,
+      operationId: String = UUID.randomUUID().toString()
   ): Household
 
   /**

@@ -88,6 +88,7 @@
     <string name="household_name">Household name</string>
     <string name="household_name_placeholder">e.g. Rue de Lausanne flat</string>
     <string name="create_household">Create household</string>
+    <string name="create_household_change_request_hint">Go back to change the name or fridge type.</string>
     <string name="household_ready_title">Your household is ready!</string>
     <string name="household_ready_description">Share this code with your roommates so they can join.</string>
     <string name="household_invite_code">Household invite code</string>
