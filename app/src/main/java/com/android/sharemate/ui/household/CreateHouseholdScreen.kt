@@ -163,6 +163,11 @@ private fun ColumnScope.CreateHouseholdForm(
         color = MaterialTheme.colorScheme.error,
         modifier = Modifier.testTag(CreateHouseholdTestTags.ERROR),
     )
+    if (state.hasCreationOperation) {
+      Text(
+          text = stringResource(R.string.create_household_change_request_hint),
+          style = MaterialTheme.typography.bodySmall)
+    }
   }
   Spacer(Modifier.weight(1f))
   Button(
