@@ -82,9 +82,9 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     val name = draft.name.trim()
     val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
     val price = Prices.parse(draft.price)
-    if (name.isEmpty()) return showError(StagedItemError.NAME_REQUIRED)
-    if (quantity == null) return showError(StagedItemError.INVALID_QUANTITY)
-    if (price == PriceInput.Invalid) return showError(StagedItemError.INVALID_PRICE)
+    if (name.isEmpty()) return updateDraftError(StagedItemError.NAME_REQUIRED)
+    if (quantity == null) return updateDraftError(StagedItemError.INVALID_QUANTITY)
+    if (price == PriceInput.Invalid) return updateDraftError(StagedItemError.INVALID_PRICE)
     val priceCents = (price as? PriceInput.Valid)?.cents
     mutableState.update { state ->
       state.copy(
@@ -100,7 +100,7 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     }
   }
 
-  private fun showError(error: StagedItemError) = updateDraft { it.copy(error = error) }
+  private fun updateDraftError(error: StagedItemError) = updateDraft { it.copy(error = error) }
 
   /** Closes the edit dialog without changing the item. */
   fun cancelEditing() {
