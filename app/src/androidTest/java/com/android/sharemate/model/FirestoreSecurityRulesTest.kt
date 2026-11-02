@@ -481,6 +481,23 @@ class FirestoreSecurityRulesTest {
     assertDenied(messageReference(household.id, "m5").set(messageData("m4", creatorId)))
   }
 
+  @Test
+  fun userCannotPostWhitespaceOnlyMessageButCanPostMultilineMessage() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+
+    assertDenied(
+        messageReference(household.id, "m1").set(messageData("m1", creatorId, text = "   ")))
+    assertDenied(
+        messageReference(household.id, "m2").set(messageData("m2", creatorId, text = "\t\t")))
+    assertDenied(
+        messageReference(household.id, "m3").set(messageData("m3", creatorId, text = "\n \t\r\n")))
+
+    Tasks.await(
+        messageReference(household.id, "m4")
+            .set(messageData("m4", creatorId, text = "line one\n\tline two\n")))
+  }
+
   private fun messageData(id: String, senderId: String, text: String = "hello"): Map<String, Any> =
       mapOf(
           "id" to id,

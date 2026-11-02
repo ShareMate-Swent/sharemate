@@ -146,7 +146,7 @@ service cloud.firestore {
             && message.senderId == request.auth.uid
             && message.senderName is string
             && message.text is string
-            && message.text.size() > 0
+            && message.text.matches('[\\s\\S]*\\S[\\s\\S]*')
             && message.text.size() <= 2000
             && message.timestamp is timestamp;
       }
