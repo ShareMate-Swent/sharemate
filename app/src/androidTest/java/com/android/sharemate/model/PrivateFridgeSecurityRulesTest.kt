@@ -12,6 +12,7 @@ import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
@@ -251,6 +252,48 @@ class PrivateFridgeSecurityRulesTest {
     }
     Unit
   }
+
+  @Test
+  fun sharedFridgeOutsiderFilteredCollectionQueriesAreDeniedSeparatelyFromDocumentReads() =
+      runBlocking {
+        val owner = FirebaseEmulator.signInAs("query-owner")
+        val fridge = createFridge("query-shared", owner, FridgeType.SHARED)
+        val items = firestore.collection(FirestoreCollections.ITEMS)
+        for (sharing in ItemSharing.values()) {
+          Tasks.await(
+              items
+                  .document(sharing.name)
+                  .set(
+                      mapOf(
+                          "name" to "Milk",
+                          "ownerId" to owner,
+                          "householdId" to fridge.id,
+                          "quantity" to 1,
+                          "status" to "ACTIVE",
+                          "sharing" to sharing.name)))
+        }
+
+        val outsider = FirebaseEmulator.signInAs("query-outsider")
+        assertDenied(
+            items
+                .whereEqualTo("householdId", fridge.id)
+                .whereEqualTo("sharing", ItemSharing.SHARED.name)
+                .get())
+        assertDenied(
+            items.whereEqualTo("householdId", fridge.id).whereEqualTo("ownerId", outsider).get())
+        assertDenied(
+            items
+                .whereEqualTo("householdId", fridge.id)
+                .where(
+                    Filter.or(
+                        Filter.equalTo("sharing", ItemSharing.SHARED.name),
+                        Filter.equalTo("ownerId", outsider)))
+                .get())
+        for (sharing in ItemSharing.values()) {
+          assertDenied(items.document(sharing.name).get())
+        }
+        Unit
+      }
 
   private fun createFridge(id: String, owner: String, type: FridgeType): Household {
     val fridge =
