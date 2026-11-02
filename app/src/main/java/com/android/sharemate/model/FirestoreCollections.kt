@@ -8,4 +8,6 @@ object FirestoreCollections {
   const val ITEMS = "items"
   const val RECEIPTS = "receipts"
   const val INVITE_CODES = "inviteCodes"
+  /** Sub-collection of a household document. */
+  const val MESSAGES = "messages"
 }
