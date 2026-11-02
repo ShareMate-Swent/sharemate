@@ -178,6 +178,46 @@ class FinanceModelsTest {
     assertNotEquals(original, expense())
   }
 
+  @Test
+  fun expenseDiagnosticsIdentifyTheRecordPayerAmountAndExplicitShares() {
+    val description = expense().toString()
+    for (field in
+        listOf(
+            "SharedExpense(",
+            "id=expense",
+            "householdId=home",
+            "paidBy=alice",
+            "totalAmountCents=300",
+            "shares={",
+            "alice=100",
+            "bob=200")) {
+      assertTrue("Missing $field in $description", description.contains(field))
+    }
+  }
+
+  @Test
+  fun snapshotDiagnosticsIncludeNestedRecordsAndDistinguishEmptyLedgers() {
+    val description = snapshot().toString()
+    for (field in
+        listOf(
+            "HouseholdFinanceSnapshot(",
+            "householdId=home",
+            "expenses=[SharedExpense(",
+            "paidBy=alice",
+            "totalAmountCents=300",
+            "settlements=[Settlement(",
+            "id=payment",
+            "payerId=bob",
+            "recipientId=alice",
+            "amountCents=100")) {
+      assertTrue("Missing $field in $description", description.contains(field))
+    }
+    val empty = HouseholdFinanceSnapshot("home", emptyList(), emptyList()).toString()
+    assertTrue(empty.contains("householdId=home"))
+    assertTrue(empty.contains("expenses=[]"))
+    assertTrue(empty.contains("settlements=[]"))
+  }
+
   private fun expense(
       id: String = "expense",
       home: String = "home",

@@ -50,4 +50,8 @@ class SharedExpense(
     result = 31 * result + totalAmountCents.hashCode()
     return 31 * result + shares.hashCode()
   }
+
+  override fun toString(): String =
+      "SharedExpense(id=$id, householdId=$householdId, paidBy=$paidBy, " +
+          "totalAmountCents=$totalAmountCents, shares=$shares)"
 }
