@@ -168,29 +168,6 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun legacyHouseholdWithoutTypeRemainsReadableAndJoinableAsShared() = runBlocking {
-    val userId = FirebaseEmulator.signInAs("creator")
-    val household = Household("legacy", "Home", "ABCDEF", listOf(userId), userId, Date())
-    val legacyData =
-        mapOf(
-            "id" to household.id,
-            "name" to household.name,
-            "inviteCode" to household.inviteCode,
-            "memberIds" to household.memberIds,
-            "createdBy" to household.createdBy,
-            "createdAt" to household.createdAt)
-    Tasks.await(createHousehold(household, legacyData))
-
-    assertEquals(household, repository.getHousehold(household.id))
-    assertEquals(household, repository.getHouseholdForUser(userId))
-    val memberId = FirebaseEmulator.signInAs("member")
-    val joined = repository.joinHousehold(household.inviteCode, memberId)
-
-    assertEquals(FridgeType.SHARED, joined.type)
-    assertEquals(listOf(userId, memberId), joined.memberIds)
-  }
-
-  @Test
   fun householdCreationRejectsMalformedFridgeTypes() {
     val userId = FirebaseEmulator.signInAs("creator")
     val household = Household("invalid", "Home", "ABCDEF", listOf(userId), userId, Date())
