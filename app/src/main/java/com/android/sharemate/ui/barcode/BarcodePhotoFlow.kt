@@ -39,6 +39,7 @@ import com.android.sharemate.R
 fun BarcodePhotoFlow(
     viewModel: BarcodePhotoViewModel,
     confirmationError: String? = null,
+    receipt: Boolean = false,
     onImageConfirmed: (suspend (String) -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsState()
@@ -80,7 +81,8 @@ fun BarcodePhotoFlow(
                   .verticalScroll(rememberScrollState()),
               verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    stringResource(R.string.barcode_photo_title),
+                    stringResource(
+                        if (receipt) R.string.scan_receipt else R.string.barcode_photo_title),
                     style = MaterialTheme.typography.headlineSmall)
                 if (state.busy)
                     LinearProgressIndicator(
@@ -102,7 +104,10 @@ fun BarcodePhotoFlow(
                   PhotoPage.PREVIEW -> {
                     AsyncImage(
                         model = ImageRequest.Builder(context).data(state.uri).size(1280).build(),
-                        contentDescription = stringResource(R.string.barcode_photo_preview),
+                        contentDescription =
+                            stringResource(
+                                if (receipt) R.string.receipt_photo_preview
+                                else R.string.barcode_photo_preview),
                         contentScale = ContentScale.Fit,
                         modifier =
                             Modifier.fillMaxWidth().height(300.dp).testTag("barcode_photo_preview"),
@@ -114,7 +119,11 @@ fun BarcodePhotoFlow(
                           Text(stringResource(R.string.barcode_photo_confirm))
                         }
                   }
-                  PhotoPage.SOURCE -> Text(stringResource(R.string.barcode_photo_choose))
+                  PhotoPage.SOURCE ->
+                      Text(
+                          stringResource(
+                              if (receipt) R.string.receipt_photo_choose
+                              else R.string.barcode_photo_choose))
                 }
                 if (denied) {
                   Text(

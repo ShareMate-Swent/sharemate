@@ -63,7 +63,8 @@ class MainActivityTest : TestCase() {
         } else {
           composeTestRule.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals(label)
         }
-        if (label == "Recipes" || label == "Receipts") {
+        if (label == "Receipts") composeTestRule.onNodeWithText("Scan Receipt").assertIsDisplayed()
+        if (label == "Recipes") {
           composeTestRule.onNodeWithText("Coming soon").assertExists()
         } else {
           composeTestRule.onNodeWithText("Coming soon").assertDoesNotExist()

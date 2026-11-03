@@ -1,0 +1,7 @@
+<resources>
+    <string name="scan_receipt">Scan Receipt</string>
+    <string name="receipt_photo_choose">Take a clear photo of the entire receipt or choose one from your gallery.</string>
+    <string name="receipt_photo_preview">Selected receipt photo</string>
+    <string name="receipt_unreadable">We couldn\'t read this receipt. Take a clearer photo or choose another image.</string>
+    <string name="receipt_reviewed">Review complete. Items have not been saved to the fridge yet.</string>
+</resources>
