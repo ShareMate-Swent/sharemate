@@ -9,10 +9,12 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import java.util.Date
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -117,4 +119,73 @@ class FirebaseChatRepositoryUnitTest {
         `when`(document.set(any())).thenReturn(Tasks.forException(RuntimeException("x")))
         assertNull(repository.sendMessage("h1", "u1", "Ann", "hi"))
       }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun captureListener():
+      Pair<ArgumentCaptor<EventListener<QuerySnapshot>>, ListenerRegistration> {
+    val query = mock(Query::class.java)
+    `when`(collection.orderBy("timestamp", Query.Direction.ASCENDING)).thenReturn(query)
+    val captor =
+        ArgumentCaptor.forClass(EventListener::class.java)
+            as ArgumentCaptor<EventListener<QuerySnapshot>>
+    val registration = mock(ListenerRegistration::class.java)
+    `when`(query.addSnapshotListener(captor.capture())).thenReturn(registration)
+    return captor to registration
+  }
+
+  @Test
+  fun observeMessages_closesFlowWithListenerError() =
+      runBlocking<Unit> {
+        val (captor, _) = captureListener()
+        var failure: Throwable? = null
+        val job =
+            launch(Dispatchers.Unconfined) {
+              try {
+                repository.observeMessages("h1").collect {}
+              } catch (e: Exception) {
+                failure = e
+              }
+            }
+        val error = mock(FirebaseFirestoreException::class.java)
+        captor.value.onEvent(null, error)
+        assertEquals(error, failure)
+        job.cancel()
+      }
+
+  @Test
+  fun observeMessages_nullSnapshotEmitsEmpty_andCancelRemovesListener() =
+      runBlocking<Unit> {
+        val (captor, registration) = captureListener()
+        val emitted = mutableListOf<List<Message>>()
+        val job =
+            launch(Dispatchers.Unconfined) {
+              repository.observeMessages("h1").collect { emitted.add(it) }
+            }
+        captor.value.onEvent(null, null)
+        assertEquals(listOf(emptyList<Message>()), emitted)
+        job.cancel()
+        verify(registration).remove()
+      }
+
+  @Test
+  fun sendMessage_rethrowsCancellation() {
+    `when`(document.set(any())).thenThrow(CancellationException("cancelled"))
+    try {
+      runBlocking { repository.sendMessage("h1", "u1", "Ann", "hi") }
+      org.junit.Assert.fail("expected cancellation")
+    } catch (_: CancellationException) {}
+  }
+
+  @Test
+  fun toMessageOrNull_handlesMissingFields() {
+    assertNull(mock(DocumentSnapshot::class.java).toMessageOrNull())
+    val noText = mock(DocumentSnapshot::class.java)
+    `when`(noText.getString("senderId")).thenReturn("u1")
+    assertNull(noText.toMessageOrNull())
+    val minimal = mock(DocumentSnapshot::class.java)
+    `when`(minimal.id).thenReturn("x")
+    `when`(minimal.getString("senderId")).thenReturn("u1")
+    `when`(minimal.getString("text")).thenReturn("hi")
+    assertEquals(Message("x", "u1", "", "hi", null), minimal.toMessageOrNull())
+  }
 }
