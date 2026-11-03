@@ -1,0 +1,26 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function inHousehold(id) {
+      let home = firestore.get(/databases/(default)/documents/households/$(id)).data;
+      return (home.get('type', 'SHARED') == 'PRIVATE' && home.createdBy == request.auth.uid)
+          || (home.get('type', 'SHARED') != 'PRIVATE' && request.auth.uid in home.memberIds);
+    }
+    function canAccessItem(id) {
+      let item = firestore.get(/databases/(default)/documents/items/$(id)).data;
+      // Matches Firestore item access: sharing is not a read authorization field.
+      return item.ownerId == request.auth.uid
+          || (item.get('householdId', null) != null && inHousehold(item.householdId));
+    }
+    match /itemPhotos/{itemId}/{photoId} {
+      allow get, delete: if request.auth != null && canAccessItem(itemId);
+      // Objects are immutable; replacing a photo creates a fresh identifier.
+      allow create: if resource == null && request.auth != null && canAccessItem(itemId)
+          && photoId.matches('[a-f0-9-]{36}')
+          && request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024
+          && request.resource.contentType in ['image/jpeg', 'image/png'];
+      // No listing, overwrite, metadata update or access to any other path.
+    }
+  }
+}
