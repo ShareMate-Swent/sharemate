@@ -182,7 +182,14 @@ class PrivateFridgeSecurityRulesTest {
     val fridge = createFridge("private", owner, FridgeType.PRIVATE)
     val item = firestore.collection(FirestoreCollections.ITEMS).document("food")
     val receipt = firestore.collection(FirestoreCollections.RECEIPTS).document("receipt")
-    val itemData = mapOf("ownerId" to owner, "householdId" to fridge.id, "name" to "Apple")
+    val itemData =
+        mapOf(
+            "ownerId" to owner,
+            "householdId" to fridge.id,
+            "name" to "Apple",
+            "quantity" to 1,
+            "status" to "ACTIVE",
+            "sharing" to "SHARED")
     val receiptData =
         mapOf(
             "ownerId" to owner,
@@ -279,6 +286,8 @@ class PrivateFridgeSecurityRulesTest {
                   "name" to "Milk",
                   "ownerId" to owner,
                   "householdId" to fridge.id,
+                  "quantity" to 1,
+                  "status" to "ACTIVE",
                   "sharing" to sharing.name)))
       FirebaseEmulator.signInAs("sharing-private-outsider")
       assertDenied(item.get())

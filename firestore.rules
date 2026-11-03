@@ -168,23 +168,20 @@ service cloud.firestore {
       return data.ownerId == request.auth.uid;
     }
 
-    // Legacy household-access predicate; item sharing does not control read authorization.
+    // Household-access predicate; item sharing does not control read authorization.
     function isShared(data) {
       return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
     }
 
-    // Missing sharing preserves legacy behavior without conflating fridge membership with sharing.
     function itemSharing(data) {
-      return data.get('sharing', data.get('householdId', null) == null ? 'PERSONAL' : 'SHARED');
+      return data.sharing;
     }
 
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
-      let quantity = data.get('quantity', 1);
-      let status = data.get('status', 'ACTIVE');
-      return itemSharing(data) in ['SHARED', 'PERSONAL']
-          && quantity is int && quantity > 0 && quantity <= 2147483647
-          && status in ['ACTIVE', 'EATEN', 'DISCARDED']
+      return data.sharing in ['SHARED', 'PERSONAL']
+          && data.quantity is int && data.quantity > 0 && data.quantity <= 2147483647
+          && data.status in ['ACTIVE', 'EATEN', 'DISCARDED']
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
           && data.name.size() > 0

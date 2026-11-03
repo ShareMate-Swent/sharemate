@@ -24,7 +24,7 @@ class ItemTest {
   }
 
   @Test
-  fun imageDefaultsToNullForLegacyItems() {
+  fun imageDefaultsToNull() {
     assertNull(Item().image)
   }
 
