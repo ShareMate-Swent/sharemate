@@ -174,7 +174,7 @@ private fun DeleteBackground() {
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.errorContainer, CardDefaults.shape)
-              .padding(horizontal = 16.dp),
+              .padding(horizontal = Dimens.cardPadding),
       contentAlignment = Alignment.CenterEnd,
   ) {
     Icon(
