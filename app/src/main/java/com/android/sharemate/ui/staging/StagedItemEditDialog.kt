@@ -17,8 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.theme.Dimens
 
 object StagedItemEditTestTags {
   const val DIALOG = "staged_item_edit_dialog"
@@ -50,7 +50,7 @@ fun StagedItemEditDialog(
       text = {
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingS),
         ) {
           OutlinedTextField(
               value = draft.name,
