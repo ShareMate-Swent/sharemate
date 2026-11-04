@@ -10,6 +10,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -92,15 +93,15 @@ class FirebaseItemRepositoryTest {
   }
 
   @Test
-  fun getPrivateItems_returnsEmptyFlow_whenUserIdIsBlank() =
+  fun getFridgeItems_private_returnsEmptyFlow_whenUserIdIsBlank() =
       runBlocking<Unit> {
-        val items = repository.getPrivateItems("   ").first()
+        val items = repository.getFridgeItems("   ", null).first()
         assertTrue(items.isEmpty())
       }
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getPrivateItems_emitsFilteredItems() =
+  fun getFridgeItems_private_emitsFilteredItems() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
@@ -115,7 +116,7 @@ class FirebaseItemRepositoryTest {
         val emittedLists = mutableListOf<List<Item>>()
         val job =
             launch(Dispatchers.Unconfined) {
-              repository.getPrivateItems("user-1").collect { emittedLists.add(it) }
+              repository.getFridgeItems("user-1", null).collect { emittedLists.add(it) }
             }
 
         verify(query).addSnapshotListener(any())
@@ -154,7 +155,7 @@ class FirebaseItemRepositoryTest {
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getPrivateItems_handlesError() =
+  fun getFridgeItems_private_handlesError() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
@@ -170,7 +171,7 @@ class FirebaseItemRepositoryTest {
         val job =
             launch(Dispatchers.Unconfined) {
               try {
-                repository.getPrivateItems("user-1").collect {}
+                repository.getFridgeItems("user-1", null).collect {}
               } catch (e: Exception) {
                 caughtError = e
               }
@@ -186,18 +187,19 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
-  fun getSharedItems_returnsEmptyFlow_whenHouseholdIdIsBlank() =
+  fun getFridgeItems_returnsEmptyFlow_whenHouseholdIdIsBlank() =
       runBlocking<Unit> {
-        val items = repository.getSharedItems("").first()
+        val items = repository.getFridgeItems("user-1", "").first()
         assertTrue(items.isEmpty())
       }
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getSharedItems_emitsItems() =
+  fun getFridgeItems_shared_emitsItems() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(query)
+        `when`(query.where(any(Filter::class.java))).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
@@ -208,7 +210,7 @@ class FirebaseItemRepositoryTest {
         val emittedLists = mutableListOf<List<Item>>()
         val job =
             launch(Dispatchers.Unconfined) {
-              repository.getSharedItems("house-1").collect { emittedLists.add(it) }
+              repository.getFridgeItems("user-2", "house-1").collect { emittedLists.add(it) }
             }
 
         val snapshot = mock(QuerySnapshot::class.java)

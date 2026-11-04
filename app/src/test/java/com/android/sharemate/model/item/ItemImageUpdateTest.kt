@@ -200,7 +200,8 @@ class ItemImageUpdateTest {
     val other = Item("other", "Milk", "owner", "home")
     fake.emitItems(listOf(item, other))
     assertSame(ItemImageUpdateResult.Updated, fake.updateItemImageIfAbsent("item", "Milk", image))
-    assertEquals(listOf(item.copy(image = image), other), fake.getSharedItems("home").first())
+    assertEquals(
+        listOf(item.copy(image = image), other), fake.getFridgeItems("owner", "home").first())
   }
 
   @Test
@@ -216,7 +217,7 @@ class ItemImageUpdateTest {
     for (id in listOf("missing", "renamed", "personal", "remote")) {
       assertSame(ItemImageUpdateResult.Ignored, fake.updateItemImageIfAbsent(id, "Milk", image))
     }
-    assertEquals(items, fake.getPrivateItems("owner").first())
+    assertEquals(items, fake.getFridgeItems("owner", null).first())
   }
 
   @Test
@@ -229,7 +230,7 @@ class ItemImageUpdateTest {
     assertSame(
         failure,
         (fake.updateItemImageIfAbsent("item", "Milk", image) as ItemImageUpdateResult.Error).cause)
-    assertEquals(listOf(item), fake.getPrivateItems("owner").first())
+    assertEquals(listOf(item), fake.getFridgeItems("owner", null).first())
   }
 
   private suspend fun assertIgnoredWithoutWriting() {

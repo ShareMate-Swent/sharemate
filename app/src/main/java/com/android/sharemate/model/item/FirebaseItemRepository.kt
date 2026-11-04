@@ -4,6 +4,7 @@ package com.android.sharemate.model.item
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
@@ -21,21 +22,24 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> =
-      if (userId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null)) {
-          it.filter { item -> item.householdId == null }
-        }
+  override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> {
+    if (userId.isBlank() || (householdId != null && householdId.isBlank())) {
+      return flowOf(emptyList())
+    }
+    if (householdId == null) {
+      return observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null)) {
+        it.filter { item -> item.householdId == null }
       }
-
-  override fun getSharedItems(householdId: String): Flow<List<Item>> =
-      if (householdId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("householdId", householdId))
-      }
+    }
+    // The query must only match documents the rules allow: shared items and the user's own.
+    return observe(
+        items
+            .whereEqualTo("householdId", householdId)
+            .where(
+                Filter.or(
+                    Filter.equalTo("sharing", ItemSharing.SHARED.name),
+                    Filter.equalTo("ownerId", userId))))
+  }
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null

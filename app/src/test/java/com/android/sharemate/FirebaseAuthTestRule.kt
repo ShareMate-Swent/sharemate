@@ -14,6 +14,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
@@ -119,6 +120,7 @@ class FirebaseAuthTestRule(
         invocation ->
       val householdId = invocation.getArgument<String>(1)
       val query = mock(Query::class.java)
+      `when`(query.where(any<Filter>())).thenReturn(query)
       `when`(query.addSnapshotListener(any<EventListener<QuerySnapshot>>())).thenAnswer {
         val callback = it.getArgument<EventListener<QuerySnapshot>>(0)
         observedHouseholds += householdId
