@@ -23,10 +23,10 @@ data class Item(
     val expirationDate: Date? = null,
     val category: String? = null,
     val image: ItemImage? = null,
-    /** Positive count of units; old documents default to one unit. */
+    /** Positive count of units. */
     val quantity: Int = 1,
     val status: ItemStatus = ItemStatus.ACTIVE,
-    /** Legacy household items are shared; standalone items remain owner-only. */
+    /** Household items default to shared; standalone items remain owner-only. */
     val sharing: ItemSharing =
         if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED,
 ) {

@@ -51,17 +51,11 @@ class HouseholdRepositoryFirestore(
       val inviteCode = if (type == FridgeType.SHARED) inviteCodeGenerator.generate() else ""
       if (type == FridgeType.SHARED) {
         val existing =
-            try {
-              firestore
-                  .collection(FirestoreCollections.INVITE_CODES)
-                  .document(inviteCode)
-                  .get(Source.SERVER)
-                  .await()
-            } catch (exception: FirebaseFirestoreException) {
-              // Legacy private invite codes are hidden from other users; retry unavailable codes.
-              if (exception.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return@repeat
-              throw exception
-            }
+            firestore
+                .collection(FirestoreCollections.INVITE_CODES)
+                .document(inviteCode)
+                .get(Source.SERVER)
+                .await()
         if (existing.exists()) return@repeat
       }
 

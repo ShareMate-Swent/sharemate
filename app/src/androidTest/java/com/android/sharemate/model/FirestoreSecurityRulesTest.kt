@@ -168,29 +168,6 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun legacyHouseholdWithoutTypeRemainsReadableAndJoinableAsShared() = runBlocking {
-    val userId = FirebaseEmulator.signInAs("creator")
-    val household = Household("legacy", "Home", "ABCDEF", listOf(userId), userId, Date())
-    val legacyData =
-        mapOf(
-            "id" to household.id,
-            "name" to household.name,
-            "inviteCode" to household.inviteCode,
-            "memberIds" to household.memberIds,
-            "createdBy" to household.createdBy,
-            "createdAt" to household.createdAt)
-    Tasks.await(createHousehold(household, legacyData))
-
-    assertEquals(household, repository.getHousehold(household.id))
-    assertEquals(household, repository.getHouseholdForUser(userId))
-    val memberId = FirebaseEmulator.signInAs("member")
-    val joined = repository.joinHousehold(household.inviteCode, memberId)
-
-    assertEquals(FridgeType.SHARED, joined.type)
-    assertEquals(listOf(userId, memberId), joined.memberIds)
-  }
-
-  @Test
   fun householdCreationRejectsMalformedFridgeTypes() {
     val userId = FirebaseEmulator.signInAs("creator")
     val household = Household("invalid", "Home", "ABCDEF", listOf(userId), userId, Date())
@@ -315,7 +292,14 @@ class FirestoreSecurityRulesTest {
   fun userCannotReadOrWriteAnotherUsersPrivateItem() {
     val ownerId = FirebaseEmulator.signInAs("owner")
     val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(itemRef.set(mapOf("ownerId" to ownerId, "name" to "Apple")))
+    Tasks.await(
+        itemRef.set(
+            mapOf(
+                "ownerId" to ownerId,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "PERSONAL")))
 
     FirebaseEmulator.signInAs("outsider")
     assertDenied(itemRef.get())
@@ -333,7 +317,13 @@ class FirestoreSecurityRulesTest {
     val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
     Tasks.await(
         itemRef.set(
-            mapOf("ownerId" to creatorId, "householdId" to household.id, "name" to "Apple")))
+            mapOf(
+                "ownerId" to creatorId,
+                "householdId" to household.id,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "SHARED")))
 
     assertDenied(itemRef.update("ownerId", "someone-else"))
   }
@@ -349,7 +339,13 @@ class FirestoreSecurityRulesTest {
     val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
     Tasks.await(
         itemRef.set(
-            mapOf("ownerId" to creatorId, "householdId" to household.id, "name" to "Apple")))
+            mapOf(
+                "ownerId" to creatorId,
+                "householdId" to household.id,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "SHARED")))
 
     FirebaseEmulator.signInAs("member")
     // A member can edit the item's content, but cannot unshare it nor take it over.
@@ -363,7 +359,14 @@ class FirestoreSecurityRulesTest {
     val household = createHouseholdAs("creator")
     val creatorId = FirebaseEmulator.auth.uid!!
     val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(itemRef.set(mapOf("ownerId" to creatorId, "name" to "Apple")))
+    Tasks.await(
+        itemRef.set(
+            mapOf(
+                "ownerId" to creatorId,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "PERSONAL")))
 
     Tasks.await(itemRef.update("householdId", household.id))
     Tasks.await(itemRef.update("householdId", null))
@@ -378,10 +381,23 @@ class FirestoreSecurityRulesTest {
     // Creating directly in a foreign household is denied...
     assertDenied(
         itemRef.set(
-            mapOf("ownerId" to ownerId, "householdId" to otherHousehold.id, "name" to "Apple")))
+            mapOf(
+                "ownerId" to ownerId,
+                "householdId" to otherHousehold.id,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "SHARED")))
 
     // ...and so is moving an existing private item into it.
-    Tasks.await(itemRef.set(mapOf("ownerId" to ownerId, "name" to "Apple")))
+    Tasks.await(
+        itemRef.set(
+            mapOf(
+                "ownerId" to ownerId,
+                "name" to "Apple",
+                "quantity" to 1,
+                "status" to "ACTIVE",
+                "sharing" to "PERSONAL")))
     assertDenied(itemRef.update("householdId", otherHousehold.id))
   }
 

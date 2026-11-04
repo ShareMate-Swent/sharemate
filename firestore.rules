@@ -12,14 +12,14 @@ service cloud.firestore {
       return /databases/$(database)/documents/$(collection)/$(documentId);
     }
 
-    // Legacy fridges without a type remain shared. Private access follows the immutable creator.
+    // Private access follows the immutable creator.
     function canAccessFridge(household) {
-      return household.get('type', 'SHARED') != 'PRIVATE'
+      return household.type != 'PRIVATE'
           || household.createdBy == request.auth.uid;
     }
 
     function hasValidPrivateMembers(household) {
-      return household.get('type', 'SHARED') != 'PRIVATE'
+      return household.type != 'PRIVATE'
           || household.memberIds.hasOnly([household.createdBy]);
     }
 
@@ -28,18 +28,17 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    // Shared codes can be fetched by anyone who knows them. Legacy private codes are owner-only.
+    // Codes only exist for shared fridges, so anyone who knows one can fetch it.
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
       function pointsToOwnHousehold() {
         let household = getAfter(documentPath('households', request.resource.data.householdId));
-        return household.data.get('type', 'SHARED') == 'SHARED'
+        return household.data.type == 'SHARED'
             && household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
       }
 
       // Missing codes remain readable for collision checks during household creation.
-      allow get: if signedIn() && (resource == null
-          || canAccessFridge(get(documentPath('households', resource.data.householdId)).data));
+      allow get: if signedIn();
       allow create: if signedIn()
           && request.resource.data.keys().hasOnly(['householdId'])
           && request.resource.data.householdId is string
@@ -53,8 +52,8 @@ service cloud.firestore {
 
       // Private fridges have no invite code. Shared codes must map back to this household.
       function hasValidInviteCode(household) {
-        return (household.get('type', 'SHARED') == 'PRIVATE' && household.inviteCode == '')
-            || (household.get('type', 'SHARED') == 'SHARED'
+        return (household.type == 'PRIVATE' && household.inviteCode == '')
+            || (household.type == 'SHARED'
                 && household.inviteCode.size() > 0
                 && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
                     == householdId);
@@ -63,11 +62,9 @@ service cloud.firestore {
       // The creator is the only initial member; shared fridges also require an invite lookup.
       function isValidNewHousehold() {
         let household = request.resource.data;
-        let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt'];
-        return household.keys().hasOnly(fields.concat(['type']))
-            && household.keys().hasAll(fields)
-            // Legacy documents omit type.
-            && household.get('type', 'SHARED') in ['PRIVATE', 'SHARED']
+        let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt', 'type'];
+        return household.keys().hasOnly(fields) && household.keys().hasAll(fields)
+            && household.type in ['PRIVATE', 'SHARED']
             && household.id == householdId
             && household.name is string
             && household.name.size() > 0
@@ -101,7 +98,7 @@ service cloud.firestore {
       function onlyRemovesSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return resource.data.get('type', 'SHARED') != 'PRIVATE'
+        return resource.data.type != 'PRIVATE'
             && onlyMemberIdsChange()
             && request.auth.uid in before
             && after == before.removeAll([request.auth.uid])
@@ -112,19 +109,18 @@ service cloud.firestore {
       // Fetching a missing household is allowed so that lookups can return "not found".
       allow get: if signedIn() && (resource == null
           || (canAccessFridge(resource.data)
-              && (resource.data.get('type', 'SHARED') == 'PRIVATE' || isMember())));
-      // Membership queries also cover legacy documents without type. Private memberships are
-      // restricted to the creator by every client write, so this cannot expose a private fridge
-      // to another user. Existing/admin-written private documents must preserve that invariant.
+              && (resource.data.type == 'PRIVATE' || isMember())));
+      // Private memberships are restricted to the creator by every client write, so this cannot
+      // expose a private fridge to another user. Admin-written private documents must preserve
+      // that invariant.
       allow list: if signedIn() && isMember();
       allow create: if signedIn() && isValidNewHousehold();
       allow update: if signedIn() && canAccessFridge(resource.data)
-          // Legacy private owners may restore missing membership, but identical creation
-          // replays must not relink their profile after a newer creation.
-          // Identical shared creation replays rewrite an immutable, create-only inviteCodes document,
-          // rejecting the whole batch even when this household update is a no-op.
-          && (resource.data.get('type', 'SHARED') == 'SHARED'
-              || request.resource.data.memberIds != resource.data.memberIds)
+          // Private fridges are immutable after creation, so identical creation replays cannot
+          // relink the profile. Identical shared creation replays rewrite an immutable,
+          // create-only inviteCodes document, rejecting the whole batch even when this household
+          // update is a no-op.
+          && resource.data.type == 'SHARED'
           && hasValidPrivateMembers(request.resource.data)
           && (onlyAddsSelf() || onlyRemovesSelf());
     }
@@ -134,7 +130,7 @@ service cloud.firestore {
     match /households/{householdId}/messages/{messageId} {
       function canUseChat() {
         let household = get(documentPath('households', householdId)).data;
-        return household.get('type', 'SHARED') == 'SHARED'
+        return household.type == 'SHARED'
             && request.auth.uid in household.memberIds;
       }
 
@@ -159,7 +155,7 @@ service cloud.firestore {
     function isHouseholdMember(householdId) {
       let household = get(documentPath('households', householdId)).data;
       return householdId != null && canAccessFridge(household)
-          && (household.get('type', 'SHARED') == 'PRIVATE'
+          && (household.type == 'PRIVATE'
               || request.auth.uid in household.memberIds);
     }
 
@@ -168,23 +164,20 @@ service cloud.firestore {
       return data.ownerId == request.auth.uid;
     }
 
-    // Legacy household-access predicate; item sharing does not control read authorization.
+    // Household-access predicate; item sharing does not control read authorization.
     function isShared(data) {
       return data.get('householdId', null) != null && isHouseholdMember(data.householdId);
     }
 
-    // Missing sharing preserves legacy behavior without conflating fridge membership with sharing.
     function itemSharing(data) {
-      return data.get('sharing', data.get('householdId', null) == null ? 'PERSONAL' : 'SHARED');
+      return data.sharing;
     }
 
     // Item documents must contain the fields the app expects; householdId is optional.
     function hasValidItemData(data) {
-      let quantity = data.get('quantity', 1);
-      let status = data.get('status', 'ACTIVE');
-      return itemSharing(data) in ['SHARED', 'PERSONAL']
-          && quantity is int && quantity > 0 && quantity <= 2147483647
-          && status in ['ACTIVE', 'EATEN', 'DISCARDED']
+      return data.sharing in ['SHARED', 'PERSONAL']
+          && data.quantity is int && data.quantity > 0 && data.quantity <= 2147483647
+          && data.status in ['ACTIVE', 'EATEN', 'DISCARDED']
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
           && data.name.size() > 0
