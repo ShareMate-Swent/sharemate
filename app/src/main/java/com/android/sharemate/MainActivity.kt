@@ -211,7 +211,8 @@ open class MainActivity : ComponentActivity() {
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
-                                                createProductCatalogRepository())
+                                                createProductCatalogRepository(),
+                                            fridgeType = household.type)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

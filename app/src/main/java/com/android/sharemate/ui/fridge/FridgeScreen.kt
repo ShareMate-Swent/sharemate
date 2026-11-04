@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
@@ -65,6 +66,7 @@ fun FridgeScreen(
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     fridgeType: FridgeType? = null,
+    onSharingChange: (ItemSharing) -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val screenModifier =
@@ -227,6 +229,7 @@ fun FridgeScreen(
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
         onBarcodeImageConfirmed = onBarcodeImageConfirmed,
+        onSharingChange = onSharingChange,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -305,6 +308,7 @@ fun FridgeScreen(
       onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
       onEditItem = viewModel::openEditItemDialog,
       onQuantityChange = viewModel::updateQuantity,
+      onSharingChange = viewModel::updateSharing,
       onDismissEditSyncError = viewModel::dismissEditSyncError,
       onStatusChange = viewModel::setItemStatus,
       onDismissStatusError = viewModel::dismissStatusError,

@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 
 data class FridgeUiState(
     val items: List<Item> = emptyList(),
@@ -28,6 +29,10 @@ data class FridgeUiState(
     val pendingDeletionIds: Set<String> = emptySet(),
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
+    val itemSharing: ItemSharing = ItemSharing.SHARED,
+    val originalItemSharing: ItemSharing? = null,
+    val showSharingSelector: Boolean = false,
+    val canChangeSharing: Boolean = false,
 )
 
 enum class BarcodeLookupError {
