@@ -4,6 +4,7 @@ package com.android.sharemate.ui.receipts
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.model.image.BarcodePhotoStore
@@ -43,7 +44,8 @@ class ReceiptScanFlowTest {
           }
       val model = BarcodePhotoViewModel(store, SavedStateHandle())
       var reads = 0
-      compose.setContent {
+      val restoration = StateRestorationTester(compose)
+      restoration.setContent {
         ReceiptScanFlow(model) {
           reads++
           if (reads == 1) emptyList()
@@ -68,7 +70,11 @@ class ReceiptScanFlowTest {
       compose.onNodeWithText("CHF 2.40").assertExists()
       compose.onNodeWithText("Confirm").performClick()
       compose.onNodeWithText("Scan Receipt").assertExists()
+      restoration.emulateSavedInstanceStateRestore()
       compose.onNodeWithText("Review items").performClick()
+      compose.onNodeWithText("Lait").assertExists()
+      compose.onNodeWithText("CHF 2.40").assertExists()
+      compose.onNodeWithText("CHF 3.10").assertExists()
       compose.onNodeWithText("Pain").assertExists()
       assertEquals(2, reads)
     } finally {
