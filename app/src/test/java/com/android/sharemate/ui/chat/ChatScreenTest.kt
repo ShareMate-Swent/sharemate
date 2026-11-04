@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
+import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,7 +96,15 @@ class ChatScreenTest {
     show(
         ChatUiState(
             isLoading = false, messages = listOf(Message("1", "me", "Alex", "Hello", Date(0)))))
-    composeTestRule.onNodeWithText("Hello").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(0)))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun loadErrorHidesEmptyState() {
+    show(ChatUiState(isLoading = false, error = ChatError.LOAD_FAILED))
+    composeTestRule.onNodeWithTag(ChatTestTags.EMPTY).assertDoesNotExist()
   }
 
   @Test

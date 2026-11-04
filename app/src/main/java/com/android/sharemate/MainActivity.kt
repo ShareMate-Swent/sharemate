@@ -255,7 +255,9 @@ open class MainActivity : ComponentActivity() {
                                             chatRepository,
                                             household.id,
                                             session.uid,
-                                            session.displayName ?: session.email ?: "Member")
+                                            session.displayName
+                                                ?: session.email
+                                                ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })
                         ChatScreen(chatViewModel)

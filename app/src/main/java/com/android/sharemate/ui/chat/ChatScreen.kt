@@ -4,6 +4,7 @@ package com.android.sharemate.ui.chat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
 import java.text.DateFormat
 
@@ -66,8 +68,8 @@ fun ChatContent(
 ) {
   Column(modifier.fillMaxSize().testTag(ChatTestTags.SCREEN)) {
     Text(
-        text = "Chat",
-        modifier = Modifier.padding(16.dp),
+        text = stringResource(R.string.chat_title),
+        modifier = Modifier.padding(ChatLayout.screenPadding),
         style = MaterialTheme.typography.headlineMedium,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -76,9 +78,10 @@ fun ChatContent(
         state.isLoading ->
             CircularProgressIndicator(
                 Modifier.align(Alignment.Center).testTag(ChatTestTags.LOADING))
+        state.messages.isEmpty() && state.error == ChatError.LOAD_FAILED -> Unit
         state.messages.isEmpty() ->
             Text(
-                "No messages yet. Say hello!",
+                stringResource(R.string.chat_empty),
                 Modifier.align(Alignment.Center).testTag(ChatTestTags.EMPTY))
         else -> MessageList(state.messages, currentUserId)
       }
@@ -87,28 +90,32 @@ fun ChatContent(
       Text(
           text =
               when (it) {
-                ChatError.LOAD_FAILED -> "Could not load messages."
-                ChatError.SEND_FAILED -> "Message not sent. Try again."
+                ChatError.LOAD_FAILED -> stringResource(R.string.chat_load_error)
+                ChatError.SEND_FAILED -> stringResource(R.string.chat_send_error)
               },
-          modifier = Modifier.padding(horizontal = 16.dp).testTag(ChatTestTags.ERROR),
+          modifier =
+              Modifier.padding(horizontal = ChatLayout.errorHorizontalPadding)
+                  .testTag(ChatTestTags.ERROR),
           color = MaterialTheme.colorScheme.error,
           style = MaterialTheme.typography.bodySmall)
     }
     Row(
-        Modifier.fillMaxWidth().padding(8.dp),
+        Modifier.fillMaxWidth().padding(ChatLayout.composerPadding),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        horizontalArrangement = Arrangement.spacedBy(ChatLayout.composerSpacing)) {
           OutlinedTextField(
               value = state.draft,
               onValueChange = onDraftChange,
               modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
-              placeholder = { Text("Message") },
+              placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
               maxLines = 4)
           IconButton(
               onClick = onSend,
               enabled = state.canSend,
               modifier = Modifier.testTag(ChatTestTags.SEND)) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                Icon(
+                    Icons.AutoMirrored.Filled.Send,
+                    contentDescription = stringResource(R.string.chat_send))
               }
         }
   }
@@ -123,8 +130,8 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(ChatTestTags.LIST),
       state = listState,
-      contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      contentPadding = PaddingValues(horizontal = ChatLayout.listHorizontalPadding),
+      verticalArrangement = Arrangement.spacedBy(ChatLayout.messageSpacing)) {
         items(messages, key = { it.id }) { message ->
           MessageBubble(message, own = message.isSentBy(currentUserId))
         }
@@ -138,27 +145,30 @@ private fun MessageBubble(message: Message, own: Boolean) {
       contentAlignment = if (own) Alignment.CenterEnd else Alignment.CenterStart) {
         Surface(
             modifier =
-                Modifier.widthIn(max = 300.dp)
+                Modifier.widthIn(max = ChatLayout.bubbleMaxWidth)
                     .testTag(if (own) ChatTestTags.OWN_MESSAGE else ChatTestTags.OTHER_MESSAGE),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(ChatLayout.bubbleCornerRadius),
             color =
                 if (own) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant) {
-              Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                if (!own) {
-                  Text(
-                      message.senderName,
-                      style = MaterialTheme.typography.labelMedium,
-                      color = MaterialTheme.colorScheme.primary)
-                }
-                Text(message.text)
-                message.timestamp?.let {
-                  Text(
-                      DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
-                      style = MaterialTheme.typography.labelSmall,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-              }
+              Column(
+                  Modifier.padding(
+                      horizontal = ChatLayout.bubbleHorizontalPadding,
+                      vertical = ChatLayout.bubbleVerticalPadding)) {
+                    if (!own) {
+                      Text(
+                          message.senderName,
+                          style = MaterialTheme.typography.labelMedium,
+                          color = MaterialTheme.colorScheme.primary)
+                    }
+                    Text(message.text)
+                    message.timestamp?.let {
+                      Text(
+                          DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
+                          style = MaterialTheme.typography.labelSmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                  }
             }
       }
 }

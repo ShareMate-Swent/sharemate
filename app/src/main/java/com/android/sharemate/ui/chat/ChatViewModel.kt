@@ -80,17 +80,18 @@ class ChatViewModel(
     val text = current.draft
     mutableState.update { it.copy(isSending = true, error = null) }
     viewModelScope.launch {
-      val id =
-          try {
-            chatRepository.sendMessage(householdId, userId, userName, text)
-          } catch (cancelled: CancellationException) {
-            throw cancelled
-          } catch (_: Exception) {
-            null
-          }
-      mutableState.update {
-        if (id == null) it.copy(isSending = false, error = ChatError.SEND_FAILED)
-        else it.copy(isSending = false, draft = if (it.draft == text) "" else it.draft)
+      try {
+        val id = chatRepository.sendMessage(householdId, userId, userName, text)
+        mutableState.update {
+          if (id == null) it.copy(error = ChatError.SEND_FAILED)
+          else it.copy(draft = if (it.draft == text) "" else it.draft)
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        mutableState.update { it.copy(error = ChatError.SEND_FAILED) }
+      } finally {
+        mutableState.update { it.copy(isSending = false) }
       }
     }
   }

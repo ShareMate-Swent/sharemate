@@ -126,10 +126,14 @@ class ChatViewModelTest {
   }
 
   @Test
-  fun newMessagesKeepSendErrorButClearLoadError() {
+  fun newMessagesKeepSendError() {
+    repository.sendResult = null
     val vm = viewModel()
+    vm.onDraftChange("hello")
+    vm.send()
+    assertEquals(ChatError.SEND_FAILED, vm.state.value.error)
     repository.messages.value = listOf(Message("1", "u2", "Sam", "hi"))
-    assertEquals(null, vm.state.value.error)
+    assertEquals(ChatError.SEND_FAILED, vm.state.value.error)
   }
 
   @Test
@@ -153,5 +157,7 @@ class ChatViewModelTest {
     vm.onDraftChange("hi")
     vm.send()
     assertEquals(null, vm.state.value.error)
+    assertFalse(vm.state.value.isSending)
+    assertTrue(vm.state.value.canSend)
   }
 }
