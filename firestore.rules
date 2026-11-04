@@ -125,6 +125,17 @@ service cloud.firestore {
           && (onlyAddsSelf() || onlyRemovesSelf());
     }
 
+    // Expenses have no client producer yet. Parent membership also protects empty queries.
+    match /households/{householdId}/expenses/{expenseId} {
+      function canReadExpenses() {
+        let household = get(documentPath('households', householdId)).data;
+        return household.type == 'SHARED' && request.auth.uid in household.memberIds;
+      }
+
+      allow read: if signedIn() && canReadExpenses();
+      allow write: if false;
+    }
+
     // Chat messages: shared household members can read and post as themselves. Messages are
     // immutable and never deleted by clients. Private fridges have no chat.
     match /households/{householdId}/messages/{messageId} {
