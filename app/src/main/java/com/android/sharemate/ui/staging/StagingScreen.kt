@@ -14,24 +14,34 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.household.HouseholdTopBar
+import com.android.sharemate.ui.theme.Dimens
 
 object StagingTestTags {
   const val BACK = "staging_back"
@@ -40,6 +50,8 @@ object StagingTestTags {
   const val CONFIRM = "staging_confirm"
 
   fun item(id: String) = "staging_item_$id"
+
+  fun delete(id: String) = "staging_delete_$id"
 }
 
 /**
@@ -55,19 +67,39 @@ fun StagingScreen(
   val state = viewModel.state.collectAsState().value
   StagingContent(
       state = state,
+      onItemClick = viewModel::startEditing,
+      onDeleteItem = viewModel::deleteItem,
       onConfirm = { viewModel.confirmedItems()?.let(onConfirm) },
       onBack = onBack,
   )
+  state.draft?.let { draft ->
+    StagedItemEditDialog(
+        draft = draft,
+        onNameChange = viewModel::updateDraftName,
+        onQuantityChange = viewModel::updateDraftQuantity,
+        onPriceChange = viewModel::updateDraftPrice,
+        onSave = viewModel::saveDraft,
+        onCancel = viewModel::cancelEditing,
+    )
+  }
 }
 
 /** Stateless content of [StagingScreen], so it can be tested and previewed with any state. */
 @Composable
-fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> Unit) {
+fun StagingContent(
+    state: StagingUiState,
+    onItemClick: (String) -> Unit,
+    onDeleteItem: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onBack: () -> Unit,
+) {
   Column(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(horizontal = 24.dp, vertical = 16.dp),
+              .padding(
+                  horizontal = Dimens.screenHorizontalPadding,
+                  vertical = Dimens.screenVerticalPadding),
   ) {
     HouseholdTopBar(
         title = stringResource(R.string.staging_title),
@@ -79,7 +111,7 @@ fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> U
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Box(Modifier.weight(1f).fillMaxWidth()) {
       if (state.items.isEmpty()) {
         Text(
@@ -91,13 +123,19 @@ fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> U
       } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag(StagingTestTags.LIST),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
         ) {
-          items(state.items, key = { it.id }) { item -> StagedItemRow(item) }
+          items(state.items, key = { it.id }) { item ->
+            StagedItemRow(
+                item,
+                onClick = { onItemClick(item.id) },
+                onDelete = { onDeleteItem(item.id) },
+            )
+          }
         }
       }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Button(
         onClick = onConfirm,
         enabled = state.canConfirm,
@@ -108,14 +146,54 @@ fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> U
   }
 }
 
+/** A staged item: tap to edit it, swipe it to the left or tap its delete button to remove it. */
+@OptIn(ExperimentalMaterial3Api::class) // SwipeToDismissBox is still experimental in Material 3.
 @Composable
-private fun StagedItemRow(item: StagedItem) {
+private fun StagedItemRow(item: StagedItem, onClick: () -> Unit, onDelete: () -> Unit) {
+  val currentOnDelete by rememberUpdatedState(onDelete)
+  val dismissState =
+      rememberSwipeToDismissBoxState(
+          confirmValueChange = { value ->
+            val dismissed = value == SwipeToDismissBoxValue.EndToStart
+            if (dismissed) currentOnDelete()
+            dismissed
+          })
+  SwipeToDismissBox(
+      state = dismissState,
+      enableDismissFromStartToEnd = false,
+      backgroundContent = { DeleteBackground() },
+  ) {
+    StagedItemCard(item, onClick, onDelete)
+  }
+}
+
+/** Shown behind a row while it is swiped away. */
+@Composable
+private fun DeleteBackground() {
+  Box(
+      modifier =
+          Modifier.fillMaxSize()
+              .background(MaterialTheme.colorScheme.errorContainer, CardDefaults.shape)
+              .padding(horizontal = Dimens.cardPadding),
+      contentAlignment = Alignment.CenterEnd,
+  ) {
+    Icon(
+        imageVector = Icons.Outlined.Delete,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onErrorContainer,
+    )
+  }
+}
+
+@Composable
+private fun StagedItemCard(item: StagedItem, onClick: () -> Unit, onDelete: () -> Unit) {
   Card(
+      onClick = onClick,
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(Dimens.cardPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Column(Modifier.weight(1f)) {
@@ -132,7 +210,7 @@ private fun StagedItemRow(item: StagedItem) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
-      Spacer(Modifier.width(12.dp))
+      Spacer(Modifier.width(Dimens.spacingS))
       Text(
           text =
               item.priceCents?.let { stringResource(R.string.staging_price, Prices.format(it)) }
@@ -142,6 +220,13 @@ private fun StagedItemRow(item: StagedItem) {
               if (item.priceCents == null) MaterialTheme.colorScheme.onSurfaceVariant
               else MaterialTheme.colorScheme.onSurface,
       )
+      IconButton(onClick = onDelete, modifier = Modifier.testTag(StagingTestTags.delete(item.id))) {
+        Icon(
+            imageVector = Icons.Outlined.Delete,
+            contentDescription = stringResource(R.string.staging_delete_item, item.name),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
     }
   }
 }

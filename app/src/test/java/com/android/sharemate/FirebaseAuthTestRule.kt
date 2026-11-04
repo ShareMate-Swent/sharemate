@@ -98,6 +98,8 @@ class FirebaseAuthTestRule(
             `when`(document.getString("householdId")).thenReturn(item.householdId)
             `when`(document.getString("category")).thenReturn(item.category)
             `when`(document.get("quantity")).thenReturn(item.quantity.toLong())
+            `when`(document.get("status")).thenReturn(item.status.name)
+            `when`(document.get("sharing")).thenReturn(item.sharing.name)
           }
         }
     `when`(snapshot.documents).thenReturn(documents)

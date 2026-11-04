@@ -7,7 +7,6 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.util.CustomClassMapper
 import kotlinx.coroutines.flow.first
@@ -36,7 +35,7 @@ class ItemSharingTest {
   }
 
   @Test
-  fun legacyHouseholdItemsDefaultToShared() {
+  fun householdItemsDefaultToShared() {
     assertEquals(ItemSharing.SHARED, Item("item", "Milk", "owner", "home").sharing)
     assertEquals(ItemSharing.SHARED, snapshot("home").toItemOrNull()!!.sharing)
     assertTrue(snapshot("home").toItemOrNull()!!.isShared)
@@ -44,10 +43,10 @@ class ItemSharingTest {
 
   @Test
   fun standaloneItemsRemainOwnerOnlyRegardlessOfSharingLabel() {
-    val legacy = snapshot(null).toItemOrNull()!!
-    assertEquals(ItemSharing.PERSONAL, legacy.sharing)
-    assertFalse(legacy.isShared)
-    assertFalse(legacy.copy(sharing = ItemSharing.SHARED).isShared)
+    val standalone = snapshot(null).toItemOrNull()!!
+    assertEquals(ItemSharing.PERSONAL, standalone.sharing)
+    assertFalse(standalone.isShared)
+    assertFalse(standalone.copy(sharing = ItemSharing.SHARED).isShared)
   }
 
   @Test
@@ -116,32 +115,11 @@ class ItemSharingTest {
   }
 
   @Test
-  fun legacyDefaultsIgnoreStoredBooleanWithoutMigration() {
-    for (householdId in listOf(null, "home")) {
-      for (legacyBoolean in listOf(false, true)) {
-        val doc = snapshot(householdId)
-        `when`(doc.contains("shared")).thenReturn(true)
-        `when`(doc.get("shared")).thenReturn(legacyBoolean)
-        `when`(doc.getBoolean("shared")).thenReturn(legacyBoolean)
-        val item = doc.toItemOrNull()!!
-        assertEquals(
-            if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED, item.sharing)
-        assertEquals("owner", item.ownerId)
-        assertEquals(householdId, item.householdId)
-      }
-    }
-  }
-
-  @Test
   fun mapperRestoresBothSharingValuesWithoutChangingAssociations() {
     for (sharing in ItemSharing.values()) {
       val doc = snapshot("home")
       `when`(doc.contains("sharing")).thenReturn(true)
       `when`(doc.get("sharing")).thenReturn(sharing.name)
-      val contradictoryBoolean = sharing != ItemSharing.SHARED
-      `when`(doc.contains("shared")).thenReturn(true)
-      `when`(doc.get("shared")).thenReturn(contradictoryBoolean)
-      `when`(doc.getBoolean("shared")).thenReturn(contradictoryBoolean)
       val item = doc.toItemOrNull()!!
       assertEquals(sharing, item.sharing)
       assertEquals("owner", item.ownerId)
@@ -161,15 +139,15 @@ class ItemSharingTest {
   }
 
   @Test
-  fun sharingUpdatesAtomicallyRemoveLegacyBooleanAndReuseServerConfirmation() = runBlocking {
+  fun sharingUpdatesReuseServerConfirmation() = runBlocking {
     for (sharing in ItemSharing.values()) {
       val pending = TaskCompletionSource<Void>()
-      `when`(document.update(sharingUpdate(sharing))).thenReturn(pending.task)
+      `when`(document.update("sharing", sharing.name)).thenReturn(pending.task)
       val write = repository.setItemSharing("item", sharing) as ItemWrite.Queued
       assertFalse(write.confirmation.isCompleted)
       pending.setResult(null)
       assertTrue(write.confirmation.await().isSuccess)
-      verify(document).update(sharingUpdate(sharing))
+      verify(document).update("sharing", sharing.name)
     }
     verifyNoMoreInteractions(document)
   }
@@ -177,7 +155,7 @@ class ItemSharingTest {
   @Test
   fun unauthorizedServerConfirmationIsReported() = runBlocking {
     val pending = TaskCompletionSource<Void>()
-    `when`(document.update(sharingUpdate(ItemSharing.PERSONAL))).thenReturn(pending.task)
+    `when`(document.update("sharing", ItemSharing.PERSONAL.name)).thenReturn(pending.task)
     val write = repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Queued
     val denied = IllegalStateException("Permission denied")
     pending.setException(denied)
@@ -191,19 +169,16 @@ class ItemSharingTest {
     }
     verifyNoInteractions(document)
     val denied = IllegalStateException("Permission denied")
-    `when`(document.update(sharingUpdate(ItemSharing.PERSONAL)))
+    `when`(document.update("sharing", ItemSharing.PERSONAL.name))
         .thenReturn(Tasks.forException(denied))
     assertSame(
         denied,
         (repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Rejected).cause)
-    `when`(document.update(sharingUpdate(ItemSharing.PERSONAL))).thenThrow(denied)
+    `when`(document.update("sharing", ItemSharing.PERSONAL.name)).thenThrow(denied)
     assertSame(
         denied,
         (repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Rejected).cause)
   }
-
-  private fun sharingUpdate(sharing: ItemSharing): Map<String, Any> =
-      mapOf("sharing" to sharing.name, "shared" to FieldValue.delete())
 
   private fun snapshot(householdId: String?): DocumentSnapshot =
       mock(DocumentSnapshot::class.java).also {
@@ -211,5 +186,7 @@ class ItemSharingTest {
         `when`(it.getString("name")).thenReturn("Milk")
         `when`(it.getString("ownerId")).thenReturn("owner")
         `when`(it.getString("householdId")).thenReturn(householdId)
+        it.stubRequiredItemFields(
+            if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED)
       }
 }

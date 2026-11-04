@@ -16,7 +16,7 @@ import java.util.Date
  * @property memberIds User identifiers belonging to the household.
  * @property createdBy User identifier of the household creator.
  * @property createdAt Time at which the household was created.
- * @property type Fridge type, defaulting to shared for existing households without a stored type.
+ * @property type Fridge type, shared by default.
  */
 data class Household(
     val id: String = "",

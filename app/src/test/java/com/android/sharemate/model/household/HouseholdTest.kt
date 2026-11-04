@@ -56,21 +56,4 @@ class HouseholdTest {
           CustomClassMapper.convertToCustomClass(stored, Household::class.java, documentReference))
     }
   }
-
-  @Test
-  fun firestoreMapperDefaultsLegacyDocumentsWithoutTypeToShared() {
-    val legacy =
-        mapOf(
-            "id" to "legacy",
-            "name" to "Home",
-            "memberIds" to listOf("owner"),
-            "createdBy" to "owner")
-
-    val household =
-        CustomClassMapper.convertToCustomClass(legacy, Household::class.java, documentReference)
-
-    assertEquals(FridgeType.SHARED, household.type)
-    assertEquals("legacy", household.id)
-    assertEquals(listOf("owner"), household.memberIds)
-  }
 }

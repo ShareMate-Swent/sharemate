@@ -117,25 +117,25 @@ class ItemMutationTest {
   }
 
   @Test
-  fun mapperPreservesAllFieldsAndDefaultsOnlyMissingNewFields() {
+  fun mapperPreservesAllFieldsAndReadsAllStoredFields() {
     val doc = validDocument()
     val date = Date(1234)
     `when`(doc.getTimestamp("expirationDate")).thenReturn(com.google.firebase.Timestamp(date))
     `when`(doc.getString("category")).thenReturn("Dairy")
-    val legacy = checkNotNull(doc.toItemOrNull())
-    assertEquals(1, legacy.quantity)
-    assertEquals(ItemStatus.ACTIVE, legacy.status)
-    assertEquals("Dairy", legacy.category)
-    assertEquals(date, legacy.expirationDate)
+    val base = checkNotNull(doc.toItemOrNull())
+    assertEquals(1, base.quantity)
+    assertEquals(ItemStatus.ACTIVE, base.status)
+    assertEquals("Dairy", base.category)
+    assertEquals(date, base.expirationDate)
     `when`(doc.getString("category")).thenReturn("  ")
-    assertEquals(legacy.copy(category = null), doc.toItemOrNull())
+    assertEquals(base.copy(category = null), doc.toItemOrNull())
     `when`(doc.getString("category")).thenReturn("Dairy")
     `when`(doc.contains("quantity")).thenReturn(true)
     `when`(doc.get("quantity")).thenReturn(5L)
     `when`(doc.contains("status")).thenReturn(true)
     for (status in ItemStatus.values()) {
       `when`(doc.get("status")).thenReturn(status.name)
-      assertEquals(legacy.copy(quantity = 5, status = status), doc.toItemOrNull())
+      assertEquals(base.copy(quantity = 5, status = status), doc.toItemOrNull())
     }
   }
 
@@ -187,5 +187,6 @@ class ItemMutationTest {
         `when`(it.id).thenReturn("item")
         `when`(it.getString("name")).thenReturn("Milk")
         `when`(it.getString("ownerId")).thenReturn("owner")
+        it.stubRequiredItemFields()
       }
 }

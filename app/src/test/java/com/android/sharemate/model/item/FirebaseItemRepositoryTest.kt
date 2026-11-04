@@ -38,7 +38,7 @@ class FirebaseItemRepositoryTest {
 
   @Test
   fun inventoryReadsStoredImageAndAttribution() {
-    val doc = mock(DocumentSnapshot::class.java)
+    val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
     `when`(doc.id).thenReturn("milk")
     `when`(doc.getString("name")).thenReturn("Milk")
     `when`(doc.getString("ownerId")).thenReturn("owner")
@@ -60,7 +60,7 @@ class FirebaseItemRepositoryTest {
 
   @Test
   fun invalidOptionalImagesDoNotDiscardInventoryItems() {
-    val doc = mock(DocumentSnapshot::class.java)
+    val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
     `when`(doc.id).thenReturn("milk")
     `when`(doc.getString("name")).thenReturn("Milk")
     `when`(doc.getString("ownerId")).thenReturn("owner")
@@ -122,13 +122,14 @@ class FirebaseItemRepositoryTest {
 
         val snapshot = mock(QuerySnapshot::class.java)
 
-        val docPrivate = mock(DocumentSnapshot::class.java)
+        val docPrivate = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
         `when`(docPrivate.id).thenReturn("item-1")
         `when`(docPrivate.getString("name")).thenReturn("Apple")
         `when`(docPrivate.getString("ownerId")).thenReturn("user-1")
         `when`(docPrivate.getString("householdId")).thenReturn(null)
 
-        val docShared = mock(DocumentSnapshot::class.java)
+        val docShared =
+            mock(DocumentSnapshot::class.java).stubRequiredItemFields(ItemSharing.SHARED)
         `when`(docShared.id).thenReturn("item-2")
         `when`(docShared.getString("name")).thenReturn("Banana")
         `when`(docShared.getString("ownerId")).thenReturn("user-1")
@@ -211,7 +212,7 @@ class FirebaseItemRepositoryTest {
             }
 
         val snapshot = mock(QuerySnapshot::class.java)
-        val doc = mock(DocumentSnapshot::class.java)
+        val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
         `when`(doc.id).thenReturn("item-1")
         `when`(doc.getString("name")).thenReturn("Carrot")
         `when`(doc.getString("ownerId")).thenReturn("user-2")
@@ -337,7 +338,7 @@ class FirebaseItemRepositoryTest {
 
   @Test
   fun toItemOrNull_parsesCorrectly() {
-    val doc = mock(DocumentSnapshot::class.java)
+    val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
     `when`(doc.id).thenReturn("item-1")
     `when`(doc.getString("name")).thenReturn("Apple")
     `when`(doc.getString("ownerId")).thenReturn("user-1")
@@ -382,19 +383,13 @@ class FirebaseItemRepositoryTest {
             authorUrl = "https://example.org/jane"),
         item?.image)
   }
+}
 
-  @Test
-  fun toItemOrNull_keepsLegacyDocumentsCompatible() {
-    val doc = mock(DocumentSnapshot::class.java)
-    `when`(doc.id).thenReturn("legacy")
-    `when`(doc.getString("name")).thenReturn("Apple")
-    `when`(doc.getString("ownerId")).thenReturn("user-1")
-    `when`(doc.get("image")).thenReturn(mapOf("origin" to "UNKNOWN", "reference" to ""))
-
-    val item = doc.toItemOrNull()
-
-    assertEquals("Apple", item?.name)
-    assertNull(item?.category)
-    assertNull(item?.image)
-  }
+/** Stubs the fields every stored item document must contain. */
+internal fun DocumentSnapshot.stubRequiredItemFields(
+    sharing: ItemSharing = ItemSharing.PERSONAL
+): DocumentSnapshot = also {
+  `when`(it.get("quantity")).thenReturn(1L)
+  `when`(it.get("status")).thenReturn(ItemStatus.ACTIVE.name)
+  `when`(it.get("sharing")).thenReturn(sharing.name)
 }

@@ -11,11 +11,12 @@ class TopLevelDestinationTest {
             TopLevelDestination.FRIDGE.route,
             TopLevelDestination.RECIPES.route,
             TopLevelDestination.RECEIPTS.route,
+            TopLevelDestination.CHAT.route,
             TopLevelDestination.SETTINGS.route),
         TopLevelDestination.entries.map { it.route },
     )
     assertEquals(
-        listOf("Fridge", "Recipes", "Receipts", "Settings"),
+        listOf("Fridge", "Recipes", "Receipts", "Chat", "Settings"),
         TopLevelDestination.entries.map { it.textId },
     )
     assertEquals(
@@ -23,6 +24,7 @@ class TopLevelDestinationTest {
             NavigationTestTags.FRIDGE_TAB,
             NavigationTestTags.RECIPES_TAB,
             NavigationTestTags.RECEIPTS_TAB,
+            NavigationTestTags.CHAT_TAB,
             NavigationTestTags.SETTINGS_TAB,
         ),
         TopLevelDestination.entries.map { it.testTag },

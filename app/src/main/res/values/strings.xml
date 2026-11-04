@@ -134,6 +134,11 @@
     <string name="staging_price">CHF %1$s</string>
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
+    <string name="staging_delete_item">Delete %1$s</string>
+    <string name="staging_price_label">Price</string>
+    <string name="staging_currency">CHF</string>
+    <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
+    <string name="staging_price_invalid">Enter a price like 3.50.</string>
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
@@ -147,4 +152,12 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+
+    <string name="chat_title">Chat</string>
+    <string name="chat_empty">No messages yet. Say hello!</string>
+    <string name="chat_load_error">Could not load messages.</string>
+    <string name="chat_send_error">Message not sent. Try again.</string>
+    <string name="chat_input_placeholder">Message</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_default_sender_name">Member</string>
 </resources>

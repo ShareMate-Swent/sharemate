@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import org.junit.Assert.assertEquals
@@ -30,6 +31,13 @@ class FridgeWiringTest {
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
+  }
+
+  @Test
+  fun chatTabShowsChatScreen() {
+    resolve()
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
   }
 
   @Test
