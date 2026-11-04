@@ -523,9 +523,8 @@ class FridgeScreenTest {
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
-
-    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+    override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> =
+        if (householdId == null) MutableStateFlow(emptyList()) else sharedItems
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

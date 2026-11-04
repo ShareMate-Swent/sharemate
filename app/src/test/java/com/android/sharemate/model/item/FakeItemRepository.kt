@@ -38,19 +38,22 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> {
-    requestedUserIds += userId
-    return items.map { current ->
-      current.filter { it.ownerId == userId && it.householdId == null }
+  override fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>> {
+    if (householdId == null) {
+      requestedUserIds += userId
+      return items.map { current ->
+        current.filter { it.ownerId == userId && it.householdId == null }
+      }
     }
-  }
-
-  override fun getSharedItems(householdId: String): Flow<List<Item>> {
     requestedHouseholdIds += householdId
     readFailure?.let { failure ->
       return flow { throw failure }
     }
-    return items.map { current -> current.filter { it.householdId == householdId } }
+    return items.map { current ->
+      current.filter {
+        it.householdId == householdId && (it.ownerId == userId || it.sharing == ItemSharing.SHARED)
+      }
+    }
   }
 
   override suspend fun addItem(item: Item): String? {

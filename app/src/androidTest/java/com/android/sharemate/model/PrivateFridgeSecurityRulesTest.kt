@@ -11,6 +11,7 @@ import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import java.util.Date
@@ -153,9 +154,15 @@ class PrivateFridgeSecurityRulesTest {
     Tasks.await(receipt.update("storeName", "Other shop"))
     assertEquals(
         listOf("food"),
-        Tasks.await(item.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {
-          it.id
-        })
+        Tasks.await(
+                item.parent
+                    .whereEqualTo("householdId", fridge.id)
+                    .where(
+                        Filter.or(
+                            Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", owner)))
+                    .get())
+            .documents
+            .map { it.id })
     assertEquals(
         listOf("receipt"),
         Tasks.await(receipt.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {

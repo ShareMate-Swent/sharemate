@@ -57,7 +57,7 @@ class FirebaseItemRepositoryFirestoreTest {
 
     val stored =
         repository
-            .getSharedItems(household.id)
+            .getFridgeItems(userId, household.id)
             .first { items -> items.any { it.id == itemId } }
             .single { it.id == itemId }
 

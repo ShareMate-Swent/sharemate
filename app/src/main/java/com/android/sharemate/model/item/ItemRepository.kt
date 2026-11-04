@@ -10,13 +10,12 @@ import kotlinx.coroutines.flow.Flow
 interface ItemRepository {
 
   /**
-   * Récupère un flux (Flow) réactif de tous les items privés de l'utilisateur. Le Flow
+   * Récupère un flux (Flow) réactif des items visibles par l'utilisateur dans son frigo. Si
+   * [householdId] est null, ce sont ses items privés (sans foyer). Sinon, ce sont les items SHARED
+   * du foyer et ses propres items PERSONAL, jamais les items PERSONAL des autres membres. Le Flow
    * s'actualisera automatiquement si les données changent en local ou sur le serveur.
    */
-  fun getPrivateItems(userId: String): Flow<List<Item>>
-
-  /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
-  fun getSharedItems(householdId: String): Flow<List<Item>>
+  fun getFridgeItems(userId: String, householdId: String?): Flow<List<Item>>
 
   /**
    * Ajoute un nouvel item (privé ou partagé selon si householdId est défini).

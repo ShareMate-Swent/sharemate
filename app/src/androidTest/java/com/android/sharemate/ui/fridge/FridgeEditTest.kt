@@ -275,9 +275,7 @@ class FridgeEditTest {
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String) = items
-
-    override fun getPrivateItems(userId: String) = error("Unexpected private query")
+    override fun getFridgeItems(userId: String, householdId: String?) = items
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

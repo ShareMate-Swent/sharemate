@@ -102,10 +102,7 @@ class FridgeViewModel(
     }
     viewModelScope.launch {
       try {
-        val inventory =
-            if (householdId == null) itemRepository.getPrivateItems(userId)
-            else itemRepository.getSharedItems(householdId)
-        inventory.collect { items ->
+        itemRepository.getFridgeItems(userId, householdId).collect { items ->
           mutableUiState.update { state ->
             val pending = state.pendingRemovalItem
             val stale =

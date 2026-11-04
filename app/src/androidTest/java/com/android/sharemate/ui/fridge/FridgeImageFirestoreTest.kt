@@ -116,7 +116,7 @@ class FridgeImageFirestoreTest {
     withContext(Dispatchers.Main) { store.clear() }
     val reread =
         withTimeout(15_000) {
-          FirebaseItemRepository(firestore).getPrivateItems(owner).first {
+          FirebaseItemRepository(firestore).getFridgeItems(owner, null).first {
             it.singleOrNull()?.image != null
           }
         }
