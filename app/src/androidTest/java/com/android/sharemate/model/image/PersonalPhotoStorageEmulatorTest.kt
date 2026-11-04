@@ -304,7 +304,7 @@ class PersonalPhotoStorageEmulatorTest {
             mapOf(
                 "ownerId" to ownerId,
                 "householdId" to householdId,
-                "sharing" to "PERSONAL",
+                "sharing" to if (householdId == null) "PERSONAL" else "SHARED",
                 "quantity" to 1,
                 "status" to "ACTIVE",
                 "name" to "Photo item"))

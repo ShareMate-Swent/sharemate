@@ -28,8 +28,8 @@ under a different owner cannot expose its old photos; absent/forged metadata is 
 uploaded before this binding was introduced need administrative cleanup or trusted migration.
 The item owner or an authorized household member can create/read/delete photos. Private fridges
 require the creator; Storage treats a missing `type` as `SHARED` for legacy compatibility.
-Item `sharing` is irrelevant to read authorization, as in `firestore.rules`. A forged user
-profile is insufficient.
+Storage reads the item through `firestore.rules`, so household members only access photos of
+`SHARED` items; another member's `PERSONAL` item is denied. A forged user profile is insufficient.
 Listing, overwrites and metadata updates are denied. No public/bearer URL is returned or used.
 Rules validate size and declared MIME type; they cannot inspect pixels. Client signature checks
 are not full decoding or server-side content inspection. HEIC/WebP need future conversion.
