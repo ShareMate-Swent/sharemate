@@ -131,4 +131,27 @@ class ChatViewModelTest {
     repository.messages.value = listOf(Message("1", "u2", "Sam", "hi"))
     assertEquals(null, vm.state.value.error)
   }
+
+  @Test
+  fun cancelledSendIsNotReportedAsFailure() {
+    val vm =
+        ChatViewModel(
+            object : ChatRepository {
+              override fun observeMessages(householdId: String): Flow<List<Message>> =
+                  MutableStateFlow(emptyList())
+
+              override suspend fun sendMessage(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  text: String
+              ): String? = throw kotlinx.coroutines.CancellationException("cancelled")
+            },
+            "h1",
+            "u1",
+            "Alex")
+    vm.onDraftChange("hi")
+    vm.send()
+    assertEquals(null, vm.state.value.error)
+  }
 }

@@ -52,8 +52,7 @@ class ChatViewModel(
     viewModelScope.launch {
       chatRepository
           .observeMessages(householdId)
-          .catch { failure ->
-            if (failure is CancellationException) throw failure
+          .catch {
             mutableState.update { it.copy(isLoading = false, error = ChatError.LOAD_FAILED) }
           }
           .collect { messages ->
