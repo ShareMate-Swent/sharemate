@@ -6,17 +6,21 @@ import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-class ReceiptPhotoReader(context: Context) {
+class ReceiptPhotoReader(
+    context: Context,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : ReceiptReader {
   private val appContext = context.applicationContext
 
   /** An empty list means that no priced products could be read. */
-  suspend fun read(uri: Uri): List<ReceiptItem> =
-      withContext(Dispatchers.IO) {
-        val image = InputImage.fromFilePath(appContext, uri)
+  override suspend fun read(uri: String): List<ReceiptItem> =
+      withContext(dispatcher) {
+        val image = InputImage.fromFilePath(appContext, Uri.parse(uri))
         val client = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
           val text = client.process(image).await()

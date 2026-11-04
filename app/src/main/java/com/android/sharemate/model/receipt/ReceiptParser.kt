@@ -7,6 +7,7 @@ internal data class ReceiptLine(val text: String, val left: Int, val top: Int, v
 data class ReceiptItem(val name: String, val priceCents: Long)
 
 internal object ReceiptParser {
+  private const val CENTS_PER_UNIT = 100L
   private val amount =
       Regex(
           """(?<!\S)(?:CHF\s*)?(\d{1,7})[.,](\d{2})(?:\s*CHF)?(?:\s+[A-Z0-9])?$""",
@@ -49,7 +50,8 @@ internal object ReceiptParser {
                   .replaceFirst(marker, "")
           previousLabel = null
           if (name.none(Char::isLetter) || summary.containsMatchIn(name)) return@mapNotNull null
-          ReceiptItem(name, match.groupValues[1].toLong() * 100 + match.groupValues[2].toLong())
+          ReceiptItem(
+              name, match.groupValues[1].toLong() * CENTS_PER_UNIT + match.groupValues[2].toLong())
         }
   }
 }

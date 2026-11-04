@@ -10,6 +10,12 @@ class ReceiptParserTest {
           rows.mapIndexed { index, row -> ReceiptLine(row, 0, index * 20, index * 20 + 10) })
 
   @Test
+  fun stripsLeadingSkuWithoutRemovingProductNumbers() {
+    assertEquals(
+        listOf(ReceiptItem("Lait 2 litres", 240)), parseRows("1234567890123 Lait 2 litres 2.40"))
+  }
+
+  @Test
   fun readsMigrosTaxGroupsAndPromotionMarkersUntilTotal() {
     assertEquals(
         listOf(
