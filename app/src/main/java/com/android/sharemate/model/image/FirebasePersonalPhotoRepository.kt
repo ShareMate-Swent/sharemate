@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
+import com.android.sharemate.model.FirestoreCollections
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageTask
@@ -15,8 +18,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-class FirebasePersonalPhotoRepository(private val storage: FirebaseStorage) :
-    PersonalPhotoRepository {
+class FirebasePersonalPhotoRepository(
+    private val storage: FirebaseStorage,
+    private val firestore: FirebaseFirestore
+) : PersonalPhotoRepository {
   override suspend fun upload(itemId: String, source: File): Result<PersonalPhotoReference> =
       outcome {
         require(itemId.isNotBlank() && '/' !in itemId && itemId != "." && itemId != "..")
@@ -25,7 +30,23 @@ class FirebasePersonalPhotoRepository(private val storage: FirebaseStorage) :
               val context = currentCoroutineContext()
               source.inputStream().use { readBounded(it) { context.ensureActive() } }
             }
-        val metadata = StorageMetadata.Builder().setContentType(photoType(bytes)).build()
+        val contentType = photoType(bytes)
+        val ownerId =
+            requireNotNull(
+                firestore
+                    .collection(FirestoreCollections.ITEMS)
+                    .document(itemId)
+                    .get(Source.SERVER)
+                    .await()
+                    .getString("ownerId")) {
+                  "Item has no owner"
+                }
+        require(ownerId.isNotBlank())
+        val metadata =
+            StorageMetadata.Builder()
+                .setContentType(contentType)
+                .setCustomMetadata("itemOwnerId", ownerId)
+                .build()
         val reference = PersonalPhotoReference("itemPhotos/$itemId/${UUID.randomUUID()}")
         currentCoroutineContext().ensureActive()
         storage.reference.child(reference.path).putBytes(bytes, metadata).awaitPhotoTransfer()

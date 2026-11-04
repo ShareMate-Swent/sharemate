@@ -1,8 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
+import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
@@ -25,17 +31,25 @@ import org.mockito.Mockito.*
 class FirebasePersonalPhotoRepositoryTest {
   @get:Rule val temporary = TemporaryFolder()
   private val storage = mock(FirebaseStorage::class.java)
+  private val firestore = mock(FirebaseFirestore::class.java)
+  private val items = mock(CollectionReference::class.java)
+  private val item = mock(DocumentReference::class.java)
+  private val snapshot = mock(DocumentSnapshot::class.java)
   private val root = mock(StorageReference::class.java)
   private val remote = mock(StorageReference::class.java)
   private val upload = mock(UploadTask::class.java)
   private val download = mock(StreamDownloadTask::class.java)
-  private val repository = FirebasePersonalPhotoRepository(storage)
+  private val repository = FirebasePersonalPhotoRepository(storage, firestore)
   private val reference =
       PersonalPhotoReference("itemPhotos/item/00000000-0000-0000-0000-000000000000")
   private val png = byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10, 42)
 
   @Before
   fun setUp() {
+    `when`(firestore.collection(FirestoreCollections.ITEMS)).thenReturn(items)
+    `when`(items.document(anyString())).thenReturn(item)
+    `when`(item.get(Source.SERVER)).thenReturn(Tasks.forResult(snapshot))
+    `when`(snapshot.getString("ownerId")).thenReturn("owner")
     `when`(storage.reference).thenReturn(root)
     `when`(root.child(anyString())).thenReturn(remote)
     `when`(upload.isComplete).thenReturn(true)
@@ -51,6 +65,7 @@ class FirebasePersonalPhotoRepositoryTest {
         .thenAnswer {
           stored = it.getArgument(0)
           assertEquals("image/png", it.getArgument<StorageMetadata>(1).contentType)
+          assertEquals("owner", it.getArgument<StorageMetadata>(1).getCustomMetadata("itemOwnerId"))
           upload
         }
     `when`(remote.getStream(any(StreamDownloadTask.StreamProcessor::class.java))).thenAnswer {
@@ -66,6 +81,20 @@ class FirebasePersonalPhotoRepositoryTest {
     assertArrayEquals(png, repository.load(first).getOrThrow())
     assertArrayEquals(png, source.readBytes())
     verify(remote, never()).downloadUrl
+  }
+
+  @Test
+  fun ownerLookupFailureOrMissingOwnerPreventsUpload() = runTest {
+    val source = temporary.newFile().apply { writeBytes(png) }
+    val failure = IOException("owner lookup failed")
+    `when`(item.get(Source.SERVER)).thenReturn(Tasks.forException(failure))
+    assertSame(failure, repository.upload("item", source).exceptionOrNull())
+    `when`(item.get(Source.SERVER)).thenReturn(Tasks.forResult(snapshot))
+    for (ownerId in listOf(null, "")) {
+      `when`(snapshot.getString("ownerId")).thenReturn(ownerId)
+      assertTrue(repository.upload("item", source).isFailure)
+    }
+    verifyNoInteractions(remote)
   }
 
   @Test

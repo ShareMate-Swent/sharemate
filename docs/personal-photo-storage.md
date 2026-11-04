@@ -2,13 +2,14 @@
 # Personal photo storage
 
 This foundation is deliberately not wired to the form, gallery, camera, Commons or `Item.image`.
-Construct `FirebasePersonalPhotoRepository(FirebaseStorage.getInstance())` at the composition root
+Construct `FirebasePersonalPhotoRepository(storage, firestore)` at the composition root
 when integrating a future caller; ViewModels depend only on `PersonalPhotoRepository`.
 
 ## Contract and ownership
 
 - `upload(itemId, source)` requires an existing Firestore item. It reads a caller-owned, stable
-  file, checks JPEG/PNG signatures and a maximum of 5 MiB, and creates an immutable UUID object.
+  file, checks JPEG/PNG signatures and a maximum of 5 MiB, then reads the confirmed item owner from
+  Firestore and creates an immutable UUID object with `itemOwnerId` metadata.
 - The returned `PersonalPhotoReference.path` (`itemPhotos/<itemId>/<uuid>`) is relative to the
   configured bucket. Persist that path when integrating; it works on another device using the
   same Firebase project. It carries no download token and grants no access by itself.
@@ -22,8 +23,11 @@ when integrating a future caller; ViewModels depend only on `PersonalPhotoReposi
 ## Authorization and limits
 
 Rules read the current item and, if needed, its household (at most two Firestore documents).
+The photo's immutable `itemOwnerId` must match the current item's owner. Recreating a deleted item
+under a different owner cannot expose its old photos; absent/forged metadata is rejected. Objects
+uploaded before this binding was introduced need administrative cleanup or trusted migration.
 The item owner or an authorized household member can create/read/delete photos. Private fridges
-require the creator; legacy fridges without `type` remain shared. Item `sharing` is irrelevant to
+require the creator; shared fridges require `type == SHARED`. Item `sharing` is irrelevant to
 read authorization, exactly as in `firestore.rules`. A forged user profile is insufficient.
 Listing, overwrites and metadata updates are denied. No public/bearer URL is returned or used.
 Rules validate size and declared MIME type; they cannot inspect pixels. Client signature checks

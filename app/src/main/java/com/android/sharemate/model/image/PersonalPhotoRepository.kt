@@ -13,7 +13,9 @@ data class PersonalPhotoReference(val path: String) {
 
 /**
  * Storage for an existing item's photos. Authorization follows that item's current owner/household,
- * including PERSONAL items visible to household members. No attachment to Item.image is performed.
+ * including PERSONAL items visible to household members. A photo stays bound to the item's original
+ * owner; reusing the item ID as another owner does not grant access. No attachment to Item.image is
+ * performed.
  *
  * Operations may run from the main thread and return only after server confirmation. Failures are
  * Result.failure; coroutine cancellation is thrown. Transfers are canceled when supported, but a

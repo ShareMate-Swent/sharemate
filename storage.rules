@@ -4,19 +4,22 @@ service firebase.storage {
   match /b/{bucket}/o {
     function inHousehold(id) {
       let home = firestore.get(/databases/(default)/documents/households/$(id)).data;
-      return (home.get('type', 'SHARED') == 'PRIVATE' && home.createdBy == request.auth.uid)
-          || (home.get('type', 'SHARED') != 'PRIVATE' && request.auth.uid in home.memberIds);
+      return (home.type == 'PRIVATE' && home.createdBy == request.auth.uid)
+          || (home.type == 'SHARED' && request.auth.uid in home.memberIds);
     }
-    function canAccessItem(id) {
+    function canAccessItem(id, photo) {
       let item = firestore.get(/databases/(default)/documents/items/$(id)).data;
-      // Matches Firestore item access: sharing is not a read authorization field.
-      return item.ownerId == request.auth.uid
-          || (item.get('householdId', null) != null && inHousehold(item.householdId));
+      // ownerId is immutable in Firestore. Reusing a deleted ID as another owner must not
+      // grant access to the old photo. Null resources preserve authorized "not found" responses.
+      return (photo == null || photo.metadata.get('itemOwnerId', '') == item.ownerId)
+          && (item.ownerId == request.auth.uid
+              || (item.get('householdId', null) != null && inHousehold(item.householdId)));
     }
     match /itemPhotos/{itemId}/{photoId} {
-      allow get, delete: if request.auth != null && canAccessItem(itemId);
+      allow get, delete: if request.auth != null && canAccessItem(itemId, resource);
       // Objects are immutable; replacing a photo creates a fresh identifier.
-      allow create: if resource == null && request.auth != null && canAccessItem(itemId)
+      allow create: if resource == null && request.auth != null
+          && canAccessItem(itemId, request.resource)
           && photoId.matches('[a-f0-9-]{36}')
           && request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024
           && request.resource.contentType in ['image/jpeg', 'image/png'];

@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.utils.FirebaseEmulator
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
@@ -39,7 +40,7 @@ class PersonalPhotoStorageEmulatorTest {
   private val firestore = FirebaseEmulator.firestore
   private val storage =
       FirebaseStorage.getInstance().apply { useEmulator(FirebaseEmulator.HOST, 9199) }
-  private val repository = FirebasePersonalPhotoRepository(storage)
+  private val repository = FirebasePersonalPhotoRepository(storage, firestore)
   private val png =
       android.util.Base64.decode(
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1cAAAAASUVORK5CYII=",
@@ -85,6 +86,27 @@ class PersonalPhotoStorageEmulatorTest {
     }
   }
 
+  private fun seedPrivateMembers(home: String, outsider: String) {
+    val projectId = checkNotNull(firestore.app.options.projectId)
+    val url =
+        "http://${FirebaseEmulator.HOST}:8080/v1/projects/$projectId/databases/(default)/documents/households/$home?updateMask.fieldPaths=memberIds"
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+      connection.requestMethod = "PATCH"
+      connection.setRequestProperty("Authorization", "Bearer owner")
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.doOutput = true
+      connection.outputStream.use {
+        it.write(
+            """{"fields":{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}}"""
+                .toByteArray())
+      }
+      check(connection.responseCode in 200..299)
+    } finally {
+      connection.disconnect()
+    }
+  }
+
   @Test
   fun anotherMemberReadsPersonalItemPhotoAndCanUploadAndDelete() = runBlocking {
     val homes = HouseholdRepositoryFirestore(firestore)
@@ -95,7 +117,7 @@ class PersonalPhotoStorageEmulatorTest {
     val member = FirebaseEmulator.signInAs("photo-member")
     homes.joinHousehold(home.inviteCode, member)
     // A new repository and reconstructed path model a second device, without a download token.
-    val anotherDevice = FirebasePersonalPhotoRepository(storage)
+    val anotherDevice = FirebasePersonalPhotoRepository(storage, firestore)
     assertArrayEquals(png, anotherDevice.load(PersonalPhotoReference(original.path)).getOrThrow())
     val second = upload()
     assertNotEquals(original, second)
@@ -138,10 +160,7 @@ class PersonalPhotoStorageEmulatorTest {
       val reference = upload()
       val outsider = FirebaseEmulator.signInAs("photo-outsider")
       if (home != null) {
-        FirebaseEmulator.seedLegacyDocument(
-            "households",
-            home,
-            """{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}""")
+        seedPrivateMembers(home, outsider)
       }
       denied(repository.load(reference))
       denied(repository.delete(reference))
@@ -151,22 +170,46 @@ class PersonalPhotoStorageEmulatorTest {
   }
 
   @Test
+  fun recreatedItemDoesNotExposeOldPhotoToItsNewOwner() = runBlocking {
+    val homes = HouseholdRepositoryFirestore(firestore)
+    val home = homes.createHousehold("Photo home", owner)
+    createItem(home.id)
+    val original = upload()
+    val formerMember = FirebaseEmulator.signInAs("photo-former-member")
+    homes.joinHousehold(home.inviteCode, formerMember)
+    assertArrayEquals(png, repository.load(original).getOrThrow())
+    homes.leaveHousehold(formerMember)
+    FirebaseEmulator.signInAs("photo-owner")
+    firestore.collection("items").document(itemId).delete().await()
+    FirebaseEmulator.signInAs("photo-former-member")
+    createItem(null, formerMember)
+    denied(repository.load(original))
+    denied(repository.delete(original))
+    val ownPhoto = upload()
+    assertArrayEquals(png, repository.load(ownPhoto).getOrThrow())
+    repository.delete(ownPhoto).getOrThrow()
+  }
+
+  @Test
   fun rulesRejectInvalidMetadataSizesOverwritesListingAndMissingItems() = runBlocking {
     createItem(null)
     val reference = upload()
-    val validMetadata = StorageMetadata.Builder().setContentType("image/png").build()
+    val validMetadata = photoMetadata()
     val objectRef = storage.reference.child(reference.path)
     suspend fun rejected(bytes: ByteArray, metadata: StorageMetadata) {
       val fresh = storage.reference.child("itemPhotos/$itemId/${UUID.randomUUID()}")
       denied(runCatching { fresh.putBytes(bytes, metadata).await() })
     }
-    rejected(png, StorageMetadata.Builder().setContentType("text/plain").build())
+    rejected(png, StorageMetadata.Builder(validMetadata).setContentType("text/plain").build())
+    rejected(png, StorageMetadata.Builder().setContentType("image/png").build())
+    rejected(png, photoMetadata("forged-owner"))
     rejected(byteArrayOf(), validMetadata)
     rejected(ByteArray(PersonalPhotoRepository.MAX_BYTES + 1), validMetadata)
     denied(runCatching { objectRef.putBytes(png, validMetadata).await() })
     denied(runCatching { objectRef.updateMetadata(validMetadata).await() })
     denied(runCatching { storage.reference.child("itemPhotos/$itemId").listAll().await() })
-    denied(repository.upload("missing-item", temporary.newFile().apply { writeBytes(png) }))
+    assertTrue(
+        repository.upload("missing-item", temporary.newFile().apply { writeBytes(png) }).isFailure)
     firestore.collection("items").document(itemId).delete().await()
     denied(repository.load(reference))
     denied(repository.delete(reference))
@@ -187,8 +230,7 @@ class PersonalPhotoStorageEmulatorTest {
         }
     source.use {
       val reference = storage.reference.child("itemPhotos/$itemId/${UUID.randomUUID()}")
-      val task =
-          reference.putStream(it, StorageMetadata.Builder().setContentType("image/png").build())
+      val task = reference.putStream(it, photoMetadata())
       val waiting = async(start = CoroutineStart.UNDISPATCHED) { task.awaitPhotoTransfer() }
       try {
         withTimeout(10_000) { reading.await() }
@@ -238,15 +280,17 @@ class PersonalPhotoStorageEmulatorTest {
     assertTrue(task.isCanceled)
   }
 
-  private suspend fun createItem(householdId: String?) {
+  private suspend fun createItem(householdId: String?, ownerId: String = owner) {
     firestore
         .collection("items")
         .document(itemId)
         .set(
             mapOf(
-                "ownerId" to owner,
+                "ownerId" to ownerId,
                 "householdId" to householdId,
                 "sharing" to "PERSONAL",
+                "quantity" to 1,
+                "status" to "ACTIVE",
                 "name" to "Photo item"))
         .await()
   }
@@ -258,11 +302,28 @@ class PersonalPhotoStorageEmulatorTest {
     }
   }
 
+  private fun photoMetadata(ownerId: String = owner): StorageMetadata =
+      StorageMetadata.Builder()
+          .setContentType("image/png")
+          .setCustomMetadata("itemOwnerId", ownerId)
+          .build()
+
   private fun denied(result: Result<*>) {
     val error = result.exceptionOrNull()
-    assertTrue("Expected a Storage permission failure, got $result", error is StorageException)
-    assertTrue(
-        (error as StorageException).errorCode in
-            listOf(StorageException.ERROR_NOT_AUTHORIZED, StorageException.ERROR_NOT_AUTHENTICATED))
+    val denied =
+        when (error) {
+          is StorageException ->
+              error.errorCode in
+                  listOf(
+                      StorageException.ERROR_NOT_AUTHORIZED,
+                      StorageException.ERROR_NOT_AUTHENTICATED)
+          is FirebaseFirestoreException ->
+              error.code in
+                  listOf(
+                      FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                      FirebaseFirestoreException.Code.UNAUTHENTICATED)
+          else -> false
+        }
+    assertTrue("Expected a permission failure, got $result", denied)
   }
 }
