@@ -155,7 +155,7 @@ class HouseholdRepositoryFirestore(
             .whereArrayContains(MEMBER_IDS_FIELD, userId)
             .get()
             .await()
-    if (memberships.documents.any { it.getString("type") == FridgeType.PRIVATE.name }) {
+    if (memberships.documents.any { it.getString(TYPE_FIELD) == FridgeType.PRIVATE.name }) {
       throw PrivateHouseholdLeaveException()
     }
     val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
@@ -195,6 +195,7 @@ class HouseholdRepositoryFirestore(
     const val HOUSEHOLD_ID_FIELD = "householdId"
     const val INVITE_CODE_FIELD = "inviteCode"
     const val MEMBER_IDS_FIELD = "memberIds"
+    const val TYPE_FIELD = "type"
     const val MAX_INVITE_CODE_ATTEMPTS = 10
   }
 }
