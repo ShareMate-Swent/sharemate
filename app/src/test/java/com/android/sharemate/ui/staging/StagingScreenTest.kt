@@ -3,6 +3,9 @@ package com.android.sharemate.ui.staging
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -42,7 +45,9 @@ class StagingScreenTest {
 
   private fun assertRowShows(id: String, text: String) {
     composeTestRule
-        .onNode(hasText(text) and hasAnyAncestor(hasTestTag(StagingTestTags.item(id))))
+        .onNode(
+            hasText(text) and hasAnyAncestor(hasTestTag(StagingTestTags.item(id))),
+            useUnmergedTree = true)
         .assertIsDisplayed()
   }
 
@@ -100,13 +105,16 @@ class StagingScreenTest {
 
   @Test
   fun confirmIsDisabledWhileAnItemIsBeingEdited() {
-    val viewModel = StagingViewModel(listOf(milk))
-    setScreen(viewModel)
-
-    viewModel.startEditing("milk")
+    // The edit dialog is covered by instrumented tests: text fields in dialogs never get idle
+    // under Robolectric, so this test draws the stateless content with an open draft instead.
+    var state by
+        mutableStateOf(StagingUiState(listOf(milk), StagedItemDraft("milk", "Milk", "2", "1.89")))
+    composeTestRule.setContent {
+      MaterialTheme { StagingContent(state, onItemClick = {}, onConfirm = {}, onBack = {}) }
+    }
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
 
-    viewModel.cancelEditing()
+    state = state.copy(draft = null)
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
   }
 
@@ -118,5 +126,24 @@ class StagingScreenTest {
 
     assertEquals(1, backs)
     assertNull(confirmed)
+  }
+
+  @Test
+  fun tappingARowReportsItsId() {
+    val clicked = mutableListOf<String>()
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingContent(
+            StagingUiState(listOf(milk, bread)),
+            onItemClick = { clicked += it },
+            onConfirm = {},
+            onBack = {})
+      }
+    }
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
+
+    assertEquals(listOf("bread", "milk"), clicked)
   }
 }

@@ -55,14 +55,30 @@ fun StagingScreen(
   val state = viewModel.state.collectAsState().value
   StagingContent(
       state = state,
+      onItemClick = viewModel::startEditing,
       onConfirm = { viewModel.confirmedItems()?.let(onConfirm) },
       onBack = onBack,
   )
+  state.draft?.let { draft ->
+    StagedItemEditDialog(
+        draft = draft,
+        onNameChange = viewModel::updateDraftName,
+        onQuantityChange = viewModel::updateDraftQuantity,
+        onPriceChange = viewModel::updateDraftPrice,
+        onSave = viewModel::saveDraft,
+        onCancel = viewModel::cancelEditing,
+    )
+  }
 }
 
 /** Stateless content of [StagingScreen], so it can be tested and previewed with any state. */
 @Composable
-fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> Unit) {
+fun StagingContent(
+    state: StagingUiState,
+    onItemClick: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onBack: () -> Unit,
+) {
   Column(
       modifier =
           Modifier.fillMaxSize()
@@ -93,7 +109,9 @@ fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> U
             modifier = Modifier.fillMaxSize().testTag(StagingTestTags.LIST),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          items(state.items, key = { it.id }) { item -> StagedItemRow(item) }
+          items(state.items, key = { it.id }) { item ->
+            StagedItemRow(item, onClick = { onItemClick(item.id) })
+          }
         }
       }
     }
@@ -109,8 +127,9 @@ fun StagingContent(state: StagingUiState, onConfirm: () -> Unit, onBack: () -> U
 }
 
 @Composable
-private fun StagedItemRow(item: StagedItem) {
+private fun StagedItemRow(item: StagedItem, onClick: () -> Unit) {
   Card(
+      onClick = onClick,
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {

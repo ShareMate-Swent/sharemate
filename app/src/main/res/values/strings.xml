@@ -134,6 +134,10 @@
     <string name="staging_price">CHF %1$s</string>
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
+    <string name="staging_price_label">Price</string>
+    <string name="staging_currency">CHF</string>
+    <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
+    <string name="staging_price_invalid">Enter a price like 3.50.</string>
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
