@@ -233,6 +233,9 @@ class FridgeScreenTest {
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.ownerId == userId && it.householdId == null } }
 
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+        Result.success(inventory.value.firstOrNull { it.id == itemId })
+
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
         expectedName: String,

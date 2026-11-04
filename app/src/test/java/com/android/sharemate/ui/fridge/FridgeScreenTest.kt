@@ -527,6 +527,9 @@ class FridgeScreenTest {
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
 
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+        Result.success(sharedItems.value.firstOrNull { it.id == itemId })
+
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
         expectedName: String,

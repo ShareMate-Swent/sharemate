@@ -279,6 +279,9 @@ class FridgeEditTest {
 
     override fun getPrivateItems(userId: String) = error("Unexpected private query")
 
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+        Result.success(items.value.firstOrNull { it.id == itemId })
+
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
         expectedName: String,

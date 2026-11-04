@@ -4,6 +4,7 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -15,23 +16,33 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SnapshotMetadata
+import com.google.firebase.firestore.Source
+import java.io.IOException
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 
 class FirebaseItemRepositoryTest {
@@ -79,6 +90,10 @@ class FirebaseItemRepositoryTest {
     assertEquals(ItemImageOrigin.PERSONAL_PHOTO, doc.toItemOrNull()!!.image!!.origin)
   }
 
+  private val photoDocument = mock(DocumentReference::class.java)
+  private val photoSnapshot = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
+  private val photoMetadata = mock(SnapshotMetadata::class.java)
+
   private lateinit var firestore: FirebaseFirestore
   private lateinit var collection: CollectionReference
   private lateinit var repository: FirebaseItemRepository
@@ -89,6 +104,83 @@ class FirebaseItemRepositoryTest {
     collection = mock(CollectionReference::class.java)
     `when`(firestore.collection(FirestoreCollections.ITEMS)).thenReturn(collection)
     repository = FirebaseItemRepository(firestore)
+    `when`(collection.document("item")).thenReturn(photoDocument)
+    `when`(photoDocument.get(Source.SERVER)).thenReturn(Tasks.forResult(photoSnapshot))
+    `when`(photoSnapshot.metadata).thenReturn(photoMetadata)
+    `when`(photoSnapshot.exists()).thenReturn(true)
+    `when`(photoSnapshot.id).thenReturn("item")
+    `when`(photoSnapshot.getString("name")).thenReturn("Milk")
+    `when`(photoSnapshot.getString("ownerId")).thenReturn("owner")
+  }
+
+  @Test
+  fun readsCurrentItemAndImageFromServerOnly() = runTest {
+    val image = ItemImage(reference = "itemPhotos/item/00000000-0000-0000-0000-000000000000")
+    `when`(photoSnapshot.get("image"))
+        .thenReturn(mapOf("origin" to "PERSONAL_PHOTO", "reference" to image.reference))
+    assertEquals(
+        Item(id = "item", name = "Milk", ownerId = "owner", image = image),
+        repository.getItemForPhoto("item").getOrThrow())
+    verify(photoDocument).get(Source.SERVER)
+    verify(photoDocument, never()).get()
+  }
+
+  @Test
+  fun missingDocumentIsSuccessfulNullButPermissionAndNetworkErrorsStayFailures() = runTest {
+    `when`(photoSnapshot.exists()).thenReturn(false)
+    val missing = repository.getItemForPhoto("item")
+    assertTrue(missing.isSuccess)
+    assertNull(missing.getOrThrow())
+    val denied = SecurityException("permission denied")
+    `when`(photoDocument.get(Source.SERVER)).thenReturn(Tasks.forException(denied))
+    assertSame(denied, repository.getItemForPhoto("item").exceptionOrNull())
+    val unavailable = IOException("offline")
+    `when`(photoDocument.get(Source.SERVER)).thenReturn(Tasks.forException(unavailable))
+    assertSame(unavailable, repository.getItemForPhoto("item").exceptionOrNull())
+  }
+
+  @Test
+  fun malformedItemOrImageCannotBeMistakenForAuthoritativeImageAbsence() = runTest {
+    `when`(photoSnapshot.getString("ownerId")).thenReturn(null)
+    assertTrue(repository.getItemForPhoto("item").isFailure)
+    `when`(photoSnapshot.getString("ownerId")).thenReturn("owner")
+    `when`(photoSnapshot.get("image")).thenReturn("invalid image")
+    assertTrue(repository.getItemForPhoto("item").isFailure)
+    `when`(photoSnapshot.get("image")).thenReturn(null)
+    assertNull(repository.getItemForPhoto("item").getOrThrow()!!.image)
+  }
+
+  @Test
+  fun pendingLocalWritesAreNotTreatedAsServerConfirmation() = runTest {
+    `when`(photoMetadata.hasPendingWrites()).thenReturn(true)
+    assertTrue(repository.getItemForPhoto("item").isFailure)
+  }
+
+  @Test
+  fun invalidIdsNeverStartARead() = runTest {
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertTrue(repository.getItemForPhoto(id).exceptionOrNull() is IllegalArgumentException)
+    }
+    verifyNoInteractions(photoDocument)
+  }
+
+  @Test
+  fun cancellingAnAuthoritativeReadPropagatesAndDoesNotPublishAMissingItem() = runTest {
+    val completion = TaskCompletionSource<DocumentSnapshot>()
+    `when`(photoDocument.get(Source.SERVER)).thenReturn(completion.task)
+    val pending = async { repository.getItemForPhoto("item") }
+    testScheduler.runCurrent()
+    pending.cancelAndJoin()
+    assertTrue(pending.isCancelled)
+    completion.setResult(photoSnapshot)
+    val cancelled = CancellationException("session ended")
+    `when`(photoDocument.get(Source.SERVER)).thenReturn(Tasks.forException(cancelled))
+    try {
+      repository.getItemForPhoto("item")
+      fail("Cancellation must propagate")
+    } catch (actual: CancellationException) {
+      assertSame(cancelled, actual)
+    }
   }
 
   @Test

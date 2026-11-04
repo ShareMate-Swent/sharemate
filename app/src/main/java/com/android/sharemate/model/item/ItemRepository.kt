@@ -26,6 +26,13 @@ interface ItemRepository {
   suspend fun addItem(item: Item): String?
 
   /**
+   * Reads the current server item when reconciling a photo attachment or deleting its storage
+   * object. Success with null means the document does not exist; an unreadable or malformed
+   * document is a failure. Never falls back to the local cache. Cancellation propagates.
+   */
+  suspend fun getItemForPhoto(itemId: String): Result<Item?>
+
+  /**
    * Attaches a lookup result only if the item still exists, its persisted name exactly matches
    * [expectedName] and it has no image. Checks and the image-only write are atomic; image credits
    * are included in [image]. Pass the saved name used for the lookup, without normalizing it.

@@ -65,6 +65,7 @@ fun FridgeScreen(
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     fridgeType: FridgeType? = null,
+    personalPhotoDraft: PersonalPhotoDraftController? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val screenModifier =
@@ -227,6 +228,7 @@ fun FridgeScreen(
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
         onBarcodeImageConfirmed = onBarcodeImageConfirmed,
+        personalPhotoDraft = personalPhotoDraft,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -321,6 +323,7 @@ fun FridgeScreen(
       onCancelRemoval = viewModel::cancelRemoval,
       onConfirmRemoval = viewModel::confirmRemoval,
       fridgeType = fridgeType,
+      personalPhotoDraft = viewModel.personalPhotoDraft,
   )
 }
 

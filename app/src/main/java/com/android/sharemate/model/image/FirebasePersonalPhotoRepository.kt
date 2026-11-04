@@ -5,6 +5,7 @@ import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageTask
 import java.io.ByteArrayOutputStream
@@ -72,6 +73,15 @@ class FirebasePersonalPhotoRepository(
     // Unlike UploadTask/StreamDownloadTask, this SDK Task has no cancel operation.
     storage.reference.child(reference.path).delete().await()
     Unit
+  }
+
+  override suspend fun deleteIfPresent(reference: PersonalPhotoReference): Result<Unit> {
+    val result = delete(reference)
+    val failure = result.exceptionOrNull()
+    return if (failure is StorageException &&
+        failure.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND)
+        Result.success(Unit)
+    else result
   }
 
   private suspend fun <T> outcome(block: suspend () -> T): Result<T> =

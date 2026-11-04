@@ -6,10 +6,13 @@ import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -54,6 +57,31 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       null
     }
   }
+
+  override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+      try {
+        currentCoroutineContext().ensureActive()
+        require(itemId.isNotBlank() && '/' !in itemId && itemId != "." && itemId != "..") {
+          "A document ID is required"
+        }
+        val snapshot = items.document(itemId).get(Source.SERVER).await()
+        currentCoroutineContext().ensureActive()
+        check(!snapshot.metadata.hasPendingWrites()) { "Item has unconfirmed changes" }
+        Result.success(
+            if (!snapshot.exists()) null
+            else {
+              val item = checkNotNull(snapshot.toItemOrNull()) { "Item data is invalid" }
+              check(snapshot.get("image") == null || item.image != null) {
+                "Item image data is invalid"
+              }
+              item
+            })
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        currentCoroutineContext().ensureActive()
+        Result.failure(failure)
+      }
 
   override suspend fun updateItemImageIfAbsent(
       itemId: String,

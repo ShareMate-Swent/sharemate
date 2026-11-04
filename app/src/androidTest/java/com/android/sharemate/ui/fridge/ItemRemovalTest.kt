@@ -231,6 +231,9 @@ class ItemRemovalTest {
     override fun getPrivateItems(userId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
 
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+        Result.success(items.value.firstOrNull { it.id == itemId })
+
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
         expectedName: String,

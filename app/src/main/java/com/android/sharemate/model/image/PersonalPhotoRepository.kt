@@ -37,6 +37,13 @@ interface PersonalPhotoRepository {
   /** Delete while the item still exists; deleting an item first requires administrative cleanup. */
   suspend fun delete(reference: PersonalPhotoReference): Result<Unit>
 
+  /**
+   * Deletes an object or confirms it is already absent. Permission/network failures remain
+   * failures. Used to retry cleanup after a previous deletion may have committed. The item must
+   * still exist so its access rules can authorize the operation.
+   */
+  suspend fun deleteIfPresent(reference: PersonalPhotoReference): Result<Unit>
+
   companion object {
     const val MAX_BYTES = 5 * 1024 * 1024
   }

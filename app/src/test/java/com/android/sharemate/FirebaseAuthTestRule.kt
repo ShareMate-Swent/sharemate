@@ -18,6 +18,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.storage.FirebaseStorage
 import org.junit.rules.ExternalResource
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
@@ -32,6 +33,7 @@ class FirebaseAuthTestRule(
   private var listener: FirebaseAuth.AuthStateListener? = null
   private lateinit var firebase: MockedStatic<FirebaseAuth>
   private lateinit var firestore: MockedStatic<FirebaseFirestore>
+  private lateinit var storage: MockedStatic<FirebaseStorage>
   private lateinit var database: FirebaseFirestore
   private val initialLookup = TaskCompletionSource<QuerySnapshot>()
   val observedHouseholds = mutableListOf<String>()
@@ -115,6 +117,10 @@ class FirebaseAuthTestRule(
     firestore = mockStatic(FirebaseFirestore::class.java)
     database = mock(FirebaseFirestore::class.java, RETURNS_DEEP_STUBS)
     firestore.`when`<FirebaseFirestore> { FirebaseFirestore.getInstance() }.thenReturn(database)
+    storage = mockStatic(FirebaseStorage::class.java)
+    storage
+        .`when`<FirebaseStorage> { FirebaseStorage.getInstance() }
+        .thenReturn(mock(FirebaseStorage::class.java))
     `when`(database.collection("items").whereEqualTo(eq("householdId"), anyString())).thenAnswer {
         invocation ->
       val householdId = invocation.getArgument<String>(1)
@@ -176,6 +182,7 @@ class FirebaseAuthTestRule(
 
   override fun after() {
     try {
+      storage.close()
       firestore.close()
     } finally {
       firebase.close()

@@ -54,6 +54,23 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
+  fun photoReadUsesCurrentServerStateAndDistinguishesMissingFromDenied() = runBlocking {
+    val original = Item(name = "Milk", ownerId = owner)
+    val id = checkNotNull(repository.addItem(original))
+    assertEquals(original.copy(id = id), repository.getItemForPhoto(id).getOrThrow())
+    assertEquals(
+        ItemImageUpdateResult.Updated, repository.updateItemImageIfAbsent(id, "Milk", lookupImage))
+    assertEquals(lookupImage, repository.getItemForPhoto(id).getOrThrow()!!.image)
+    FirebaseEmulator.signInAs("photo-read-outsider")
+    assertTrue(repository.getItemForPhoto(id).isFailure)
+    FirebaseEmulator.signInAs("item-owner")
+    assertTrue(repository.deleteItem(id))
+    val missing = repository.getItemForPhoto(id)
+    assertTrue(missing.isSuccess)
+    assertNull(missing.getOrThrow())
+  }
+
+  @Test
   fun imageAttachmentPreservesAllOtherFieldsAndRoundTripsCredits() = runBlocking {
     val household = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
     val original =

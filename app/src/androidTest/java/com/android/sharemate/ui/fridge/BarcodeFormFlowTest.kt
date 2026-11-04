@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -176,6 +177,8 @@ class BarcodeFormFlowTest {
     override fun getSharedItems(householdId: String) = flowOf(emptyList<Item>())
 
     override suspend fun addItem(item: Item): String? = error("Lookup must not save an item")
+
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> = Result.success(null)
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

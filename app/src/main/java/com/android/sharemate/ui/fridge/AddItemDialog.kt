@@ -43,6 +43,7 @@ fun AddItemDialog(
     onDismiss: () -> Unit,
     onQuantityChange: (String) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
+    personalPhotoDraft: PersonalPhotoDraftController? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val photoViewModel: BarcodePhotoViewModel =
@@ -55,6 +56,7 @@ fun AddItemDialog(
                 }
               })
   val photo by photoViewModel.state.collectAsState()
+  val personalPhotoState = personalPhotoDraft?.state?.collectAsState()?.value
   val lookupError =
       uiState.barcodeLookupError?.let {
         stringResource(
@@ -90,6 +92,7 @@ fun AddItemDialog(
             modifier = Modifier.verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
               if (uiState.editingItemId == null) {
+                personalPhotoDraft?.let { PersonalPhotoPicker(it, inputEnabled) }
                 FilledTonalButton(
                     onClick = photoViewModel::open,
                     enabled = inputEnabled,
@@ -157,7 +160,7 @@ fun AddItemDialog(
       confirmButton = {
         TextButton(
             onClick = onSave,
-            enabled = inputEnabled,
+            enabled = inputEnabled && personalPhotoState?.importing != true,
             modifier = Modifier.testTag(C.Tag.fridge_save_item)) {
               Text(
                   stringResource(

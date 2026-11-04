@@ -407,6 +407,9 @@ class ManualItemCreationTest {
     override fun getSharedItems(householdId: String): Flow<List<Item>> =
         items.map { current -> current.filter { it.householdId == householdId } }
 
+    override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+        Result.success(items.value.firstOrNull { it.id == itemId })
+
     override suspend fun updateItemImageIfAbsent(
         itemId: String,
         expectedName: String,

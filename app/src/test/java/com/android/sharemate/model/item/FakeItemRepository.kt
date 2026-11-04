@@ -38,6 +38,9 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
+  override suspend fun getItemForPhoto(itemId: String): Result<Item?> =
+      Result.success(items.value.firstOrNull { it.id == itemId })
+
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
     return items.map { current ->

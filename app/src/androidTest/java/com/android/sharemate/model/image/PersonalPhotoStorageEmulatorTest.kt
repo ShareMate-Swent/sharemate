@@ -105,6 +105,18 @@ class PersonalPhotoStorageEmulatorTest {
   }
 
   @Test
+  fun cleanupCanRetryAfterPhotoWasDeletedButStillRejectsUnauthorizedUsers() = runBlocking {
+    createItem(null)
+    val reference = upload()
+    repository.deleteIfPresent(reference).getOrThrow()
+    repository.deleteIfPresent(reference).getOrThrow()
+    assertTrue(repository.load(reference).isFailure)
+    val remaining = upload()
+    FirebaseEmulator.signInAs("photo-cleanup-outsider")
+    denied(repository.deleteIfPresent(remaining))
+  }
+
+  @Test
   fun nonOwnerMemberReadsPhotoInHouseholdWithoutType() = runBlocking {
     val homes = HouseholdRepositoryFirestore(firestore)
     val home = homes.createHousehold("Legacy home", owner)

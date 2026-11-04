@@ -16,6 +16,7 @@ when integrating a future caller; ViewModels depend only on `PersonalPhotoReposi
 - `load(reference)` downloads via the authenticated SDK and returns caller-owned bytes, with
   the same size/signature checks. There is no disk cache or temporary file to clean up.
 - `delete(reference)` waits for server confirmation. Missing objects are failures, not success.
+- `deleteIfPresent(reference)` accepts only a confirmed missing object; other errors remain failures.
 - Failures retain their exception in `Result`; cancellation is thrown. Upload/download cancellation
   calls the SDK's `cancel()`. Deletion has no cancellable SDK handle. Cancellation cannot roll back
   a server commit; an upload may leave an orphan if completion races cancellation.

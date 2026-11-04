@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.PersonalPhotoDraftStore
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.Item
@@ -48,10 +49,15 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector,
     private val barcodeScanner: BarcodeScanner,
-    private val productCatalogRepository: ProductCatalogRepository
+    private val productCatalogRepository: ProductCatalogRepository,
+    personalPhotoDraftStore: PersonalPhotoDraftStore? = null,
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
+  /** Session-owned gallery workflow; its jobs outlive the form, but not this ViewModel. */
+  val personalPhotoDraft: PersonalPhotoDraftController? =
+      personalPhotoDraftStore?.let { PersonalPhotoDraftController(it, viewModelScope) }
+
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
@@ -288,6 +294,7 @@ class FridgeViewModel(
         uiState.value.pendingRemovalItem != null ||
         uiState.value.isDeleting)
         return
+    personalPhotoDraft?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
     mutableUiState.update {
@@ -308,6 +315,7 @@ class FridgeViewModel(
 
   fun dismissAddItemDialog() {
     if (uiState.value.isSaving) return
+    personalPhotoDraft?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
     mutableUiState.update {
@@ -535,6 +543,7 @@ class FridgeViewModel(
   fun saveItem() {
     val state = uiState.value
     if (!state.isAddItemDialogOpen || state.isSaving || state.isScanningBarcode) return
+    if (personalPhotoDraft?.state?.value?.importing == true) return
     val name = state.itemName.trim()
     if (name.isEmpty()) {
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }
@@ -591,6 +600,7 @@ class FridgeViewModel(
                 barcodeScanFailed = false,
                 formError = null)
           }
+          personalPhotoDraft?.discardDraft()
           enrichItemImage(itemId, name)
         }
       } catch (exception: CancellationException) {
@@ -695,6 +705,7 @@ class FridgeViewModel(
   }
 
   override fun onCleared() {
+    personalPhotoDraft?.close()
     barcodeDialogGeneration++
     cancelBarcodeScan()
     confirmationHandlers.values.forEach { it?.dispose() }

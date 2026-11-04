@@ -51,8 +51,12 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.image.AndroidPersonalPhotoDraftStore
 import com.android.sharemate.model.image.CommonsFoodImageRepository
+import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.PersonalPhotoDraftStore
+import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
@@ -75,6 +79,7 @@ import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
@@ -93,6 +98,13 @@ open class MainActivity : ComponentActivity() {
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
+
+  protected open fun createPersonalPhotoRepository(): PersonalPhotoRepository =
+      FirebasePersonalPhotoRepository(
+          FirebaseStorage.getInstance(), FirebaseFirestore.getInstance())
+
+  protected open fun createPersonalPhotoDraftStore(): PersonalPhotoDraftStore =
+      AndroidPersonalPhotoDraftStore(applicationContext)
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -211,7 +223,9 @@ open class MainActivity : ComponentActivity() {
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
-                                                createProductCatalogRepository())
+                                                createProductCatalogRepository(),
+                                            personalPhotoDraftStore =
+                                                createPersonalPhotoDraftStore())
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

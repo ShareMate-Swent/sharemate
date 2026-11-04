@@ -151,4 +151,12 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+    <string name="personal_photo_choose">Choose a personal photo</string>
+    <string name="personal_photo_change">Change personal photo</string>
+    <string name="personal_photo_preview">Selected food photo</string>
+    <string name="personal_photo_remove">Remove selected photo</string>
+    <string name="personal_photo_too_large">Choose a photo smaller than 5 MiB.</string>
+    <string name="personal_photo_unsupported">Choose a JPEG or PNG photo.</string>
+    <string name="personal_photo_invalid">This image cannot be read. Choose another photo.</string>
+    <string name="personal_photo_unreadable">This photo is unavailable. Choose it again.</string>
 </resources>

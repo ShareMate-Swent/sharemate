@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.google.firebase.storage.StreamDownloadTask
@@ -157,6 +158,25 @@ class FirebasePersonalPhotoRepositoryTest {
     assertSame(failure, repository.delete(reference).exceptionOrNull())
     `when`(remote.delete()).thenReturn(Tasks.forResult(null))
     assertTrue(repository.delete(reference).isSuccess)
+  }
+
+  @Test
+  fun idempotentCleanupOnlyAcceptsConfirmedObjectAbsence() = runTest {
+    val missing = mock(StorageException::class.java)
+    `when`(missing.errorCode).thenReturn(StorageException.ERROR_OBJECT_NOT_FOUND)
+    `when`(remote.delete()).thenReturn(Tasks.forException(missing))
+    assertSame(missing, repository.delete(reference).exceptionOrNull())
+    assertTrue(repository.deleteIfPresent(reference).isSuccess)
+
+    val denied = mock(StorageException::class.java)
+    `when`(denied.errorCode).thenReturn(StorageException.ERROR_NOT_AUTHORIZED)
+    `when`(remote.delete()).thenReturn(Tasks.forException(denied))
+    assertSame(denied, repository.deleteIfPresent(reference).exceptionOrNull())
+    val offline = IOException("offline")
+    `when`(remote.delete()).thenReturn(Tasks.forException(offline))
+    assertSame(offline, repository.deleteIfPresent(reference).exceptionOrNull())
+    `when`(remote.delete()).thenReturn(Tasks.forResult(null))
+    assertTrue(repository.deleteIfPresent(reference).isSuccess)
   }
 
   @Test
