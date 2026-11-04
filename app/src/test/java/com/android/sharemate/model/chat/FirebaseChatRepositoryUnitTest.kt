@@ -188,4 +188,19 @@ class FirebaseChatRepositoryUnitTest {
     `when`(minimal.getString("text")).thenReturn("hi")
     assertEquals(Message("x", "u1", "", "hi", null), minimal.toMessageOrNull())
   }
+
+  @Test
+  fun toMessageOrNull_skipsWronglyTypedFields() {
+    val doc = mock(DocumentSnapshot::class.java)
+    `when`(doc.getString("senderId")).thenReturn("u1")
+    `when`(doc.getString("text")).thenReturn("hi")
+    `when`(doc.getString("senderName")).thenThrow(RuntimeException("not a string"))
+    assertNull(doc.toMessageOrNull())
+
+    val badTimestamp = mock(DocumentSnapshot::class.java)
+    `when`(badTimestamp.getString("senderId")).thenReturn("u1")
+    `when`(badTimestamp.getString("text")).thenReturn("hi")
+    `when`(badTimestamp.getTimestamp("timestamp")).thenThrow(RuntimeException("bad"))
+    assertNull(badTimestamp.toMessageOrNull())
+  }
 }

@@ -63,13 +63,21 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
   }
 }
 
-internal fun DocumentSnapshot.toMessageOrNull(): Message? {
-  val senderId = getString("senderId")?.takeIf { it.isNotBlank() } ?: return null
-  val text = getString("text") ?: return null
-  return Message(
-      id = id,
-      senderId = senderId,
-      senderName = getString("senderName").orEmpty(),
-      text = text,
-      timestamp = getTimestamp("timestamp")?.toDate())
-}
+internal fun DocumentSnapshot.toMessageOrNull(): Message? =
+    try {
+      val senderId = getString("senderId")?.takeIf { it.isNotBlank() }
+      val text = getString("text")
+      if (senderId == null || text == null) {
+        null
+      } else {
+        Message(
+            id = id,
+            senderId = senderId,
+            senderName = getString("senderName").orEmpty(),
+            text = text,
+            timestamp = getTimestamp("timestamp")?.toDate())
+      }
+    } catch (_: RuntimeException) {
+      // Wrongly typed fields make the Firestore getters throw; skip the malformed document.
+      null
+    }
