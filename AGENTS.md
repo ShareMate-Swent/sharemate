@@ -31,6 +31,19 @@ A Kotlin/Android sharemate app (`com.android.sharemate`), built with an **MVVM**
 - Commit with an imperative subject of at most 50 characters, capitalized (e.g. `Add user authentication`). Add a body wrapped at 72 characters when the subject is not enough.
 - **Acknowledge your contributors** at the top of the file: credit the AI that wrote it with a `Co-authored-by` line. An AI agent is a contributor, so credit it.
 
+## AI disclosure
+
+- **Describe the AI's involvement** in every PR description: which agent/model was used, what it generated, and what a human verified or changed. Never leave AI usage undisclosed.
+- Keep the `Co-authored-by` credit in commits and at the top of AI-written files.
+
+## Reviewing PRs
+
+- **Question the PR, do not summarise it.** The author already knows what the diff does. A review must challenge it: correctness, edge cases, error handling, missing or weak tests, architecture violations (MVVM, Firebase leaking into ViewModels), security and simplicity.
+- **Comment inline** on the relevant lines of the diff for every concrete finding (bug, risk, question, suggestion). Do not put findings only in a general summary comment.
+- Each inline comment states the problem, why it matters, and a proposed fix or a precise question.
+- Use the overall review body only for a short verdict; never for a recap of the changes.
+- If nothing is wrong, say what was checked and why it is sound, rather than restating the diff.
+
 ## Your role
 
 You provide the goal, the context, the acceptance criteria and the permissions. The agent plans, acts and observes. **You review the diff, and you own every line you submit.** "The agent wrote it" is not a defence.
