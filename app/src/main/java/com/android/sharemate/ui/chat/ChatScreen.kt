@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 
 object ChatTestTags {
@@ -69,7 +70,7 @@ fun ChatContent(
   Column(modifier.fillMaxSize().testTag(ChatTestTags.SCREEN)) {
     Text(
         text = stringResource(R.string.chat_title),
-        modifier = Modifier.padding(ChatLayout.screenPadding),
+        modifier = Modifier.padding(Dimens.spacingM),
         style = MaterialTheme.typography.headlineMedium,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -93,16 +94,14 @@ fun ChatContent(
                 ChatError.LOAD_FAILED -> stringResource(R.string.chat_load_error)
                 ChatError.SEND_FAILED -> stringResource(R.string.chat_send_error)
               },
-          modifier =
-              Modifier.padding(horizontal = ChatLayout.errorHorizontalPadding)
-                  .testTag(ChatTestTags.ERROR),
+          modifier = Modifier.padding(horizontal = Dimens.spacingM).testTag(ChatTestTags.ERROR),
           color = MaterialTheme.colorScheme.error,
           style = MaterialTheme.typography.bodySmall)
     }
     Row(
-        Modifier.fillMaxWidth().padding(ChatLayout.composerPadding),
+        Modifier.fillMaxWidth().padding(Dimens.spacingXs),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(ChatLayout.composerSpacing)) {
+        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
           OutlinedTextField(
               value = state.draft,
               onValueChange = onDraftChange,
@@ -130,7 +129,7 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(ChatTestTags.LIST),
       state = listState,
-      contentPadding = PaddingValues(horizontal = ChatLayout.listHorizontalPadding),
+      contentPadding = PaddingValues(horizontal = Dimens.spacingS),
       verticalArrangement = Arrangement.spacedBy(ChatLayout.messageSpacing)) {
         items(messages, key = { it.id }) { message ->
           MessageBubble(message, own = message.isSentBy(currentUserId))
@@ -151,24 +150,21 @@ private fun MessageBubble(message: Message, own: Boolean) {
             color =
                 if (own) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceVariant) {
-              Column(
-                  Modifier.padding(
-                      horizontal = ChatLayout.bubbleHorizontalPadding,
-                      vertical = ChatLayout.bubbleVerticalPadding)) {
-                    if (!own) {
-                      Text(
-                          message.senderName,
-                          style = MaterialTheme.typography.labelMedium,
-                          color = MaterialTheme.colorScheme.primary)
-                    }
-                    Text(message.text)
-                    message.timestamp?.let {
-                      Text(
-                          DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
-                          style = MaterialTheme.typography.labelSmall,
-                          color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                  }
+              Column(Modifier.padding(horizontal = Dimens.spacingS, vertical = Dimens.spacingXs)) {
+                if (!own) {
+                  Text(
+                      message.senderName,
+                      style = MaterialTheme.typography.labelMedium,
+                      color = MaterialTheme.colorScheme.primary)
+                }
+                Text(message.text)
+                message.timestamp?.let {
+                  Text(
+                      DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+              }
             }
       }
 }
