@@ -57,6 +57,7 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -211,7 +212,11 @@ open class MainActivity : ComponentActivity() {
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
-                                                createProductCatalogRepository())
+                                                createProductCatalogRepository(),
+                                            memberNameRepository =
+                                                FirebaseMemberNameRepository(
+                                                    FirebaseFirestore.getInstance()),
+                                            currentUserDisplayName = session.displayName)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

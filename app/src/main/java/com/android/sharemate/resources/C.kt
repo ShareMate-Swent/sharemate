@@ -29,6 +29,8 @@ object C {
     const val fridge_form_error = "fridge_form_error"
     const val fridge_inventory_error = "fridge_inventory_error"
     const val fridge_item_list = "fridge_item_list"
+    const val fridge_sharing_badge_prefix = "fridge_sharing_badge_"
+    const val fridge_owner_name_prefix = "fridge_owner_name_"
     const val fridge_item_prefix = "fridge_item_"
     const val fridge_image = "fridge_image"
     const val fridge_image_loading = "fridge_image_loading"
