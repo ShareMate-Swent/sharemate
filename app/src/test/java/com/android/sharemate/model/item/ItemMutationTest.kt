@@ -7,6 +7,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Date
 import kotlinx.coroutines.CoroutineStart
@@ -40,6 +41,31 @@ class ItemMutationTest {
     val result = repository.updateItem("item", ItemEdit(" Milk ", 2, null, null))
     assertTrue((result as ItemWrite.Queued).confirmation.await().isSuccess)
     verify(document).update(fields)
+    verifyNoMoreInteractions(document)
+  }
+
+  @Test
+  fun optionalSharingIsWrittenAtomicallyWithOrdinaryFieldsAndLegacyCleanup() = runBlocking {
+    for (sharing in ItemSharing.values()) {
+      val fields =
+          mapOf(
+              "name" to "Milk",
+              "quantity" to 2,
+              "category" to null,
+              "expirationDate" to null,
+              "sharing" to sharing.name,
+              "shared" to FieldValue.delete())
+      val pending = TaskCompletionSource<Void>()
+      `when`(document.update(fields)).thenReturn(pending.task)
+      val write =
+          repository.updateItem("item", ItemEdit(" Milk ", 2, null, null, sharing))
+              as ItemWrite.Queued
+      assertFalse(write.confirmation.isCompleted)
+      val denied = IllegalStateException("Permission denied")
+      pending.setException(denied)
+      assertSame(denied, write.confirmation.await().exceptionOrNull())
+      verify(document).update(fields)
+    }
     verifyNoMoreInteractions(document)
   }
 
