@@ -11,6 +11,9 @@ object BalanceCalculator {
    * member IDs have no additional effect. Nets and debtor/creditor matching use lexical ID order,
    * independent of input iteration order. Greedy matching does not guarantee minimum debt edges.
    *
+   * [HouseholdFinanceSnapshot] validates that every record matches its household at construction
+   * and defensively copies its collections. This calculation relies on that household invariant.
+   *
    * @throws IllegalArgumentException for blank current member IDs or nonempty settlements, whose
    *   balance effects are not supported yet. Settlements are never silently ignored.
    * @throws ArithmeticException when a final net or debt cannot fit in Long cents. Intermediate

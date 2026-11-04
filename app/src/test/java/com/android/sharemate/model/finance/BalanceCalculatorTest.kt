@@ -228,6 +228,15 @@ class BalanceCalculatorTest {
     }
   }
 
+  @Test
+  fun crossHouseholdExpenseIsRejectedWhenConstructingCalculatorInput() {
+    val foreign = SharedExpense("foreign", "other", "alice", 100, mapOf("bob" to 100L))
+    // The snapshot enforces household coherence before the calculator can receive its input.
+    assertThrows(IllegalArgumentException::class.java) {
+      HouseholdFinanceSnapshot("home", listOf(foreign), emptyList())
+    }
+  }
+
   private fun multiPersonExpenses() =
       listOf(
           expense(
