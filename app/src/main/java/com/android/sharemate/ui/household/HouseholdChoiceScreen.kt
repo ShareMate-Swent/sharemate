@@ -34,8 +34,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [HouseholdChoiceScreen]. */
 object HouseholdChoiceTestTags {
@@ -53,13 +53,13 @@ fun HouseholdChoiceScreen(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(24.dp),
+              .padding(Dimens.spacingL),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    Spacer(Modifier.height(40.dp))
+    Spacer(Modifier.height(HouseholdLayout.headerTopSpacing))
     Box(
         modifier =
-            Modifier.size(44.dp)
+            Modifier.size(HouseholdLayout.logoSize)
                 .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
@@ -67,23 +67,23 @@ fun HouseholdChoiceScreen(
           imageVector = Icons.Outlined.Kitchen,
           contentDescription = null,
           tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(22.dp),
+          modifier = Modifier.size(HouseholdLayout.logoIconSize),
       )
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Text(
         text = stringResource(R.string.household_choice_title),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.Bold,
         textAlign = TextAlign.Center,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Dimens.spacingXs))
     Text(
         text = stringResource(R.string.household_choice_description),
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
-        modifier = Modifier.padding(horizontal = 32.dp),
+        modifier = Modifier.padding(horizontal = Dimens.spacingXl),
     )
     Spacer(Modifier.weight(1f))
     ChoiceCard(
@@ -94,7 +94,7 @@ fun HouseholdChoiceScreen(
         onClick = onCreateHousehold,
         modifier = Modifier.testTag(HouseholdChoiceTestTags.CREATE),
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     ChoiceCard(
         icon = Icons.Outlined.Key,
         title = stringResource(R.string.join_a_household),
@@ -126,43 +126,45 @@ private fun ChoiceCard(
   Surface(
       onClick = onClick,
       modifier = modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(28.dp),
+      shape = RoundedCornerShape(HouseholdLayout.cardCornerRadius),
       color = colors.surfaceContainerLowest,
-      border = BorderStroke(1.dp, colors.primaryContainer),
-      shadowElevation = 2.dp,
+      border = BorderStroke(Dimens.borderWidth, colors.primaryContainer),
+      shadowElevation = Dimens.cardElevation,
   ) {
     Row(
-        modifier = Modifier.heightIn(min = 156.dp).padding(16.dp),
+        modifier =
+            Modifier.heightIn(min = HouseholdLayout.choiceCardMinHeight)
+                .padding(Dimens.cardPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Box(
           modifier =
-              Modifier.size(56.dp)
+              Modifier.size(HouseholdLayout.choiceIconBoxSize)
                   .background(
                       if (emphasized) colors.primaryContainer else colors.surfaceVariant,
-                      RoundedCornerShape(16.dp)),
+                      RoundedCornerShape(HouseholdLayout.choiceIconBoxCornerRadius)),
           contentAlignment = Alignment.Center,
       ) {
         Icon(imageVector = icon, contentDescription = null, tint = colors.primary)
       }
-      Spacer(Modifier.width(16.dp))
+      Spacer(Modifier.width(Dimens.spacingM))
       Column(modifier = Modifier.weight(1f)) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(Dimens.spacingXxs))
         Text(
             text = description,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
         )
       }
-      Spacer(Modifier.width(12.dp))
+      Spacer(Modifier.width(Dimens.spacingS))
       Box(
           modifier =
-              Modifier.size(36.dp)
+              Modifier.size(HouseholdLayout.choiceArrowBoxSize)
                   .background(
                       if (emphasized) colors.primary else colors.surfaceVariant, CircleShape),
           contentAlignment = Alignment.Center,
@@ -171,7 +173,7 @@ private fun ChoiceCard(
             imageVector = Icons.Filled.ChevronRight,
             contentDescription = null,
             tint = if (emphasized) colors.onPrimary else colors.primary,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(HouseholdLayout.choiceArrowIconSize),
         )
       }
     }
