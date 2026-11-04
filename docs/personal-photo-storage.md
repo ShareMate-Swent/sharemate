@@ -27,8 +27,9 @@ The photo's immutable `itemOwnerId` must match the current item's owner. Recreat
 under a different owner cannot expose its old photos; absent/forged metadata is rejected. Objects
 uploaded before this binding was introduced need administrative cleanup or trusted migration.
 The item owner or an authorized household member can create/read/delete photos. Private fridges
-require the creator; shared fridges require `type == SHARED`. Item `sharing` is irrelevant to
-read authorization, exactly as in `firestore.rules`. A forged user profile is insufficient.
+require the creator; Storage treats a missing `type` as `SHARED` for legacy compatibility.
+Item `sharing` is irrelevant to read authorization, as in `firestore.rules`. A forged user
+profile is insufficient.
 Listing, overwrites and metadata updates are denied. No public/bearer URL is returned or used.
 Rules validate size and declared MIME type; they cannot inspect pixels. Client signature checks
 are not full decoding or server-side content inspection. HEIC/WebP need future conversion.
@@ -36,7 +37,10 @@ are not full decoding or server-side content inspection. HEIC/WebP need future c
 Delete photos **before** deleting the item. After item deletion the rules deny access, including
 client cleanup; administrative orphan cleanup, attachment consistency, retries, compression,
 EXIF removal and clearing in-memory images at logout remain future integration responsibilities.
-Changing membership denies subsequent requests; it cannot retract bytes already downloaded.
+Leaving a household blocks subsequent authenticated SDK reads. A previously obtained tokenized
+download URL can remain usable until its token is revoked; membership changes do not revoke it.
+See [Firebase's download URL contract](https://firebase.google.com/docs/reference/android/com/google/firebase/storage/StorageReference#getDownloadUrl()).
+Bytes already downloaded cannot be retracted.
 
 ## Local verification and remote prerequisites
 

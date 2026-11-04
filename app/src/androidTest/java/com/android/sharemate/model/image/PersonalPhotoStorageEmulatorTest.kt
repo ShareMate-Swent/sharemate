@@ -86,25 +86,38 @@ class PersonalPhotoStorageEmulatorTest {
     }
   }
 
-  private fun seedPrivateMembers(home: String, outsider: String) {
+  /** Emulator-only partial update; omitted fields in the update mask are deleted. */
+  private fun patchHousehold(home: String, field: String, fieldsJson: String) {
     val projectId = checkNotNull(firestore.app.options.projectId)
     val url =
-        "http://${FirebaseEmulator.HOST}:8080/v1/projects/$projectId/databases/(default)/documents/households/$home?updateMask.fieldPaths=memberIds"
+        "http://${FirebaseEmulator.HOST}:8080/v1/projects/$projectId/databases/(default)/documents/households/$home?updateMask.fieldPaths=$field"
     val connection = URL(url).openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "PATCH"
       connection.setRequestProperty("Authorization", "Bearer owner")
       connection.setRequestProperty("Content-Type", "application/json")
       connection.doOutput = true
-      connection.outputStream.use {
-        it.write(
-            """{"fields":{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}}"""
-                .toByteArray())
-      }
+      connection.outputStream.use { it.write("""{"fields":$fieldsJson}""".toByteArray()) }
       check(connection.responseCode in 200..299)
     } finally {
       connection.disconnect()
     }
+  }
+
+  @Test
+  fun nonOwnerMemberReadsPhotoInHouseholdWithoutType() = runBlocking {
+    val homes = HouseholdRepositoryFirestore(firestore)
+    val home = homes.createHousehold("Legacy home", owner)
+    val member = FirebaseEmulator.signInAs("photo-legacy-member")
+    homes.joinHousehold(home.inviteCode, member)
+    assertNotEquals(owner, member)
+    FirebaseEmulator.signInAs("photo-owner")
+    createItem(home.id)
+    val photo = upload()
+    // Remove type after setup to isolate Storage compatibility from Firestore's schema policy.
+    patchHousehold(home.id, "type", "{}")
+    FirebaseEmulator.signInAs("photo-legacy-member")
+    assertArrayEquals(png, repository.load(photo).getOrThrow())
   }
 
   @Test
@@ -160,7 +173,10 @@ class PersonalPhotoStorageEmulatorTest {
       val reference = upload()
       val outsider = FirebaseEmulator.signInAs("photo-outsider")
       if (home != null) {
-        seedPrivateMembers(home, outsider)
+        patchHousehold(
+            home,
+            "memberIds",
+            """{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}""")
       }
       denied(repository.load(reference))
       denied(repository.delete(reference))
