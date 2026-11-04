@@ -5,6 +5,46 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReceiptParserTest {
+  private fun parseRows(vararg rows: String) =
+      ReceiptParser.parse(
+          rows.mapIndexed { index, row -> ReceiptLine(row, 0, index * 20, index * 20 + 10) })
+
+  @Test
+  fun readsMigrosTaxGroupsAndPromotionMarkersUntilTotal() {
+    assertEquals(
+        listOf(
+            ReceiptItem("Knoblauch", 90),
+            ReceiptItem("MClass Landjäger ger.", 405),
+            ReceiptItem("Asiago", 315)),
+        parseRows(
+            "Knoblauch 0.90 1",
+            "SPZ MClass Landjäger ger. 4.05 1",
+            "AKT Asiago 3.15 2",
+            "TOTAL 8.10",
+            "M CARD 8.10"))
+  }
+
+  @Test
+  fun keepsInlineQuantityProductsAndUsesPriorLabelForQuantityOnlyRows() {
+    assertEquals(
+        listOf(ReceiptItem("Lait", 240), ReceiptItem("Croissant", 240), ReceiptItem("Pain", 310)),
+        parseRows(
+            "TOTALENERGIES Ecublens",
+            "Lait",
+            "2.40 A",
+            "2x Croissant 2.40",
+            "Pain",
+            "1 x 3.10 3.10"))
+  }
+
+  @Test
+  fun orphanPricesDoNotTurnReceiptHeadersIntoProducts() {
+    assertEquals(
+        emptyList<ReceiptItem>(),
+        parseRows(
+            "Migros Lausanne", "1 x 3.10 3.10", "Cashier 12", "2.40", "Date 04.11.2026", "1.10"))
+  }
+
   @Test
   fun pairsColumnsByHeightAndIgnoresTotals() {
     val lines =
