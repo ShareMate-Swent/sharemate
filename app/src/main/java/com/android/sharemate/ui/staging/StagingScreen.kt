@@ -37,11 +37,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.household.HouseholdTopBar
+import com.android.sharemate.ui.theme.Dimens
 
 object StagingTestTags {
   const val BACK = "staging_back"
@@ -97,7 +97,9 @@ fun StagingContent(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(horizontal = 24.dp, vertical = 16.dp),
+              .padding(
+                  horizontal = Dimens.screenHorizontalPadding,
+                  vertical = Dimens.screenVerticalPadding),
   ) {
     HouseholdTopBar(
         title = stringResource(R.string.staging_title),
@@ -109,7 +111,7 @@ fun StagingContent(
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Box(Modifier.weight(1f).fillMaxWidth()) {
       if (state.items.isEmpty()) {
         Text(
@@ -121,7 +123,7 @@ fun StagingContent(
       } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag(StagingTestTags.LIST),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
         ) {
           items(state.items, key = { it.id }) { item ->
             StagedItemRow(
@@ -133,7 +135,7 @@ fun StagingContent(
         }
       }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Button(
         onClick = onConfirm,
         enabled = state.canConfirm,
@@ -191,7 +193,7 @@ private fun StagedItemCard(item: StagedItem, onClick: () -> Unit, onDelete: () -
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(Dimens.cardPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Column(Modifier.weight(1f)) {
@@ -208,7 +210,7 @@ private fun StagedItemCard(item: StagedItem, onClick: () -> Unit, onDelete: () -
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
-      Spacer(Modifier.width(12.dp))
+      Spacer(Modifier.width(Dimens.spacingS))
       Text(
           text =
               item.priceCents?.let { stringResource(R.string.staging_price, Prices.format(it)) }

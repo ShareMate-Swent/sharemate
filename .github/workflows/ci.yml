@@ -1,4 +1,5 @@
 # Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+# Co-authored-by: OpenAI Codex <noreply@openai.com>
 name: ShareMate CI
 
 on:
@@ -66,7 +67,7 @@ jobs:
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: adb reverse tcp:9099 tcp:9099 && firebase emulators:exec --only auth,firestore --project sharemate-swent "./gradlew connectedDebugAndroidTest --no-daemon --stacktrace"
+          script: adb reverse tcp:9099 tcp:9099 && firebase emulators:exec --only auth,firestore,storage --project sharemate-swent "./gradlew connectedDebugAndroidTest --no-daemon --stacktrace"
 
       - name: Generate coverage and debug lint reports
         run: ./gradlew :app:jacocoTestReport :app:lintDebug --no-daemon --stacktrace
