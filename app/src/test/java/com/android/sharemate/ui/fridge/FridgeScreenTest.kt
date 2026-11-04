@@ -362,7 +362,7 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("Owner").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
-    composeRule.onNodeWithText("Owner: owner-1").performClick()
+    composeRule.onNodeWithTag("fridge_owner_filter").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_all").performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals("Dairy", viewModel.selectedCategory.value)

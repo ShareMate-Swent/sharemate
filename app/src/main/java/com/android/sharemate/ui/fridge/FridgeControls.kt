@@ -54,6 +54,7 @@ internal fun FridgeControls(
     selectedOwnerId: String?,
     categories: List<String>,
     ownerIds: List<String>,
+    ownerLabels: Map<String, String>,
     onSortOrderChange: ((FridgeSortOrder) -> Unit)?,
     onCategoryFilterChange: ((String?) -> Unit)?,
     onOwnerFilterChange: ((String?) -> Unit)?,
@@ -101,7 +102,8 @@ internal fun FridgeControls(
       verticalAlignment = Alignment.CenterVertically) {
         SortControl(sortOrder, hasFunctionalFilters, onSortOrderChange)
         Box(Modifier.weight(1f)) {
-          OwnerControl(selectedOwnerId, ownerIds, hasFunctionalFilters, onOwnerFilterChange)
+          OwnerControl(
+              selectedOwnerId, ownerIds, ownerLabels, hasFunctionalFilters, onOwnerFilterChange)
         }
         TextButton(
             onClick = { onAddItem?.invoke() },
@@ -197,19 +199,23 @@ private fun SortControl(
 private fun OwnerControl(
     selectedOwnerId: String?,
     ownerIds: List<String>,
+    ownerLabels: Map<String, String>,
     enabled: Boolean,
     onSelected: ((String?) -> Unit)?,
 ) {
   var expanded by remember { mutableStateOf(false) }
   val label =
       if (selectedOwnerId == null) stringResource(R.string.fridge_owner_filter)
-      else stringResource(R.string.fridge_owner_filter_selected, selectedOwnerId)
+      else
+          stringResource(
+              R.string.fridge_owner_filter_selected,
+              ownerLabels[selectedOwnerId] ?: ownerLabel(null, false))
   Box {
     TextButton(
         onClick = { expanded = true },
         enabled = enabled && (ownerIds.isNotEmpty() || selectedOwnerId != null),
         modifier =
-            Modifier.semantics {
+            Modifier.testTag("fridge_owner_filter").semantics {
               selected = selectedOwnerId != null
               contentDescription = label
             }) {
@@ -229,7 +235,7 @@ private fun OwnerControl(
           })
       ownerIds.forEach { ownerId ->
         DropdownMenuItem(
-            text = { Text(ownerId) },
+            text = { Text(ownerLabels[ownerId] ?: ownerLabel(null, false)) },
             modifier = Modifier.testTag("fridge_filter_owner_$ownerId"),
             onClick = {
               onSelected?.invoke(ownerId)

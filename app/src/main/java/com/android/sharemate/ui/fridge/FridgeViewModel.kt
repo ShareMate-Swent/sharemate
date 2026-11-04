@@ -21,6 +21,8 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.user.MemberNameRepository
+import com.android.sharemate.model.user.ownerDisplayName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -48,9 +50,15 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector,
     private val barcodeScanner: BarcodeScanner,
-    private val productCatalogRepository: ProductCatalogRepository
+    private val productCatalogRepository: ProductCatalogRepository,
+    private val memberNameRepository: MemberNameRepository? = null,
+    currentUserDisplayName: String? = null,
 ) : ViewModel() {
-  private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
+  private val ownName = ownerDisplayName(currentUserDisplayName)
+  private val ownNames = ownName?.let { mapOf(userId to it) }.orEmpty()
+  private val mutableUiState =
+      MutableStateFlow(
+          FridgeUiState(isLoading = true, currentUserId = userId, ownerNames = ownNames))
   val uiState = mutableUiState.asStateFlow()
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
@@ -99,6 +107,28 @@ class FridgeViewModel(
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId == null || householdId.isNotBlank()) {
       "A household ID must be non-blank when provided"
+    }
+    if (householdId != null && memberNameRepository != null) {
+      viewModelScope.launch {
+        try {
+          memberNameRepository.observeNames(householdId, userId).collect { names ->
+            mutableUiState.update { it.copy(ownerNames = names + ownNames) }
+          }
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          mutableUiState.update { it.copy(ownerNames = ownNames) }
+        }
+      }
+      viewModelScope.launch {
+        try {
+          memberNameRepository.publishOwnName(householdId, userId, ownName)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          /* Name availability never blocks inventory. */
+        }
+      }
     }
     viewModelScope.launch {
       try {

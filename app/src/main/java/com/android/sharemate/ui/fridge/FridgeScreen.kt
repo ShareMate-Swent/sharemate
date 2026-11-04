@@ -104,6 +104,10 @@ fun FridgeScreen(
         selectedOwnerId = selectedOwnerId,
         categories = categories,
         ownerIds = ownerIds,
+        ownerLabels =
+            ownerIds.associateWith {
+              ownerLabel(uiState.ownerNameFor(it), it == uiState.currentUserId)
+            },
         onSortOrderChange = onSortOrderChange,
         onCategoryFilterChange = onCategoryFilterChange,
         onOwnerFilterChange = onOwnerFilterChange,
@@ -173,6 +177,7 @@ fun FridgeScreen(
                   items(activeItems, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
+                        ownership = uiState.ownershipFor(item),
                         editEnabled =
                             onEditItem != null &&
                                 !uiState.isSaving &&
