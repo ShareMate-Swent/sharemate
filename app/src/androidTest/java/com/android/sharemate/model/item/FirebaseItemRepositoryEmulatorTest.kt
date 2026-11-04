@@ -107,7 +107,7 @@ class FirebaseItemRepositoryEmulatorTest {
   @Test
   fun imageWriteDeniedByRulesReturnsErrorAndPreservesDocument() = runBlocking {
     val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
-    // Simulate legacy invalid data: reading is allowed, but any update fails validation.
+    // Simulate invalid stored data: reading is allowed, but any update fails validation.
     val fields = JSONObject().put("quantity", field("integerValue", "0"))
     assertEquals(
         200,
@@ -197,29 +197,6 @@ class FirebaseItemRepositoryEmulatorTest {
     confirm(repository.deleteItemQueued(id))
     assertEquals(404, adminRequest(id).first)
     confirm(repository.deleteItemQueued(id))
-  }
-
-  @Test
-  fun legacyDocumentsLoadDefaultsAndCanBeEdited() = runBlocking {
-    val id = UUID.randomUUID().toString()
-    await(
-        document(id)
-            .set(
-                mapOf(
-                    "name" to "Legacy",
-                    "ownerId" to owner,
-                    "householdId" to null,
-                    "category" to "Pantry")))
-    val legacy = await(document(id).get(Source.SERVER)).toItemOrNull()
-    assertEquals(Item(id, "Legacy", owner, category = "Pantry"), legacy)
-    assertTrue(
-        withTimeout(10_000) {
-              repository.getPrivateItems(owner).first { items -> items.any { it.id == id } }
-            }
-            .any { it.id == id && it.quantity == 1 && it.status == ItemStatus.ACTIVE })
-    confirm(repository.updateItem(id, ItemEdit("Legacy edited", 4, "Pantry", null)))
-    confirm(repository.setItemStatus(id, ItemStatus.EATEN))
-    assertEquals(4, await(document(id).get(Source.SERVER)).toItemOrNull()?.quantity)
   }
 
   @Test
@@ -411,40 +388,6 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
-  fun legacyBooleansRemainReadableAndAreRemovedOnSharingWrites() = runBlocking {
-    val home = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
-    for (householdId in listOf(null, home.id)) {
-      for (legacyBoolean in listOf(false, true)) {
-        for (legacySharing in listOf(null, ItemSharing.SHARED, ItemSharing.PERSONAL)) {
-          val doc = document(UUID.randomUUID().toString())
-          val fields =
-              mutableMapOf<String, Any?>(
-                  "name" to "Legacy milk",
-                  "ownerId" to owner,
-                  "householdId" to householdId,
-                  "shared" to legacyBoolean)
-          if (legacySharing != null) fields["sharing"] = legacySharing.name
-          await(doc.set(fields))
-          val original = await(doc.get(Source.SERVER)).toItemOrNull()!!
-          assertEquals(
-              legacySharing
-                  ?: if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED,
-              original.sharing)
-          for (next in listOf(ItemSharing.PERSONAL, ItemSharing.SHARED)) {
-            confirm(repository.setItemSharing(doc.id, next))
-            val stored = await(doc.get(Source.SERVER))
-            assertEquals(next.name, stored.getString("sharing"))
-            assertFalse(stored.contains("shared"))
-            assertEquals(owner, stored.getString("ownerId"))
-            assertEquals(householdId, stored.getString("householdId"))
-            assertEquals(original.copy(sharing = next), stored.toItemOrNull())
-          }
-        }
-      }
-    }
-  }
-
-  @Test
   fun personalHouseholdItemsRemainVisibleButOnlyOwnerChangesSharing() = runBlocking {
     val households = HouseholdRepositoryFirestore(firestore)
     val home = households.createHousehold("Home", owner)
@@ -456,8 +399,6 @@ class FirebaseItemRepositoryEmulatorTest {
                     ownerId = owner,
                     householdId = home.id,
                     sharing = ItemSharing.PERSONAL)))
-    // Old SDK writes may contain this contradictory derived field; it grants no authority.
-    await(document(id).update("shared", true))
     val member = FirebaseEmulator.signInAs("sharing-member")
     households.joinHousehold(home.inviteCode, member)
     assertEquals(
@@ -470,7 +411,6 @@ class FirebaseItemRepositoryEmulatorTest {
     assertWriteDenied(repository.setItemSharing(id, ItemSharing.SHARED))
     val deniedSnapshot = await(document(id).get(Source.SERVER))
     assertEquals("PERSONAL", deniedSnapshot.getString("sharing"))
-    assertEquals(true, deniedSnapshot.getBoolean("shared"))
     assertEquals(owner, deniedSnapshot.getString("ownerId"))
     assertEquals(home.id, deniedSnapshot.getString("householdId"))
     assertDenied(document(id).update("sharing", com.google.firebase.firestore.FieldValue.delete()))
@@ -488,29 +428,36 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
-  fun legacySharingDefaultsAndInvalidSharingAreEnforced() = runBlocking {
+  fun invalidSharingIsEnforced() = runBlocking {
     val home = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
-    val doc = document("legacy-sharing")
-    val legacy = mapOf("name" to "Milk", "ownerId" to owner, "householdId" to home.id)
-    await(doc.set(legacy))
+    val doc = document("sharing-item")
+    val stored =
+        mapOf(
+            "name" to "Milk",
+            "ownerId" to owner,
+            "householdId" to home.id,
+            "quantity" to 1,
+            "status" to "ACTIVE",
+            "sharing" to "SHARED")
+    await(doc.set(stored))
     assertEquals(ItemSharing.SHARED, await(doc.get(Source.SERVER)).toItemOrNull()!!.sharing)
     for (bad in listOf(null, "INVALID", 1L, true)) {
       assertDenied(doc.update("sharing", bad))
-      assertDenied(document("invalid-sharing").set(legacy + ("sharing" to bad)))
+      assertDenied(document("invalid-sharing").set(stored + ("sharing" to bad)))
     }
-    val member = FirebaseEmulator.signInAs("legacy-sharing-member")
+    val member = FirebaseEmulator.signInAs("sharing-item-member")
     HouseholdRepositoryFirestore(firestore).joinHousehold(home.inviteCode, member)
     assertWriteDenied(repository.setItemSharing(doc.id, ItemSharing.PERSONAL))
     FirebaseEmulator.signInAs("item-owner")
     confirm(repository.setItemSharing(doc.id, ItemSharing.PERSONAL))
     assertEquals(home.id, await(doc.get(Source.SERVER)).getString("householdId"))
     val standalone = document("standalone-sharing")
-    await(standalone.set(mapOf("name" to "Private", "ownerId" to owner)))
+    await(standalone.set(Item(name = "Private", ownerId = owner)))
     assertEquals(
         ItemSharing.PERSONAL, await(standalone.get(Source.SERVER)).toItemOrNull()!!.sharing)
     confirm(repository.setItemSharing(standalone.id, ItemSharing.SHARED))
     assertNull(await(standalone.get(Source.SERVER)).getString("householdId"))
-    FirebaseEmulator.signInAs("legacy-sharing-member")
+    FirebaseEmulator.signInAs("sharing-item-member")
     assertDenied(standalone.get(Source.SERVER))
   }
 

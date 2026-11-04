@@ -51,17 +51,11 @@ class HouseholdRepositoryFirestore(
       val inviteCode = if (type == FridgeType.SHARED) inviteCodeGenerator.generate() else ""
       if (type == FridgeType.SHARED) {
         val existing =
-            try {
-              firestore
-                  .collection(FirestoreCollections.INVITE_CODES)
-                  .document(inviteCode)
-                  .get(Source.SERVER)
-                  .await()
-            } catch (exception: FirebaseFirestoreException) {
-              // Legacy private invite codes are hidden from other users; retry unavailable codes.
-              if (exception.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) return@repeat
-              throw exception
-            }
+            firestore
+                .collection(FirestoreCollections.INVITE_CODES)
+                .document(inviteCode)
+                .get(Source.SERVER)
+                .await()
         if (existing.exists()) return@repeat
       }
 
@@ -161,7 +155,7 @@ class HouseholdRepositoryFirestore(
             .whereArrayContains(MEMBER_IDS_FIELD, userId)
             .get()
             .await()
-    if (memberships.documents.any { it.getString("type") == FridgeType.PRIVATE.name }) {
+    if (memberships.documents.any { it.getString(TYPE_FIELD) == FridgeType.PRIVATE.name }) {
       throw PrivateHouseholdLeaveException()
     }
     val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
@@ -201,6 +195,7 @@ class HouseholdRepositoryFirestore(
     const val HOUSEHOLD_ID_FIELD = "householdId"
     const val INVITE_CODE_FIELD = "inviteCode"
     const val MEMBER_IDS_FIELD = "memberIds"
+    const val TYPE_FIELD = "type"
     const val MAX_INVITE_CODE_ATTEMPTS = 10
   }
 }

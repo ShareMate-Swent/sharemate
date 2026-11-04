@@ -56,21 +56,6 @@ class HouseholdInviteCodeCollisionTest {
   }
 
   @Test
-  fun deniedReadRetriesAndStoresOnlyTheNextCode() =
-      runBlocking<Unit> {
-        `when`(codeReference.get(Source.SERVER))
-            .thenReturn(Tasks.forException(denied()), Tasks.forResult(missing))
-
-        val created = repository.createHousehold("Home", "creator")
-
-        assertEquals("FREE22", created.inviteCode)
-        assertEquals(listOf("creator"), created.memberIds)
-        verify(generator, times(2)).generate()
-        verify(batch).set(householdReference, created)
-        verify(batch, times(1)).commit()
-      }
-
-  @Test
   fun readableTakenCodeStillRetries() =
       runBlocking<Unit> {
         val taken = mock(DocumentSnapshot::class.java)
@@ -82,20 +67,6 @@ class HouseholdInviteCodeCollisionTest {
         verify(generator, times(2)).generate()
         verify(batch, times(1)).commit()
       }
-
-  @Test
-  fun tenDeniedReadsExhaustAttemptsWithoutWriting() {
-    `when`(codeReference.get(Source.SERVER)).thenReturn(Tasks.forException(denied()))
-
-    assertThrows(IllegalStateException::class.java) {
-      runBlocking { repository.createHousehold("Home", "creator") }
-    }
-
-    verify(generator, times(10)).generate()
-    verify(codeReference, times(10)).get(Source.SERVER)
-    verify(firestore, never()).batch()
-    verifyNoInteractions(users, batch)
-  }
 
   @Test
   fun unrelatedReadFailuresPropagateWithoutRetryOrWrites() {
@@ -376,5 +347,5 @@ class HouseholdInviteCodeCollisionTest {
       }
 
   private fun denied() =
-      FirebaseFirestoreException("hidden code", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+      FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
 }

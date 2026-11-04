@@ -157,6 +157,7 @@ class FridgeImageNavigationTest {
           }
           composable(TopLevelDestination.RECIPES.route) { Text("Recipes") }
           composable(TopLevelDestination.RECEIPTS.route) { Text("Receipts") }
+          composable(TopLevelDestination.CHAT.route) { Text("Chat") }
           composable(TopLevelDestination.SETTINGS.route) { Text("Settings") }
         }
       } else Text("Signed out")
