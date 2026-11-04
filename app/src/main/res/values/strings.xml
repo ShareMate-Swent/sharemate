@@ -152,4 +152,12 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+
+    <string name="chat_title">Chat</string>
+    <string name="chat_empty">No messages yet. Say hello!</string>
+    <string name="chat_load_error">Could not load messages.</string>
+    <string name="chat_send_error">Message not sent. Try again.</string>
+    <string name="chat_input_placeholder">Message</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_default_sender_name">Member</string>
 </resources>
