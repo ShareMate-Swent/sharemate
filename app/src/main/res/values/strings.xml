@@ -127,6 +127,13 @@
     <string name="leave">Leave</string>
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>
+    <string name="staging_title">Review items</string>
+    <string name="staging_description">Check the scanned items before saving them.</string>
+    <string name="staging_empty">No items to review.</string>
+    <string name="staging_quantity">Qty %1$d</string>
+    <string name="staging_price">CHF %1$s</string>
+    <string name="staging_no_price">No price</string>
+    <string name="staging_confirm">Confirm</string>
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
