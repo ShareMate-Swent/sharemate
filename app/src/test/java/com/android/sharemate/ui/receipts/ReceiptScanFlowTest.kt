@@ -7,9 +7,12 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.SavedStateHandle
+import com.android.sharemate.R
 import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.receipt.ReceiptItem
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -52,26 +55,26 @@ class ReceiptScanFlowTest {
           else listOf(ReceiptItem("Lait", 240), ReceiptItem("Pain", 310))
         }
       }
-      compose.onNodeWithText("Scan Receipt").performClick()
+      compose.onNodeWithText(app.getString(R.string.scan_receipt)).performClick()
       fun selectAndConfirm() {
         compose.runOnIdle { model.select("content://picker/receipt") }
         compose.waitUntil(10000) { !model.state.value.busy && model.state.value.uri != null }
-        compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+        compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
       }
       selectAndConfirm()
       compose.waitUntil(10000) { model.state.value.confirmationFailed && !model.state.value.busy }
-      compose.onNodeWithText("We couldn't read this receipt.", substring = true).assertExists()
-      compose.onNodeWithText("Review items").assertDoesNotExist()
+      compose.onNodeWithText(app.getString(R.string.receipt_unreadable)).assertExists()
+      compose.onNodeWithText(app.getString(R.string.staging_title)).assertDoesNotExist()
       selectAndConfirm()
       compose.waitUntil(10000) { model.state.value.confirmed && !model.state.value.busy }
-      compose.onNodeWithText("Review items").assertExists()
+      compose.onNodeWithText(app.getString(R.string.staging_title)).assertExists()
       compose.onNodeWithText("Lait").assertExists()
       compose.onNodeWithText("Pain").assertExists()
       compose.onNodeWithText("CHF 2.40").assertExists()
-      compose.onNodeWithText("Confirm").performClick()
-      compose.onNodeWithText("Scan Receipt").assertExists()
+      compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+      compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertExists()
       restoration.emulateSavedInstanceStateRestore()
-      compose.onNodeWithText("Review items").performClick()
+      compose.onNodeWithText(app.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Lait").assertExists()
       compose.onNodeWithText("CHF 2.40").assertExists()
       compose.onNodeWithText("CHF 3.10").assertExists()
