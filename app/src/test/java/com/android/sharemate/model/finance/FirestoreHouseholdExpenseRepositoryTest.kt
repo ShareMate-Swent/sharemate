@@ -22,10 +22,15 @@ class FirestoreHouseholdExpenseRepositoryTest {
   private val household = mock(DocumentReference::class.java)
   private val expenses = mock(CollectionReference::class.java)
   private val registration = mock(ListenerRegistration::class.java)
+  private val parentRegistration = mock(ListenerRegistration::class.java)
   @Suppress("UNCHECKED_CAST")
   private val callback =
       ArgumentCaptor.forClass(EventListener::class.java)
           as ArgumentCaptor<EventListener<QuerySnapshot>>
+  @Suppress("UNCHECKED_CAST")
+  private val parentCallback =
+      ArgumentCaptor.forClass(EventListener::class.java)
+          as ArgumentCaptor<EventListener<DocumentSnapshot>>
   private val repository = FirestoreHouseholdExpenseRepository(firestore)
 
   @Before
@@ -33,6 +38,8 @@ class FirestoreHouseholdExpenseRepositoryTest {
     `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(households)
     `when`(households.document("home")).thenReturn(household)
     `when`(household.collection(FirestoreCollections.EXPENSES)).thenReturn(expenses)
+    `when`(household.addSnapshotListener(eq(MetadataChanges.INCLUDE), parentCallback.capture()))
+        .thenReturn(parentRegistration)
     `when`(expenses.addSnapshotListener(eq(MetadataChanges.INCLUDE), callback.capture()))
         .thenReturn(registration)
   }
@@ -51,6 +58,9 @@ class FirestoreHouseholdExpenseRepositoryTest {
     val received = mutableListOf<List<SharedExpense>>()
     val observer = launch { repository.observeHouseholdExpenses("home").collect { received += it } }
     runCurrent()
+    parentCallback.value.onEvent(parentSnapshot(cache = true), null)
+    parentCallback.value.onEvent(parentSnapshot(pending = true), null)
+    parentCallback.value.onEvent(parentSnapshot(exists = true), null)
     callback.value.onEvent(snapshot(cache = true), null)
     callback.value.onEvent(snapshot(pending = true), null)
     runCurrent()
@@ -70,6 +80,7 @@ class FirestoreHouseholdExpenseRepositoryTest {
     }
     observer.cancelAndJoin()
     verify(registration).remove()
+    verify(parentRegistration).remove()
   }
 
   @Test
@@ -83,7 +94,7 @@ class FirestoreHouseholdExpenseRepositoryTest {
                 null to null,
                 snapshot(documents = listOf(document(), document(valid = false))) to null)
         for ((value, error) in cases) {
-          clearInvocations(registration)
+          clearInvocations(registration, parentRegistration)
           val received = mutableListOf<List<SharedExpense>>()
           var cause: Throwable? = null
           val observer = launch {
@@ -101,8 +112,88 @@ class FirestoreHouseholdExpenseRepositoryTest {
           if (error != null) assertSame(error, cause)
           else assertTrue(cause is IllegalArgumentException || cause is IllegalStateException)
           verify(registration).remove()
+          verify(parentRegistration).remove()
         }
       }
+
+  @Test
+  fun parentRevocationNullAndMissingServerSnapshotsCloseActiveObservationAndRemoveBothListeners() =
+      runTest {
+        val denied =
+            FirebaseFirestoreException(
+                "membership revoked", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        for ((value, error) in
+            listOf<Pair<DocumentSnapshot?, FirebaseFirestoreException?>>(
+                null to denied,
+                null to null,
+                parentSnapshot() to null,
+                parentSnapshot(exists = true, type = "PRIVATE") to null,
+                parentSnapshot(exists = true, type = null) to null)) {
+          clearInvocations(registration, parentRegistration)
+          var cause: Throwable? = null
+          val received = mutableListOf<List<SharedExpense>>()
+          val observer = launch {
+            repository
+                .observeHouseholdExpenses("home")
+                .catch { cause = it }
+                .collect { received += it }
+          }
+          runCurrent()
+          callback.value.onEvent(snapshot(), null)
+          runCurrent()
+          assertEquals(listOf(emptyList<SharedExpense>()), received)
+          parentCallback.value.onEvent(value, error)
+          runCurrent()
+          observer.join()
+          if (error != null) assertSame(error, cause)
+          else if (value == null) assertTrue(cause is IllegalStateException)
+          else
+              assertEquals(
+                  FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                  (cause as? FirebaseFirestoreException)?.code)
+          verify(registration).remove()
+          verify(parentRegistration).remove()
+        }
+      }
+
+  @Test
+  fun expenseListenerRegistrationFailureStillReleasesTheParentListener() = runTest {
+    val failure = IllegalStateException("data source closed")
+    doThrow(failure)
+        .`when`(expenses)
+        .addSnapshotListener(eq(MetadataChanges.INCLUDE), callback.capture())
+    var cause: Throwable? = null
+    val observer = launch {
+      repository
+          .observeHouseholdExpenses("home")
+          .catch { cause = it }
+          .collect { fail("Unexpected expense list") }
+    }
+    runCurrent()
+    observer.join()
+    // Coroutine stack-trace recovery may copy an exception thrown by the flow producer.
+    assertTrue(cause is IllegalStateException)
+    assertEquals(failure.message, cause?.message)
+    assertTrue(cause === failure || cause?.cause === failure)
+    verify(parentRegistration).remove()
+    verify(registration, never()).remove()
+  }
+
+  private fun parentSnapshot(
+      cache: Boolean = false,
+      pending: Boolean = false,
+      exists: Boolean = false,
+      type: String? = "SHARED"
+  ): DocumentSnapshot {
+    val metadata = mock(SnapshotMetadata::class.java)
+    `when`(metadata.isFromCache).thenReturn(cache)
+    `when`(metadata.hasPendingWrites()).thenReturn(pending)
+    val parent = mock(DocumentSnapshot::class.java)
+    `when`(parent.metadata).thenReturn(metadata)
+    `when`(parent.exists()).thenReturn(exists)
+    `when`(parent.get("type")).thenReturn(type)
+    return parent
+  }
 
   private fun snapshot(
       cache: Boolean = false,

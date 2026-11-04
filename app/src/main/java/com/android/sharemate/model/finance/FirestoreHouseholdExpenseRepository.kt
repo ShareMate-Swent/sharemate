@@ -2,8 +2,10 @@
 package com.android.sharemate.model.finance
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.household.FridgeType
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
 import java.util.Collections
 import kotlinx.coroutines.channels.awaitClose
@@ -29,35 +31,55 @@ class FirestoreHouseholdExpenseRepository(private val firestore: FirebaseFiresto
       "A household document ID is required"
     }
     return callbackFlow {
-          val registration =
-              firestore
-                  .collection(FirestoreCollections.HOUSEHOLDS)
-                  .document(householdId)
-                  .collection(FirestoreCollections.EXPENSES)
-                  .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, failure ->
-                    if (failure != null) {
-                      close(failure)
-                      return@addSnapshotListener
-                    }
-                    if (snapshot == null) {
-                      close(IllegalStateException("Missing expense query snapshot"))
-                      return@addSnapshotListener
-                    }
-                    if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
-                      return@addSnapshotListener
-                    }
-                    try {
-                      val expenses =
-                          Collections.unmodifiableList(
-                              snapshot.documents.map { it.toSharedExpense(householdId) })
-                      if (trySend(expenses).isFailure) {
-                        close(IllegalStateException("Expense snapshot could not be delivered"))
+          val household =
+              firestore.collection(FirestoreCollections.HOUSEHOLDS).document(householdId)
+          // Watch parent access directly: an unchanged or empty expense query may not receive
+          // another snapshot when membership is revoked.
+          val membershipRegistration =
+              household.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, failure ->
+                if (failure != null) {
+                  close(failure)
+                } else if (snapshot == null) {
+                  close(IllegalStateException("Missing household snapshot"))
+                } else if (!snapshot.metadata.isFromCache &&
+                    !snapshot.metadata.hasPendingWrites() &&
+                    (!snapshot.exists() || snapshot.get(TYPE) != FridgeType.SHARED.name)) {
+                  close(
+                      FirebaseFirestoreException(
+                          "A shared household is required",
+                          FirebaseFirestoreException.Code.PERMISSION_DENIED))
+                }
+              }
+          try {
+            val registration =
+                household.collection(FirestoreCollections.EXPENSES).addSnapshotListener(
+                    MetadataChanges.INCLUDE) { snapshot, failure ->
+                      if (failure != null) {
+                        close(failure)
+                        return@addSnapshotListener
                       }
-                    } catch (exception: Exception) {
-                      close(exception)
+                      if (snapshot == null) {
+                        close(IllegalStateException("Missing expense query snapshot"))
+                        return@addSnapshotListener
+                      }
+                      if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
+                        return@addSnapshotListener
+                      }
+                      try {
+                        val expenses =
+                            Collections.unmodifiableList(
+                                snapshot.documents.map { it.toSharedExpense(householdId) })
+                        if (trySend(expenses).isFailure) {
+                          close(IllegalStateException("Expense snapshot could not be delivered"))
+                        }
+                      } catch (exception: Exception) {
+                        close(exception)
+                      }
                     }
-                  }
-          awaitClose { registration.remove() }
+            awaitClose { registration.remove() }
+          } finally {
+            membershipRegistration.remove()
+          }
         }
         .distinctUntilChanged()
   }
@@ -86,3 +108,4 @@ private const val HOUSEHOLD_ID = "householdId"
 private const val PAID_BY = "paidBy"
 private const val TOTAL_AMOUNT_CENTS = "totalAmountCents"
 private const val SHARES = "shares"
+private const val TYPE = "type"
