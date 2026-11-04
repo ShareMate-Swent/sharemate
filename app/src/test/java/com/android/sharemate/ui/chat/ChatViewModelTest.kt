@@ -101,4 +101,34 @@ class ChatViewModelTest {
     vm.onDraftChange("a".repeat(Message.MAX_TEXT_LENGTH + 5))
     assertEquals(Message.MAX_TEXT_LENGTH, vm.state.value.draft.length)
   }
+
+  @Test
+  fun sendExceptionIsReported() {
+    val vm =
+        ChatViewModel(
+            object : ChatRepository {
+              override fun observeMessages(householdId: String): Flow<List<Message>> =
+                  MutableStateFlow(emptyList())
+
+              override suspend fun sendMessage(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  text: String
+              ): String? = throw IllegalStateException("x")
+            },
+            "h1",
+            "u1",
+            "Alex")
+    vm.onDraftChange("hi")
+    vm.send()
+    assertEquals(ChatError.SEND_FAILED, vm.state.value.error)
+  }
+
+  @Test
+  fun newMessagesKeepSendErrorButClearLoadError() {
+    val vm = viewModel()
+    repository.messages.value = listOf(Message("1", "u2", "Sam", "hi"))
+    assertEquals(null, vm.state.value.error)
+  }
 }
