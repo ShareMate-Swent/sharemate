@@ -11,3 +11,14 @@ object FirestoreCollections {
   /** Sub-collection of a household document. */
   const val MESSAGES = "messages"
 }
+
+/** Fields of a user document holding the expiry notification preferences. */
+object UserExpirationFields {
+  const val PREFERENCES = "expirationPreferences"
+  const val SOON_DAYS = "soonDays"
+  const val SOON_REPEAT_DAYS = "soonRepeatDays"
+  const val EXPIRED_REPEAT_DAYS = "expiredRepeatDays"
+
+  /** Stored in place of a repeat interval when the user chose "never". */
+  const val NEVER = 0
+}

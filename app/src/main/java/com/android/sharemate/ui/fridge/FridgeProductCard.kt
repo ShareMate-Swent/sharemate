@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,9 @@ import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 
+/** The user's "expiring soon" window in days; the connected fridge screen provides their choice. */
+val LocalSoonThresholdDays = compositionLocalOf { ExpirationDates.SOON_THRESHOLD_DAYS }
+
 /** Compact inventory tile reusing the shared image renderer and attribution components. */
 @Composable
 fun FridgeItem(
@@ -63,7 +67,9 @@ fun FridgeItem(
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
     personalPhotos: PersonalPhotoController? = null,
 ) {
-  val expiryStatus = ExpirationDates.status(item.expirationDate)
+  val expiryStatus =
+      ExpirationDates.status(
+          item.expirationDate, soonThresholdDays = LocalSoonThresholdDays.current)
   val expiryColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error

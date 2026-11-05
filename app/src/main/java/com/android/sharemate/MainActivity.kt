@@ -62,6 +62,8 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -101,6 +103,9 @@ open class MainActivity : ComponentActivity() {
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
+  private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
+    FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -226,7 +231,9 @@ open class MainActivity : ComponentActivity() {
                                                 createProductCatalogRepository(),
                                             photoStorage = FirebasePersonalPhotoRepository.create(),
                                             photoFiles =
-                                                AndroidPersonalPhotoFiles(applicationContext))
+                                                AndroidPersonalPhotoFiles(applicationContext)),
+                                            expirationPreferencesRepository =
+                                                expirationPreferencesRepository)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
