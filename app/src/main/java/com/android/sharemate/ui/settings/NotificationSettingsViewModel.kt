@@ -39,8 +39,8 @@ class NotificationSettingsViewModel(
   val state = mutableState.asStateFlow()
 
   private var saved = ExpirationPreferences()
-  // Edits not yet seen in a snapshot, one per setting, so a snapshot never undoes a newer edit.
-  private val pending = mutableMapOf<Class<out ExpirationChange>, ExpirationChange>()
+  // Latest edit per setting, kept until its save is done and a snapshot confirms it.
+  private val pending = mutableMapOf<Class<out ExpirationChange>, PendingEdit>()
   private var observing: Job? = null
 
   init {
@@ -49,7 +49,7 @@ class NotificationSettingsViewModel(
 
   /** Tries again to read the saved preferences after a failure. */
   fun retryLoad() {
-    if (mutableState.value.isLoaded) return
+    if (!mutableState.value.loadFailed) return
     load()
   }
 
@@ -61,7 +61,7 @@ class NotificationSettingsViewModel(
           try {
             repository.observe(userId).collect { snapshot ->
               saved = snapshot
-              pending.values.removeAll { it.applyTo(snapshot) == snapshot }
+              clearConfirmed()
               publish(isLoaded = true)
             }
           } catch (cancelled: CancellationException) {
@@ -88,7 +88,11 @@ class NotificationSettingsViewModel(
 
   fun dismissSaveError() = mutableState.update { it.copy(saveFailed = false) }
 
-  private fun shown() = pending.values.fold(saved) { preferences, c -> c.applyTo(preferences) }
+  private fun clearConfirmed() =
+      pending.values.removeAll { it.saveDone && it.change.applyTo(saved) == saved }
+
+  private fun shown() =
+      pending.values.fold(saved) { preferences, edit -> edit.change.applyTo(preferences) }
 
   private fun publish(
       isLoaded: Boolean = mutableState.value.isLoaded,
@@ -101,17 +105,25 @@ class NotificationSettingsViewModel(
 
   private fun submit(change: ExpirationChange) {
     if (!mutableState.value.isLoaded || change.applyTo(shown()) == shown()) return
-    pending[change.javaClass] = change
+    val edit = PendingEdit(change)
+    pending[change.javaClass] = edit
     publish(saveFailed = false)
     viewModelScope.launch {
       try {
         repository.update(userId, change)
+        edit.saveDone = true
+        clearConfirmed()
+        publish()
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
-        if (pending[change.javaClass] == change) pending.remove(change.javaClass)
+        if (pending[change.javaClass] == edit) pending.remove(change.javaClass)
         publish(saveFailed = true)
       }
     }
   }
+}
+
+private class PendingEdit(val change: ExpirationChange) {
+  var saveDone = false
 }
