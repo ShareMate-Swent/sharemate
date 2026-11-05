@@ -33,12 +33,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.ui.theme.Dimens
 
 /** Captures/selects an image only; #139 supplies the optional recognition consumer. */
 @Composable
 fun BarcodePhotoFlow(
     viewModel: BarcodePhotoViewModel,
     confirmationError: String? = null,
+    receipt: Boolean = false,
     onImageConfirmed: (suspend (String) -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsState()
@@ -76,15 +78,16 @@ fun BarcodePhotoFlow(
           Column(
               Modifier.fillMaxSize()
                   .safeDrawingPadding()
-                  .padding(24.dp)
+                  .padding(Dimens.spacingL)
                   .verticalScroll(rememberScrollState()),
-              verticalArrangement = Arrangement.spacedBy(16.dp)) {
+              verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
                 Text(
-                    stringResource(R.string.barcode_photo_title),
+                    stringResource(
+                        if (receipt) R.string.scan_receipt else R.string.barcode_photo_title),
                     style = MaterialTheme.typography.headlineSmall)
                 if (state.busy)
                     LinearProgressIndicator(
-                        Modifier.fillMaxWidth().testTag("barcode_photo_loading"))
+                        Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.LOADING))
                 if (state.failed)
                     Text(
                         confirmationError.takeIf { state.confirmationFailed }
@@ -101,20 +104,33 @@ fun BarcodePhotoFlow(
                           })
                   PhotoPage.PREVIEW -> {
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(state.uri).size(1280).build(),
-                        contentDescription = stringResource(R.string.barcode_photo_preview),
+                        model =
+                            ImageRequest.Builder(context)
+                                .data(state.uri)
+                                .size(PREVIEW_MAX_PIXELS)
+                                .build(),
+                        contentDescription =
+                            stringResource(
+                                if (receipt) R.string.receipt_photo_preview
+                                else R.string.barcode_photo_preview),
                         contentScale = ContentScale.Fit,
                         modifier =
-                            Modifier.fillMaxWidth().height(300.dp).testTag("barcode_photo_preview"),
+                            Modifier.fillMaxWidth()
+                                .height(PREVIEW_HEIGHT)
+                                .testTag(BarcodePhotoTestTags.PREVIEW),
                         onError = { viewModel.reportFailure() })
                     Button(
                         onClick = { viewModel.confirm(onImageConfirmed) },
                         enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().testTag("barcode_photo_confirm")) {
+                        modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CONFIRM)) {
                           Text(stringResource(R.string.barcode_photo_confirm))
                         }
                   }
-                  PhotoPage.SOURCE -> Text(stringResource(R.string.barcode_photo_choose))
+                  PhotoPage.SOURCE ->
+                      Text(
+                          stringResource(
+                              if (receipt) R.string.receipt_photo_choose
+                              else R.string.barcode_photo_choose))
                 }
                 if (denied) {
                   Text(
@@ -152,7 +168,7 @@ fun BarcodePhotoFlow(
                           }
                     },
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("barcode_photo_camera")) {
+                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CAMERA)) {
                       Text(stringResource(R.string.barcode_photo_camera))
                     }
                 OutlinedButton(
@@ -166,13 +182,13 @@ fun BarcodePhotoFlow(
                       }
                     },
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag("barcode_photo_gallery")) {
+                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.GALLERY)) {
                       Text(stringResource(R.string.barcode_photo_gallery))
                     }
                 TextButton(
                     onClick = viewModel::closePreview,
                     enabled = !state.busy,
-                    modifier = Modifier.testTag("barcode_photo_cancel")) {
+                    modifier = Modifier.testTag(BarcodePhotoTestTags.CANCEL)) {
                       Text(stringResource(R.string.fridge_cancel))
                     }
               }
@@ -190,3 +206,15 @@ internal tailrec fun Context.findActivity(): Activity? =
       is ContextWrapper -> baseContext.findActivity()
       else -> null
     }
+
+object BarcodePhotoTestTags {
+  const val LOADING = "barcode_photo_loading"
+  const val PREVIEW = "barcode_photo_preview"
+  const val CONFIRM = "barcode_photo_confirm"
+  const val CAMERA = "barcode_photo_camera"
+  const val GALLERY = "barcode_photo_gallery"
+  const val CANCEL = "barcode_photo_cancel"
+}
+
+private const val PREVIEW_MAX_PIXELS = 1280
+private val PREVIEW_HEIGHT = 300.dp
