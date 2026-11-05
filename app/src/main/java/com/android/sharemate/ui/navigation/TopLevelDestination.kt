@@ -22,4 +22,10 @@ enum class TopLevelDestination(
 /** Screens opened from a tab. Each route starts with its tab's route, so the tab stays selected. */
 object ChildRoutes {
   const val HOUSEHOLD_MEMBERS = "settings/members"
+
+  /** The notification settings sub-page of Settings. */
+  const val NOTIFICATION_SETTINGS = "settings/notifications"
+
+  /** Key scoping the notification settings ViewModel to one user. */
+  fun notificationSettingsViewModelKey(userId: String) = "notification_settings_$userId"
 }
