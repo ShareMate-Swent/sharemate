@@ -62,51 +62,51 @@ internal fun FridgeItemImage(
     modifier: Modifier = Modifier.size(ThumbnailSize),
     personalPhotos: PersonalPhotoController? = null,
 ) {
-    val source = item.image?.reference?.takeIf { it.isNotBlank() }
-    if (item.image?.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-        source?.startsWith("itemPhotos/") == true) {
-        // Scope decoded private pixels to this item and fridge session.
-        key(item.id, source, personalPhotos) {
-            BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
-                val pixels = this.constraints.maxWidth
-                StoredPersonalPhoto(item.name, source, pixels, personalPhotos)
-            }
-        }
-        return
-    }
-
-    val context = LocalContext.current
-    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+  val source = item.image?.reference?.takeIf { it.isNotBlank() }
+  if (item.image?.origin == ItemImageOrigin.PERSONAL_PHOTO &&
+      source?.startsWith("itemPhotos/") == true) {
+    // Scope decoded private pixels to this item and fridge session.
+    key(item.id, source, personalPhotos) {
+      BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val pixels = this.constraints.maxWidth
-        // Recreate the painter so a reused card cannot display its previous image while loading.
-        key(item.id, item.image?.origin, source) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                if (source == null) {
-                    FoodPlaceholder()
-                } else {
-                    val request =
-                        remember(context, source, pixels) { fridgeImageRequest(context, source, pixels) }
-                    val painter =
-                        rememberAsyncImagePainter(
-                            model = request, imageLoader = imageLoader, contentScale = ContentScale.Crop)
-                    when (painter.state) {
-                        is AsyncImagePainter.State.Success ->
-                            Image(
-                                painter = painter,
-                                contentDescription =
-                                    stringResource(R.string.fridge_image_description, item.name),
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
-                        is AsyncImagePainter.State.Error -> FoodPlaceholder()
-                        is AsyncImagePainter.State.Loading,
-                        AsyncImagePainter.State.Empty ->
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp).testTag(C.Tag.fridge_image_loading))
-                    }
-                }
-            }
-        }
+        StoredPersonalPhoto(item.name, source, pixels, personalPhotos)
+      }
     }
+    return
+  }
+
+  val context = LocalContext.current
+  BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+    val pixels = this.constraints.maxWidth
+    // Recreate the painter so a reused card cannot display its previous image while loading.
+    key(item.id, item.image?.origin, source) {
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (source == null) {
+          FoodPlaceholder()
+        } else {
+          val request =
+              remember(context, source, pixels) { fridgeImageRequest(context, source, pixels) }
+          val painter =
+              rememberAsyncImagePainter(
+                  model = request, imageLoader = imageLoader, contentScale = ContentScale.Crop)
+          when (painter.state) {
+            is AsyncImagePainter.State.Success ->
+                Image(
+                    painter = painter,
+                    contentDescription =
+                        stringResource(R.string.fridge_image_description, item.name),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
+            is AsyncImagePainter.State.Error -> FoodPlaceholder()
+            is AsyncImagePainter.State.Loading,
+            AsyncImagePainter.State.Empty ->
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp).testTag(C.Tag.fridge_image_loading))
+          }
+        }
+      }
+    }
+  }
 }
 
 @Composable
