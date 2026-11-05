@@ -70,16 +70,23 @@ class PersonalPhotoControlsTest {
     showControls()
     compose.runOnIdle { controller.select("content://photos/selected") }
     compose.onNodeWithTag("personal_photo_preview").assertIsDisplayed()
-    compose.runOnIdle {
-      drafts.failure = PersonalPhotoDraftException(PersonalPhotoDraftError.UNSUPPORTED)
-      controller.select("content://photos/unsupported")
+    for ((reason, message) in
+        listOf(
+            PersonalPhotoDraftError.UNSUPPORTED to "Choose a JPEG or PNG photo.",
+            PersonalPhotoDraftError.TOO_LARGE to "Choose a photo smaller than 5 MiB.",
+            PersonalPhotoDraftError.INVALID to "This image cannot be read. Choose another photo.",
+            PersonalPhotoDraftError.UNREADABLE to "This photo is unavailable. Choose it again.")) {
+      compose.runOnIdle {
+        drafts.failure = PersonalPhotoDraftException(reason)
+        controller.select("content://photos/rejected")
+      }
+      compose
+          .onNodeWithTag("personal_photo_selection_error")
+          .assertIsDisplayed()
+          .assertTextEquals(message)
+      compose.onNodeWithTag("personal_photo_preview").assertIsDisplayed()
+      compose.runOnIdle { assertTrue(drafts.deleted.isEmpty()) }
     }
-    compose
-        .onNodeWithTag("personal_photo_selection_error")
-        .assertIsDisplayed()
-        .assertTextEquals("Choose a JPEG or PNG photo.")
-    compose.onNodeWithTag("personal_photo_preview").assertIsDisplayed()
-    compose.runOnIdle { assertTrue(drafts.deleted.isEmpty()) }
   }
 
   private fun showControls() {
