@@ -75,8 +75,8 @@ test("rejects unauthenticated, forged, outsider, cross-household and invalid pay
     [attempt, null, "UNAUTHENTICATED"],
     [attempt, otherMember, "PERMISSION_DENIED"],
     [payment("denied", 600, { payerId: outsider.localId }), outsider, "PERMISSION_DENIED"],
-    [payment("denied", 600, { householdId: "other" }), payer, "PERMISSION_DENIED"],
-    [payment("denied", 600, { recipientId: outsider.localId }), payer, "PERMISSION_DENIED"],
+    [payment("denied", 600, { householdId: "other" }), payer, "FAILED_PRECONDITION"],
+    [payment("denied", 600, { recipientId: outsider.localId }), payer, "FAILED_PRECONDITION"],
     [payment("denied", 600, { recipientId: otherMember.localId }), payer, "FAILED_PRECONDITION"],
     [payment("denied", 1501), payer, "FAILED_PRECONDITION"],
     [payment("denied", 0), payer, "INVALID_ARGUMENT"],
@@ -171,4 +171,24 @@ test("serializes competing payments against the remaining 900 cents", async () =
   const history = await parent.collection("settlements").get();
   assert.equal(history.size, 2);
   assert.equal(history.docs.reduce((sum, doc) => sum + doc.get("amountCents"), 0), 1500);
+});
+
+test("a current payer can settle a debt to a former member", async () => {
+  const id = "former-recipient";
+  const parent = db.collection("households").doc(id);
+  await parent.set({ type: "SHARED", memberIds: [payer.localId, recipient.localId] });
+  await parent.collection("expenses").doc("expense").set({
+    id: "expense", householdId: id, paidBy: recipient.localId,
+    totalAmountCents: 1500, shares: { [payer.localId]: 1500 },
+  });
+  await parent.update({ memberIds: [payer.localId] });
+
+  const reimbursement = payment("reimburse", 1500, { householdId: id });
+  assert.deepEqual((await call(reimbursement)).result, reimbursement);
+  assert.deepEqual((await call(reimbursement)).result, reimbursement);
+  const history = await parent.collection("settlements").get();
+  assert.equal(history.size, 1);
+  assert.equal(history.docs[0].get("amountCents"), 1500);
+  const extra = payment("extra", 1, { householdId: id });
+  assert.equal((await call(extra)).error?.status, "FAILED_PRECONDITION");
 });

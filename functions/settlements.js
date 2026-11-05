@@ -108,10 +108,6 @@ async function recordSettlement(db, uid, request) {
         }
         return;
       }
-      if (!parent.memberIds.includes(payment.recipientId)) {
-        throw new HttpsError("permission-denied", "The recipient must be a household member.");
-      }
-
       // Force new settlements to conflict even when they use different operation IDs.
       await transaction.get(revision);
       const expenses = await transaction.get(household.collection(EXPENSES));

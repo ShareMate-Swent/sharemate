@@ -18,6 +18,10 @@ published by a trusted writer. Settlements live at `households/{id}/settlements/
 The private settlement revision document serializes competing writes. Ledger validation
 scans the household's history on a new payment, so read cost grows with that history.
 
+Only a current household member can record their own reimbursement. The recipient can be a
+former member if the household ledger still shows an outstanding debt to them. Leaving does
+not erase the debt or restore a former member's access to the household ledger.
+
 The Functions endpoint and settlement rules require deployment before an app can use them.
 
 The household join batch now submits the invite code with the private profile link.
