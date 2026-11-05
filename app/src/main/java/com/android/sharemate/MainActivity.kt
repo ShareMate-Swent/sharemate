@@ -345,7 +345,8 @@ open class MainActivity : ComponentActivity() {
                         },
                         onSoonDaysChange = notificationViewModel::setSoonDays,
                         onSoonRepeatChange = notificationViewModel::setSoonRepeatDays,
-                        onExpiredRepeatChange = notificationViewModel::setExpiredRepeatDays)
+                        onExpiredRepeatChange = notificationViewModel::setExpiredRepeatDays,
+                        onRetryLoad = notificationViewModel::retryLoad)
                   }
                 }
               }

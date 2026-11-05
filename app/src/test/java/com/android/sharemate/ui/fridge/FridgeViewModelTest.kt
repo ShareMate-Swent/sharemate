@@ -29,6 +29,7 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.user.ExpirationChange
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
@@ -1297,6 +1298,8 @@ class FridgeViewModelTest {
           override suspend fun get(userId: String) = ExpirationPreferences()
 
           override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
+
+          override suspend fun update(userId: String, change: ExpirationChange) = Unit
         }
 
     assertEquals(

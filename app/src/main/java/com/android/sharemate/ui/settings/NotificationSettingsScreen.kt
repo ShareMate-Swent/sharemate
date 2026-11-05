@@ -70,6 +70,8 @@ object NotificationSettingsTestTags {
   const val EXPIRED_REPEAT_INCREASE = "notification_settings_expired_repeat_increase"
   const val EXPIRED_REPEAT_DECREASE = "notification_settings_expired_repeat_decrease"
   const val SAVE_ERROR = "notification_settings_save_error"
+  const val LOAD_ERROR = "notification_settings_load_error"
+  const val RETRY = "notification_settings_retry"
 }
 
 private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
@@ -89,6 +91,7 @@ fun NotificationSettingsScreen(
     onSoonDaysChange: (Int) -> Unit,
     onSoonRepeatChange: (Int?) -> Unit,
     onExpiredRepeatChange: (Int?) -> Unit,
+    onRetryLoad: () -> Unit = {},
 ) {
   Column(modifier = Modifier.fillMaxSize()) {
     Row(
@@ -117,6 +120,18 @@ fun NotificationSettingsScreen(
           if (state.isLoaded) {
             SoonCard(state.preferences, onSoonDaysChange)
             FrequencyCard(state.preferences, onSoonRepeatChange, onExpiredRepeatChange)
+          }
+          if (state.loadFailed) {
+            Text(
+                text = stringResource(R.string.notification_settings_load_failed),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag(NotificationSettingsTestTags.LOAD_ERROR))
+            Button(
+                onClick = onRetryLoad,
+                modifier = Modifier.testTag(NotificationSettingsTestTags.RETRY)) {
+                  Text(stringResource(R.string.notification_settings_retry))
+                }
           }
           if (state.saveFailed) {
             Text(

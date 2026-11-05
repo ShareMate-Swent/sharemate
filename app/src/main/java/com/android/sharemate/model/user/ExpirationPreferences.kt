@@ -33,6 +33,27 @@ data class ExpirationPreferences(
   }
 }
 
+/** One edit of a single preference, so that saving it never touches the other values. */
+sealed interface ExpirationChange {
+  fun applyTo(preferences: ExpirationPreferences): ExpirationPreferences
+
+  data class SoonDays(val days: Int) : ExpirationChange {
+    override fun applyTo(preferences: ExpirationPreferences) = preferences.copy(soonDays = days)
+  }
+
+  /** [days] null means no repeated reminder. */
+  data class SoonRepeatDays(val days: Int?) : ExpirationChange {
+    override fun applyTo(preferences: ExpirationPreferences) =
+        preferences.copy(soonRepeatDays = days)
+  }
+
+  /** [days] null means no repeated reminder. */
+  data class ExpiredRepeatDays(val days: Int?) : ExpirationChange {
+    override fun applyTo(preferences: ExpirationPreferences) =
+        preferences.copy(expiredRepeatDays = days)
+  }
+}
+
 /** Stores the [ExpirationPreferences] of each user, linked to their account. */
 interface ExpirationPreferencesRepository {
   /** Emits the user's preferences, then every change. Defaults when none were saved. */
@@ -42,4 +63,7 @@ interface ExpirationPreferencesRepository {
   suspend fun get(userId: String): ExpirationPreferences
 
   suspend fun save(userId: String, preferences: ExpirationPreferences)
+
+  /** Saves only the value touched by [change], leaving the other stored values as they are. */
+  suspend fun update(userId: String, change: ExpirationChange)
 }
