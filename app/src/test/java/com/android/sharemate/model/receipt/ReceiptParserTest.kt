@@ -31,6 +31,16 @@ class ReceiptParserTest {
   }
 
   @Test
+  fun removesObservedOcrPromotionMarkerOnlyAsACompleteLeadingToken() {
+    assertEquals(
+        listOf(
+            ReceiptItem("Asiago", 315),
+            ReceiptItem("iKTual", 240),
+            ReceiptItem("Produit iKT", 190)),
+        parseRows("iKT Asiago 3.15 1", "iKTual 2.40 1", "Produit iKT 1.90 1"))
+  }
+
+  @Test
   fun keepsInlineQuantityProductsAndUsesPriorLabelForQuantityOnlyRows() {
     assertEquals(
         listOf(ReceiptItem("Lait", 240), ReceiptItem("Croissant", 240), ReceiptItem("Pain", 310)),

@@ -19,7 +19,9 @@ internal object ReceiptParser {
           RegexOption.IGNORE_CASE)
   private val quantityDetails = Regex("""^\d+\s*(?:PCS?\b|[x×*])""", RegexOption.IGNORE_CASE)
   private val leadingBarcode = Regex("""^\d[\d+\-]{7,15}\s+""")
-  private val marker = Regex("""^(?:(?:SPZ|AKT)\s+)+""")
+  // ML Kit reads the printed AKT promotion marker as iKT on the real Migros fixture.
+  // Match only these complete leading tokens; never rewrite text inside a product name.
+  private val marker = Regex("""^(?:(?:SPZ|AKT|iKT)\s+)+""")
   private val header =
       Regex(
           """^(?:migros|totalenergies|date|caisse|caissier|kasse|cashier)\b""",
