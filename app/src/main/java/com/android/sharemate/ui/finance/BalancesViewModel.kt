@@ -25,8 +25,6 @@ sealed interface BalancesUiState {
 
   data object Unavailable : BalancesUiState
 
-  data object NotConnected : BalancesUiState
-
   data object Error : BalancesUiState
 
   data class Ready(val currentUserId: String, val summary: BalanceSummary) : BalancesUiState

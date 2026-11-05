@@ -58,25 +58,28 @@ class BalancesRouteTest {
 
   @After fun clearModels() = compose.runOnIdle { compose.activity.viewModelStore.clear() }
 
-  private fun show(source: HouseholdExpenseRepository?) {
+  private fun show() {
     compose.setContent {
-      MaterialTheme { BalancesRoute(source, households, auth, household, "bob") }
+      MaterialTheme { BalancesRoute(expenses, households, auth, household, "bob") }
     }
   }
 
   @Test
-  fun missingSourceShowsUnavailableIntegrationInsteadOfInventingZeroBalances() {
-    show(null)
-    compose.onNodeWithText("Shared expenses are not available yet.").assertIsDisplayed()
-    compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
-    assertTrue(requests.isEmpty())
-    assertTrue(observed.isEmpty())
+  fun sharedHouseholdWithoutExpensesShowsZeroBalance() {
+    show()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(BalancesTestTags.SUMMARY).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
+    compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
+    assertEquals(listOf("home"), requests)
+    assertEquals(requests, observed)
   }
 
   @Test
   fun privateHouseholdDoesNotReadExpensesOrMembership() {
     household = household.copy(type = FridgeType.PRIVATE)
-    show(expenses)
+    show()
     compose.onNodeWithText("Balances are available for shared households.").assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
     assertTrue(requests.isEmpty())
@@ -86,7 +89,7 @@ class BalancesRouteTest {
   @Test
   fun injectedReaderUpdatesTheScreenAndHouseholdReplacementClearsTheOldAmount() {
     records.value = listOf(SharedExpense("one", "home", "alice", 1500, mapOf("bob" to 1500L)))
-    show(expenses)
+    show()
     compose.waitUntil(5000) {
       compose.onAllNodesWithTag(BalancesTestTags.SUMMARY).fetchSemanticsNodes().isNotEmpty()
     }

@@ -51,6 +51,7 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
+import com.android.sharemate.model.finance.FirestoreHouseholdExpenseRepository
 import com.android.sharemate.model.finance.HouseholdExpenseRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
@@ -98,8 +99,8 @@ open class MainActivity : ComponentActivity() {
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
 
-  // PR4 has no live reader dependency; PR3 will supply the implementation here.
-  protected open fun createHouseholdExpenseRepository(): HouseholdExpenseRepository? = null
+  protected open fun createHouseholdExpenseRepository(): HouseholdExpenseRepository =
+      FirestoreHouseholdExpenseRepository(FirebaseFirestore.getInstance())
 
   private val expenseRepository by lazy { createHouseholdExpenseRepository() }
 

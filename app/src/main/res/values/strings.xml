@@ -158,5 +158,4 @@
     <string name="balances_debt">%1$s owes %2$s %3$s</string>
     <string name="balances_you_owe">You owe %1$s %2$s</string>
     <string name="balances_positive_amount">+%1$s</string>
-    <string name="balances_not_connected">Shared expenses are not available yet.</string>
 </resources>

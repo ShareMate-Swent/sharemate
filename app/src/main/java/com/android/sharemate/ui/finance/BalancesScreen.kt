@@ -58,7 +58,6 @@ fun BalancesScreen(
       BalancesUiState.Loading ->
           item { CircularProgressIndicator(Modifier.testTag(BalancesTestTags.LOADING)) }
       BalancesUiState.Unavailable -> item { Text(stringResource(R.string.balances_unavailable)) }
-      BalancesUiState.NotConnected -> item { Text(stringResource(R.string.balances_not_connected)) }
       BalancesUiState.Error ->
           item {
             Text(stringResource(R.string.balances_error), color = MaterialTheme.colorScheme.error)

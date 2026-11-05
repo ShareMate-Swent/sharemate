@@ -48,8 +48,6 @@ class BalancesScreenTest {
     compose.runOnIdle { state = BalancesUiState.Unavailable }
     compose.onNodeWithText("Balances are available for shared households.").assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.RETRY).assertDoesNotExist()
-    compose.runOnIdle { state = BalancesUiState.NotConnected }
-    compose.onNodeWithText("Shared expenses are not available yet.").assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
   }
 

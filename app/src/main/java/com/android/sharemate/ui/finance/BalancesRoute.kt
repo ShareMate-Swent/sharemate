@@ -13,10 +13,9 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 
-/** Expense injection is optional until the Firestore reader lands in its separate PR. */
 @Composable
 fun BalancesRoute(
-    expenses: HouseholdExpenseRepository?,
+    expenses: HouseholdExpenseRepository,
     households: HouseholdRepository,
     auth: AuthRepository,
     household: Household,
@@ -24,8 +23,6 @@ fun BalancesRoute(
 ) {
   if (household.type != FridgeType.SHARED) {
     BalancesScreen(BalancesUiState.Unavailable, {})
-  } else if (expenses == null) {
-    BalancesScreen(BalancesUiState.NotConnected, {})
   } else {
     val model: BalancesViewModel =
         viewModel(
