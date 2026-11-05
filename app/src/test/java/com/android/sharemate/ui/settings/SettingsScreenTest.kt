@@ -44,6 +44,7 @@ class SettingsScreenTest {
   private var leftCalls = 0
   private var signOuts = 0
   private var switches = 0
+  private var notificationSettingsOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -69,9 +70,25 @@ class SettingsScreenTest {
             onConfirmLeave = { confirms++ },
             onLeft = { leftCalls++ },
             onSwitchGoogleAccount = { switches++ },
+            onOpenNotificationSettings = { notificationSettingsOpens++ },
             onSignOut = { signOuts++ })
       }
     }
+  }
+
+  @Test
+  fun notificationSettingsEntryIsReachableAndInvokesItsCallback() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(NotificationSettingsTestTags.OPEN_ENTRY)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+
+    assertEquals(1, notificationSettingsOpens)
+    assertEquals(0, leaveRequests)
+    assertEquals(0, signOuts)
   }
 
   @Test

@@ -113,6 +113,27 @@
     <string name="settings_switch_network">Could not switch accounts. Check your connection and try again.</string>
     <string name="settings_switch_failed">Could not switch to that Google account. Please try again.</string>
     <string name="settings_household">Household</string>
+    <string name="notification_settings_entry_title">Notification settings</string>
+    <string name="notification_settings_entry_description">Choose when and how often you are reminded about expiring food</string>
+    <string name="notification_settings_title">Notification settings</string>
+    <string name="notification_settings_back">Back</string>
+    <string name="notification_settings_system_title">Phone notifications</string>
+    <string name="notification_settings_system_allowed">Notifications are allowed on this phone.</string>
+    <string name="notification_settings_system_blocked">Notifications are turned off on this phone, so you will not receive any reminder.</string>
+    <string name="notification_settings_open_system">Open phone settings</string>
+    <string name="notification_settings_soon_title">Expiring soon</string>
+    <string name="notification_settings_soon_description">Food counts as expiring soon this many days before its expiration date.</string>
+    <string name="notification_settings_frequency_title">Reminder frequency</string>
+    <string name="notification_settings_frequency_description">You are always reminded when food enters the expiring soon period, the day before it expires and on the day it expires.</string>
+    <string name="notification_settings_soon_repeat">Also remind me regularly while expiring soon</string>
+    <string name="notification_settings_expired_repeat">Keep reminding me once expired</string>
+    <string name="notification_settings_increase">Increase</string>
+    <string name="notification_settings_decrease">Decrease</string>
+    <string name="notification_settings_save_failed">Could not save your change. Check your connection and try again.</string>
+    <plurals name="notification_settings_days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
     <string name="settings_invite_code">Invite code</string>
     <plurals name="settings_members">
         <item quantity="one">%d member</item>

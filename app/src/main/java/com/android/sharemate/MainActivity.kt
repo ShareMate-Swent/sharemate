@@ -60,6 +60,8 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -72,11 +74,16 @@ import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.AppDeepLinks
+import com.android.sharemate.ui.navigation.SettingsRoutes
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
+import com.android.sharemate.ui.settings.NotificationSettingsScreen
+import com.android.sharemate.ui.settings.NotificationSettingsViewModel
 import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
+import com.android.sharemate.ui.settings.openSystemNotificationSettings
+import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -97,6 +104,9 @@ open class MainActivity : ComponentActivity() {
   }
 
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
+  private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
+    FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
+  }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
   }
@@ -170,8 +180,13 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.entries.forEach { destination ->
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
-                            selected = currentRoute == destination.route,
+                            selected = destination.owns(currentRoute),
                             onClick = {
+                              if (destination.owns(currentRoute)) {
+                                // Tapping the current tab returns to its root screen.
+                                navController.popBackStack(destination.route, inclusive = false)
+                                return@NavigationBarItem
+                              }
                               navController.navigate(destination.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
                                   // Retain the fridge ViewModel and its image jobs across tabs.
@@ -221,7 +236,9 @@ open class MainActivity : ComponentActivity() {
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
-                                                createProductCatalogRepository())
+                                                createProductCatalogRepository(),
+                                            expirationPreferencesRepository =
+                                                expirationPreferencesRepository)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -301,8 +318,35 @@ open class MainActivity : ComponentActivity() {
                                 }
                               }
                             },
-                            onSignOut = authViewModel::signOut)
+                            onSignOut = authViewModel::signOut,
+                            onOpenNotificationSettings = {
+                              navController.navigate(SettingsRoutes.NOTIFICATIONS)
+                            })
                       }
+                  composable(SettingsRoutes.NOTIFICATIONS) {
+                    val notificationViewModel: NotificationSettingsViewModel =
+                        viewModel(
+                            key = SettingsRoutes.notificationsViewModelKey(session.uid),
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    NotificationSettingsViewModel(
+                                        expirationPreferencesRepository, session.uid)
+                                  }
+                                })
+                    val notificationState by
+                        notificationViewModel.state.collectAsStateWithLifecycle()
+                    NotificationSettingsScreen(
+                        state = notificationState,
+                        isSystemAllowed = rememberSystemNotificationsAllowed(),
+                        onBack = { navController.popBackStack() },
+                        onOpenSystemSettings = {
+                          openSystemNotificationSettings(this@MainActivity)
+                        },
+                        onSoonDaysChange = notificationViewModel::setSoonDays,
+                        onSoonRepeatChange = notificationViewModel::setSoonRepeatDays,
+                        onExpiredRepeatChange = notificationViewModel::setExpiredRepeatDays)
+                  }
                 }
               }
             }

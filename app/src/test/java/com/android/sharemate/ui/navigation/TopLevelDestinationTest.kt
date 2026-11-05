@@ -1,6 +1,8 @@
 package com.android.sharemate.ui.navigation
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TopLevelDestinationTest {
@@ -29,5 +31,13 @@ class TopLevelDestinationTest {
         ),
         TopLevelDestination.entries.map { it.testTag },
     )
+  }
+
+  @Test
+  fun settingsOwnsItsNestedScreensButOtherTabsDoNot() {
+    assertTrue(TopLevelDestination.SETTINGS.owns("settings"))
+    assertTrue(TopLevelDestination.SETTINGS.owns(SettingsRoutes.NOTIFICATIONS))
+    assertFalse(TopLevelDestination.FRIDGE.owns(SettingsRoutes.NOTIFICATIONS))
+    assertFalse(TopLevelDestination.SETTINGS.owns(null))
   }
 }
