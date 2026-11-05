@@ -14,8 +14,8 @@ interface HouseholdExpenseRepository {
    * Invalid records and observation failures terminate collection with an error. A complete
    * snapshot already queued may still be delivered before that error. Consumers should clear
    * displayed expenses when handling permission or invalid-data errors. Cancellation releases
-   * listeners. Membership authorization belongs to the trusted backend; [householdId] is not
-   * proof of access. Historical payers and share participants remain in records.
+   * listeners. Membership authorization belongs to the trusted backend; [householdId] is not proof
+   * of access. Historical payers and share participants remain in records.
    *
    * This expense-only boundary does not represent a complete ledger with settlements. No client
    * producer is enabled yet; expense writing requires an agreed allocation contract and trusted
