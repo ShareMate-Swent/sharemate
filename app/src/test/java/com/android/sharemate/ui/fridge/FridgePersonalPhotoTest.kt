@@ -13,6 +13,7 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.*
 import org.junit.*
 import org.junit.Assert.*
@@ -31,6 +32,10 @@ class FridgePersonalPhotoTest {
   private val controller
     get() = checkNotNull(viewModel.personalPhotos)
 
+  private var copyPhoto: suspend (String) -> File = { uri ->
+    if (uri == "invalid") throw IOException("Unreadable")
+    selected
+  }
   private var automaticLookups = 0
   private var uploaded = 0
   private val deleted = mutableListOf<PersonalPhotoReference>()
@@ -62,10 +67,7 @@ class FridgePersonalPhotoTest {
     selected = temporary.newFile()
     val files =
         object : PersonalPhotoFiles {
-          override suspend fun copy(uri: String): File {
-            if (uri == "invalid") throw IOException("Unreadable")
-            return selected
-          }
+          override suspend fun copy(uri: String) = copyPhoto(uri)
 
           override suspend fun delete(file: File) {
             file.delete()
@@ -233,5 +235,95 @@ class FridgePersonalPhotoTest {
     viewModel.confirmRemoval()
     runCurrent()
     assertEquals(listOf("item-1"), items.deletedItemIds)
+  }
+
+  @Test
+  fun replacementBlocksSaveAndExtraSelectionsUntilTheCopyIsReady() = runTest {
+    selectPhoto()
+    val replacement = temporary.newFile()
+    val pendingCopy = CompletableDeferred<File>()
+    val requests = mutableListOf<String>()
+    copyPhoto = { uri ->
+      requests += uri
+      pendingCopy.await()
+    }
+
+    controller.select("content://gallery/replacement")
+    runCurrent()
+    controller.select("content://gallery/extra")
+    viewModel.saveItem()
+    runCurrent()
+
+    assertEquals(listOf("content://gallery/replacement"), requests)
+    assertEquals(selected, controller.draft.value.file)
+    assertTrue(selected.exists())
+    assertTrue(items.addedItems.isEmpty())
+
+    pendingCopy.complete(replacement)
+    runCurrent()
+    assertEquals(replacement, controller.draft.value.file)
+    assertFalse(selected.exists())
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertFalse(replacement.exists())
+  }
+
+  @Test
+  fun dismissingDuringReplacementCancelsTheImportAndReleasesThePreviousDraft() = runTest {
+    selectPhoto()
+    val cancelled = CompletableDeferred<Unit>()
+    copyPhoto = {
+      try {
+        awaitCancellation()
+      } finally {
+        cancelled.complete(Unit)
+      }
+    }
+    controller.select("content://gallery/replacement")
+    runCurrent()
+
+    viewModel.dismissAddItemDialog()
+    runCurrent()
+
+    assertTrue(cancelled.isCompleted)
+    assertEquals(PersonalPhotoDraft(), controller.draft.value)
+    assertFalse(selected.exists())
+    assertEquals(0, uploaded)
+  }
+
+  @Test
+  fun removalWaitsForInFlightUploadAndTimesOutIfStorageNeverConfirmsDeletion() = runTest {
+    val transfer = CompletableDeferred<Unit>()
+    upload = {
+      transfer.await()
+      Result.success(reference)
+    }
+    var storageDeletionStarted = false
+    deleteAttached = {
+      storageDeletionStarted = true
+      awaitCancellation()
+    }
+    selectPhoto()
+    viewModel.saveItem()
+    runCurrent()
+
+    viewModel.requestRemoval("item-1")
+    viewModel.confirmRemoval()
+    runCurrent()
+    assertFalse(storageDeletionStarted)
+    assertTrue(items.queuedDeletionIds.isEmpty())
+
+    transfer.complete(Unit)
+    runCurrent()
+    assertTrue(storageDeletionStarted)
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertTrue(items.queuedDeletionIds.isEmpty())
+
+    advanceTimeBy(20_000)
+    runCurrent()
+    assertTrue(viewModel.uiState.value.removalFailed)
+    assertTrue(items.queuedDeletionIds.isEmpty())
+    assertEquals("item-1", viewModel.uiState.value.items.single().id)
   }
 }

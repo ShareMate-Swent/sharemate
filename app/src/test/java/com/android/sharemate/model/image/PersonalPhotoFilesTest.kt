@@ -48,4 +48,31 @@ class PersonalPhotoFilesTest {
       assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())
     }
   }
+
+  @Test
+  fun rejectsNonContentUrisAndMissingStreamsWithoutLeavingDrafts() = runTest {
+    shadowOf(context.contentResolver).registerInputStream(uri, null)
+    val invalidSources = listOf("file:///photo.png", uri.toString())
+    for (source in invalidSources) {
+      assertTrue(runCatching { files.copy(source) }.isFailure)
+      assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())
+    }
+  }
+
+  @Test
+  fun rejectsAReadableImageOfAnUnsupportedTypeAndCleansUpItsCopy() = runTest {
+    val original = File(context.cacheDir, "original.webp")
+    val bitmap = Bitmap.createBitmap(16, 8, Bitmap.Config.ARGB_8888)
+    original.outputStream().use {
+      assertTrue(bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSLESS, 100, it))
+    }
+    bitmap.recycle()
+    shadowOf(context.contentResolver).registerInputStream(uri, original.inputStream())
+
+    val failure = runCatching { files.copy(uri.toString()) }.exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())
+    assertTrue(original.exists())
+  }
 }

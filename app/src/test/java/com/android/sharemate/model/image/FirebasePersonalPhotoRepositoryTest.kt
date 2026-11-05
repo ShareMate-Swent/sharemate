@@ -77,6 +77,22 @@ class FirebasePersonalPhotoRepositoryTest {
   }
 
   @Test
+  fun deleteAttachedSkipsMissingReferenceAndPropagatesPermissionDenial() = runTest {
+    `when`(snapshot.getString("image.origin")).thenReturn("PERSONAL_PHOTO")
+    repository.deleteAttached("item").getOrThrow()
+    verifyNoInteractions(remote)
+
+    val denied = mock(StorageException::class.java)
+    `when`(denied.errorCode).thenReturn(StorageException.ERROR_NOT_AUTHORIZED)
+    `when`(snapshot.getString("image.reference")).thenReturn(reference.path)
+    `when`(remote.delete()).thenReturn(Tasks.forException(denied))
+
+    assertSame(denied, repository.deleteAttached("item").exceptionOrNull())
+    verify(root).child(reference.path)
+    verify(remote).delete()
+  }
+
+  @Test
   fun uploadAndLoadPreserveContentAndOriginalAndGenerateFreshPaths() = runTest {
     var stored = byteArrayOf()
     `when`(remote.putBytes(any(ByteArray::class.java), any(StorageMetadata::class.java)))
