@@ -45,6 +45,7 @@ class MainActivityTest : TestCase() {
               NavigationTestTags.FRIDGE_TAB to "Fridge",
               NavigationTestTags.RECIPES_TAB to "Recipes",
               NavigationTestTags.RECEIPTS_TAB to "Receipts",
+              NavigationTestTags.BALANCES_TAB to "Balances",
               NavigationTestTags.SETTINGS_TAB to "Settings",
           )
 
