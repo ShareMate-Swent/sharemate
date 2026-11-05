@@ -138,6 +138,8 @@
     <string name="notification_settings_expired_repeat">Keep reminding me once expired</string>
     <string name="notification_settings_increase">Increase</string>
     <string name="notification_settings_decrease">Decrease</string>
+    <string name="notification_settings_load_failed">Could not load your saved settings. Check your connection and try again.</string>
+    <string name="notification_settings_retry">Retry</string>
     <string name="notification_settings_save_failed">Could not save your change. Check your connection and try again.</string>
     <plurals name="notification_settings_days">
         <item quantity="one">%d day</item>

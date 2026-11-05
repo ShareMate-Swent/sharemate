@@ -3,9 +3,11 @@ package com.android.sharemate.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.user.ExpirationChange
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -17,11 +19,14 @@ import kotlinx.coroutines.launch
  * @property preferences The user's current reminder preferences.
  * @property isLoaded False until the saved preferences have been read, so the screen never shows
  *   defaults that are about to be replaced.
+ * @property loadFailed Whether the saved preferences could not be read; the controls stay hidden
+ *   until a retry succeeds, so nothing is saved on top of values the user never saw.
  * @property saveFailed Whether the last change could not be saved.
  */
 data class NotificationSettingsUiState(
     val preferences: ExpirationPreferences = ExpirationPreferences(),
     val isLoaded: Boolean = false,
+    val loadFailed: Boolean = false,
     val saveFailed: Boolean = false,
 )
 
@@ -33,42 +38,79 @@ class NotificationSettingsViewModel(
   private val mutableState = MutableStateFlow(NotificationSettingsUiState())
   val state = mutableState.asStateFlow()
 
+  private var saved = ExpirationPreferences()
+  // Edits not yet seen in a snapshot, one per setting, so a snapshot never undoes a newer edit.
+  private val pending = mutableMapOf<Class<out ExpirationChange>, ExpirationChange>()
+  private var observing: Job? = null
+
   init {
-    viewModelScope.launch {
-      try {
-        repository.observe(userId).collect { saved ->
-          mutableState.update { it.copy(preferences = saved, isLoaded = true) }
-        }
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        // Keep showing what we have; the next change tries to save again.
-        mutableState.update { it.copy(isLoaded = true) }
-      }
-    }
+    load()
   }
 
-  fun setSoonDays(days: Int) = update { it.copy(soonDays = days) }
+  /** Tries again to read the saved preferences after a failure. */
+  fun retryLoad() {
+    if (mutableState.value.isLoaded) return
+    load()
+  }
+
+  private fun load() {
+    observing?.cancel()
+    mutableState.update { it.copy(loadFailed = false) }
+    observing =
+        viewModelScope.launch {
+          try {
+            repository.observe(userId).collect { snapshot ->
+              saved = snapshot
+              pending.values.removeAll { it.applyTo(snapshot) == snapshot }
+              publish(isLoaded = true)
+            }
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            mutableState.update { it.copy(loadFailed = true) }
+          }
+        }
+  }
+
+  fun setSoonDays(days: Int) =
+      submit(ExpirationChange.SoonDays(days.coerceIn(ExpirationPreferences.SOON_DAYS_RANGE)))
 
   /** [days] null means no repeated reminder while expiring soon. */
-  fun setSoonRepeatDays(days: Int?) = update { it.copy(soonRepeatDays = days) }
+  fun setSoonRepeatDays(days: Int?) =
+      submit(
+          ExpirationChange.SoonRepeatDays(days?.coerceIn(ExpirationPreferences.REPEAT_DAYS_RANGE)))
 
   /** [days] null means no repeated reminder once expired. */
-  fun setExpiredRepeatDays(days: Int?) = update { it.copy(expiredRepeatDays = days) }
+  fun setExpiredRepeatDays(days: Int?) =
+      submit(
+          ExpirationChange.ExpiredRepeatDays(
+              days?.coerceIn(ExpirationPreferences.REPEAT_DAYS_RANGE)))
 
   fun dismissSaveError() = mutableState.update { it.copy(saveFailed = false) }
 
-  private fun update(change: (ExpirationPreferences) -> ExpirationPreferences) {
-    val updated = change(mutableState.value.preferences).sanitized()
-    if (updated == mutableState.value.preferences) return
-    mutableState.update { it.copy(preferences = updated, saveFailed = false) }
+  private fun shown() = pending.values.fold(saved) { preferences, c -> c.applyTo(preferences) }
+
+  private fun publish(
+      isLoaded: Boolean = mutableState.value.isLoaded,
+      saveFailed: Boolean? = null
+  ) =
+      mutableState.update {
+        it.copy(
+            preferences = shown(), isLoaded = isLoaded, saveFailed = saveFailed ?: it.saveFailed)
+      }
+
+  private fun submit(change: ExpirationChange) {
+    if (!mutableState.value.isLoaded || change.applyTo(shown()) == shown()) return
+    pending[change.javaClass] = change
+    publish(saveFailed = false)
     viewModelScope.launch {
       try {
-        repository.save(userId, updated)
+        repository.update(userId, change)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
-        mutableState.update { it.copy(saveFailed = true) }
+        if (pending[change.javaClass] == change) pending.remove(change.javaClass)
+        publish(saveFailed = true)
       }
     }
   }
