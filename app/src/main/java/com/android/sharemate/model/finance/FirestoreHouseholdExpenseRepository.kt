@@ -8,8 +8,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
 import java.util.Collections
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -69,9 +71,7 @@ class FirestoreHouseholdExpenseRepository(private val firestore: FirebaseFiresto
                         val expenses =
                             Collections.unmodifiableList(
                                 snapshot.documents.map { it.toSharedExpense(householdId) })
-                        if (trySend(expenses).isFailure) {
-                          close(IllegalStateException("Expense snapshot could not be delivered"))
-                        }
+                        trySend(expenses)
                       } catch (exception: Exception) {
                         close(exception)
                       }
@@ -81,6 +81,7 @@ class FirestoreHouseholdExpenseRepository(private val firestore: FirebaseFiresto
             membershipRegistration.remove()
           }
         }
+        .buffer(Channel.CONFLATED)
         .distinctUntilChanged()
   }
 }

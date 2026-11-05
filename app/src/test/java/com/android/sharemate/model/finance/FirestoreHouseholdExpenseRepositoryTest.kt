@@ -3,6 +3,7 @@ package com.android.sharemate.model.finance
 
 import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.catch
@@ -66,8 +67,11 @@ class FirestoreHouseholdExpenseRepositoryTest {
     runCurrent()
     assertTrue(received.isEmpty())
     callback.value.onEvent(snapshot(), null)
+    runCurrent()
     callback.value.onEvent(snapshot(), null)
+    runCurrent()
     callback.value.onEvent(snapshot(documents = listOf(document())), null)
+    runCurrent()
     callback.value.onEvent(snapshot(documents = listOf(document())), null)
     runCurrent()
     assertEquals(2, received.size)
@@ -81,6 +85,39 @@ class FirestoreHouseholdExpenseRepositoryTest {
     observer.cancelAndJoin()
     verify(registration).remove()
     verify(parentRegistration).remove()
+  }
+
+  @Test
+  fun slowCollectorReceivesLatestSnapshotAndKeepsObserving() = runTest {
+    val resumeCollector = CompletableDeferred<Unit>()
+    val received = mutableListOf<List<SharedExpense>>()
+    val observer = launch {
+      repository.observeHouseholdExpenses("home").collect {
+        received += it
+        if (received.size == 1) resumeCollector.await()
+      }
+    }
+    runCurrent()
+    callback.value.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(listOf(emptyList<SharedExpense>()), received)
+
+    val populated = snapshot(documents = listOf(document()))
+    val empty = snapshot()
+    repeat(128) {
+      callback.value.onEvent(empty, null)
+      callback.value.onEvent(populated, null)
+    }
+    resumeCollector.complete(Unit)
+    runCurrent()
+
+    val expected = listOf(SharedExpense("expense", "home", "alice", 100, mapOf("bob" to 100L)))
+    assertEquals(listOf(emptyList<SharedExpense>(), expected), received)
+    assertTrue(observer.isActive)
+    callback.value.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(listOf(emptyList<SharedExpense>(), expected, emptyList()), received)
+    observer.cancelAndJoin()
   }
 
   @Test
