@@ -157,7 +157,7 @@ class FridgeScreenTest {
         .assertTextEquals("No items match the selected filters.")
     item("banana").assertDoesNotExist()
 
-    filterChip("Owner: alice").assertIsDisplayed().performClick()
+    compose.onNodeWithTag("fridge_owner_filter").assertIsDisplayed().performClick()
     compose.onNodeWithTag("fridge_filter_owner_all").performClick()
     item("carrot").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()

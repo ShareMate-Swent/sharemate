@@ -3,6 +3,8 @@
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.user.ownerDisplayName
 
 data class FridgeUiState(
     val items: List<Item> = emptyList(),
@@ -28,7 +30,23 @@ data class FridgeUiState(
     val pendingDeletionIds: Set<String> = emptySet(),
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
+    val itemSharing: ItemSharing = ItemSharing.SHARED,
+    val originalItemSharing: ItemSharing? = null,
+    val showSharingSelector: Boolean = false,
+    val canChangeSharing: Boolean = false,
+    val currentUserId: String? = null,
+    val ownerNames: Map<String, String> = emptyMap(),
 )
+
+/** Sharing is independent of both household association and ownership. */
+data class ItemOwnership(
+    val sharing: ItemSharing,
+    val name: String? = null,
+    val isCurrentUser: Boolean = false,
+)
+
+internal fun FridgeUiState.ownershipFor(item: Item) =
+    ItemOwnership(item.sharing, ownerNameFor(item.ownerId), item.ownerId == currentUserId)
 
 enum class BarcodeLookupError {
   UNREADABLE,
@@ -54,3 +72,5 @@ class FridgeEditSyncError(val itemName: String)
 class FridgeStatusError(val itemName: String, val isSyncFailure: Boolean)
 
 class FridgeRemovalSyncError(val itemName: String)
+
+internal fun FridgeUiState.ownerNameFor(userId: String) = ownerDisplayName(ownerNames[userId])

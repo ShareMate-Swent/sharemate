@@ -43,7 +43,10 @@ interface ItemRepository {
   /** Supprime un item spécifique. */
   suspend fun deleteItem(itemId: String): Boolean
 
-  /** Updates only editable fields; never transfers ownership or changes sharing. */
+  /**
+   * Atomically updates editable fields, including an optional sharing change. Never transfers
+   * ownership or household association; omitted sharing preserves the current persisted value.
+   */
   fun updateItem(itemId: String, edit: ItemEdit): ItemWrite
 
   /**

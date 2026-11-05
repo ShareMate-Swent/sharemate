@@ -160,4 +160,13 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
+    <string name="fridge_item_sharing">Item sharing</string>
+    <string name="fridge_item_shared">Shared</string>
+    <string name="fridge_item_personal">Personal</string>
+    <string name="fridge_sharing_owner_only">Only the owner can change sharing.</string>
+    <string name="fridge_personal">Personal</string>
+    <string name="fridge_item_owner">Owner: %1$s</string>
+    <string name="fridge_owner_you_named">%1$s (you)</string>
+    <string name="fridge_owner_you">You</string>
+    <string name="fridge_owner_unknown">Unknown owner</string>
 </resources>

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -39,7 +40,7 @@ class FridgeItemSoonThresholdTest {
   }
 
   private fun description(item: Item, prefix: String): String =
-      "Milk, $prefix${ExpirationDates.formatCompact(item.expirationDate as Date)}"
+      "Milk, Personal, Owner: Unknown owner, $prefix${ExpirationDates.formatCompact(item.expirationDate as Date)}"
 
   @Test
   fun itemBeyondTheUsersWindowIsNotFlagged() {

@@ -4,6 +4,7 @@ package com.android.sharemate.model.item
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
@@ -96,16 +97,17 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     if (edit.name.isBlank() || edit.quantity <= 0) {
       return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
     }
-    return submit(itemId) {
-      items
-          .document(itemId)
-          .update(
-              mapOf(
-                  "name" to edit.name.trim(),
-                  "quantity" to edit.quantity,
-                  "category" to edit.category,
-                  "expirationDate" to edit.expirationDate))
+    val fields =
+        mutableMapOf<String, Any?>(
+            "name" to edit.name.trim(),
+            "quantity" to edit.quantity,
+            "category" to edit.category,
+            "expirationDate" to edit.expirationDate)
+    edit.sharing?.let {
+      fields["sharing"] = it.name
+      fields["shared"] = FieldValue.delete()
     }
+    return submit(itemId) { items.document(itemId).update(fields) }
   }
 
   override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
