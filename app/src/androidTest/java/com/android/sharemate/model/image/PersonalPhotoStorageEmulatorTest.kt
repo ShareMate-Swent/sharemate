@@ -1,9 +1,17 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
+import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.barcode.BarcodeScanResult
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.item.ItemImageOrigin
+import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.decodePersonalThumbnail
+import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.storage.FirebaseStorage
@@ -18,11 +26,14 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.After
@@ -43,7 +54,7 @@ class PersonalPhotoStorageEmulatorTest {
   private val repository = FirebasePersonalPhotoRepository(storage, firestore)
   private val png =
       android.util.Base64.decode(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1cAAAAASUVORK5CYII=",
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNYxfD/PwAFqgKpvAzkRAAAAABJRU5ErkJggg==",
           android.util.Base64.DEFAULT)
   private lateinit var owner: String
   private lateinit var itemId: String
@@ -315,6 +326,77 @@ class PersonalPhotoStorageEmulatorTest {
     val source = temporary.newFile().apply { writeBytes(png) }
     return repository.upload(itemId, source).getOrThrow().also {
       assertArrayEquals(png, source.readBytes())
+    }
+  }
+
+  @Test
+  fun savedGalleryPhotoIsRereadByAnotherMemberAndDeletedBeforeItsItem() = runBlocking {
+    val homes = HouseholdRepositoryFirestore(firestore)
+    val home = homes.createHousehold("Gallery home", owner)
+    val models = ViewModelStore()
+    val files =
+        object : PersonalPhotoFiles {
+          override suspend fun copy(uri: String) = temporary.newFile().apply { writeBytes(png) }
+
+          override suspend fun delete(file: java.io.File) {
+            file.delete()
+          }
+        }
+    suspend fun fridge(user: String) =
+        withContext(Dispatchers.Main) {
+          FridgeViewModel(
+                  FirebaseItemRepository(firestore),
+                  user,
+                  home.id,
+                  FoodImageSelector(
+                      object : FoodImageRepository {
+                        override suspend fun searchByTitle(title: String): FoodImageSearchResult =
+                            error("A selected photo must skip automatic lookup")
+                      }),
+                  BarcodeScanner { BarcodeScanResult.NotFound },
+                  testProductCatalogRepository(),
+                  repository,
+                  files)
+              .also { models.put("fridge", it) }
+        }
+    try {
+      val creator = fridge(owner)
+      withContext(Dispatchers.Main) {
+        creator.openAddItemDialog()
+        creator.updateName("Gallery food")
+        creator.personalPhotos!!.select("content://gallery/photo")
+      }
+      withTimeout(15_000) { creator.personalPhotos!!.draft.first { it.file != null } }
+      withContext(Dispatchers.Main) { creator.saveItem() }
+      val saved =
+          withTimeout(20_000) {
+            creator.uiState.first { it.items.any { item -> item.image != null } }.items.single()
+          }
+      assertEquals(ItemImageOrigin.PERSONAL_PHOTO, saved.image?.origin)
+      assertFalse(creator.uiState.value.isAddItemDialogOpen)
+      withContext(Dispatchers.Main) { models.clear() }
+
+      val outsider = FirebaseEmulator.signInAs("gallery-member")
+      val reference = PersonalPhotoReference(checkNotNull(saved.image).reference)
+      denied(repository.load(reference))
+      homes.joinHousehold(home.inviteCode, outsider)
+      val member = fridge(outsider)
+      val reread =
+          withTimeout(15_000) { member.uiState.first { it.items.isNotEmpty() } }.items.single()
+      assertEquals(saved, reread)
+      val bytes = member.personalPhotos!!.load(reference.path)
+      assertArrayEquals(png, bytes)
+      assertEquals(1, decodePersonalThumbnail(bytes, 80).width)
+
+      withContext(Dispatchers.Main) {
+        member.requestRemoval(reread.id)
+        member.confirmRemoval()
+      }
+      withTimeout(20_000) { member.uiState.first { it.items.isEmpty() && !it.isDeleting } }
+      val objects = JSONObject(emulatorRequest("GET", "")).optJSONArray("items")
+      assertEquals(0, objects?.length() ?: 0)
+    } finally {
+      withContext(Dispatchers.Main) { models.clear() }
     }
   }
 
