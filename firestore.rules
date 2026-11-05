@@ -81,15 +81,17 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']);
       }
 
-      // Joining: a user may only append themselves to the members, and must point their own
-      // profile at the household in the same batch. No other field can change.
+      // Joining requires proof of the invite code and a matching private profile link.
       function onlyAddsSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
+        let profile = getAfter(documentPath('users', request.auth.uid)).data;
         return onlyMemberIdsChange()
             && (after == before
-                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
-            && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+                || (!(request.auth.uid in before)
+                    && after == before.concat([request.auth.uid])
+                    && profile.get('householdJoinCode', null) == resource.data.inviteCode))
+            && profile.householdId == householdId;
       }
 
       // Leaving: a member may only remove themselves, and must clear the household from their
@@ -123,6 +125,16 @@ service cloud.firestore {
           && resource.data.type == 'SHARED'
           && hasValidPrivateMembers(request.resource.data)
           && (onlyAddsSelf() || onlyRemovesSelf());
+    }
+
+    // Only the settlement service writes immutable reimbursement records.
+    match /households/{householdId}/settlements/{settlementId} {
+      function canReadSettlements() {
+        let household = get(documentPath('households', householdId)).data;
+        return household.type == 'SHARED' && request.auth.uid in household.memberIds;
+      }
+
+      allow read: if signedIn() && canReadSettlements();
     }
 
     // Chat messages: shared household members can read and post as themselves. Messages are

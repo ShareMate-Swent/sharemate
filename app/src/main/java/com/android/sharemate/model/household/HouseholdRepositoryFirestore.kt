@@ -137,7 +137,7 @@ class HouseholdRepositoryFirestore(
         .update(householdReference, MEMBER_IDS_FIELD, FieldValue.arrayUnion(userId))
         .set(
             firestore.collection(FirestoreCollections.USERS).document(userId),
-            mapOf(HOUSEHOLD_ID_FIELD to householdId),
+            mapOf(HOUSEHOLD_ID_FIELD to householdId, HOUSEHOLD_JOIN_CODE_FIELD to normalizedCode),
             SetOptions.merge())
         .commit()
         .await()
@@ -169,7 +169,12 @@ class HouseholdRepositoryFirestore(
       batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
     }
     batch
-        .set(userReference, mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()), SetOptions.merge())
+        .set(
+            userReference,
+            mapOf(
+                HOUSEHOLD_ID_FIELD to FieldValue.delete(),
+                HOUSEHOLD_JOIN_CODE_FIELD to FieldValue.delete()),
+            SetOptions.merge())
         .commit()
         .await()
   }
@@ -193,6 +198,7 @@ class HouseholdRepositoryFirestore(
 
   private companion object {
     const val HOUSEHOLD_ID_FIELD = "householdId"
+    private const val HOUSEHOLD_JOIN_CODE_FIELD = "householdJoinCode"
     const val INVITE_CODE_FIELD = "inviteCode"
     const val MEMBER_IDS_FIELD = "memberIds"
     const val TYPE_FIELD = "type"
