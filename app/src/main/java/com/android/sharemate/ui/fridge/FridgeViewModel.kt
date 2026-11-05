@@ -21,6 +21,7 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -32,7 +33,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -48,10 +52,21 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector,
     private val barcodeScanner: BarcodeScanner,
-    private val productCatalogRepository: ProductCatalogRepository
+    private val productCatalogRepository: ProductCatalogRepository,
+    private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
 ) : ViewModel() {
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
+
+  /** The user's "expiring soon" window; the default until their preferences load. */
+  val soonThresholdDays: StateFlow<Long> =
+      (expirationPreferencesRepository?.observe(userId)?.map { it.soonDays.toLong() }
+              ?: flowOf(ExpirationDates.SOON_THRESHOLD_DAYS))
+          .catch { emit(ExpirationDates.SOON_THRESHOLD_DAYS) }
+          .stateIn(
+              viewModelScope,
+              SharingStarted.WhileSubscribed(5_000),
+              ExpirationDates.SOON_THRESHOLD_DAYS)
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
