@@ -21,11 +21,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -106,6 +108,7 @@ fun SettingsScreen(
     onLeft: () -> Unit,
     onSwitchGoogleAccount: () -> Unit,
     onSignOut: () -> Unit,
+    onOpenNotificationSettings: () -> Unit = {},
 ) {
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
   Column(
@@ -128,6 +131,8 @@ fun SettingsScreen(
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
     Spacer(Modifier.height(Dimens.spacingM))
     HouseholdCard(state, onLeaveHousehold)
+    Spacer(Modifier.height(Dimens.spacingM))
+    NotificationSettingsEntry(onOpenNotificationSettings)
     Spacer(Modifier.height(Dimens.spacingL))
   }
   if (leaveState.isConfirming) {
@@ -281,6 +286,41 @@ private fun AccountCard(
             Text(stringResource(R.string.auth_sign_out))
           }
         }
+  }
+}
+
+/** A row that opens the notification settings sub-page. */
+@Composable
+private fun NotificationSettingsEntry(onClick: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
+  Card(
+      onClick = onClick,
+      shape = CardShape,
+      colors = CardDefaults.cardColors(containerColor = colors.surface),
+      border = BorderStroke(Dimens.borderWidth, colors.outlineVariant),
+      modifier = Modifier.fillMaxWidth().testTag(NotificationSettingsTestTags.OPEN_ENTRY),
+  ) {
+    Row(
+        Modifier.padding(Dimens.cardPadding),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingM),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      AccountIcon(Icons.Outlined.Notifications)
+      Column(Modifier.weight(1f)) {
+        Text(
+            text = stringResource(R.string.notification_settings_entry_title),
+            style = MaterialTheme.typography.titleMedium,
+            color = colors.onSurface)
+        Text(
+            text = stringResource(R.string.notification_settings_entry_description),
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onSurfaceVariant)
+      }
+      Icon(
+          imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+          contentDescription = null,
+          tint = colors.onSurfaceVariant)
+    }
   }
 }
 

@@ -9,5 +9,17 @@ enum class TopLevelDestination(
   RECIPES("recipes", "Recipes", NavigationTestTags.RECIPES_TAB),
   RECEIPTS("receipts", "Receipts", NavigationTestTags.RECEIPTS_TAB),
   CHAT("chat", "Chat", NavigationTestTags.CHAT_TAB),
-  SETTINGS("settings", "Settings", NavigationTestTags.SETTINGS_TAB),
+  SETTINGS("settings", "Settings", NavigationTestTags.SETTINGS_TAB);
+
+  /** Whether [currentRoute] is this tab's root screen or a screen nested inside it. */
+  fun owns(currentRoute: String?): Boolean =
+      currentRoute == route || currentRoute?.startsWith("$route/") == true
+}
+
+/** Screens nested inside a [TopLevelDestination]; the bottom bar stays visible on them. */
+object SettingsRoutes {
+  const val NOTIFICATIONS = "settings/notifications"
+
+  /** Key scoping the notification settings ViewModel to one user. */
+  fun notificationsViewModelKey(userId: String) = "notification_settings_$userId"
 }
