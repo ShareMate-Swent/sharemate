@@ -1238,7 +1238,7 @@ class FridgeViewModelTest {
               imageSelector,
               barcodeScanner,
               productCatalogRepository,
-              preferences)
+              expirationPreferencesRepository = preferences)
           .also { viewModelStore.put("fridge", it) }
 
   private fun TestScope.observedThreshold(vm: FridgeViewModel): Long {
