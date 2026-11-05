@@ -69,6 +69,17 @@ class ExpirationDatesTest {
     Assert.assertEquals(ExpiryStatus.NORMAL, status(ExpirationDates.SOON_THRESHOLD_DAYS + 1))
   }
 
+  @Test
+  fun statusHonoursACustomSoonThreshold() {
+    fun status(offset: Long) =
+        ExpirationDates.status(
+            ExpirationDates.toDate(today.plusDays(offset)), today, soonThresholdDays = 10)
+
+    Assert.assertEquals(ExpiryStatus.SOON, status(10))
+    Assert.assertEquals(ExpiryStatus.NORMAL, status(11))
+    Assert.assertEquals(ExpiryStatus.EXPIRED, status(-1))
+  }
+
   /** Non-regression: the stored day must never shift with the device's time zone. */
   @Test
   fun storedDayIsTheSameInEveryTimeZone() {

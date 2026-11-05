@@ -6,6 +6,7 @@ import com.android.sharemate.MainActivity
 import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.notifications.expiration.ExpirationNotificationSource
 import com.android.sharemate.notifications.expiration.ResourceExpirationNotificationFormatter
 import com.google.firebase.auth.FirebaseAuth
@@ -27,6 +28,7 @@ object NotificationDispatcherFactory {
             ExpirationNotificationSource(
                 itemRepository = FirebaseItemRepository(firestore),
                 recipientProvider = recipientProvider,
+                preferencesRepository = FirebaseExpirationPreferencesRepository(firestore),
                 formatter = ResourceExpirationNotificationFormatter(context.resources)),
         )
     return NotificationDispatcher(

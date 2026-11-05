@@ -2,6 +2,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
+import com.android.sharemate.model.user.ExpirationPreferences
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -34,8 +35,8 @@ sealed interface ExpirationInput {
  * zone. Only "today" depends on the device's time zone.
  */
 object ExpirationDates {
-  /** An item expiring in this many days or fewer (and not yet expired) is "soon". */
-  const val SOON_THRESHOLD_DAYS = 3L
+  /** Default "soon" window, used until the user picks their own (see `ExpirationPreferences`). */
+  const val SOON_THRESHOLD_DAYS = ExpirationPreferences.DEFAULT_SOON_DAYS.toLong()
 
   private val INPUT_FORMAT = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
@@ -70,12 +71,19 @@ object ExpirationDates {
           .apply { timeZone = TimeZone.getTimeZone("UTC") }
           .format(date)
 
-  fun status(date: Date?, today: LocalDate = LocalDate.now()): ExpiryStatus {
-    if (date == null) return ExpiryStatus.NORMAL
-    val days = ChronoUnit.DAYS.between(today, toLocalDate(date))
+  /** Days from [today] until [date]; negative once expired. Null without an expiration date. */
+  fun daysUntil(date: Date?, today: LocalDate = LocalDate.now()): Long? =
+      date?.let { ChronoUnit.DAYS.between(today, toLocalDate(it)) }
+
+  fun status(
+      date: Date?,
+      today: LocalDate = LocalDate.now(),
+      soonThresholdDays: Long = SOON_THRESHOLD_DAYS,
+  ): ExpiryStatus {
+    val days = daysUntil(date, today) ?: return ExpiryStatus.NORMAL
     return when {
       days < 0 -> ExpiryStatus.EXPIRED
-      days <= SOON_THRESHOLD_DAYS -> ExpiryStatus.SOON
+      days <= soonThresholdDays -> ExpiryStatus.SOON
       else -> ExpiryStatus.NORMAL
     }
   }
