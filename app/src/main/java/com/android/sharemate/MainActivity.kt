@@ -231,7 +231,7 @@ open class MainActivity : ComponentActivity() {
                                                 createProductCatalogRepository(),
                                             photoStorage = FirebasePersonalPhotoRepository.create(),
                                             photoFiles =
-                                                AndroidPersonalPhotoFiles(applicationContext)),
+                                                AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferencesRepository =
                                                 expirationPreferencesRepository)
                                       }
