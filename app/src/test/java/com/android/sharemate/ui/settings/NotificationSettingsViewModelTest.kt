@@ -5,8 +5,10 @@ import com.android.sharemate.model.user.ExpirationChange
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
@@ -209,5 +211,75 @@ class NotificationSettingsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(ExpirationPreferences.DEFAULT_SOON_DAYS, model.state.value.preferences.soonDays)
+  }
+
+  @Test
+  fun retryRestartsTheListenerAfterItFailsFollowingASuccessfulLoad() = runTest {
+    var failNow = false
+    val repo =
+        object : ExpirationPreferencesRepository {
+          override fun observe(userId: String): Flow<ExpirationPreferences> = flow {
+            emit(ExpirationPreferences(soonDays = 5))
+            if (failNow) throw IllegalStateException("lost")
+            awaitCancellation()
+          }
+
+          override suspend fun get(userId: String) = ExpirationPreferences()
+
+          override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
+
+          override suspend fun update(userId: String, change: ExpirationChange) = Unit
+        }
+    failNow = true
+    val model = NotificationSettingsViewModel(repo, "alice")
+    advanceUntilIdle()
+    assertTrue(model.state.value.isLoaded)
+    assertTrue(model.state.value.loadFailed)
+
+    failNow = false
+    model.retryLoad()
+    advanceUntilIdle()
+
+    assertFalse(model.state.value.loadFailed)
+  }
+
+  @Test
+  fun snapshotOfAnEarlierEditDoesNotClearTheLatestEdit() = runTest {
+    val snapshots = MutableSharedFlow<ExpirationPreferences>()
+    val gates = mutableListOf<Pair<ExpirationChange, CompletableDeferred<Unit>>>()
+    val repo =
+        object : ExpirationPreferencesRepository {
+          override fun observe(userId: String): Flow<ExpirationPreferences> = snapshots
+
+          override suspend fun get(userId: String) = ExpirationPreferences()
+
+          override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
+
+          override suspend fun update(userId: String, change: ExpirationChange) {
+            val gate = CompletableDeferred<Unit>()
+            gates += change to gate
+            gate.await()
+          }
+        }
+    val model = NotificationSettingsViewModel(repo, "alice")
+    advanceUntilIdle()
+    snapshots.emit(ExpirationPreferences(soonDays = 7))
+    advanceUntilIdle()
+
+    model.setSoonDays(8)
+    model.setSoonDays(9)
+    model.setSoonDays(8)
+    advanceUntilIdle()
+
+    snapshots.emit(ExpirationPreferences(soonDays = 8))
+    advanceUntilIdle()
+    snapshots.emit(ExpirationPreferences(soonDays = 9))
+    advanceUntilIdle()
+
+    assertEquals(8, model.state.value.preferences.soonDays)
+
+    gates.forEach { it.second.complete(Unit) }
+    advanceUntilIdle()
+    assertEquals(8, model.state.value.preferences.soonDays)
   }
 }
