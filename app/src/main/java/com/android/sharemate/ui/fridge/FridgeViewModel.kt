@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.PersonalPhotoFiles
+import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.Item
@@ -48,8 +50,15 @@ class FridgeViewModel(
     private val householdId: String?,
     private val foodImageSelector: FoodImageSelector,
     private val barcodeScanner: BarcodeScanner,
-    private val productCatalogRepository: ProductCatalogRepository
+    private val productCatalogRepository: ProductCatalogRepository,
+    photoStorage: PersonalPhotoRepository? = null,
+    photoFiles: PersonalPhotoFiles? = null,
 ) : ViewModel() {
+  val personalPhotos =
+      if (photoStorage != null && photoFiles != null)
+          PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
+      else null
+
   private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
   private val deletionOperations = mutableMapOf<String, Any>()
@@ -167,6 +176,8 @@ class FridgeViewModel(
           mutableUiState.update { it.copy(pendingRemovalItem = null) }
           return@launch
         }
+        val current = activeItem(uiState.value.items, item.id) ?: item
+        personalPhotos?.prepareRemoval(current)
         when (val write = itemRepository.deleteItemQueued(item.id)) {
           is ItemWrite.Rejected -> {
             if (write.cause is CancellationException) throw write.cause
@@ -308,6 +319,7 @@ class FridgeViewModel(
 
   fun dismissAddItemDialog() {
     if (uiState.value.isSaving) return
+    personalPhotos?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
     mutableUiState.update {
@@ -533,6 +545,7 @@ class FridgeViewModel(
   }
 
   fun saveItem() {
+    if (personalPhotos?.draft?.value?.importing == true) return
     val state = uiState.value
     if (!state.isAddItemDialogOpen || state.isSaving || state.isScanningBarcode) return
     val name = state.itemName.trim()
@@ -591,7 +604,10 @@ class FridgeViewModel(
                 barcodeScanFailed = false,
                 formError = null)
           }
-          enrichItemImage(itemId, name)
+          val photos = personalPhotos
+          val photo = photos?.takeDraft()
+          if (photos != null && photo != null) photos.attachCreated(itemId, name, photo)
+          else enrichItemImage(itemId, name)
         }
       } catch (exception: CancellationException) {
         mutableUiState.update { it.copy(isSaving = false) }
@@ -695,6 +711,7 @@ class FridgeViewModel(
   }
 
   override fun onCleared() {
+    personalPhotos?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
     confirmationHandlers.values.forEach { it?.dispose() }

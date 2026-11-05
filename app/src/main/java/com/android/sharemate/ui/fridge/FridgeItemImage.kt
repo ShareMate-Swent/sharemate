@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import android.content.Context
+import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -14,10 +15,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -36,6 +41,10 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
+import java.nio.ByteBuffer
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val ThumbnailSize = 80.dp
 
@@ -52,9 +61,21 @@ internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): 
 internal fun FridgeItemImage(
     item: Item,
     imageLoader: ImageLoader,
-    modifier: Modifier = Modifier.size(ThumbnailSize)
+    modifier: Modifier = Modifier.size(ThumbnailSize),
+    personalPhotos: PersonalPhotoController? = null,
 ) {
   val source = item.image?.reference?.takeIf { it.isNotBlank() }
+  if (item.image?.origin == ItemImageOrigin.PERSONAL_PHOTO &&
+      source?.startsWith("itemPhotos/") == true) {
+    // Scope decoded private pixels to this item and fridge session.
+    key(item.id, source, personalPhotos) {
+      BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val pixels = with(LocalDensity.current) { maxWidth.roundToPx() }
+        StoredPersonalPhoto(item.name, source, pixels, personalPhotos)
+      }
+    }
+    return
+  }
   val context = LocalContext.current
   BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
     val pixels = with(LocalDensity.current) { maxWidth.roundToPx() }
@@ -88,6 +109,51 @@ internal fun FridgeItemImage(
     }
   }
 }
+
+@Composable
+private fun StoredPersonalPhoto(
+    name: String,
+    source: String,
+    pixels: Int,
+    photos: PersonalPhotoController?,
+) {
+  val bitmap by
+      produceState<ImageBitmap?>(null, source, pixels, photos) {
+        value = null
+        value =
+            try {
+              val bytes = photos?.load(source) ?: return@produceState
+              withContext(Dispatchers.Default) { decodePersonalThumbnail(bytes, pixels) }
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (_: Exception) {
+              null
+            }
+      }
+  val image = bitmap
+  if (image == null) FoodPlaceholder()
+  else
+      Image(
+          bitmap = image,
+          contentDescription = stringResource(R.string.fridge_image_description, name),
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
+}
+
+internal fun decodePersonalThumbnail(bytes: ByteArray, pixels: Int): ImageBitmap =
+    ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _
+          ->
+          decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+          val width = info.size.width
+          val height = info.size.height
+          val longest = maxOf(width, height)
+          val target = pixels.coerceIn(1, longest)
+          if (target < longest)
+              decoder.setTargetSize(
+                  (width.toLong() * target / longest).toInt().coerceAtLeast(1),
+                  (height.toLong() * target / longest).toInt().coerceAtLeast(1))
+        }
+        .asImageBitmap()
 
 @Composable
 private fun FoodPlaceholder() {

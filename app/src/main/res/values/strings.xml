@@ -160,4 +160,10 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
+    <string name="personal_photo_choose">Choose a personal photo</string>
+    <string name="personal_photo_change">Change personal photo</string>
+    <string name="personal_photo_preview">Selected personal photo</string>
+    <string name="personal_photo_remove">Remove personal photo</string>
+    <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
+    <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
 </resources>

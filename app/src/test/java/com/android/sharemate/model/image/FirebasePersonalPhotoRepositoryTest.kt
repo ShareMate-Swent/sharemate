@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.google.firebase.storage.StreamDownloadTask
@@ -56,6 +57,23 @@ class FirebasePersonalPhotoRepositoryTest {
     `when`(upload.result).thenReturn(mock(UploadTask.TaskSnapshot::class.java))
     `when`(download.isComplete).thenReturn(true)
     `when`(download.result).thenReturn(mock(StreamDownloadTask.TaskSnapshot::class.java))
+  }
+
+  @Test
+  fun deleteAttachedOnlyRemovesThisItemsPhotoAndAllowsARetry() = runTest {
+    `when`(snapshot.getString("image.origin")).thenReturn("PERSONAL_PHOTO")
+    `when`(snapshot.getString("image.reference")).thenReturn(reference.path)
+    val missing = mock(StorageException::class.java)
+    `when`(missing.errorCode).thenReturn(StorageException.ERROR_OBJECT_NOT_FOUND)
+    `when`(remote.delete()).thenReturn(Tasks.forException(missing))
+    repository.deleteAttached("item").getOrThrow()
+    val denied = IOException("Storage denied")
+    `when`(remote.delete()).thenReturn(Tasks.forException(denied))
+    assertSame(denied, repository.deleteAttached("item").exceptionOrNull())
+    repository.deleteAttached("another-item").getOrThrow()
+    `when`(snapshot.getString("image.origin")).thenReturn("REMOTE_IMAGE")
+    repository.deleteAttached("item").getOrThrow()
+    verify(remote, times(2)).delete()
   }
 
   @Test
