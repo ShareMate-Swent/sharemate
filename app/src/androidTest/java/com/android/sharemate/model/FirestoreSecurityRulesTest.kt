@@ -13,6 +13,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
@@ -20,6 +21,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -273,6 +275,25 @@ class FirestoreSecurityRulesTest {
 
     assertDenied(
         householdReference(household.id).update("memberIds", FieldValue.arrayUnion(outsiderId)))
+  }
+
+  @Test
+  fun knowingAHouseholdIdWithoutItsInviteCannotGrantMembership() {
+    val household = createHouseholdAs("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+
+    assertDenied(
+        firestore
+            .batch()
+            .update(
+                householdReference(household.id), "memberIds", FieldValue.arrayUnion(outsiderId))
+            .set(
+                userReference(outsiderId), mapOf("householdId" to household.id), SetOptions.merge())
+            .commit())
+    assertDenied(householdReference(household.id).get(Source.SERVER))
+
+    val joined = runBlocking { repository.joinHousehold(household.inviteCode, outsiderId) }
+    assertTrue(outsiderId in joined.memberIds)
   }
 
   @Test
