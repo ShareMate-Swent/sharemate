@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Kitchen
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -32,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
@@ -49,6 +51,8 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
+import com.android.sharemate.model.finance.FirestoreHouseholdExpenseRepository
+import com.android.sharemate.model.finance.HouseholdExpenseRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.CommonsFoodImageRepository
@@ -62,6 +66,7 @@ import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
+import com.android.sharemate.ui.finance.BalancesRoute
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
@@ -93,6 +98,11 @@ open class MainActivity : ComponentActivity() {
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
+
+  protected open fun createHouseholdExpenseRepository(): HouseholdExpenseRepository =
+      FirestoreHouseholdExpenseRepository(FirebaseFirestore.getInstance())
+
+  private val expenseRepository by lazy { createHouseholdExpenseRepository() }
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -181,9 +191,18 @@ open class MainActivity : ComponentActivity() {
                                     Icon(Icons.Filled.ReceiptLong, "Receipts")
                                 TopLevelDestination.SETTINGS ->
                                     Icon(Icons.Filled.Settings, "Settings")
+                                TopLevelDestination.BALANCES ->
+                                    Icon(
+                                        Icons.Filled.AccountBalanceWallet,
+                                        stringResource(R.string.balances_title))
                               }
                             },
-                            label = { Text(destination.textId) },
+                            label = {
+                              Text(
+                                  if (destination == TopLevelDestination.BALANCES)
+                                      stringResource(R.string.balances_title)
+                                  else destination.textId)
+                            },
                         )
                       }
                     }
@@ -231,6 +250,16 @@ open class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                           ReceiptsScreen()
                         }
+                      }
+                  composable(
+                      TopLevelDestination.BALANCES.route,
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.BALANCES)) {
+                        BalancesRoute(
+                            expenseRepository,
+                            householdRepository,
+                            authRepository,
+                            household,
+                            session.uid)
                       }
                   composable(
                       TopLevelDestination.SETTINGS.route,
