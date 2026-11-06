@@ -2,9 +2,11 @@
 package com.android.sharemate.model.image
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.item.ItemImageOrigin
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageTask
 import java.io.ByteArrayOutputStream
@@ -18,10 +20,19 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-class FirebasePersonalPhotoRepository(
-    private val storage: FirebaseStorage,
-    private val firestore: FirebaseFirestore
+class FirebasePersonalPhotoRepository
+private constructor(
+    storageProvider: () -> FirebaseStorage,
+    firestoreProvider: () -> FirebaseFirestore,
 ) : PersonalPhotoRepository {
+  constructor(
+      storage: FirebaseStorage,
+      firestore: FirebaseFirestore,
+  ) : this({ storage }, { firestore })
+
+  private val storage by lazy(storageProvider)
+  private val firestore by lazy(firestoreProvider)
+
   override suspend fun upload(itemId: String, source: File): Result<PersonalPhotoReference> =
       outcome {
         require(itemId.isNotBlank() && '/' !in itemId && itemId != "." && itemId != "..")
@@ -74,6 +85,21 @@ class FirebasePersonalPhotoRepository(
     Unit
   }
 
+  override suspend fun deleteAttached(itemId: String): Result<Unit> = outcome {
+    val item =
+        firestore.collection(FirestoreCollections.ITEMS).document(itemId).get(Source.SERVER).await()
+    if (item.getString("image.origin") == ItemImageOrigin.PERSONAL_PHOTO.name) {
+      val path = item.getString("image.reference")
+      if (path?.startsWith("itemPhotos/$itemId/") == true) {
+        val error = delete(PersonalPhotoReference(path)).exceptionOrNull()
+        // A previous attempt may have deleted the blob before the item deletion failed.
+        if (error != null &&
+            (error as? StorageException)?.errorCode != StorageException.ERROR_OBJECT_NOT_FOUND)
+            throw error
+      }
+    }
+  }
+
   private suspend fun <T> outcome(block: suspend () -> T): Result<T> =
       try {
         currentCoroutineContext().ensureActive()
@@ -100,6 +126,12 @@ class FirebasePersonalPhotoRepository(
       output.write(buffer, 0, count)
     }
     return output.toByteArray()
+  }
+
+  companion object {
+    fun create(): PersonalPhotoRepository =
+        FirebasePersonalPhotoRepository(
+            { FirebaseStorage.getInstance() }, { FirebaseFirestore.getInstance() })
   }
 
   private fun photoType(bytes: ByteArray): String =

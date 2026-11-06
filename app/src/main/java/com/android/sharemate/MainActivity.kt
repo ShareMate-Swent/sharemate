@@ -54,7 +54,9 @@ import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
 import com.android.sharemate.model.image.CommonsFoodImageRepository
+import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
@@ -228,6 +230,9 @@ open class MainActivity : ComponentActivity() {
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
                                                 createProductCatalogRepository(),
+                                            photoStorage = FirebasePersonalPhotoRepository.create(),
+                                            photoFiles =
+                                                AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferencesRepository =
                                                 expirationPreferencesRepository,
                                             fridgeType = household.type,

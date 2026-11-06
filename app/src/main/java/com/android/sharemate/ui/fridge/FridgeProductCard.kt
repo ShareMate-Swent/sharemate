@@ -67,6 +67,7 @@ fun FridgeItem(
     onStatusChange: (ItemStatus) -> Unit = {},
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
     ownership: ItemOwnership = ItemOwnership(item.sharing),
+    personalPhotos: PersonalPhotoController? = null,
 ) {
   val sharingLabel =
       stringResource(
@@ -109,7 +110,7 @@ fun FridgeItem(
             shape = RoundedCornerShape(FridgeLayout.productCornerRadius),
             color = MaterialTheme.colorScheme.surfaceVariant) {
               Box(contentAlignment = Alignment.Center) {
-                FridgeItemImage(item, imageLoader, Modifier.fillMaxSize())
+                FridgeItemImage(item, imageLoader, Modifier.fillMaxSize(), personalPhotos)
                 Box(Modifier.align(Alignment.TopEnd)) {
                   ItemActions(
                       item,

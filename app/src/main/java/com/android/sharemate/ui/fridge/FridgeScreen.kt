@@ -68,6 +68,7 @@ fun FridgeScreen(
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     fridgeType: FridgeType? = null,
     onSharingChange: (ItemSharing) -> Unit = {},
+    personalPhotos: PersonalPhotoController? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val screenModifier =
@@ -130,6 +131,13 @@ fun FridgeScreen(
           color = MaterialTheme.colorScheme.error,
           modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_edit_sync_error))
     }
+    val photoFailure = personalPhotos?.failure?.collectAsState()?.value
+    photoFailure?.let {
+      Text(
+          stringResource(R.string.personal_photo_attach_failed, it),
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.padding(horizontal = 24.dp))
+    }
     if (uiState.loadFailed) {
       Text(
           stringResource(R.string.fridge_load_failed),
@@ -181,6 +189,7 @@ fun FridgeScreen(
                     FridgeItem(
                         item = item,
                         ownership = uiState.ownershipFor(item),
+                        personalPhotos = personalPhotos,
                         editEnabled =
                             onEditItem != null &&
                                 !uiState.isSaving &&
@@ -236,6 +245,7 @@ fun FridgeScreen(
         onQuantityChange = onQuantityChange,
         onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         onSharingChange = onSharingChange,
+        personalPhotos = personalPhotos,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -333,6 +343,7 @@ fun FridgeScreen(
         onCancelRemoval = viewModel::cancelRemoval,
         onConfirmRemoval = viewModel::confirmRemoval,
         fridgeType = fridgeType,
+        personalPhotos = viewModel.personalPhotos,
     )
   }
 }

@@ -37,6 +37,9 @@ interface PersonalPhotoRepository {
   /** Delete while the item still exists; deleting an item first requires administrative cleanup. */
   suspend fun delete(reference: PersonalPhotoReference): Result<Unit>
 
+  /** Reads the saved item from the server and removes its attached Storage photo, if present. */
+  suspend fun deleteAttached(itemId: String): Result<Unit>
+
   companion object {
     const val MAX_BYTES = 5 * 1024 * 1024
   }
