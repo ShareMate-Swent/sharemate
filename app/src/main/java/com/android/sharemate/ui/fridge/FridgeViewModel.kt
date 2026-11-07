@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -17,6 +18,7 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.product.ProductCatalogRepository
@@ -24,6 +26,8 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.MemberNameRepository
+import com.android.sharemate.model.user.ownerDisplayName
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -58,13 +62,25 @@ class FridgeViewModel(
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
+    fridgeType: FridgeType? = null,
+    private val memberNameRepository: MemberNameRepository? = null,
+    currentUserDisplayName: String? = null,
 ) : ViewModel() {
+  private val supportsSharing = fridgeType == FridgeType.SHARED && householdId != null
+  private val ownName = ownerDisplayName(currentUserDisplayName)
+  private val ownNames = ownName?.let { mapOf(userId to it) }.orEmpty()
+  private val mutableUiState =
+      MutableStateFlow(
+          FridgeUiState(
+              isLoading = true,
+              showSharingSelector = supportsSharing,
+              currentUserId = userId,
+              ownerNames = ownNames))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
           PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
       else null
 
-  private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
@@ -123,6 +139,28 @@ class FridgeViewModel(
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId == null || householdId.isNotBlank()) {
       "A household ID must be non-blank when provided"
+    }
+    if (householdId != null && memberNameRepository != null) {
+      viewModelScope.launch {
+        try {
+          memberNameRepository.observeNames(householdId, userId).collect { names ->
+            mutableUiState.update { it.copy(ownerNames = names + ownNames) }
+          }
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          mutableUiState.update { it.copy(ownerNames = ownNames) }
+        }
+      }
+      viewModelScope.launch {
+        try {
+          memberNameRepository.publishOwnName(householdId, userId, ownName)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          /* Name availability never blocks inventory. */
+        }
+      }
     }
     viewModelScope.launch {
       try {
@@ -320,6 +358,9 @@ class FridgeViewModel(
       it.copy(
           isAddItemDialogOpen = true,
           editingItemId = null,
+          itemSharing = ItemSharing.SHARED,
+          originalItemSharing = null,
+          canChangeSharing = supportsSharing,
           itemQuantity = "1",
           itemName = "",
           itemCategory = "",
@@ -341,6 +382,9 @@ class FridgeViewModel(
       it.copy(
           isAddItemDialogOpen = false,
           editingItemId = null,
+          itemSharing = ItemSharing.SHARED,
+          originalItemSharing = null,
+          canChangeSharing = false,
           itemQuantity = "1",
           itemName = "",
           itemCategory = "",
@@ -532,6 +576,9 @@ class FridgeViewModel(
       it.copy(
           isAddItemDialogOpen = true,
           editingItemId = item.id,
+          itemSharing = item.sharing,
+          originalItemSharing = item.sharing,
+          canChangeSharing = supportsSharing && item.ownerId == userId,
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
@@ -552,6 +599,14 @@ class FridgeViewModel(
 
   fun updateExpirationDate(date: String) = updateDraft {
     it.copy(expirationDateInput = date, formError = null)
+  }
+
+  fun updateSharing(sharing: ItemSharing) {
+    val state = uiState.value
+    if (!supportsSharing || !state.canChangeSharing) return
+    val itemId = state.editingItemId
+    if (itemId != null && activeItem(state.items, itemId)?.ownerId != userId) return
+    updateDraft { it.copy(itemSharing = sharing, formError = null) }
   }
 
   private fun updateDraft(update: (FridgeUiState) -> FridgeUiState) {
@@ -586,7 +641,14 @@ class FridgeViewModel(
       saveEdit(
           state.editingItemId,
           ItemEdit(
-              name, quantity, state.itemCategory.trim().takeIf(String::isNotEmpty), expirationDate))
+              name,
+              quantity,
+              state.itemCategory.trim().takeIf(String::isNotEmpty),
+              expirationDate,
+              // Compare to the opened draft, not live snapshots: untouched sharing must not
+              // overwrite a change made by another client while this dialog was open.
+              sharing =
+                  state.itemSharing.takeIf { supportsSharing && it != state.originalItemSharing }))
       return
     }
     val draftItem =
@@ -596,7 +658,10 @@ class FridgeViewModel(
             householdId = householdId,
             quantity = quantity,
             expirationDate = expirationDate,
-            category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
+            category = state.itemCategory.trim().takeIf { it.isNotEmpty() },
+            sharing =
+                if (supportsSharing) state.itemSharing
+                else if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED)
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
@@ -611,6 +676,9 @@ class FridgeViewModel(
             it.copy(
                 isSaving = false,
                 isAddItemDialogOpen = false,
+                itemSharing = ItemSharing.SHARED,
+                originalItemSharing = null,
+                canChangeSharing = false,
                 itemQuantity = "1",
                 itemName = "",
                 itemCategory = "",
@@ -659,13 +727,22 @@ class FridgeViewModel(
 
   private fun saveEdit(itemId: String, edit: ItemEdit) {
     val state = uiState.value
-    if (itemId in state.pendingDeletionIds || activeItem(state.items, itemId) == null) {
+    val item = activeItem(state.items, itemId)
+    if (itemId in state.pendingDeletionIds ||
+        item == null ||
+        (edit.sharing != null && (!supportsSharing || item.ownerId != userId))) {
       mutableUiState.update { it.copy(formError = FridgeFormError.SAVE_FAILED) }
       return
     }
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
+        if (edit.sharing != null && activeItem(uiState.value.items, itemId)?.ownerId != userId) {
+          mutableUiState.update {
+            it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED)
+          }
+          return@launch
+        }
         when (val write = itemRepository.updateItem(itemId, edit)) {
           is ItemWrite.Rejected -> {
             if (write.cause is CancellationException) throw write.cause
@@ -680,6 +757,9 @@ class FridgeViewModel(
                   isSaving = false,
                   isAddItemDialogOpen = false,
                   editingItemId = null,
+                  itemSharing = ItemSharing.SHARED,
+                  originalItemSharing = null,
+                  canChangeSharing = false,
                   itemName = "",
                   itemQuantity = "1",
                   itemCategory = "",

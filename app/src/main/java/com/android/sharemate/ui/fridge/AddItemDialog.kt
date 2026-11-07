@@ -4,23 +4,30 @@ package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,10 +35,12 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.ui.theme.Dimens
 
 @Composable
 fun AddItemDialog(
@@ -43,6 +52,7 @@ fun AddItemDialog(
     onDismiss: () -> Unit,
     onQuantityChange: (String) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
+    onSharingChange: (ItemSharing) -> Unit = {},
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val context = LocalContext.current.applicationContext
@@ -143,6 +153,39 @@ fun AddItemDialog(
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
+              if (uiState.showSharingSelector) {
+                Column(Modifier.selectableGroup().testTag(C.Tag.fridge_sharing_selector)) {
+                  Text(stringResource(R.string.fridge_item_sharing))
+                  for (sharing in ItemSharing.values()) {
+                    val selected = uiState.itemSharing == sharing
+                    val enabled = uiState.canChangeSharing && inputEnabled
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .selectable(
+                                    selected = selected,
+                                    enabled = enabled,
+                                    role = Role.RadioButton,
+                                    onClick = { onSharingChange(sharing) })
+                                .testTag(
+                                    if (sharing == ItemSharing.SHARED) C.Tag.fridge_sharing_shared
+                                    else C.Tag.fridge_sharing_personal)
+                                .padding(vertical = Dimens.spacingXxs),
+                        verticalAlignment = Alignment.CenterVertically) {
+                          RadioButton(selected = selected, onClick = null, enabled = enabled)
+                          Text(
+                              stringResource(
+                                  if (sharing == ItemSharing.SHARED) R.string.fridge_item_shared
+                                  else R.string.fridge_item_personal))
+                        }
+                  }
+                  if (!uiState.canChangeSharing && uiState.editingItemId != null) {
+                    Text(
+                        stringResource(R.string.fridge_sharing_owner_only),
+                        style = MaterialTheme.typography.bodySmall)
+                  }
+                }
+              }
               uiState.formError?.let { error ->
                 Text(
                     text =

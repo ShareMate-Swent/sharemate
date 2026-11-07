@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model
 
@@ -12,6 +13,7 @@ object FirestoreCollections {
   const val EXPENSES = "expenses"
   /** Sub-collection of a household document. */
   const val MESSAGES = "messages"
+  const val MEMBER_NAMES = "memberNames"
 }
 
 /** Fields of a user document holding the expiry notification preferences. */

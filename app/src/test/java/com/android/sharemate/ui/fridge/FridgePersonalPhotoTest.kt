@@ -4,9 +4,11 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import java.io.File
 import java.io.IOException
@@ -90,7 +92,9 @@ class FridgePersonalPhotoTest {
             BarcodeScanner { BarcodeScanResult.NotFound },
             mock(ProductCatalogRepository::class.java),
             storage,
-            files)
+            files,
+            fridgeType = FridgeType.SHARED,
+            currentUserDisplayName = "Owner")
     models.put("fridge", viewModel)
   }
 
@@ -134,6 +138,45 @@ class FridgePersonalPhotoTest {
     assertEquals(1, items.addedItems.size)
     assertEquals(0, automaticLookups)
     assertFalse(selected.exists())
+  }
+
+  @Test
+  fun personalPhotoAndOwnershipSurviveAtomicSharingAndOrdinaryEdits() = runTest {
+    selectPhoto()
+    viewModel.updateSharing(ItemSharing.PERSONAL)
+    viewModel.saveItem()
+    runCurrent()
+    val personal = viewModel.uiState.value.items.single()
+    assertEquals(ItemSharing.PERSONAL, personal.sharing)
+    assertEquals("owner", personal.ownerId)
+    assertEquals("home", personal.householdId)
+    assertEquals(reference.path, personal.image?.reference)
+    assertEquals(
+        ItemOwnership(ItemSharing.PERSONAL, "Owner", true),
+        viewModel.uiState.value.ownershipFor(personal))
+    viewModel.openEditItemDialog(personal.id)
+    viewModel.updateName("Oat milk")
+    viewModel.updateSharing(ItemSharing.SHARED)
+    viewModel.saveItem()
+    runCurrent()
+    val shared = viewModel.uiState.value.items.single()
+    assertEquals(personal.copy(name = "Oat milk", sharing = ItemSharing.SHARED), shared)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
+  }
+
+  @Test
+  fun cancellingPersonalSelectionDiscardsPhotoAndRestoresSharedDraft() = runTest {
+    selectPhoto()
+    viewModel.updateSharing(ItemSharing.PERSONAL)
+    viewModel.dismissAddItemDialog()
+    runCurrent()
+    assertFalse(selected.exists())
+    assertNull(controller.draft.value.file)
+    assertTrue(items.addedItems.isEmpty())
+    assertEquals(0, uploaded)
+    viewModel.openAddItemDialog()
+    assertEquals(ItemSharing.SHARED, viewModel.uiState.value.itemSharing)
   }
 
   @Test

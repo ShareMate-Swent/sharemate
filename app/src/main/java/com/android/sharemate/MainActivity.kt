@@ -64,6 +64,7 @@ import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -233,7 +234,12 @@ open class MainActivity : ComponentActivity() {
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferencesRepository =
-                                                expirationPreferencesRepository)
+                                                expirationPreferencesRepository,
+                                            fridgeType = household.type,
+                                            memberNameRepository =
+                                                FirebaseMemberNameRepository(
+                                                    FirebaseFirestore.getInstance()),
+                                            currentUserDisplayName = session.displayName)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
