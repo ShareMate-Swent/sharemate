@@ -24,4 +24,12 @@ class FakeExpirationPreferencesRepository(
     saved += userId to preferences
     stored.value = stored.value + (userId to preferences)
   }
+
+  val updates = mutableListOf<Pair<String, ExpirationChange>>()
+
+  override suspend fun update(userId: String, change: ExpirationChange) {
+    saveFailure?.let { throw it }
+    updates += userId to change
+    stored.value = stored.value + (userId to change.applyTo(get(userId)))
+  }
 }
