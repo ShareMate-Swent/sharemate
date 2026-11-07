@@ -138,6 +138,7 @@ fun JoinHouseholdScreen(
                     text = state.inviteCode.getOrNull(index)?.toString() ?: "",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
                 )
               }
             }
