@@ -1,9 +1,13 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.profile.toPublicProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,11 +25,18 @@ sealed interface HouseholdGateState {
   data object Error : HouseholdGateState
 }
 
-/** Checks membership for one authenticated user; create a new instance when the user changes. */
+/**
+ * Checks membership for one authenticated user; create a new instance when the user changes.
+ *
+ * On start it also saves the user's public profile, so the other members of their household see
+ * their current name and photo.
+ */
 class HouseholdGateViewModel(
     private val householdRepository: HouseholdRepository,
-    private val userId: String
+    private val profileRepository: UserProfileRepository,
+    session: AuthSession,
 ) : ViewModel() {
+  private val userId = session.uid
   private val mutableState = MutableStateFlow<HouseholdGateState>(HouseholdGateState.Loading)
 
   val state = mutableState.asStateFlow()
@@ -33,7 +44,19 @@ class HouseholdGateViewModel(
   private var refreshJob: Job? = null
 
   init {
+    savePublicProfile(session)
     refresh()
+  }
+
+  // Runs on its own: a failure must not block the app, and the next sign-in saves it again.
+  private fun savePublicProfile(session: AuthSession) {
+    viewModelScope.launch {
+      try {
+        profileRepository.savePublicProfile(session.toPublicProfile())
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {}
+    }
   }
 
   /** Reloads membership after onboarding or an error, without starting duplicate requests. */

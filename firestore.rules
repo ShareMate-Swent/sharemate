@@ -28,6 +28,39 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
+    // A public profile is readable by its owner and by the members of the owner's household.
+    // Only one document at a time: profiles cannot be listed, so they cannot be enumerated.
+    match /profiles/{userId} {
+      // Membership is read from the household's memberIds, the source of truth; the reader's
+      // own user document only says which household to check.
+      function sharesHouseholdWith(otherId) {
+        let householdId = get(documentPath('users', request.auth.uid)).data.get('householdId', null);
+        let members = get(documentPath('households', householdId)).data.memberIds;
+        return householdId is string && request.auth.uid in members && otherId in members;
+      }
+
+      function optionalString(data, field) {
+        return !(field in data) || data[field] == null || data[field] is string;
+      }
+
+      // The email, when present, must be the signed-in account's own address.
+      function isValidProfile(data) {
+        return data.keys().hasOnly(['displayName', 'photoUrl', 'email'])
+            && optionalString(data, 'displayName')
+            && optionalString(data, 'photoUrl')
+            && optionalString(data, 'email')
+            && (!('email' in data) || data.email == null
+                || data.email == request.auth.token.get('email', null));
+      }
+
+      allow get: if signedIn()
+          && (request.auth.uid == userId || sharesHouseholdWith(userId));
+      allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && isValidProfile(request.resource.data);
+      allow delete: if false;
+    }
+
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
