@@ -278,7 +278,8 @@ service cloud.firestore {
           && (isOwner(item) || item.get('sharing', null) == 'SHARED');
     }
 
-    // Item documents must contain the fields the app expects, including their household.
+    // Item documents must contain the fields the app expects. Their household is checked where an
+    // item is created (isCurrentMember) and cannot change afterwards (canUpdateItem).
     function hasValidItemData(data) {
       return data.sharing in ['SHARED', 'PERSONAL']
           && data.quantity is int && data.quantity > 0 && data.quantity <= 2147483647
@@ -286,8 +287,6 @@ service cloud.firestore {
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
           && data.name.size() > 0
-          && data.get('householdId', null) is string
-          && data.householdId.size() > 0
           && (data.get('expirationDate', null) == null || data.expirationDate is timestamp)
           && (data.get('category', null) == null || data.category is string);
     }

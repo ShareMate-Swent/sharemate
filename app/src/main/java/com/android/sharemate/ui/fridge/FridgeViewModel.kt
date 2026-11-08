@@ -553,6 +553,7 @@ class FridgeViewModel(
     it.copy(itemCategory = category, formError = null)
   }
 
+  /** The only way to set the sharing of a new item: a private fridge never leaves PERSONAL. */
   fun updateSharing(sharing: ItemSharing) = updateDraft {
     it.copy(itemSharing = if (fridgeType == FridgeType.SHARED) sharing else ItemSharing.PERSONAL)
   }
@@ -601,8 +602,7 @@ class FridgeViewModel(
             name = name,
             ownerId = userId,
             householdId = householdId,
-            sharing =
-                if (fridgeType == FridgeType.SHARED) state.itemSharing else ItemSharing.PERSONAL,
+            sharing = state.itemSharing,
             quantity = quantity,
             expirationDate = expirationDate,
             category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
