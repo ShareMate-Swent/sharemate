@@ -69,7 +69,7 @@ class FridgeViewModel(
       else null
 
   private val mutableUiState =
-      MutableStateFlow(FridgeUiState(isLoading = true, fridgeType = fridgeType))
+      MutableStateFlow(FridgeUiState(fridgeType = fridgeType, isLoading = true))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */

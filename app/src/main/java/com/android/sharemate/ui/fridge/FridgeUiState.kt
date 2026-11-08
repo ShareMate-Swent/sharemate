@@ -8,6 +8,8 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 
 data class FridgeUiState(
+    /** Type of the fridge shown. Items can only be shared in a [FridgeType.SHARED] fridge. */
+    val fridgeType: FridgeType,
     val items: List<Item> = emptyList(),
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
@@ -21,11 +23,6 @@ data class FridgeUiState(
     val itemCategory: String = "",
     /** Sharing chosen for the item being created; items are private unless shared explicitly. */
     val itemSharing: ItemSharing = ItemSharing.PERSONAL,
-    /**
-     * Type of the fridge shown, or null while unknown. Items can only be shared in a
-     * [FridgeType.SHARED] fridge: every item of a private fridge stays private to its owner.
-     */
-    val fridgeType: FridgeType? = null,
     val expirationDateInput: String = "",
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,

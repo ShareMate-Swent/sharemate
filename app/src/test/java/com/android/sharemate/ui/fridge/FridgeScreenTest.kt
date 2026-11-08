@@ -70,7 +70,7 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(360.dp),
-            uiState = FridgeUiState(items = items))
+            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED))
       }
     }
     val squares =
@@ -99,13 +99,11 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
-    val type = mutableStateOf<FridgeType?>(null)
+  fun typeLabelFollowsTheFridgeType() {
+    val type = mutableStateOf(FridgeType.PRIVATE)
     composeRule.setContent {
       MaterialTheme { FridgeScreen(uiState = FridgeUiState(fridgeType = type.value)) }
     }
-    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
-    composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
     composeRule
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
@@ -115,8 +113,6 @@ class FridgeScreenTest {
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Shared")
-    composeRule.runOnIdle { type.value = null }
-    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
   }
 
   @Test
@@ -153,7 +149,8 @@ class FridgeScreenTest {
                             item,
                             item.copy(id = "eaten", status = ItemStatus.EATEN),
                             item.copy(id = "discarded", status = ItemStatus.DISCARDED)),
-                    pendingStatusIds = setOf(item.id)),
+                    pendingStatusIds = setOf(item.id),
+                    fridgeType = FridgeType.SHARED),
             onStatusChange = { _, _ -> },
             onEditItem = {})
       }
@@ -231,7 +228,8 @@ class FridgeScreenTest {
             FridgeUiState(
                 removalSyncError = error,
                 pendingRemovalItem =
-                    Item(id = "bread", name = "Bread", householdId = "household-1")))
+                    Item(id = "bread", name = "Bread", householdId = "household-1"),
+                fridgeType = FridgeType.SHARED))
     val dismissed = mutableListOf<FridgeRemovalSyncError>()
     composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
@@ -264,7 +262,9 @@ class FridgeScreenTest {
             Item(id = "bread", name = "Bread", householdId = "household-1"))
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
+        FridgeScreen(
+            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
+            onRemoveItem = { requests += it })
       }
     }
 
@@ -293,7 +293,8 @@ class FridgeScreenTest {
         FridgeScreen(
             uiState =
                 FridgeUiState(
-                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1"))))
+                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
+                    fridgeType = FridgeType.SHARED))
       }
     }
     openActions("milk")
@@ -308,7 +309,8 @@ class FridgeScreenTest {
             uiState =
                 FridgeUiState(
                     items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
-                    isDeleting = true),
+                    isDeleting = true,
+                    fridgeType = FridgeType.SHARED),
             onRemoveItem = {})
       }
     }
@@ -319,7 +321,9 @@ class FridgeScreenTest {
 
   @Test
   fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
-    composeRule.setContent { MaterialTheme { FridgeScreen() } }
+    composeRule.setContent {
+      MaterialTheme { FridgeScreen(uiState = FridgeUiState(fridgeType = FridgeType.SHARED)) }
+    }
 
     composeRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
     composeRule.onNodeWithTag(C.Tag.fridge_empty).assertIsDisplayed()
@@ -450,6 +454,7 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
             sortOrder = FridgeSortOrder.NAME,
             categories = categories,
             selectedCategory = selectedCategory.value,
@@ -479,7 +484,9 @@ class FridgeScreenTest {
     var requests = 0
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(isSaving = isSaving.value), onAddItem = { requests++ })
+        FridgeScreen(
+            uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = FridgeType.SHARED),
+            onAddItem = { requests++ })
       }
     }
     composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()

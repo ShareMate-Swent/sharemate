@@ -25,6 +25,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -184,7 +185,8 @@ class FridgePersonalPhotoUiTest {
     compose.setContent {
       MaterialTheme {
         FridgeScreen(
-            uiState = FridgeUiState(items = listOf(item.value)), personalPhotos = session.value)
+            uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
+            personalPhotos = session.value)
       }
     }
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
@@ -233,7 +235,9 @@ class FridgePersonalPhotoUiTest {
     val source = temporary.newFile()
     compose.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(items = listOf(milk)), personalPhotos = photos)
+        FridgeScreen(
+            uiState = FridgeUiState(items = listOf(milk), fridgeType = FridgeType.SHARED),
+            personalPhotos = photos)
       }
     }
 

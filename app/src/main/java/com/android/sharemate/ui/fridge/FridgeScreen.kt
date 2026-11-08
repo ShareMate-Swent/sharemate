@@ -41,8 +41,8 @@ import kotlinx.coroutines.delay
 /** Displays the fridge inventory with caller-provided state and actions. */
 @Composable
 fun FridgeScreen(
+    uiState: FridgeUiState,
     modifier: Modifier = Modifier,
-    uiState: FridgeUiState = FridgeUiState(),
     onAddItem: (() -> Unit)? = null,
     onDismissAddItem: () -> Unit = {},
     onNameChange: (String) -> Unit = {},
@@ -85,22 +85,20 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_title),
         style = MaterialTheme.typography.headlineSmall)
 
-    uiState.fridgeType?.let { type ->
-      Text(
-          text =
-              stringResource(
-                  R.string.fridge_type_label,
-                  stringResource(
-                      if (type == FridgeType.PRIVATE) R.string.fridge_type_private
-                      else R.string.fridge_type_shared)),
-          modifier =
-              Modifier.align(Alignment.CenterHorizontally)
-                  .padding(bottom = 8.dp)
-                  .testTag(C.Tag.fridge_type),
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
+    Text(
+        text =
+            stringResource(
+                R.string.fridge_type_label,
+                stringResource(
+                    if (uiState.fridgeType == FridgeType.PRIVATE) R.string.fridge_type_private
+                    else R.string.fridge_type_shared)),
+        modifier =
+            Modifier.align(Alignment.CenterHorizontally)
+                .padding(bottom = 8.dp)
+                .testTag(C.Tag.fridge_type),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     FridgeControls(
         sortOrder = sortOrder,
@@ -344,5 +342,7 @@ fun FridgeScreen(
 @Preview(showBackground = true)
 @Composable
 private fun FridgeScreenPreview() {
-  SampleAppTheme(dynamicColor = false) { FridgeScreen() }
+  SampleAppTheme(dynamicColor = false) {
+    FridgeScreen(uiState = FridgeUiState(fridgeType = FridgeType.SHARED))
+  }
 }
