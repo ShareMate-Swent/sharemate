@@ -64,6 +64,8 @@ import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebasePseudoRepository
+import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -103,6 +105,9 @@ open class MainActivity : ComponentActivity() {
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
+  private val pseudoRepository: PseudoRepository by lazy {
+    FirebasePseudoRepository(FirebaseFirestore.getInstance())
   }
   private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
     FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
@@ -233,7 +238,8 @@ open class MainActivity : ComponentActivity() {
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferencesRepository =
-                                                expirationPreferencesRepository)
+                                                expirationPreferencesRepository,
+                                            pseudoRepository = pseudoRepository)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.user
 
 import org.junit.Assert.assertEquals
@@ -25,5 +26,11 @@ class UserTest {
     assertEquals("Inge", user.displayName)
     assertEquals("inge@example.com", user.email)
     assertEquals("h1", user.householdId)
+  }
+
+  @Test
+  fun pseudoIsEmptyByDefaultAndKeepsGivenValue() {
+    assertEquals("", User().pseudo)
+    assertEquals("Inge", User(pseudo = "Inge").pseudo)
   }
 }

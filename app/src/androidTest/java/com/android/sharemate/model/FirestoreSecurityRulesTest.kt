@@ -1,11 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -61,6 +63,48 @@ class FirestoreSecurityRulesTest {
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("householdId" to "stolen")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+  }
+
+  @Test
+  fun householdMemberCanReadOnlyTheSharedPseudo() {
+    val household = createHouseholdAs("creator")
+    val pseudoRepository = FirebasePseudoRepository(firestore)
+    runBlocking { pseudoRepository.setPseudo(household.createdBy, "Alice") }
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(
+        "Alice",
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.USER_PSEUDOS)
+                    .document(household.createdBy)
+                    .get())
+            .getString("pseudo"))
+    assertDenied(userReference(household.createdBy).get())
+    assertDenied(userReference(household.createdBy).set(mapOf("pseudo" to "hijacked")))
+    assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+    assertDenied(firestore.collection(FirestoreCollections.USER_PSEUDOS).get())
+    assertDenied(
+        firestore
+            .collection(FirestoreCollections.USER_PSEUDOS)
+            .document(household.createdBy)
+            .set(mapOf("pseudo" to "hijacked")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(
+        firestore.collection(FirestoreCollections.USER_PSEUDOS).document(household.createdBy).get())
+  }
+
+  @Test
+  fun sharedPseudoMustMatchPrivateProfileAndCannotContainExtraFields() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val pseudo = firestore.collection(FirestoreCollections.USER_PSEUDOS).document(userId)
+    runBlocking { FirebasePseudoRepository(firestore).setPseudo(userId, "Alice") }
+
+    assertEquals("Alice", Tasks.await(userReference(userId).get()).getString("pseudo"))
+    assertDenied(pseudo.set(mapOf("pseudo" to "Bob")))
+    assertDenied(pseudo.set(mapOf("pseudo" to "Alice", "email" to "secret")))
   }
 
   @Test

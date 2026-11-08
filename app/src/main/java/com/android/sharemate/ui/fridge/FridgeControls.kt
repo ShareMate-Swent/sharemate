@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.BorderStroke
@@ -53,7 +54,7 @@ internal fun FridgeControls(
     selectedCategory: String?,
     selectedOwnerId: String?,
     categories: List<String>,
-    ownerIds: List<String>,
+    owners: List<OwnerOption>,
     onSortOrderChange: ((FridgeSortOrder) -> Unit)?,
     onCategoryFilterChange: ((String?) -> Unit)?,
     onOwnerFilterChange: ((String?) -> Unit)?,
@@ -101,7 +102,7 @@ internal fun FridgeControls(
       verticalAlignment = Alignment.CenterVertically) {
         SortControl(sortOrder, hasFunctionalFilters, onSortOrderChange)
         Box(Modifier.weight(1f)) {
-          OwnerControl(selectedOwnerId, ownerIds, hasFunctionalFilters, onOwnerFilterChange)
+          OwnerControl(selectedOwnerId, owners, hasFunctionalFilters, onOwnerFilterChange)
         }
         TextButton(
             onClick = { onAddItem?.invoke() },
@@ -196,18 +197,22 @@ private fun SortControl(
 @Composable
 private fun OwnerControl(
     selectedOwnerId: String?,
-    ownerIds: List<String>,
+    owners: List<OwnerOption>,
     enabled: Boolean,
     onSelected: ((String?) -> Unit)?,
 ) {
   var expanded by remember { mutableStateOf(false) }
+  val unknownOwner = stringResource(R.string.fridge_owner_unknown)
   val label =
       if (selectedOwnerId == null) stringResource(R.string.fridge_owner_filter)
-      else stringResource(R.string.fridge_owner_filter_selected, selectedOwnerId)
+      else
+          stringResource(
+              R.string.fridge_owner_filter_selected,
+              owners.firstOrNull { it.id == selectedOwnerId }?.pseudo ?: unknownOwner)
   Box {
     TextButton(
         onClick = { expanded = true },
-        enabled = enabled && (ownerIds.isNotEmpty() || selectedOwnerId != null),
+        enabled = enabled && (owners.isNotEmpty() || selectedOwnerId != null),
         modifier =
             Modifier.semantics {
               selected = selectedOwnerId != null
@@ -227,12 +232,12 @@ private fun OwnerControl(
             onSelected?.invoke(null)
             expanded = false
           })
-      ownerIds.forEach { ownerId ->
+      owners.forEach { owner ->
         DropdownMenuItem(
-            text = { Text(ownerId) },
-            modifier = Modifier.testTag("fridge_filter_owner_$ownerId"),
+            text = { Text(owner.pseudo ?: unknownOwner) },
+            modifier = Modifier.testTag("fridge_filter_owner_${owner.id}"),
             onClick = {
-              onSelected?.invoke(ownerId)
+              onSelected?.invoke(owner.id)
               expanded = false
             })
       }

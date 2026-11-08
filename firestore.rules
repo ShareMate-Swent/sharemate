@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -26,6 +27,24 @@ service cloud.firestore {
     // A user profile is private to its owner.
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /userPseudos/{userId} {
+      function sharesHousehold() {
+        let profile = get(documentPath('users', userId));
+        let householdId = profile.data.get('householdId', null);
+        return householdId is string
+            && userId in get(documentPath('households', householdId)).data.memberIds
+            && request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+      }
+
+      allow get: if signedIn() && (request.auth.uid == userId || sharesHousehold());
+      allow create, update: if signedIn() && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(['pseudo'])
+          && request.resource.data.pseudo is string
+          && request.resource.data.pseudo.size() > 0
+          && request.resource.data.pseudo
+              == getAfter(documentPath('users', userId)).data.pseudo;
     }
 
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.
