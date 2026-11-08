@@ -537,6 +537,7 @@ class FridgeViewModel(
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
+          itemSharing = item.sharing,
           expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
@@ -692,6 +693,7 @@ class FridgeViewModel(
                   itemName = "",
                   itemQuantity = "1",
                   itemCategory = "",
+                  itemSharing = ItemSharing.PERSONAL,
                   expirationDateInput = "")
             }
             trackConfirmation(write) { reportEditSyncError(edit.name) }

@@ -391,6 +391,34 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun editReflectsTheSharingOfTheItemWithoutChangingIt() = runTest {
+    val personal = milk.copy(sharing = ItemSharing.PERSONAL)
+    val shared = bread.copy(sharing = ItemSharing.SHARED)
+    repository.emitItems(listOf(personal, shared))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.openEditItemDialog(shared.id)
+    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
+    vm.dismissAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+
+    vm.openEditItemDialog(personal.id)
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    vm.dismissAddItemDialog()
+
+    vm.openEditItemDialog(shared.id)
+    vm.updateName("Sourdough")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf(personal, shared.copy(name = "Sourdough")), vm.uiState.value.items)
+    // Editing a shared item must not leak its sharing into the next creation.
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    vm.openAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+  }
+
+  @Test
   fun editUpdatesExistingItemAndPreservesLatestMetadata() = runTest {
     repository.emitItems(listOf(milk.copy(ownerId = "original"), bread))
     val vm = viewModel()
