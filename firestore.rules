@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -147,15 +148,34 @@ service cloud.firestore {
 
       function isValidNewMessage() {
         let message = request.resource.data;
-        return message.keys().hasOnly(['id', 'senderId', 'senderName', 'text', 'timestamp'])
+        return message.keys().hasOnly([
+              'id', 'senderId', 'senderName', 'text', 'timestamp',
+              'type', 'itemName', 'itemImageUrl'
+            ])
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
             && message.senderId == request.auth.uid
             && message.senderName is string
             && message.text is string
+            && message.timestamp is timestamp
+            && (isValidTextMessage(message) || isValidActivityMessage(message));
+      }
+
+      function isValidTextMessage(message) {
+        return message.get('type', 'TEXT') == 'TEXT'
             && message.text.matches('[\\s\\S]*\\S[\\s\\S]*')
             && message.text.size() <= 2000
-            && message.timestamp is timestamp;
+            && message.get('itemName', '') == ''
+            && message.get('itemImageUrl', null) == null;
+      }
+
+      function isValidActivityMessage(message) {
+        return message.get('type', null) in ['EATEN', 'THROWN']
+            && message.text == ''
+            && message.get('itemName', null) is string
+            && message.itemName.matches('[\\s\\S]*\\S[\\s\\S]*')
+            && (message.get('itemImageUrl', null) == null
+                || message.itemImageUrl is string);
       }
 
       allow read: if signedIn() && canUseChat();
