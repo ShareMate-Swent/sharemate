@@ -169,7 +169,7 @@ class FridgeScreenTest {
   fun deleteConfirmationCancelsAndQueuesCorrectItemOfflineWithoutAffectingOtherActions() {
     Dispatchers.setMain(UnconfinedTestDispatcher())
     val repository = com.android.sharemate.model.item.FakeItemRepository()
-    val milk = Item(id = "milk", name = "Milk", householdId = HOUSEHOLD_ID)
+    val milk = Item(id = "milk", name = "Milk", ownerId = USER_ID, householdId = HOUSEHOLD_ID)
     val bread = milk.copy(id = "bread", name = "Bread")
     repository.emitItems(listOf(milk, bread))
     val confirmation = CompletableDeferred<Result<Unit>>()
@@ -572,7 +572,7 @@ class FridgeScreenTest {
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = sharedItems
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

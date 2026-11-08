@@ -172,16 +172,16 @@ class ItemMutationTest {
       assertTrue(fake.setItemStatus("personal", status) is ItemWrite.Queued)
       assertEquals(
           listOf(personalItem.copy(quantity = 4, category = null, status = status), sharedItem),
-          fake.getSharedItems("home").first())
+          fake.getFridgeItems("home", "owner").first())
     }
     assertTrue(fake.updateItem("missing", ItemEdit("Milk", 1, null, null)) is ItemWrite.Rejected)
     assertTrue(fake.setItemStatus("missing", ItemStatus.EATEN) is ItemWrite.Rejected)
     assertTrue(fake.updateItem("personal", ItemEdit("Milk", 0, null, null)) is ItemWrite.Rejected)
     assertNull(fake.addItem(personalItem.copy(quantity = -1)))
     assertTrue(fake.deleteItemQueued("personal") is ItemWrite.Queued)
-    assertEquals(listOf(sharedItem), fake.getSharedItems("home").first())
+    assertEquals(listOf(sharedItem), fake.getFridgeItems("home", "owner").first())
     assertTrue(fake.deleteItemQueued("personal") is ItemWrite.Queued)
-    assertEquals(listOf(sharedItem), fake.getSharedItems("home").first())
+    assertEquals(listOf(sharedItem), fake.getFridgeItems("home", "owner").first())
   }
 
   private fun validDocument(): DocumentSnapshot =

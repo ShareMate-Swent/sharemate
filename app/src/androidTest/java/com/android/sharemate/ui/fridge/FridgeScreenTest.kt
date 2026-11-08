@@ -230,7 +230,7 @@ class FridgeScreenTest {
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
     override suspend fun updateItemImageIfAbsent(

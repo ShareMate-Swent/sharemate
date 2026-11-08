@@ -10,8 +10,15 @@ import kotlinx.coroutines.flow.Flow
  */
 interface ItemRepository {
 
-  /** Reactive stream of the household's items, both SHARED and PERSONAL. */
-  fun getSharedItems(householdId: String): Flow<List<Item>>
+  /**
+   * Reactive stream of the items of a household fridge that [userId] may see: every SHARED item of
+   * the household plus the PERSONAL items owned by [userId]. The personal items of other members
+   * are never returned. Blank arguments give an empty stream.
+   *
+   * The server only accepts this query from a current member of the household: it fails with a
+   * permission error for a user who left it or never belonged to it.
+   */
+  fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
 
   /**
    * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to

@@ -278,7 +278,7 @@ class FridgeEditTest {
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String) = items
+    override fun getFridgeItems(householdId: String, userId: String) = items
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

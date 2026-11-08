@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.expiration
 
 import com.android.sharemate.model.item.ItemRepository
@@ -26,7 +27,7 @@ class ExpirationNotificationSource(
 
   override suspend fun dueNotifications(): List<AppNotification> {
     val recipient = recipientProvider.current() ?: return emptyList()
-    val items = itemRepository.getSharedItems(recipient.householdId).first()
+    val items = itemRepository.getFridgeItems(recipient.householdId, recipient.userId).first()
     val preferences = preferencesRepository.get(recipient.userId)
     val summary = ExpirationSummary.of(items, today(), preferences)
     if (summary.isEmpty) return emptyList()

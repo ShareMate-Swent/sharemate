@@ -5,6 +5,7 @@ package com.android.sharemate.model.item
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
@@ -22,11 +23,19 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
-  override fun getSharedItems(householdId: String): Flow<List<Item>> =
-      if (householdId.isBlank()) {
+  override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+      if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(items.whereEqualTo("householdId", householdId))
+        // The security rules only accept a query whose every result the caller may read, so it
+        // must name both the household and either the shared items or the caller's own items.
+        observe(
+            items.where(
+                Filter.and(
+                    Filter.equalTo("householdId", householdId),
+                    Filter.or(
+                        Filter.equalTo("sharing", ItemSharing.SHARED.name),
+                        Filter.equalTo("ownerId", userId)))))
       }
 
   override suspend fun addItem(item: Item): String? {

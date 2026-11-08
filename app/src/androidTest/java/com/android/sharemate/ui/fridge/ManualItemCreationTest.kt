@@ -447,8 +447,13 @@ class ManualItemCreationTest {
     var returnNullOnAdd = false
     var addGate: CompletableDeferred<Unit>? = null
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.householdId == householdId } }
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+        items.map { current ->
+          current.filter {
+            it.householdId == householdId &&
+                (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+          }
+        }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

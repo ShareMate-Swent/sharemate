@@ -174,7 +174,7 @@ class BarcodeFormFlowTest {
   }
 
   private class EmptyItems : ItemRepository {
-    override fun getSharedItems(householdId: String) = flowOf(emptyList<Item>())
+    override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
     override suspend fun addItem(item: Item): String? = error("Lookup must not save an item")
 

@@ -129,7 +129,7 @@ class FridgeViewModel(
     require(householdId.isNotBlank()) { "A household ID is required" }
     viewModelScope.launch {
       try {
-        itemRepository.getSharedItems(householdId).collect { items ->
+        itemRepository.getFridgeItems(householdId, userId).collect { items ->
           mutableUiState.update { state ->
             val pending = state.pendingRemovalItem
             val stale =

@@ -95,8 +95,15 @@ class FridgeViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private val milk = Item(id = "milk", name = "Milk", householdId = "test-household")
-  private val bread = Item(id = "bread", name = "Bread", householdId = "test-household")
+  // Shared, so they stay visible whoever owns them, as the repository returns them to any member.
+  private val milk =
+      Item(id = "milk", name = "Milk", householdId = "test-household", sharing = ItemSharing.SHARED)
+  private val bread =
+      Item(
+          id = "bread",
+          name = "Bread",
+          householdId = "test-household",
+          sharing = ItemSharing.SHARED)
 
   @Test
   fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
@@ -392,7 +399,7 @@ class FridgeViewModelTest {
 
   @Test
   fun editReflectsTheSharingOfTheItemWithoutChangingIt() = runTest {
-    val personal = milk.copy(sharing = ItemSharing.PERSONAL)
+    val personal = milk.copy(ownerId = "test-user", sharing = ItemSharing.PERSONAL)
     val shared = bread.copy(sharing = ItemSharing.SHARED)
     repository.emitItems(listOf(personal, shared))
     val vm = viewModel()
@@ -1363,19 +1370,52 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun observesOnlyTheRequestedSharedHousehold() = runTest {
-    val shared = Item(id = "shared", name = "Milk", householdId = "test-household")
+  fun observesTheFridgeOfTheUserInTheRequestedHousehold() = runTest {
+    val shared =
+        Item(
+            id = "shared",
+            name = "Milk",
+            householdId = "test-household",
+            sharing = ItemSharing.SHARED)
+    val mine = Item(id = "mine", ownerId = "test-user", householdId = "test-household")
     repository.emitItems(
         listOf(
             shared,
-            Item(id = "other", householdId = "other-household"),
-            Item(id = "other-personal", householdId = "other-household")))
+            mine,
+            // Never shown: another member's personal item, and items of another household.
+            Item(id = "theirs", ownerId = "other-member", householdId = "test-household"),
+            Item(id = "other", householdId = "other-household", sharing = ItemSharing.SHARED),
+            Item(id = "other-personal", ownerId = "test-user", householdId = "other-household")))
     val viewModel = viewModel()
     runCurrent()
 
     assertEquals(listOf("test-household"), repository.requestedHouseholdIds)
-    assertEquals(listOf(shared), viewModel.uiState.value.items)
+    assertEquals(listOf("test-user"), repository.requestedUserIds)
+    assertEquals(listOf(shared, mine), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun anotherMembersPersonalItemAppearsOnlyOnceTheyShareIt() = runTest {
+    val theirs =
+        Item(
+            id = "theirs",
+            name = "Cheese",
+            ownerId = "other-member",
+            householdId = "test-household")
+    repository.emitItems(listOf(theirs))
+    val viewModel = viewModel()
+    runCurrent()
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+
+    val shared = theirs.copy(sharing = ItemSharing.SHARED)
+    repository.emitItems(listOf(shared))
+    runCurrent()
+    assertEquals(listOf(shared), viewModel.uiState.value.items)
+
+    repository.emitItems(listOf(theirs))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.items.isEmpty())
   }
 
   @Test
@@ -1707,7 +1747,8 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
-    val incoming = Item(id = "incoming", name = "Bread", householdId = "test-household")
+    val incoming =
+        Item(id = "incoming", name = "Bread", ownerId = "test-user", householdId = "test-household")
     repository.emitItems(listOf(incoming))
     runCurrent()
 
@@ -2317,4 +2358,5 @@ private fun item(
         householdId = "test-household",
         expirationDate = expirationDate,
         category = category,
+        sharing = ItemSharing.SHARED,
     )

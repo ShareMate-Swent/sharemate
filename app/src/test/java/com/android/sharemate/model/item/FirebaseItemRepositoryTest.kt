@@ -11,6 +11,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -25,6 +26,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -32,6 +34,7 @@ import org.junit.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 
@@ -96,10 +99,10 @@ class FirebaseItemRepositoryTest {
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getSharedItems_handlesError() =
+  fun getFridgeItems_handlesError() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
-        `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(query)
+        `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
@@ -111,7 +114,7 @@ class FirebaseItemRepositoryTest {
         val job =
             launch(Dispatchers.Unconfined) {
               try {
-                repository.getSharedItems("house-1").collect {}
+                repository.getFridgeItems("house-1", "user-1").collect {}
               } catch (e: Exception) {
                 caughtError = e
               }
@@ -127,18 +130,46 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
-  fun getSharedItems_returnsEmptyFlow_whenHouseholdIdIsBlank() =
+  fun getFridgeItems_returnsEmptyFlowWithoutQuery_whenHouseholdOrUserIsBlank() =
       runBlocking<Unit> {
-        val items = repository.getSharedItems("").first()
-        assertTrue(items.isEmpty())
+        for ((household, user) in
+            listOf("" to "user-1", "  " to "user-1", "house-1" to "", "house-1" to " ")) {
+          assertTrue(repository.getFridgeItems(household, user).first().isEmpty())
+        }
+        verify(collection, never()).where(any(Filter::class.java))
       }
+
+  @Test
+  fun getFridgeItems_asksForTheHouseholdsSharedItemsAndTheUsersOwnItemsOnly() {
+    // Stubbing with the exact filter proves its shape: any other query returns null and fails.
+    // The security rules reject a query that could return the personal items of other members.
+    val expected =
+        Filter.and(
+            Filter.equalTo("householdId", "house-1"),
+            Filter.or(Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", "user-1")))
+    assertEquals(expected, fridgeFilter("house-1", "user-1"))
+    assertNotEquals(expected, fridgeFilter("house-1", "user-2"))
+    assertNotEquals(expected, fridgeFilter("house-2", "user-1"))
+    val query = mock(Query::class.java)
+    `when`(collection.where(expected)).thenReturn(query)
+    `when`(query.addSnapshotListener(any())).thenReturn(mock(ListenerRegistration::class.java))
+
+    runBlocking {
+      val job =
+          launch(Dispatchers.Unconfined) {
+            repository.getFridgeItems("house-1", "user-1").collect {}
+          }
+      verify(query).addSnapshotListener(any())
+      job.cancel()
+    }
+  }
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getSharedItems_emitsItems() =
+  fun getFridgeItems_emitsItems() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
-        `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(query)
+        `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
@@ -149,7 +180,7 @@ class FirebaseItemRepositoryTest {
         val emittedLists = mutableListOf<List<Item>>()
         val job =
             launch(Dispatchers.Unconfined) {
-              repository.getSharedItems("house-1").collect { emittedLists.add(it) }
+              repository.getFridgeItems("house-1", "user-1").collect { emittedLists.add(it) }
             }
 
         val snapshot = mock(QuerySnapshot::class.java)
@@ -328,6 +359,12 @@ class FirebaseItemRepositoryTest {
             authorUrl = "https://example.org/jane"),
         item?.image)
   }
+
+  /** The query a member's fridge uses: the household, and shared items or the user's own. */
+  private fun fridgeFilter(householdId: String, userId: String): Filter =
+      Filter.and(
+          Filter.equalTo("householdId", householdId),
+          Filter.or(Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", userId)))
 }
 
 /** Stubs the fields every stored item document must contain. */

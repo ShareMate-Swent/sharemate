@@ -26,6 +26,7 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.resources.C
@@ -228,8 +229,13 @@ class ItemRemovalTest {
     var returnFalseOnDelete = false
     var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.householdId == householdId } }
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+        items.map { current ->
+          current.filter {
+            it.householdId == householdId &&
+                (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+          }
+        }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

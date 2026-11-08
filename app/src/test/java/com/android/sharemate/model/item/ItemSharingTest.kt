@@ -66,7 +66,8 @@ class ItemSharingTest {
     for (sharing in listOf(ItemSharing.PERSONAL, ItemSharing.SHARED)) {
       val write = fake.setItemSharing("item", sharing) as ItemWrite.Queued
       assertTrue(write.confirmation.await().isSuccess)
-      assertEquals(original.copy(sharing = sharing), fake.getSharedItems("home").first().single())
+      assertEquals(
+          original.copy(sharing = sharing), fake.getFridgeItems("home", "owner").first().single())
     }
   }
 
@@ -80,9 +81,9 @@ class ItemSharingTest {
     assertTrue(fake.setItemStatus(personal.id, ItemStatus.EATEN) is ItemWrite.Queued)
     assertEquals(
         personal.copy(name = "Oat milk", quantity = 2, status = ItemStatus.EATEN),
-        fake.getSharedItems("home").first().single())
+        fake.getFridgeItems("home", "owner").first().single())
     assertTrue(fake.deleteItemQueued(personal.id) is ItemWrite.Queued)
-    assertTrue(fake.getSharedItems("home").first().isEmpty())
+    assertTrue(fake.getFridgeItems("home", "owner").first().isEmpty())
   }
 
   @Test
