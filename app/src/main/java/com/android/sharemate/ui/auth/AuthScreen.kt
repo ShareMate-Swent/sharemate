@@ -41,6 +41,7 @@ import com.android.sharemate.R
 fun AuthScreen(
     state: AuthUiState,
     onEmailChange: (String) -> Unit,
+    onPseudoChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -53,6 +54,7 @@ fun AuthScreen(
       AuthForm(
           state,
           onEmailChange,
+          onPseudoChange,
           onPasswordChange,
           onConfirmPasswordChange,
           onSubmit,
@@ -66,6 +68,7 @@ fun AuthScreen(
 private fun AuthForm(
     state: AuthUiState,
     onEmailChange: (String) -> Unit,
+    onPseudoChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -99,6 +102,16 @@ private fun AuthForm(
             keyboardOptions =
                 KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
             modifier = Modifier.fillMaxWidth().testTag("auth_email"))
+        if (signingUp) {
+          OutlinedTextField(
+              value = state.pseudo,
+              onValueChange = onPseudoChange,
+              label = { Text(stringResource(R.string.auth_pseudo)) },
+              enabled = !state.isLoading,
+              singleLine = true,
+              keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+              modifier = Modifier.fillMaxWidth().testTag("auth_pseudo"))
+        }
         PasswordField(
             value = state.password,
             onValueChange = onPasswordChange,
@@ -184,6 +197,7 @@ private fun PasswordField(
 internal fun AuthUiError.messageResource(): Int =
     when (this) {
       AuthUiError.INVALID_EMAIL -> R.string.auth_error_email
+      AuthUiError.PSEUDO_REQUIRED -> R.string.auth_error_pseudo_required
       AuthUiError.PASSWORD_REQUIRED -> R.string.auth_error_password_required
       AuthUiError.WEAK_PASSWORD -> R.string.auth_error_weak_password
       AuthUiError.PASSWORD_MISMATCH -> R.string.auth_error_password_mismatch

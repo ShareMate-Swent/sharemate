@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.auth
 
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
@@ -56,10 +57,12 @@ class FirebaseAuthRepositoryTest {
       assertNull(repository.session.first())
       val email = "student-${UUID.randomUUID()}@example.org"
       val password = "test-password"
-      repository.signUp(email, password)
+      repository.signUp(email, password, "New User")
       val signedUp = repository.session.first { it != null }!!
       assertEquals(email, signedUp.email)
+      assertEquals("New User", signedUp.displayName)
       assertEquals(SignInProvider.EMAIL, signedUp.provider)
+      assertEquals("New User", auth.currentUser?.displayName)
       val logout = async { repository.session.first { it == null } }
       repository.signOut()
       assertNull(logout.await())
@@ -82,7 +85,7 @@ class FirebaseAuthRepositoryTest {
   fun wrongPasswordReturnsSafeFailureAndDoesNotCreateSession() = runBlocking {
     withTimeout(20000) {
       val email = "student-${UUID.randomUUID()}@example.org"
-      repository.signUp(email, "test-password")
+      repository.signUp(email, "test-password", "New User")
       repository.signOut()
       try {
         repository.signIn(email, "wrong-password")
@@ -103,15 +106,18 @@ class FirebaseAuthRepositoryTest {
       val id = UUID.randomUUID().toString()
       val email = "google-$id@example.org"
       // Literal JSON ID tokens are accepted only by the local Auth emulator.
-      repository.signInWithGoogle("""{"sub":"$id","email":"$email","email_verified":true}""")
+      repository.signInWithGoogle(
+          """{"sub":"$id","email":"$email","email_verified":true,"name":"Google User"}""")
       val session = repository.session.first { it != null }!!
       assertEquals(email, session.email)
+      assertEquals("Google User", session.displayName)
       assertEquals(auth.currentUser?.uid, session.uid)
       assertTrue(auth.currentUser!!.providerData.any { it.providerId == "google.com" })
       repository.signOut()
       assertNull(repository.session.first())
       // Reauthenticate solely to let the existing fixture delete the emulator user.
-      repository.signInWithGoogle("""{"sub":"$id","email":"$email","email_verified":true}""")
+      repository.signInWithGoogle(
+          """{"sub":"$id","email":"$email","email_verified":true,"name":"Google User"}""")
       assertEquals(session.uid, repository.session.first { it != null }?.uid)
     }
   }
@@ -120,9 +126,9 @@ class FirebaseAuthRepositoryTest {
   fun duplicateSignupReturnsEmailInUse() = runBlocking {
     withTimeout(20000) {
       val email = "student-${UUID.randomUUID()}@example.org"
-      repository.signUp(email, "test-password")
+      repository.signUp(email, "test-password", "New User")
       try {
-        repository.signUp(email, "test-password")
+        repository.signUp(email, "test-password", "New User")
         fail("Duplicate account must be rejected")
       } catch (failure: AuthException) {
         assertEquals(AuthError.EMAIL_IN_USE, failure.error)

@@ -68,6 +68,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
 
     compose.onNodeWithTag("auth_email").performTextInput(email)
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Main User")
     compose.onNodeWithTag("auth_password").performTextInput(password)
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -156,6 +157,7 @@ class MainUserFlowE2ETest {
     }
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput(firstUserEmail)
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Household Owner")
     compose.onNodeWithTag("auth_password").performTextInput(password)
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -217,6 +219,7 @@ class MainUserFlowE2ETest {
 
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput(secondUserEmail)
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Household Member")
     compose.onNodeWithTag("auth_password").performTextInput(password)
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()

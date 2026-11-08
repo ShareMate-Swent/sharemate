@@ -39,6 +39,14 @@ fun AuthGate(
             }
           }
         }
+    session != null && state.isLoading ->
+        AuthTheme(updateSystemBars = true) {
+          Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+              CircularProgressIndicator(Modifier.testTag("auth_loading"))
+            }
+          }
+        }
     session != null -> content(session)
     else -> AuthEntryFlow(viewModel, state, modifier, googleTokenProvider)
   }
@@ -65,6 +73,7 @@ private fun AuthEntryFlow(
       AuthScreen(
           state = state,
           onEmailChange = viewModel::updateEmail,
+          onPseudoChange = viewModel::updatePseudo,
           onPasswordChange = viewModel::updatePassword,
           onConfirmPasswordChange = viewModel::updateConfirmPassword,
           onSubmit = viewModel::submit,

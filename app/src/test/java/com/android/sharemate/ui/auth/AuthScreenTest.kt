@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +28,7 @@ class AuthScreenTest {
         AuthScreen(
             state,
             onEmailChange = { state = state.copy(email = it) },
+            onPseudoChange = { state = state.copy(pseudo = it) },
             onPasswordChange = { state = state.copy(password = it) },
             onConfirmPasswordChange = { state = state.copy(confirmPassword = it) },
             onSubmit = { submissions++ },
@@ -47,8 +49,12 @@ class AuthScreenTest {
       assertEquals(2, submissions)
     }
     compose.onNodeWithTag("auth_switch_mode").performScrollTo().performClick()
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
-    compose.runOnIdle { assertEquals("secret", state.confirmPassword) }
+    compose.runOnIdle {
+      assertEquals("Student", state.pseudo)
+      assertEquals("secret", state.confirmPassword)
+    }
   }
 
   @Test
@@ -59,6 +65,7 @@ class AuthScreenTest {
         AuthScreen(
             state,
             onEmailChange = {},
+            onPseudoChange = {},
             onPasswordChange = { state = state.copy(password = it) },
             onConfirmPasswordChange = {},
             onSubmit = {},
@@ -92,6 +99,7 @@ class AuthScreenTest {
           {},
           {},
           {},
+          {},
           onBack = {})
     }
     compose.onNodeWithTag("auth_loading").assertExists()
@@ -99,13 +107,14 @@ class AuthScreenTest {
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
     compose.onNodeWithTag("auth_email").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_pseudo").assertDoesNotExist()
     compose.onNodeWithTag("auth_password").assertIsNotEnabled()
   }
 
   @Test
   fun restoringSessionShowsProgressAndDisablesSubmit() {
     var state by mutableStateOf(AuthUiState())
-    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
     compose.onNodeWithTag("auth_loading").assertExists()
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.runOnIdle { state = state.copy(isLoading = true) }
@@ -119,10 +128,11 @@ class AuthScreenTest {
   @Test
   fun validationAndProviderFailuresDisplaySafeActionableFeedback() {
     var state by mutableStateOf(AuthUiState(isRestoringSession = false))
-    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
     val feedback =
         mapOf(
             AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
+            AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
             AuthUiError.PASSWORD_REQUIRED to "Enter your password.",
             AuthUiError.WEAK_PASSWORD to "Choose a stronger password with at least 6 characters.",
             AuthUiError.PASSWORD_MISMATCH to "The passwords do not match.",

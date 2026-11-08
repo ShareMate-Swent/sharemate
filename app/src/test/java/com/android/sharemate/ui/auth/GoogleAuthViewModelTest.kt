@@ -160,7 +160,8 @@ class GoogleAuthViewModelTest {
     override suspend fun signIn(email: String, password: String) =
         error("Unexpected password login")
 
-    override suspend fun signUp(email: String, password: String) = error("Unexpected signup")
+    override suspend fun signUp(email: String, password: String, displayName: String) =
+        error("Unexpected signup")
 
     override fun signOut() {
       signOutCalls++

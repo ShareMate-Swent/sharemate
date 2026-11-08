@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.auth
 
 import android.net.Uri
@@ -11,12 +12,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserInfo
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.*
 
 class FirebaseAuthRepositoryUnitTest {
@@ -27,14 +30,22 @@ class FirebaseAuthRepositoryUnitTest {
   fun forwardsCredentialsForLoginAndSignup() =
       runBlocking<Unit> {
         val result = Tasks.forResult(mock(AuthResult::class.java))
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
         `when`(auth.signInWithEmailAndPassword("student@example.org", " secret "))
             .thenReturn(result)
         `when`(auth.createUserWithEmailAndPassword("new@example.org", "new-secret"))
-            .thenReturn(result)
+            .thenReturn(Tasks.forResult(signupResult))
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
         repository.signIn("student@example.org", " secret ")
-        repository.signUp("new@example.org", "new-secret")
+        repository.signUp("new@example.org", "new-secret", "Student")
         verify(auth).signInWithEmailAndPassword("student@example.org", " secret ")
         verify(auth).createUserWithEmailAndPassword("new@example.org", "new-secret")
+        val request = ArgumentCaptor.forClass(UserProfileChangeRequest::class.java)
+        verify(user).updateProfile(request.capture())
+        assertEquals("Student", request.value.displayName)
       }
 
   @Test
@@ -67,7 +78,7 @@ class FirebaseAuthRepositoryUnitTest {
         `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
             .thenReturn(Tasks.forCanceled())
         try {
-          repository.signUp("new@example.org", "secret")
+          repository.signUp("new@example.org", "secret", "Student")
           fail("Cancellation must propagate")
         } catch (expected: CancellationException) {
           assertEquals(CancellationException::class.java, expected.javaClass)

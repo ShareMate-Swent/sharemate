@@ -22,7 +22,7 @@ enum class SignInProvider {
  *
  * @property uid Unique user identifier.
  * @property email Account email, if the provider shares one.
- * @property displayName Account name, e.g. from the Google profile; null for email accounts.
+ * @property displayName Account name, from Google or selected during email sign-up.
  * @property photoUrl Account photo URL, e.g. from the Google profile; null if there is none.
  * @property provider Sign-in method linked to the account; see [SignInProvider].
  */
@@ -57,7 +57,8 @@ interface AuthRepository {
 
   suspend fun signIn(email: String, password: String)
 
-  suspend fun signUp(email: String, password: String)
+  /** Creates an email account with its public display name. */
+  suspend fun signUp(email: String, password: String, displayName: String)
 
   /** Exchanges a Google ID token without storing it. */
   suspend fun signInWithGoogle(idToken: String)

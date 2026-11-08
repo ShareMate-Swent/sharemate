@@ -10,7 +10,7 @@ import com.android.sharemate.model.auth.AuthSession
  * documents: the private one also holds the household link and notification preferences.
  *
  * @property uid User identifier.
- * @property displayName Account name; null when the account has none (e.g. email sign-up).
+ * @property displayName Account name; null when the account has none.
  * @property photoUrl Account photo URL; null when there is none.
  * @property email Account email; null when the provider does not share one.
  */

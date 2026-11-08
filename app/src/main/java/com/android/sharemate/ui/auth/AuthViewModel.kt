@@ -23,6 +23,7 @@ enum class AuthMode {
 // UI-only.
 enum class AuthUiError {
   INVALID_EMAIL,
+  PSEUDO_REQUIRED,
   PASSWORD_REQUIRED,
   WEAK_PASSWORD,
   PASSWORD_MISMATCH,
@@ -38,6 +39,7 @@ enum class AuthUiError {
 
 data class AuthUiState(
     val email: String = "",
+    val pseudo: String = "",
     val password: String = "",
     val confirmPassword: String = "",
     val mode: AuthMode = AuthMode.LOGIN,
@@ -58,18 +60,31 @@ class AuthViewModel(
     viewModelScope.launch {
       repository.session.collect { session ->
         mutableState.update {
+          val currentSession = it.session
+          val updatedSession =
+              session?.let { observed ->
+                val displayName =
+                    observed.displayName?.takeIf { it.isNotBlank() }
+                        ?: currentSession
+                            ?.takeIf { it.uid == observed.uid }
+                            ?.displayName
+                            ?.takeIf { it.isNotBlank() }
+                observed.copy(displayName = displayName)
+              }
           it.copy(
-              session = session,
+              session = updatedSession,
               isRestoringSession = false,
-              password = if (session != null) "" else it.password,
-              confirmPassword = if (session != null) "" else it.confirmPassword,
-              error = if (session != null) null else it.error)
+              password = if (updatedSession != null) "" else it.password,
+              confirmPassword = if (updatedSession != null) "" else it.confirmPassword,
+              error = if (updatedSession != null) null else it.error)
         }
       }
     }
   }
 
   fun updateEmail(value: String) = edit { it.copy(email = value, error = null) }
+
+  fun updatePseudo(value: String) = edit { it.copy(pseudo = value, error = null) }
 
   fun updatePassword(value: String) = edit { it.copy(password = value, error = null) }
 
@@ -100,6 +115,8 @@ class AuthViewModel(
     val error =
         when {
           !EMAIL_PATTERN.matches(email) -> AuthUiError.INVALID_EMAIL
+          current.mode == AuthMode.SIGN_UP && current.pseudo.isBlank() ->
+              AuthUiError.PSEUDO_REQUIRED
           current.password.isEmpty() -> AuthUiError.PASSWORD_REQUIRED
           current.mode == AuthMode.SIGN_UP && current.password.length < MIN_PASSWORD_LENGTH ->
               AuthUiError.WEAK_PASSWORD
@@ -114,10 +131,17 @@ class AuthViewModel(
     mutableState.update { it.copy(email = email, isLoading = true, error = null) }
     viewModelScope.launch {
       try {
-        if (current.mode == AuthMode.LOGIN) repository.signIn(email, current.password)
-        else repository.signUp(email, current.password)
-        // Keep submissions disabled until the observed session reaches UI state.
-        state.first { it.session != null }
+        if (current.mode == AuthMode.LOGIN) {
+          repository.signIn(email, current.password)
+          // Keep submissions disabled until the observed session reaches UI state.
+          state.first { it.session != null }
+        } else {
+          repository.signUp(email, current.password, current.pseudo.trim())
+          val session = state.first { it.session != null }.session!!
+          mutableState.update {
+            it.copy(session = session.copy(displayName = current.pseudo.trim()))
+          }
+        }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (failure: AuthException) {

@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import android.graphics.Color
@@ -74,7 +75,7 @@ class AuthGateTest {
 
     override suspend fun signIn(email: String, password: String) {}
 
-    override suspend fun signUp(email: String, password: String) {}
+    override suspend fun signUp(email: String, password: String, displayName: String) {}
 
     override suspend fun signInWithGoogle(idToken: String) =
         error("Google sign-in is not used by this fake")

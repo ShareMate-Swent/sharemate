@@ -9,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -32,8 +33,15 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     authenticate { auth.signInWithEmailAndPassword(email, password).await() }
   }
 
-  override suspend fun signUp(email: String, password: String) {
-    authenticate { auth.createUserWithEmailAndPassword(email, password).await() }
+  override suspend fun signUp(email: String, password: String, displayName: String) {
+    authenticate {
+      val user =
+          auth.createUserWithEmailAndPassword(email, password).await().user
+              ?: throw IllegalStateException("Firebase did not return the created user")
+      user
+          .updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).build())
+          .await()
+    }
   }
 
   override suspend fun signInWithGoogle(idToken: String) {
@@ -45,9 +53,9 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
 
   override fun signOut() = auth.signOut()
 
-  private suspend fun authenticate(action: suspend () -> Unit) {
+  private suspend fun <T> authenticate(action: suspend () -> T): T {
     try {
-      action()
+      return action()
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {

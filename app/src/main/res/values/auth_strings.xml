@@ -4,6 +4,7 @@
     <string name="auth_log_in">Log in</string>
     <string name="auth_sign_up">Sign up</string>
     <string name="auth_email">Email</string>
+    <string name="auth_pseudo">Pseudo</string>
     <string name="auth_password">Password</string>
     <string name="auth_confirm_password">Confirm password</string>
     <string name="auth_password_hint">Use at least 6 characters.</string>
@@ -12,6 +13,7 @@
     <string name="auth_need_account">New here? Sign up</string>
     <string name="auth_have_account">Already have an account? Log in</string>
     <string name="auth_error_email">Enter a valid email address.</string>
+    <string name="auth_error_pseudo_required">Enter a pseudo.</string>
     <string name="auth_error_password_required">Enter your password.</string>
     <string name="auth_error_weak_password">Choose a stronger password with at least 6 characters.</string>
     <string name="auth_error_password_mismatch">The passwords do not match.</string>

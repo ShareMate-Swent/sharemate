@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import com.android.sharemate.model.auth.AuthError
@@ -97,6 +98,17 @@ class AuthViewModelTest {
   fun signupChecksPasswordThresholdAndConfirmation() = runTest {
     ready()
     viewModel.switchMode()
+    viewModel.updateEmail("student@example.org")
+    viewModel.updatePseudo("  Student  ")
+    viewModel.submit()
+    assertEquals(AuthUiError.PASSWORD_REQUIRED, viewModel.state.value.error)
+    viewModel.updatePassword("secret")
+    viewModel.updateConfirmPassword("secret")
+    viewModel.updatePseudo(" ")
+    viewModel.submit()
+    assertEquals(AuthUiError.PSEUDO_REQUIRED, viewModel.state.value.error)
+    assertTrue(repository.calls.isEmpty())
+    viewModel.updatePseudo("  Student  ")
     for (password in listOf("12345", "123456", "1234567")) {
       fillLogin(password = password)
       viewModel.updateConfirmPassword(password)
@@ -106,11 +118,16 @@ class AuthViewModelTest {
       else {
         repository.sessions.emit(AuthSession("new-user", "student@example.org"))
         advanceUntilIdle()
+        assertEquals("Student", viewModel.state.value.session?.displayName)
+        repository.sessions.emit(AuthSession("new-user", "student@example.org"))
+        advanceUntilIdle()
+        assertEquals("Student", viewModel.state.value.session?.displayName)
         ready()
       }
     }
     assertEquals(listOf("123456", "1234567"), repository.calls.map { it.password })
     assertTrue(repository.calls.all { it.signup })
+    assertTrue(repository.calls.all { it.pseudo == "Student" })
     viewModel.updatePassword("1234567")
     viewModel.updateConfirmPassword("different")
     viewModel.submit()
@@ -154,6 +171,7 @@ class AuthViewModelTest {
     ready()
     viewModel.selectMode(AuthMode.SIGN_UP)
     fillLogin()
+    viewModel.updatePseudo("Student")
     viewModel.updateConfirmPassword("different")
     viewModel.submit()
     assertEquals(AuthUiError.PASSWORD_MISMATCH, viewModel.state.value.error)
@@ -271,6 +289,7 @@ class AuthViewModelTest {
     ready()
     for (mode in AuthMode.values()) {
       viewModel.selectMode(mode)
+      if (mode == AuthMode.SIGN_UP) viewModel.updatePseudo("Student")
       fillLogin()
       viewModel.updateConfirmPassword("secret")
       val previousCalls = repository.calls.size
@@ -304,7 +323,12 @@ class AuthViewModelTest {
     viewModel.updatePassword(password)
   }
 
-  private data class Attempt(val signup: Boolean, val email: String, val password: String)
+  private data class Attempt(
+      val signup: Boolean,
+      val email: String,
+      val password: String,
+      val pseudo: String? = null,
+  )
 
   private class FakeAuthRepository : AuthRepository {
     val sessions = MutableSharedFlow<AuthSession?>(replay = 1)
@@ -317,11 +341,16 @@ class AuthViewModelTest {
     override suspend fun signIn(email: String, password: String) =
         authenticate(false, email, password)
 
-    override suspend fun signUp(email: String, password: String) =
-        authenticate(true, email, password)
+    override suspend fun signUp(email: String, password: String, displayName: String) =
+        authenticate(true, email, password, displayName)
 
-    private suspend fun authenticate(signup: Boolean, email: String, password: String) {
-      calls.add(Attempt(signup, email, password))
+    private suspend fun authenticate(
+        signup: Boolean,
+        email: String,
+        password: String,
+        pseudo: String? = null,
+    ) {
+      calls.add(Attempt(signup, email, password, pseudo))
       gate?.await()
       failure?.let { throw it }
     }
