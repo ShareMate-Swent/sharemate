@@ -236,20 +236,24 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
-  fun privateOwnersSharedMembersOutsidersAndSignedOutUsersAreSeparated() = runBlocking {
+  fun membersOutsidersAndSignedOutUsersAreSeparatedByHousehold() = runBlocking {
     val householdRepository = HouseholdRepositoryFirestore(firestore)
     val household = householdRepository.createHousehold("Home", owner)
     // Server rules do not yet hide PERSONAL items from members of the same household, so the
     // "private" item lives in a household that the member never joins.
     val elsewhere = householdRepository.createHousehold("Elsewhere", owner)
-    val privateId =
+    val otherHouseholdItemId =
         checkNotNull(
-            repository.addItem(Item(name = "Private", ownerId = owner, householdId = elsewhere.id)))
+            repository.addItem(
+                Item(
+                    name = "Not visible to the member",
+                    ownerId = owner,
+                    householdId = elsewhere.id)))
     val sharedId =
         checkNotNull(
             repository.addItem(Item(name = "Shared", ownerId = owner, householdId = household.id)))
     assertEquals(
-        listOf(privateId),
+        listOf(otherHouseholdItemId),
         withTimeout(10_000) {
           repository.getSharedItems(homeId).first { it.isNotEmpty() }.map(Item::id)
         })
@@ -264,9 +268,10 @@ class FirebaseItemRepositoryEmulatorTest {
         withTimeout(10_000) {
           repository.getSharedItems(household.id).first { it.isNotEmpty() }.map(Item::id)
         })
-    assertDenied(document(privateId).get(Source.SERVER))
-    assertWriteDenied(repository.updateItem(privateId, ItemEdit("Stolen", 1, null, null)))
-    assertWriteDenied(repository.deleteItemQueued(privateId))
+    assertDenied(document(otherHouseholdItemId).get(Source.SERVER))
+    assertWriteDenied(
+        repository.updateItem(otherHouseholdItemId, ItemEdit("Stolen", 1, null, null)))
+    assertWriteDenied(repository.deleteItemQueued(otherHouseholdItemId))
     assertDenied(document(sharedId).update("ownerId", member))
     assertDenied(document(sharedId).update("householdId", null))
     confirm(repository.setItemStatus(sharedId, ItemStatus.EATEN))
@@ -282,8 +287,8 @@ class FirebaseItemRepositoryEmulatorTest {
                 ownerId = FirebaseEmulator.auth.uid!!,
                 householdId = household.id)))
     FirebaseEmulator.signOut()
-    assertDenied(document(privateId).get(Source.SERVER))
-    assertWriteDenied(repository.setItemStatus(privateId, ItemStatus.EATEN))
+    assertDenied(document(otherHouseholdItemId).get(Source.SERVER))
+    assertWriteDenied(repository.setItemStatus(otherHouseholdItemId, ItemStatus.EATEN))
     FirebaseEmulator.signInAs("item-member")
     confirm(repository.deleteItemQueued(sharedId))
     assertEquals(404, adminRequest(sharedId).first)
@@ -477,14 +482,17 @@ class FirebaseItemRepositoryEmulatorTest {
     assertEquals(home.id, await(doc.get(Source.SERVER)).getString("householdId"))
     // A household the member never joined stands in for "not visible to other members".
     val elsewhere = HouseholdRepositoryFirestore(firestore).createHousehold("Elsewhere", owner)
-    val standalone = document("standalone-sharing")
-    await(standalone.set(Item(name = "Private", ownerId = owner, householdId = elsewhere.id)))
+    val otherHouseholdItem = document("other-household-sharing")
+    await(
+        otherHouseholdItem.set(
+            Item(name = "Not visible to the member", ownerId = owner, householdId = elsewhere.id)))
     assertEquals(
-        ItemSharing.PERSONAL, await(standalone.get(Source.SERVER)).toItemOrNull()!!.sharing)
-    confirm(repository.setItemSharing(standalone.id, ItemSharing.SHARED))
-    assertEquals(elsewhere.id, await(standalone.get(Source.SERVER)).getString("householdId"))
+        ItemSharing.PERSONAL, await(otherHouseholdItem.get(Source.SERVER)).toItemOrNull()!!.sharing)
+    confirm(repository.setItemSharing(otherHouseholdItem.id, ItemSharing.SHARED))
+    assertEquals(
+        elsewhere.id, await(otherHouseholdItem.get(Source.SERVER)).getString("householdId"))
     FirebaseEmulator.signInAs("sharing-item-member")
-    assertDenied(standalone.get(Source.SERVER))
+    assertDenied(otherHouseholdItem.get(Source.SERVER))
   }
 
   private fun document(id: String): DocumentReference =
