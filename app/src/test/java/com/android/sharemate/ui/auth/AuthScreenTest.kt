@@ -93,7 +93,7 @@ class AuthScreenTest {
   fun loadingDisablesActionsAndShowsFeedback() {
     compose.setContent {
       AuthScreen(
-          AuthUiState(isLoading = true, isRestoringSession = false),
+          AuthUiState(mode = AuthMode.SIGN_UP, isLoading = true, isRestoringSession = false),
           {},
           {},
           {},
@@ -107,8 +107,9 @@ class AuthScreenTest {
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
     compose.onNodeWithTag("auth_email").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_pseudo").assertDoesNotExist()
+    compose.onNodeWithTag("auth_pseudo").assertIsNotEnabled()
     compose.onNodeWithTag("auth_password").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_confirm_password").assertIsNotEnabled()
   }
 
   @Test

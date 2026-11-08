@@ -105,6 +105,7 @@ class AuthViewModelTest {
     viewModel.updatePassword("secret")
     viewModel.updateConfirmPassword("secret")
     viewModel.updatePseudo(" ")
+    assertNull(viewModel.state.value.error)
     viewModel.submit()
     assertEquals(AuthUiError.PSEUDO_REQUIRED, viewModel.state.value.error)
     assertTrue(repository.calls.isEmpty())
@@ -146,6 +147,8 @@ class AuthViewModelTest {
     assertEquals("", viewModel.state.value.password)
     assertEquals("", viewModel.state.value.confirmPassword)
     assertNull(viewModel.state.value.error)
+    viewModel.switchMode()
+    assertEquals(AuthMode.LOGIN, viewModel.state.value.mode)
   }
 
   @Test
@@ -197,6 +200,30 @@ class AuthViewModelTest {
     advanceUntilIdle()
     assertEquals("", viewModel.state.value.password)
     assertEquals("", viewModel.state.value.confirmPassword)
+    repository.sessions.emit(null)
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.session)
+  }
+
+  @Test
+  fun sessionRefreshPreservesNameForSameUserButDoesNotLeakItToAnotherUser() = runTest {
+    ready()
+    repository.sessions.emit(AuthSession("unnamed-user", "unnamed@example.org"))
+    advanceUntilIdle()
+    repository.sessions.emit(AuthSession("unnamed-user", "unnamed@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.session?.displayName)
+
+    repository.sessions.emit(AuthSession("first-user", "first@example.org", displayName = "First"))
+    advanceUntilIdle()
+    repository.sessions.emit(AuthSession("first-user", "first@example.org", displayName = "  "))
+    advanceUntilIdle()
+    assertEquals("First", viewModel.state.value.session?.displayName)
+
+    repository.sessions.emit(AuthSession("second-user", "second@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.session?.displayName)
+
     repository.sessions.emit(null)
     advanceUntilIdle()
     assertNull(viewModel.state.value.session)

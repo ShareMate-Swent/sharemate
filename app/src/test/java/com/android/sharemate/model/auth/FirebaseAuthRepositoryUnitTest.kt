@@ -86,6 +86,49 @@ class FirebaseAuthRepositoryUnitTest {
       }
 
   @Test
+  fun signupRequiresFirebaseUserAndMapsProfileUpdateFailures() =
+      runBlocking<Unit> {
+        val resultWithoutUser = mock(AuthResult::class.java)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(resultWithoutUser))
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("Signup without a Firebase user must fail")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+          assertNull(failure.cause)
+        }
+
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(signupResult))
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("A failed profile update must fail signup")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+          assertNull(failure.cause)
+        }
+      }
+
+  @Test
+  fun blankGoogleTokenIsRejectedWithoutCallingFirebase() =
+      runBlocking<Unit> {
+        try {
+          repository.signInWithGoogle("  ")
+          fail("A blank Google token must be rejected")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.INVALID_CREDENTIALS, failure.error)
+        }
+        verifyNoInteractions(auth)
+      }
+
+  @Test
   fun sessionEmitsDistinctIdentityAndRemovesListenerAfterCollection() =
       runBlocking<Unit> {
         val user = mock(FirebaseUser::class.java)
