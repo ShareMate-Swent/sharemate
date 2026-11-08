@@ -5,6 +5,7 @@ import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
@@ -54,6 +55,74 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       null
     }
   }
+
+  override fun addItems(submission: InventorySubmission): ItemWrite =
+      submit(submission.id) {
+        require(!submission.draft) { "A retained draft must be validated before submission" }
+        val batch = firestore.batch()
+        submission.items.forEachIndexed { index, row ->
+          val item =
+              Item(
+                  id = submission.itemId(index),
+                  name = row.name,
+                  quantity = row.quantity,
+                  ownerId = submission.ownerId,
+                  householdId = submission.householdId,
+                  sharing = ItemSharing.SHARED,
+                  status = ItemStatus.ACTIVE)
+          batch.set(items.document(item.id), item)
+        }
+        batch.set(submissionDocument(submission.ownerId, submission.id), submission.markerData())
+        batch.commit()
+      }
+
+  private fun InventorySubmission.markerData() =
+      mapOf(
+          InventorySubmissionFields.ID to id,
+          InventorySubmissionFields.OWNER to ownerId,
+          InventorySubmissionFields.HOUSEHOLD to householdId,
+          InventorySubmissionFields.ROWS to
+              items.map { row ->
+                mapOf(
+                    InventorySubmissionFields.ID to row.id,
+                    InventorySubmissionFields.NAME to row.name,
+                    InventorySubmissionFields.QUANTITY to row.quantity.toLong(),
+                    InventorySubmissionFields.PRICE to row.priceCents)
+              })
+
+  override fun observeSubmission(submission: InventorySubmission): Flow<InventorySubmissionStatus> =
+      callbackFlow {
+            val listener =
+                submissionDocument(submission.ownerId, submission.id).addSnapshotListener(
+                    MetadataChanges.INCLUDE) { snapshot, error ->
+                      if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                      }
+                      if (snapshot == null) return@addSnapshotListener
+                      trySend(
+                          when {
+                            snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites() ->
+                                InventorySubmissionStatus.PENDING
+                            snapshot.exists() && snapshot.data == submission.markerData() ->
+                                InventorySubmissionStatus.CONFIRMED
+                            snapshot.exists() -> {
+                              close(IllegalStateException("Submission data does not match"))
+                              return@addSnapshotListener
+                            }
+                            else -> InventorySubmissionStatus.MISSING
+                          })
+                    }
+            awaitClose { listener.remove() }
+          }
+          .distinctUntilChanged()
+
+  private fun submissionDocument(ownerId: String, submissionId: String) =
+      firestore
+          .collection(FirestoreCollections.USERS)
+          .document(ownerId)
+          .collection(InventorySubmissionFields.COLLECTION)
+          .document(submissionId)
 
   override suspend fun updateItemImageIfAbsent(
       itemId: String,
