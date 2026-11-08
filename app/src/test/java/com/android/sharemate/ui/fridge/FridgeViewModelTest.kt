@@ -1317,11 +1317,18 @@ class FridgeViewModelTest {
           "test-household",
           imageSelector,
           barcodeScanner,
-          productCatalogRepository)
+          productCatalogRepository,
+          fridgeType = FridgeType.SHARED)
     }
     assertThrows(IllegalArgumentException::class.java) {
       FridgeViewModel(
-          repository, "test-user", "", imageSelector, barcodeScanner, productCatalogRepository)
+          repository,
+          "test-user",
+          "",
+          imageSelector,
+          barcodeScanner,
+          productCatalogRepository,
+          fridgeType = FridgeType.SHARED)
     }
 
     assertTrue(repository.requestedHouseholdIds.isEmpty())
@@ -1364,10 +1371,18 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun uiStateExposesTheFridgeTypeFromTheStart() = runTest {
+    for (type in FridgeType.values()) {
+      val viewModel = viewModel(fridgeType = type)
+      assertEquals(type, viewModel.uiState.value.fridgeType)
+    }
+  }
+
+  @Test
   fun sharedFridgeLetsTheUserShareANewItem() = runTest {
     val viewModel = viewModel(fridgeType = FridgeType.SHARED)
     runCurrent()
-    assertTrue(viewModel.uiState.value.canShareItems)
+    assertEquals(FridgeType.SHARED, viewModel.uiState.value.fridgeType)
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
     viewModel.updateSharing(ItemSharing.SHARED)
@@ -1399,7 +1414,7 @@ class FridgeViewModelTest {
   fun privateFridgeNeverSharesItems() = runTest {
     val viewModel = viewModel(fridgeType = FridgeType.PRIVATE)
     runCurrent()
-    assertFalse(viewModel.uiState.value.canShareItems)
+    assertEquals(FridgeType.PRIVATE, viewModel.uiState.value.fridgeType)
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
     viewModel.updateSharing(ItemSharing.SHARED)
@@ -2070,7 +2085,8 @@ class FridgeViewModelTest {
             "test-household",
             imageSelector,
             barcodeScanner,
-            productCatalogRepository)
+            productCatalogRepository,
+            fridgeType = FridgeType.SHARED)
     viewModelStore.put("fridge", vm)
     vm.openAddItemDialog()
     vm.updateName("Milk")

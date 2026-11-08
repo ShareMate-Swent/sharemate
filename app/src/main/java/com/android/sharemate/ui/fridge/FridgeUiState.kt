@@ -3,6 +3,7 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 
@@ -20,8 +21,11 @@ data class FridgeUiState(
     val itemCategory: String = "",
     /** Sharing chosen for the item being created; items are private unless shared explicitly. */
     val itemSharing: ItemSharing = ItemSharing.PERSONAL,
-    /** False in a private fridge, where every item stays private to its owner. */
-    val canShareItems: Boolean = true,
+    /**
+     * Type of the fridge shown, or null while unknown. Items can only be shared in a
+     * [FridgeType.SHARED] fridge: every item of a private fridge stays private to its owner.
+     */
+    val fridgeType: FridgeType? = null,
     val expirationDateInput: String = "",
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,

@@ -102,7 +102,7 @@ class FridgeScreenTest {
   fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
     val type = mutableStateOf<FridgeType?>(null)
     composeRule.setContent {
-      MaterialTheme { FridgeScreen(uiState = FridgeUiState(), fridgeType = type.value) }
+      MaterialTheme { FridgeScreen(uiState = FridgeUiState(fridgeType = type.value)) }
     }
     composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
@@ -188,7 +188,8 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            fridgeType = FridgeType.SHARED)
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -369,7 +370,8 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            fridgeType = FridgeType.SHARED)
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -425,7 +427,8 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            fridgeType = FridgeType.SHARED)
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {

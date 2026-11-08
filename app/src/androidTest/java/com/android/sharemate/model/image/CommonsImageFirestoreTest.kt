@@ -12,6 +12,7 @@ import com.android.sharemate.AuthenticatedUserRule
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.Item
@@ -119,7 +120,8 @@ class CommonsImageFirestoreTest {
                   householdId,
                   FoodImageSelector(gatedImages),
                   BarcodeScanner { BarcodeScanResult.NotFound },
-                  testProductCatalogRepository())
+                  testProductCatalogRepository(),
+                  fridgeType = FridgeType.SHARED)
               .also { store.put("commons", it) }
         }
     var id: String? = null

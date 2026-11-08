@@ -21,6 +21,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -199,7 +200,8 @@ class FridgeScreenTest {
               "household",
               FoodImageSelector(imageRepository),
               testBarcodeScanner(),
-              testProductCatalogRepository())
+              testProductCatalogRepository(),
+              fridgeType = FridgeType.SHARED)
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {

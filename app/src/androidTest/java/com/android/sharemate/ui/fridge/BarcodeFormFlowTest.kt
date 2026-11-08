@@ -16,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.*
@@ -141,7 +142,8 @@ class BarcodeFormFlowTest {
                   assertEquals("123", barcode)
                   return result
                 }
-              })
+              },
+              fridgeType = FridgeType.SHARED)
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }

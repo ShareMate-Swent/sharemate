@@ -4,6 +4,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
@@ -90,7 +91,8 @@ class FridgePersonalPhotoTest {
             BarcodeScanner { BarcodeScanResult.NotFound },
             mock(ProductCatalogRepository::class.java),
             storage,
-            files)
+            files,
+            fridgeType = FridgeType.SHARED)
     models.put("fridge", viewModel)
   }
 

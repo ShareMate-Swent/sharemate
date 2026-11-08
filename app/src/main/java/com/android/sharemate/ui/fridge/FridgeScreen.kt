@@ -68,7 +68,6 @@ fun FridgeScreen(
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
-    fridgeType: FridgeType? = null,
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
@@ -86,7 +85,7 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_title),
         style = MaterialTheme.typography.headlineSmall)
 
-    fridgeType?.let { type ->
+    uiState.fridgeType?.let { type ->
       Text(
           text =
               stringResource(
@@ -287,7 +286,6 @@ fun FridgeScreen(
 fun FridgeScreen(
     viewModel: FridgeViewModel,
     modifier: Modifier = Modifier,
-    fridgeType: FridgeType? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
@@ -338,7 +336,6 @@ fun FridgeScreen(
         onRemoveItem = viewModel::requestRemoval,
         onCancelRemoval = viewModel::cancelRemoval,
         onConfirmRemoval = viewModel::confirmRemoval,
-        fridgeType = fridgeType,
         personalPhotos = viewModel.personalPhotos,
     )
   }

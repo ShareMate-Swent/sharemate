@@ -356,7 +356,8 @@ class PersonalPhotoStorageEmulatorTest {
                   BarcodeScanner { BarcodeScanResult.NotFound },
                   testProductCatalogRepository(),
                   repository,
-                  files)
+                  files,
+                  fridgeType = FridgeType.SHARED)
               .also { models.put("fridge", it) }
         }
     try {

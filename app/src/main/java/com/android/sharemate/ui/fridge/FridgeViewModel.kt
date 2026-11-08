@@ -61,7 +61,7 @@ class FridgeViewModel(
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
-    private val fridgeType: FridgeType = FridgeType.SHARED,
+    private val fridgeType: FridgeType,
 ) : ViewModel() {
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
@@ -69,8 +69,7 @@ class FridgeViewModel(
       else null
 
   private val mutableUiState =
-      MutableStateFlow(
-          FridgeUiState(isLoading = true, canShareItems = fridgeType != FridgeType.PRIVATE))
+      MutableStateFlow(FridgeUiState(isLoading = true, fridgeType = fridgeType))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
@@ -554,7 +553,7 @@ class FridgeViewModel(
   }
 
   fun updateSharing(sharing: ItemSharing) = updateDraft {
-    it.copy(itemSharing = if (it.canShareItems) sharing else ItemSharing.PERSONAL)
+    it.copy(itemSharing = if (fridgeType == FridgeType.SHARED) sharing else ItemSharing.PERSONAL)
   }
 
   fun updateExpirationDate(date: String) = updateDraft {
@@ -601,7 +600,8 @@ class FridgeViewModel(
             name = name,
             ownerId = userId,
             householdId = householdId,
-            sharing = if (state.canShareItems) state.itemSharing else ItemSharing.PERSONAL,
+            sharing =
+                if (fridgeType == FridgeType.SHARED) state.itemSharing else ItemSharing.PERSONAL,
             quantity = quantity,
             expirationDate = expirationDate,
             category = state.itemCategory.trim().takeIf { it.isNotEmpty() })

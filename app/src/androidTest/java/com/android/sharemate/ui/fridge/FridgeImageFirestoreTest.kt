@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
@@ -75,7 +76,8 @@ class FridgeImageFirestoreTest {
                   householdId,
                   selector,
                   BarcodeScanner { BarcodeScanResult.NotFound },
-                  testProductCatalogRepository())
+                  testProductCatalogRepository(),
+                  fridgeType = FridgeType.SHARED)
               .also { store.put("fridge", it) }
         }
     withContext(Dispatchers.Main) {
