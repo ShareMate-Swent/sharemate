@@ -166,4 +166,11 @@
     <string name="personal_photo_remove">Remove personal photo</string>
     <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
     <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
+    <string name="inventory_save_shared_only">Saving scanned items requires a shared household.</string>
+    <string name="inventory_save_loading">Checking the previous inventory save…</string>
+    <string name="inventory_save_submitting">Preparing inventory save…</string>
+    <string name="inventory_save_pending">Items are waiting for server confirmation. They will sync when a connection is available.</string>
+    <string name="inventory_save_success">Items saved to the shared fridge.</string>
+    <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
+    <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
 </resources>
