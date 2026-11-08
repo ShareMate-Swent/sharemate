@@ -135,7 +135,7 @@
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
     <string name="staging_delete_item">Delete %1$s</string>
-    <string name="staging_price_label">Price</string>
+    <string name="staging_price_label">Line total</string>
     <string name="staging_currency">CHF</string>
     <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
     <string name="staging_price_invalid">Enter a price like 3.50.</string>

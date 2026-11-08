@@ -29,7 +29,8 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
     require(products.isNotEmpty()) { "No priced products found" }
     save(
         products.mapIndexed { index, item ->
-          StagedItem(index.toString(), item.name, priceCents = item.priceCents)
+          StagedItem(
+              index.toString(), item.name, quantity = item.quantity, priceCents = item.priceCents)
         })
     saved[REVIEWED] = false
     saved[PENDING] = true
