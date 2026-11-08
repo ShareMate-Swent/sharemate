@@ -5,19 +5,19 @@ package com.android.sharemate.model.item
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Interface définissant les opérations possibles sur les Items. Conformément à l'architecture,
- * cette interface abstrait la source de données (Firestore).
+ * Operations available on items. In line with the architecture, this interface abstracts the data
+ * source (Firestore).
  */
 interface ItemRepository {
 
-  /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
+  /** Reactive stream of the household's items, both SHARED and PERSONAL. */
   fun getSharedItems(householdId: String): Flow<List<Item>>
 
   /**
-   * Ajoute un nouvel item. [Item.householdId] est obligatoire ; [Item.sharing] indique s'il est
-   * privé ou partagé avec le household.
+   * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to
+   * its owner or shared with the household.
    *
-   * @return L'ID généré de l'item, ou null en cas d'erreur.
+   * @return The generated item ID, or null on error.
    */
   suspend fun addItem(item: Item): String?
 
@@ -36,7 +36,7 @@ interface ItemRepository {
       image: ItemImage
   ): ItemImageUpdateResult
 
-  /** Supprime un item spécifique. */
+  /** Deletes a specific item. */
   suspend fun deleteItem(itemId: String): Boolean
 
   /** Updates only editable fields; never transfers ownership or changes sharing. */
