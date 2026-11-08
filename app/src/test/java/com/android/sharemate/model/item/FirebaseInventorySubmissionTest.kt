@@ -113,7 +113,8 @@ class FirebaseInventorySubmissionTest {
             emptyList(),
             listOf(row, row),
             List(InventorySubmission.MAX_ITEMS + 1) { row.copy(id = "$it") },
-            listOf(row.copy(name = "a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))))) {
+            listOf(row.copy(name = "a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))),
+            listOf(row.copy(id = "a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))))) {
       assertThrows(IllegalArgumentException::class.java) {
         InventorySubmission(ID, "owner", "home", rows)
       }
@@ -129,6 +130,9 @@ class FirebaseInventorySubmissionTest {
     assertThrows(IllegalArgumentException::class.java) {
       InventorySubmission("not-a-uuid", "owner", "home", listOf(row))
     }
+    assertThrows(IllegalArgumentException::class.java) {
+      InventorySubmission(ID.uppercase(), "owner", "home", listOf(row))
+    }
     verifyNoInteractions(firestore)
   }
 
@@ -142,6 +146,32 @@ class FirebaseInventorySubmissionTest {
       (retained.items as MutableList<StagedItem>).clear()
     }
     assertEquals(submission.items, retained.items)
+  }
+
+  @Test
+  fun submissionEqualityIncludesIdentityScopeCorrectionsAndDraftState() {
+    fun copy(
+        id: String = ID,
+        owner: String = "owner",
+        home: String = "home",
+        rows: List<StagedItem> = submission.items,
+        draft: Boolean = false,
+    ) = InventorySubmission(id, owner, home, rows, draft)
+    val restored = copy()
+    assertEquals(submission, restored)
+    assertEquals(submission.hashCode(), restored.hashCode())
+    assertEquals(1, hashSetOf(submission, restored).size)
+    val different =
+        listOf(
+            copy(id = "22345678-1234-1234-1234-123456789abc"),
+            copy(owner = "another"),
+            copy(home = "another"),
+            copy(rows = submission.items.map { it.copy(quantity = it.quantity + 1) }),
+            copy(draft = true))
+    different.forEach { assertNotEquals(submission, it) }
+    assertFalse(submission.equals(null))
+    assertFalse(submission.equals(ID))
+    assertEquals(different.size + 1, (different + submission).toSet().size)
   }
 
   @Suppress("UNCHECKED_CAST")
