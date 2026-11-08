@@ -4,9 +4,11 @@ package com.android.sharemate.model.staging
 import android.content.Context
 import android.content.SharedPreferences
 import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -96,5 +98,40 @@ class InventorySubmissionStoreTest {
             listOf(StagedItem("milk", "Milk", 2, 480)))
     assertTrue(runCatching { store.save(submission) }.exceptionOrNull() is IllegalStateException)
     verify(editor).commit()
+  }
+
+  @Test
+  fun malformedJournalFieldsCannotChangeIdentityOrCoerceQuantitiesAndPrices() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val saved =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", Int.MAX_VALUE, Long.MAX_VALUE)))
+    store.save(saved)
+    assertEquals(saved, store.load("owner", "home"))
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val key = JSONArray(listOf("owner", "home")).toString()
+    val original = checkNotNull(preferences.getString(key, null))
+    for ((field, value) in
+        listOf(
+            Fields.QUANTITY to "2",
+            Fields.QUANTITY to 1.5,
+            Fields.QUANTITY to 0,
+            Fields.QUANTITY to -1,
+            Fields.QUANTITY to Int.MAX_VALUE.toLong() + 1,
+            Fields.PRICE to "480",
+            Fields.PRICE to 4.8,
+            Fields.NAME to 42)) {
+      val json = JSONObject(original)
+      json.getJSONArray(Fields.ROWS).getJSONObject(0).put(field, value)
+      preferences.edit().putString(key, json.toString()).commit()
+      assertTrue("Reject $field=$value", runCatching { store.load("owner", "home") }.isFailure)
+    }
+    val foreign = JSONObject(original).put(Fields.HOUSEHOLD, "another")
+    preferences.edit().putString(key, foreign.toString()).commit()
+    assertTrue(runCatching { store.load("owner", "home") }.isFailure)
   }
 }
