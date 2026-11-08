@@ -115,14 +115,18 @@ service cloud.firestore {
       }
 
       // Joining: a user may only append themselves to the members, and must point their own
-      // profile at the household in the same batch. No other field can change.
+      // profile at the household in the same batch, with the household's invite code as proof
+      // that they were invited. Knowing the household ID alone is not enough. No other field can
+      // change.
       function onlyAddsSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
+        let profile = getAfter(documentPath('users', request.auth.uid)).data;
         return onlyMemberIdsChange()
             && (after == before
-                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
-            && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])
+                    && profile.get('joinCode', null) == resource.data.inviteCode))
+            && profile.householdId == householdId;
       }
 
       // Leaving: a member may only remove themselves, and must clear the household from their

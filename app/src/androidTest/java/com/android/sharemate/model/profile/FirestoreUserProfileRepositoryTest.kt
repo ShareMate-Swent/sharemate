@@ -12,6 +12,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import java.util.concurrent.ExecutionException
@@ -135,6 +136,28 @@ class FirestoreUserProfileRepositoryTest {
             }
         assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, failure.code)
       }
+
+  @Test
+  fun outsiderCannotForgeMembershipToReadProfiles() {
+    val household = createHouseholdWithProfile("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+    val users = firestore.collection(FirestoreCollections.USERS)
+
+    // The join batch without the invite code is rejected, so the outsider stays outside.
+    assertDenied(
+        firestore
+            .batch()
+            .update(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(household.id),
+                "memberIds",
+                FieldValue.arrayUnion(outsiderId))
+            .set(users.document(outsiderId), mapOf("householdId" to household.id))
+            .commit())
+    // Pointing their own user document at the household is allowed, but grants nothing.
+    Tasks.await(users.document(outsiderId).set(mapOf("householdId" to household.id)))
+
+    assertDenied(profileReference(household.createdBy).get())
+  }
 
   @Test
   fun signedOutUserCannotReadProfiles() {
