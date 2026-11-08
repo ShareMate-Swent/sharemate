@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: AI Assistant
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -42,6 +43,7 @@ class FirebaseItemRepositoryTest {
     `when`(doc.id).thenReturn("milk")
     `when`(doc.getString("name")).thenReturn("Milk")
     `when`(doc.getString("ownerId")).thenReturn("owner")
+    `when`(doc.getString("householdId")).thenReturn("house-1")
     `when`(doc.get("image"))
         .thenReturn(
             mapOf(
@@ -64,6 +66,7 @@ class FirebaseItemRepositoryTest {
     `when`(doc.id).thenReturn("milk")
     `when`(doc.getString("name")).thenReturn("Milk")
     `when`(doc.getString("ownerId")).thenReturn("owner")
+    `when`(doc.getString("householdId")).thenReturn("house-1")
     listOf(
             null,
             "invalid",
@@ -91,74 +94,12 @@ class FirebaseItemRepositoryTest {
     repository = FirebaseItemRepository(firestore)
   }
 
-  @Test
-  fun getPrivateItems_returnsEmptyFlow_whenUserIdIsBlank() =
-      runBlocking<Unit> {
-        val items = repository.getPrivateItems("   ").first()
-        assertTrue(items.isEmpty())
-      }
-
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getPrivateItems_emitsFilteredItems() =
+  fun getSharedItems_handlesError() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
-        `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
-        `when`(query.whereEqualTo("householdId", null)).thenReturn(query)
-
-        val listenerCaptor =
-            ArgumentCaptor.forClass(EventListener::class.java)
-                as ArgumentCaptor<EventListener<QuerySnapshot>>
-        val registration = mock(ListenerRegistration::class.java)
-        `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
-
-        val emittedLists = mutableListOf<List<Item>>()
-        val job =
-            launch(Dispatchers.Unconfined) {
-              repository.getPrivateItems("user-1").collect { emittedLists.add(it) }
-            }
-
-        verify(query).addSnapshotListener(any())
-
-        val snapshot = mock(QuerySnapshot::class.java)
-
-        val docPrivate = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
-        `when`(docPrivate.id).thenReturn("item-1")
-        `when`(docPrivate.getString("name")).thenReturn("Apple")
-        `when`(docPrivate.getString("ownerId")).thenReturn("user-1")
-        `when`(docPrivate.getString("householdId")).thenReturn(null)
-
-        val docShared =
-            mock(DocumentSnapshot::class.java).stubRequiredItemFields(ItemSharing.SHARED)
-        `when`(docShared.id).thenReturn("item-2")
-        `when`(docShared.getString("name")).thenReturn("Banana")
-        `when`(docShared.getString("ownerId")).thenReturn("user-1")
-        `when`(docShared.getString("householdId")).thenReturn("household-1")
-
-        val docInvalid = mock(DocumentSnapshot::class.java)
-        `when`(docInvalid.id).thenReturn("item-3")
-        `when`(docInvalid.getString("name")).thenReturn("  ")
-
-        `when`(snapshot.documents).thenReturn(listOf(docPrivate, docShared, docInvalid))
-
-        listenerCaptor.value.onEvent(snapshot, null)
-
-        assertEquals(1, emittedLists.size)
-        val firstEmission = emittedLists[0]
-        assertEquals(1, firstEmission.size)
-        assertEquals("item-1", firstEmission[0].id)
-        assertEquals("Apple", firstEmission[0].name)
-
-        job.cancel()
-      }
-
-  @Suppress("UNCHECKED_CAST")
-  @Test
-  fun getPrivateItems_handlesError() =
-      runBlocking<Unit> {
-        val query = mock(Query::class.java)
-        `when`(collection.whereEqualTo("ownerId", "user-1")).thenReturn(query)
-        `when`(query.whereEqualTo("householdId", null)).thenReturn(query)
+        `when`(collection.whereEqualTo("householdId", "house-1")).thenReturn(query)
 
         val listenerCaptor =
             ArgumentCaptor.forClass(EventListener::class.java)
@@ -170,7 +111,7 @@ class FirebaseItemRepositoryTest {
         val job =
             launch(Dispatchers.Unconfined) {
               try {
-                repository.getPrivateItems("user-1").collect {}
+                repository.getSharedItems("house-1").collect {}
               } catch (e: Exception) {
                 caughtError = e
               }
@@ -239,8 +180,9 @@ class FirebaseItemRepositoryTest {
   @Test
   fun addItem_failsOnBlankNameOrOwnerId() =
       runBlocking<Unit> {
-        assertNull(repository.addItem(Item(name = "  ", ownerId = "user-1")))
-        assertNull(repository.addItem(Item(name = "Apple", ownerId = "")))
+        assertNull(
+            repository.addItem(Item(name = "  ", ownerId = "user-1", householdId = "house-1")))
+        assertNull(repository.addItem(Item(name = "Apple", ownerId = "", householdId = "house-1")))
       }
 
   @Test
@@ -252,7 +194,8 @@ class FirebaseItemRepositoryTest {
         `when`(document.set(any(Item::class.java))).thenReturn(Tasks.forResult(null))
 
         val result =
-            repository.addItem(Item(name = "  Banana  ", ownerId = "user-1", householdId = "  "))
+            repository.addItem(
+                Item(name = "  Banana  ", ownerId = "user-1", householdId = "house-1"))
 
         assertEquals("generated-id", result)
 
@@ -263,7 +206,8 @@ class FirebaseItemRepositoryTest {
         assertEquals("generated-id", savedItem.id)
         assertEquals("Banana", savedItem.name)
         assertEquals("user-1", savedItem.ownerId)
-        assertNull(savedItem.householdId)
+        assertEquals("house-1", savedItem.householdId)
+        assertEquals(ItemSharing.PERSONAL, savedItem.sharing)
       }
 
   @Test
@@ -275,7 +219,7 @@ class FirebaseItemRepositoryTest {
         `when`(document.set(any(Item::class.java))).thenThrow(CancellationException("Cancelled"))
 
         try {
-          repository.addItem(Item(name = "Apple", ownerId = "user-1"))
+          repository.addItem(Item(name = "Apple", ownerId = "user-1", householdId = "house-1"))
           Assert.fail("Expected CancellationException")
         } catch (e: CancellationException) {
           // Expected
@@ -290,7 +234,8 @@ class FirebaseItemRepositoryTest {
         `when`(document.id).thenReturn("generated-id")
         `when`(document.set(any(Item::class.java))).thenThrow(RuntimeException("Firestore error"))
 
-        val result = repository.addItem(Item(name = "Apple", ownerId = "user-1"))
+        val result =
+            repository.addItem(Item(name = "Apple", ownerId = "user-1", householdId = "house-1"))
         assertNull(result)
       }
 

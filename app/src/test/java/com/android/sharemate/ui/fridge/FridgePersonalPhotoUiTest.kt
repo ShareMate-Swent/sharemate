@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -173,7 +174,12 @@ class FridgePersonalPhotoUiTest {
       }
     }
     val item =
-        mutableStateOf(Item(id = "milk", name = "Milk", image = ItemImage(reference = first.path)))
+        mutableStateOf(
+            Item(
+                id = "milk",
+                name = "Milk",
+                image = ItemImage(reference = first.path),
+                householdId = "household-1"))
     val session = mutableStateOf<PersonalPhotoController?>(photos)
     compose.setContent {
       MaterialTheme {
@@ -186,7 +192,12 @@ class FridgePersonalPhotoUiTest {
     placeholder.assertIsDisplayed()
     compose.runOnIdle {
       assertEquals(listOf(first), requests)
-      item.value = Item(id = "yogurt", name = "Yogurt", image = ItemImage(reference = second.path))
+      item.value =
+          Item(
+              id = "yogurt",
+              name = "Yogurt",
+              image = ItemImage(reference = second.path),
+              householdId = "household-1")
     }
 
     compose.waitUntil(5_000) {
@@ -196,7 +207,12 @@ class FridgePersonalPhotoUiTest {
     placeholder.assertDoesNotExist()
     compose.runOnIdle {
       assertTrue(cancelled.isCompleted)
-      item.value = Item(id = "bread", name = "Bread", image = ItemImage(reference = denied.path))
+      item.value =
+          Item(
+              id = "bread",
+              name = "Bread",
+              image = ItemImage(reference = denied.path),
+              householdId = "household-1")
     }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
@@ -213,7 +229,7 @@ class FridgePersonalPhotoUiTest {
 
   @Test
   fun failedAttachmentShowsTheSavedItemAndItsPhotoError() {
-    val milk = Item(id = "milk", name = "Milk")
+    val milk = Item(id = "milk", name = "Milk", householdId = "household-1")
     val source = temporary.newFile()
     compose.setContent {
       MaterialTheme {

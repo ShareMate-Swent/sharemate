@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Column
@@ -61,7 +62,10 @@ class FridgeScreenTest {
 
   @Test
   fun phoneGridHasThreeSquareTilesPerRowAndRealMetadata() {
-    val items = (1..4).map { Item(id = "$it", name = "Food $it", quantity = it) }
+    val items =
+        (1..4).map {
+          Item(id = "$it", name = "Food $it", quantity = it, householdId = "household-1")
+        }
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
@@ -121,7 +125,7 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeItem(
-            item = Item(id = "milk", name = "Milk"),
+            item = Item(id = "milk", name = "Milk", householdId = "household-1"),
             statusEnabled = true,
             onStatusChange = { changes += it })
       }
@@ -138,7 +142,7 @@ class FridgeScreenTest {
 
   @Test
   fun activeScreenHidesHistoryAndDisablesActionsDuringLocalSubmission() {
-    val item = Item(id = "milk", name = "Milk")
+    val item = Item(id = "milk", name = "Milk", householdId = "household-1")
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
@@ -224,7 +228,9 @@ class FridgeScreenTest {
     val state =
         mutableStateOf(
             FridgeUiState(
-                removalSyncError = error, pendingRemovalItem = Item(id = "bread", name = "Bread")))
+                removalSyncError = error,
+                pendingRemovalItem =
+                    Item(id = "bread", name = "Bread", householdId = "household-1")))
     val dismissed = mutableListOf<FridgeRemovalSyncError>()
     composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
@@ -251,7 +257,10 @@ class FridgeScreenTest {
   @Test
   fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
     val requests = mutableListOf<String>()
-    val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
+    val items =
+        listOf(
+            Item(id = "milk", name = "Milk", householdId = "household-1"),
+            Item(id = "bread", name = "Bread", householdId = "household-1"))
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
@@ -280,7 +289,10 @@ class FridgeScreenTest {
   fun removeActionIsDisabledWithoutRuntimeWiring() {
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
+        FridgeScreen(
+            uiState =
+                FridgeUiState(
+                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1"))))
       }
     }
     openActions("milk")
@@ -293,7 +305,9 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             uiState =
-                FridgeUiState(items = listOf(Item(id = "milk", name = "Milk")), isDeleting = true),
+                FridgeUiState(
+                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
+                    isDeleting = true),
             onRemoveItem = {})
       }
     }
@@ -332,8 +346,18 @@ class FridgeScreenTest {
     val repository =
         FakeItemRepository(
             listOf(
-                Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1"),
-                Item(id = "bread", name = "Bread", category = "Bakery", ownerId = "owner-2")))
+                Item(
+                    id = "milk",
+                    name = "Milk",
+                    category = "Dairy",
+                    ownerId = "owner-1",
+                    householdId = "household-1"),
+                Item(
+                    id = "bread",
+                    name = "Bread",
+                    category = "Bakery",
+                    ownerId = "owner-2",
+                    householdId = "household-1")))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -378,9 +402,18 @@ class FridgeScreenTest {
     val repository =
         FakeItemRepository(
             listOf(
-                Item(id = "apple", name = "Apple", category = "Fruits"),
-                Item(id = "banana", name = "Banana", category = "Fruits"),
-                Item(id = "carrot", name = "Carrot", category = "Vegetables")))
+                Item(
+                    id = "apple", name = "Apple", category = "Fruits", householdId = "household-1"),
+                Item(
+                    id = "banana",
+                    name = "Banana",
+                    category = "Fruits",
+                    householdId = "household-1"),
+                Item(
+                    id = "carrot",
+                    name = "Carrot",
+                    category = "Vegetables",
+                    householdId = "household-1")))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -494,7 +527,12 @@ class FridgeScreenTest {
       composeRule.setContent {
         MaterialTheme {
           FridgeItem(
-              item = Item(id = "utc-item", name = "Milk", expirationDate = expiration),
+              item =
+                  Item(
+                      id = "utc-item",
+                      name = "Milk",
+                      expirationDate = expiration,
+                      householdId = "household-1"),
               modifier = androidx.compose.ui.Modifier.width(100.dp))
         }
       }
@@ -518,12 +556,11 @@ class FridgeScreenTest {
       Item(
           id = "milk",
           name = "Milk",
-          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
+          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)),
+          householdId = "household-1")
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
-
-    override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
 
     override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
 

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -276,8 +277,6 @@ class FridgeEditTest {
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
     override fun getSharedItems(householdId: String) = items
-
-    override fun getPrivateItems(userId: String) = error("Unexpected private query")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

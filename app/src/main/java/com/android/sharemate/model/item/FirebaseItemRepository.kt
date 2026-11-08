@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -21,15 +22,6 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> =
-      if (userId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null)) {
-          it.filter { item -> item.householdId == null }
-        }
-      }
-
   override fun getSharedItems(householdId: String): Flow<List<Item>> =
       if (householdId.isBlank()) {
         flowOf(emptyList())
@@ -41,11 +33,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null
     return try {
       val document = items.document()
-      val savedItem =
-          item.copy(
-              id = document.id,
-              name = item.name.trim(),
-              householdId = item.householdId?.takeIf { it.isNotBlank() })
+      val savedItem = item.copy(id = document.id, name = item.name.trim())
       document.set(savedItem).await()
       document.id
     } catch (cancelled: CancellationException) {
@@ -179,7 +167,14 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
       val status = ItemStatus.values().firstOrNull { it.name == get("status") }
       val householdId = getString("householdId")?.takeIf { it.isNotBlank() }
       val sharing = ItemSharing.values().firstOrNull { it.name == get("sharing") }
-      if (name == null || ownerId == null || quantity == null || status == null || sharing == null)
+      // Items without a household predate the rule that every item belongs to one; they are
+      // skipped rather than guessed at.
+      if (name == null ||
+          ownerId == null ||
+          householdId == null ||
+          quantity == null ||
+          status == null ||
+          sharing == null)
           null
       else
           Item(

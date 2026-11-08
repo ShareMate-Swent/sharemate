@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.CompletableDeferred
@@ -14,7 +15,6 @@ class FakeItemRepository : ItemRepository {
   private var nextId = 0
   val addedItems = mutableListOf<Item>()
   val requestedHouseholdIds = mutableListOf<String>()
-  val requestedUserIds = mutableListOf<String>()
   var returnNullOnAdd = false
   var addFailure: Exception? = null
   var readFailure: Exception? = null
@@ -37,13 +37,6 @@ class FakeItemRepository : ItemRepository {
   var statusConfirmation: CompletableDeferred<Result<Unit>>? = null
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
-
-  override fun getPrivateItems(userId: String): Flow<List<Item>> {
-    requestedUserIds += userId
-    return items.map { current ->
-      current.filter { it.ownerId == userId && it.householdId == null }
-    }
-  }
 
   override fun getSharedItems(householdId: String): Flow<List<Item>> {
     requestedHouseholdIds += householdId

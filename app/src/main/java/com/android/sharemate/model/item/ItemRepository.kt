@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
@@ -9,17 +10,12 @@ import kotlinx.coroutines.flow.Flow
  */
 interface ItemRepository {
 
-  /**
-   * Récupère un flux (Flow) réactif de tous les items privés de l'utilisateur. Le Flow
-   * s'actualisera automatiquement si les données changent en local ou sur le serveur.
-   */
-  fun getPrivateItems(userId: String): Flow<List<Item>>
-
   /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
   fun getSharedItems(householdId: String): Flow<List<Item>>
 
   /**
-   * Ajoute un nouvel item (privé ou partagé selon si householdId est défini).
+   * Ajoute un nouvel item. [Item.householdId] est obligatoire ; [Item.sharing] indique s'il est
+   * privé ou partagé avec le household.
    *
    * @return L'ID généré de l'item, ou null en cas d'erreur.
    */

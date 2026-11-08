@@ -1,9 +1,11 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,12 +13,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -28,6 +32,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
@@ -42,6 +47,7 @@ fun AddItemDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
     onQuantityChange: (String) -> Unit = {},
+    onSharingChange: (ItemSharing) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
 ) {
@@ -143,6 +149,21 @@ fun AddItemDialog(
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
+              if (uiState.canShareItems && uiState.editingItemId == null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()) {
+                      Text(stringResource(R.string.fridge_item_share_with_household))
+                      Switch(
+                          checked = uiState.itemSharing == ItemSharing.SHARED,
+                          onCheckedChange = {
+                            onSharingChange(if (it) ItemSharing.SHARED else ItemSharing.PERSONAL)
+                          },
+                          enabled = inputEnabled,
+                          modifier = Modifier.testTag(C.Tag.fridge_share_switch))
+                    }
+              }
               uiState.formError?.let { error ->
                 Text(
                     text =

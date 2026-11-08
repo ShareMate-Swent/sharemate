@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.background
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
@@ -60,6 +62,7 @@ fun FridgeScreen(
     onConfirmRemoval: () -> Unit = {},
     onEditItem: ((String) -> Unit)? = null,
     onQuantityChange: (String) -> Unit = {},
+    onSharingChange: (ItemSharing) -> Unit = {},
     onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
@@ -236,6 +239,7 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
+        onSharingChange = onSharingChange,
         onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         personalPhotos = personalPhotos,
         onDismiss = onDismissAddItem)
@@ -318,6 +322,7 @@ fun FridgeScreen(
         onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
         onEditItem = viewModel::openEditItemDialog,
         onQuantityChange = viewModel::updateQuantity,
+        onSharingChange = viewModel::updateSharing,
         onDismissEditSyncError = viewModel::dismissEditSyncError,
         onStatusChange = viewModel::setItemStatus,
         onDismissStatusError = viewModel::dismissStatusError,

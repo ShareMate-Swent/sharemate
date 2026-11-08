@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -209,27 +210,27 @@ class ItemImageUpdateTest {
     val personal = ItemImage(reference = "content://personal")
     val items =
         listOf(
-            Item("renamed", "Oat milk", "owner"),
-            Item("personal", "Milk", "owner", image = personal),
-            Item("remote", "Milk", "owner", image = image))
+            Item("renamed", "Oat milk", "owner", householdId = "household-1"),
+            Item("personal", "Milk", "owner", image = personal, householdId = "household-1"),
+            Item("remote", "Milk", "owner", image = image, householdId = "household-1"))
     fake.emitItems(items)
     for (id in listOf("missing", "renamed", "personal", "remote")) {
       assertSame(ItemImageUpdateResult.Ignored, fake.updateItemImageIfAbsent(id, "Milk", image))
     }
-    assertEquals(items, fake.getPrivateItems("owner").first())
+    assertEquals(items, fake.getSharedItems("household-1").first())
   }
 
   @Test
   fun fakeWriteFailureLeavesItemUnchanged() = runBlocking {
     val fake = FakeItemRepository()
-    val item = Item("item", "Milk", "owner")
+    val item = Item("item", "Milk", "owner", householdId = "household-1")
     fake.emitItems(listOf(item))
     val failure = IllegalStateException("Write failed")
     fake.imageUpdateFailure = failure
     assertSame(
         failure,
         (fake.updateItemImageIfAbsent("item", "Milk", image) as ItemImageUpdateResult.Error).cause)
-    assertEquals(listOf(item), fake.getPrivateItems("owner").first())
+    assertEquals(listOf(item), fake.getSharedItems("household-1").first())
   }
 
   private suspend fun assertIgnoredWithoutWriting() {
