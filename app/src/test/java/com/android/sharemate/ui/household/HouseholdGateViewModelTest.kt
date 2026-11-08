@@ -1,9 +1,13 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.profile.InMemoryUserProfileRepository
+import com.android.sharemate.model.profile.UserProfile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,6 +26,9 @@ class HouseholdGateViewModelTest {
   private val dispatcher = StandardTestDispatcher()
   private val store = ViewModelStore()
   private lateinit var repository: LookupRepository
+  private val profiles = InMemoryUserProfileRepository()
+  private val session =
+      AuthSession(uid = "authenticated-user", email = "user@example.com", displayName = "Ada")
   private lateinit var viewModel: HouseholdGateViewModel
 
   @Before
@@ -108,8 +115,37 @@ class HouseholdGateViewModelTest {
     assertEquals(listOf("authenticated-user"), repository.userIds)
   }
 
+  @Test
+  fun startSavesThePublicProfileOfTheSession() = runTest {
+    startViewModel()
+    advanceUntilIdle()
+    assertEquals(
+        listOf(UserProfile("authenticated-user", "Ada", email = "user@example.com")),
+        profiles.saved)
+  }
+
+  @Test
+  fun failedProfileSaveDoesNotBlockTheHouseholdLookup() = runTest {
+    val household = Household(id = "household", memberIds = listOf("authenticated-user"))
+    repository.result = household
+    profiles.saveFailure = IllegalStateException("Offline")
+    startViewModel()
+    advanceUntilIdle()
+    assertEquals(1, profiles.saved.size)
+    assertEquals(HouseholdGateState.Ready(household), viewModel.state.value)
+  }
+
+  @Test
+  fun refreshDoesNotSaveTheProfileAgain() = runTest {
+    startViewModel()
+    advanceUntilIdle()
+    viewModel.refresh()
+    advanceUntilIdle()
+    assertEquals(1, profiles.saved.size)
+  }
+
   private fun startViewModel() {
-    viewModel = HouseholdGateViewModel(repository, "authenticated-user")
+    viewModel = HouseholdGateViewModel(repository, profiles, session)
     store.put("household-gate", viewModel)
   }
 
