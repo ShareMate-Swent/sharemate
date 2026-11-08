@@ -40,14 +40,22 @@ The old `addItem` and `deleteItem` methods retain their server-confirmed contrac
 callers; they can wait offline. PR 2 must use the queued API for editing, lifecycle and deletion.
 `deleteItem` reuses queued deletion internally, then awaits confirmation to produce its Boolean.
 
-The existing rules had no items match and therefore denied all item operations. The new items match
-grants private owners and shared-household members access. Creation requires the authenticated owner;
-ordinary updates cannot modify identity, sharing or metadata and must contain valid editable values.
-Other collections' rules are unchanged. Private queries now constrain both ownerId and householdId
-(`null`) on the server so rules can prove private access; the old query filtered sharing only after
-the server returned documents. Historically SDK-created private items already store householdId as
-null. Documents that omit householdId altogether can be mapped/read by document ID, but are not
-returned by Firestore's null-equality query; such external data needs householdId set to null.
+The existing rules had no items match and therefore denied all item operations. The items match
+now follows these rules (kept in sync with `firestore.rules`, which is authoritative):
+
+- Every item belongs to an existing household (`householdId` is a required non-blank string) and
+  is either `PERSONAL` (its owner only) or `SHARED` (every current member). `ItemSharing` is the
+  only privacy field; there are no household-less "private" items any more, and items stored
+  without a household are inaccessible.
+- Access follows the household's current `memberIds`, even for the owner: a user who left cannot
+  read, change, delete or create items there, though the items stay in place and come back if the
+  user rejoins. Members edit and delete shared items, never the personal items of others.
+- A private fridge only accepts `PERSONAL` items. `ownerId` and `householdId` are immutable, and
+  only the owner changes `sharing`. Creation requires the authenticated owner as a current member.
+- The security rules do not filter, so a query must prove that every result is readable.
+  `ItemRepository.getFridgeItems(householdId, userId)` asks for the household's `SHARED` items
+  plus the user's own (`householdId == X && (sharing == SHARED || ownerId == userId)`). A query on
+  the household alone is rejected for everyone.
 
 `FirebaseItemRepositoryEmulatorTest` uses the existing FirebaseEmulator helper and the deployed local
 rules. It covers round trips, legacy defaults, partial edits and metadata retention, all statuses,

@@ -22,14 +22,17 @@ when integrating a future caller; ViewModels depend only on `PersonalPhotoReposi
 
 ## Authorization and limits
 
-Rules read the current item and, if needed, its household (at most two Firestore documents).
+Rules read the current item and its household (two Firestore documents).
 The photo's immutable `itemOwnerId` must match the current item's owner. Recreating a deleted item
 under a different owner cannot expose its old photos; absent/forged metadata is rejected. Objects
 uploaded before this binding was introduced need administrative cleanup or trusted migration.
-The item owner or an authorized household member can create/read/delete photos. Private fridges
-require the creator; Storage treats a missing `type` as `SHARED` for legacy compatibility.
-Item `sharing` is irrelevant to read authorization, as in `firestore.rules`. A forged user
-profile is insufficient.
+Photos follow their item, as in `firestore.rules`: only current members of the item's household
+(per the household's `memberIds`) can create/read/delete them, and only the owner for a `PERSONAL`
+item; every member for a `SHARED` one. This holds even for the owner, so a user who left the
+household cannot reach their old photos (they stay in place and return on rejoining), and
+unsharing an item hides its photos from the other members at once. Private fridges also require
+the creator; Storage treats a missing household `type` as `SHARED` for legacy compatibility. An
+item without a household has no reachable photos. A forged user profile is insufficient.
 Listing, overwrites and metadata updates are denied. No public/bearer URL is returned or used.
 Rules validate size and declared MIME type; they cannot inspect pixels. Client signature checks
 are not full decoding or server-side content inspection. HEIC/WebP need future conversion.
