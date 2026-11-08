@@ -139,7 +139,7 @@ test("knowing the household ID cannot forge membership and gain settlement acces
           appendMissingElements: { values: [{ stringValue: outsider.localId }] } }],
       } },
       { update: { name: `${database}/documents/users/${outsider.localId}`, fields: {
-        householdId: { stringValue: id }, householdJoinCode: { stringValue: code },
+        householdId: { stringValue: id }, joinCode: { stringValue: code },
       } } },
     ] }),
   });

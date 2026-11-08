@@ -29,6 +29,9 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -37,7 +40,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -1222,15 +1227,81 @@ class FridgeViewModelTest {
     runCurrent()
   }
 
-  private fun viewModel(householdId: String? = "test-household"): FridgeViewModel =
+  private fun viewModel(
+      householdId: String? = "test-household",
+      preferences: ExpirationPreferencesRepository? = null,
+  ): FridgeViewModel =
       FridgeViewModel(
               repository,
               "test-user",
               householdId,
               imageSelector,
               barcodeScanner,
-              productCatalogRepository)
+              productCatalogRepository,
+              expirationPreferencesRepository = preferences)
           .also { viewModelStore.put("fridge", it) }
+
+  private fun TestScope.observedThreshold(vm: FridgeViewModel): Long {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      vm.soonThresholdDays.collect {}
+    }
+    runCurrent()
+    return vm.soonThresholdDays.value
+  }
+
+  @Test
+  fun soonThresholdIsTheDefaultWithoutPreferences() = runTest {
+    assertEquals(ExpirationDates.SOON_THRESHOLD_DAYS, observedThreshold(viewModel()))
+  }
+
+  @Test
+  fun soonThresholdFollowsTheUsersSavedWindow() = runTest {
+    val preferences =
+        FakeExpirationPreferencesRepository(
+            mapOf("test-user" to ExpirationPreferences(soonDays = 21)))
+
+    assertEquals(21L, observedThreshold(viewModel(preferences = preferences)))
+  }
+
+  @Test
+  fun soonThresholdIgnoresAnotherUsersWindow() = runTest {
+    val preferences =
+        FakeExpirationPreferencesRepository(
+            mapOf("someone-else" to ExpirationPreferences(soonDays = 40)))
+
+    assertEquals(
+        ExpirationPreferences.DEFAULT_SOON_DAYS.toLong(),
+        observedThreshold(viewModel(preferences = preferences)))
+  }
+
+  @Test
+  fun soonThresholdUpdatesWhenThePreferenceChanges() = runTest {
+    val preferences = FakeExpirationPreferencesRepository()
+    val vm = viewModel(preferences = preferences)
+    observedThreshold(vm)
+
+    preferences.save("test-user", ExpirationPreferences(soonDays = 45))
+    runCurrent()
+
+    assertEquals(45L, vm.soonThresholdDays.value)
+  }
+
+  @Test
+  fun soonThresholdFallsBackToTheDefaultWhenPreferencesCannotBeRead() = runTest {
+    val failing =
+        object : ExpirationPreferencesRepository {
+          override fun observe(userId: String): Flow<ExpirationPreferences> = flow {
+            throw IllegalStateException("offline")
+          }
+
+          override suspend fun get(userId: String) = ExpirationPreferences()
+
+          override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
+        }
+
+    assertEquals(
+        ExpirationDates.SOON_THRESHOLD_DAYS, observedThreshold(viewModel(preferences = failing)))
+  }
 
   @Test
   fun realNonBlankContextIsRequired() {

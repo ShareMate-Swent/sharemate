@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
@@ -19,6 +20,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CancellationException
@@ -37,6 +39,7 @@ class AuthHouseholdGateTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val auth = SessionRepository()
   private val households = MembershipRepository()
+  private val profiles = InMemoryUserProfileRepository()
 
   @Test
   fun newSignupRequiresHouseholdAndConfirmedCreationSurvivesActivityRecreation() {
@@ -182,22 +185,23 @@ class AuthHouseholdGateTest {
   private fun GateContent() {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
     SampleAppTheme(dynamicColor = false) {
-      AuthHouseholdGate(authViewModel, auth, households, googleTokenProvider = { null }) {
-          session,
-          household,
-          onMembershipChanged ->
-        Text("Private application", Modifier.testTag("private_app"))
-        Text(household.id, Modifier.testTag("private_app_household"))
-        Text(session.uid, Modifier.testTag("private_app_user"))
-        TextButton(
-            onClick = {
-              households.memberships.remove("student")
-              onMembershipChanged()
-            },
-            modifier = Modifier.testTag("private_app_leave")) {
-              Text("Leave")
-            }
-      }
+      AuthHouseholdGate(
+          authViewModel, auth, households, profiles, googleTokenProvider = { null }) {
+              session,
+              household,
+              onMembershipChanged ->
+            Text("Private application", Modifier.testTag("private_app"))
+            Text(household.id, Modifier.testTag("private_app_household"))
+            Text(session.uid, Modifier.testTag("private_app_user"))
+            TextButton(
+                onClick = {
+                  households.memberships.remove("student")
+                  onMembershipChanged()
+                },
+                modifier = Modifier.testTag("private_app_leave")) {
+                  Text("Leave")
+                }
+          }
     }
   }
 

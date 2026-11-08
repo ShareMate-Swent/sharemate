@@ -54,12 +54,18 @@ import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
 import com.android.sharemate.model.image.CommonsFoodImageRepository
+import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.profile.FirestoreUserProfileRepository
+import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -91,6 +97,9 @@ open class MainActivity : ComponentActivity() {
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
   }
+  private val profileRepository: UserProfileRepository by lazy {
+    FirestoreUserProfileRepository(FirebaseFirestore.getInstance())
+  }
 
   private val chatRepository: ChatRepository by lazy {
     FirebaseChatRepository(FirebaseFirestore.getInstance())
@@ -99,6 +108,9 @@ open class MainActivity : ComponentActivity() {
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
+  private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
+    FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -133,6 +145,7 @@ open class MainActivity : ComponentActivity() {
             authViewModel,
             authRepository,
             householdRepository,
+            profileRepository,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
@@ -221,7 +234,12 @@ open class MainActivity : ComponentActivity() {
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
-                                                createProductCatalogRepository())
+                                                createProductCatalogRepository(),
+                                            photoStorage = FirebasePersonalPhotoRepository.create(),
+                                            photoFiles =
+                                                AndroidPersonalPhotoFiles(applicationContext),
+                                            expirationPreferencesRepository =
+                                                expirationPreferencesRepository)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
