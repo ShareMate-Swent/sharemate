@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -151,18 +153,25 @@ fun AddItemDialog(
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
               if (uiState.fridgeType == FridgeType.SHARED && uiState.editingItemId == null) {
+                // The whole row is the toggle, so assistive technologies announce the label with
+                // it.
+                val shared = uiState.itemSharing == ItemSharing.SHARED
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()) {
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .testTag(C.Tag.fridge_share_switch)
+                            .toggleable(
+                                value = shared,
+                                enabled = inputEnabled,
+                                role = Role.Switch,
+                                onValueChange = {
+                                  onSharingChange(
+                                      if (it) ItemSharing.SHARED else ItemSharing.PERSONAL)
+                                })) {
                       Text(stringResource(R.string.fridge_item_share_with_household))
-                      Switch(
-                          checked = uiState.itemSharing == ItemSharing.SHARED,
-                          onCheckedChange = {
-                            onSharingChange(if (it) ItemSharing.SHARED else ItemSharing.PERSONAL)
-                          },
-                          enabled = inputEnabled,
-                          modifier = Modifier.testTag(C.Tag.fridge_share_switch))
+                      Switch(checked = shared, onCheckedChange = null, enabled = inputEnabled)
                     }
               }
               uiState.formError?.let { error ->
