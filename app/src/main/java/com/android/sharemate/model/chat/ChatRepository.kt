@@ -15,4 +15,17 @@ interface ChatRepository {
       senderName: String,
       text: String
   ): String?
+
+  /**
+   * Posts a fridge activity ([type] EATEN or THROWN) on [itemName] done by [senderId]; returns the
+   * new message id, or null if invalid or failed.
+   */
+  suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+      itemImageUrl: String? = null
+  ): String?
 }
