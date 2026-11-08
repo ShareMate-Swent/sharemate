@@ -6,6 +6,7 @@ import com.android.sharemate.model.item.*
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -155,7 +156,7 @@ class InventorySaveViewModelTest {
   }
 
   @Test
-  fun observerFailureAndServerRejectionKeepRetainedRowsForRetry() = runTest {
+  fun serverRejectionKeepsRetainedRowsForRetry() = runTest {
     val vm = model()
     runCurrent()
     vm.confirm(rows)
@@ -278,6 +279,9 @@ class InventorySaveViewModelTest {
     runCurrent()
     assertEquals(corrected, staging.state.value.items)
     assertEquals(1, repository.calls.size)
+    vm.retry()
+    runCurrent()
+    assertEquals(1, repository.calls.size)
     staging.startEditing(rows.first().id)
     staging.updateDraftName("Valid correction")
     staging.saveDraft()
@@ -285,6 +289,66 @@ class InventorySaveViewModelTest {
     assertTrue(vm.confirm(checkNotNull(staging.confirmedItems())))
     runCurrent()
     assertEquals("Valid correction", repository.calls.last().items.first().name)
+  }
+
+  @Test
+  fun failedObservationRetriesOnlyTheListenerAndCannotDowngradeServerConfirmation() = runTest {
+    val retained =
+        InventorySubmission("12345678-1234-1234-1234-123456789abc", "owner", "home", rows)
+    store.saved = retained
+    repository.observation = flow { throw IOException("listener disconnected") }
+    val vm = model()
+    runCurrent()
+    assertEquals(InventorySavePhase.RECOVERY_FAILED, vm.state.value.phase)
+    assertEquals(retained, vm.state.value.submission)
+    repository.observation = repository.status
+    vm.retry()
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, vm.state.value.phase)
+    assertTrue(repository.calls.isEmpty())
+    repository.status.value = InventorySubmissionStatus.CONFIRMED
+    runCurrent()
+    repository.status.value = InventorySubmissionStatus.MISSING
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertEquals(retained, store.saved)
+  }
+
+  @Test
+  fun failedNewDraftCannotReplaceDurableReceiptAndRecoveryReloadsTheJournal() = runTest {
+    val retained =
+        InventorySubmission("12345678-1234-1234-1234-123456789abc", "owner", "home", rows)
+    val replacement = listOf(StagedItem("new", "New receipt", 1, 150))
+    store.saved = retained
+    repository.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model()
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    store.saveFailure = IOException("disk full")
+    assertTrue(runCatching { vm.beginNewScan(replacement) }.exceptionOrNull() is IOException)
+    assertEquals(InventorySavePhase.RECOVERY_FAILED, vm.state.value.phase)
+    assertEquals(retained, store.saved)
+    assertFalse(vm.confirm(replacement))
+    store.saveFailure = null
+    vm.retry()
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertEquals(retained, vm.state.value.submission)
+    assertTrue(vm.beginNewScan(replacement))
+    assertEquals(InventorySavePhase.READY, vm.state.value.phase)
+    assertEquals(replacement, store.saved?.items)
+    assertNotEquals(retained.id, store.saved?.id)
+    assertTrue(repository.calls.isEmpty())
+  }
+
+  @Test
+  fun cancelledJournalRecoveryDoesNotReportFailureOrEnableSubmission() = runTest {
+    store.loadFailure = CancellationException("owner cancelled")
+    val vm = model()
+    runCurrent()
+    assertEquals(InventorySavePhase.LOADING, vm.state.value.phase)
+    assertFalse(vm.confirm(rows))
+    assertTrue(repository.calls.isEmpty())
   }
 
   private class Store : InventorySubmissionStore {
@@ -306,6 +370,7 @@ class InventorySaveViewModelTest {
   private class SaveRepository : ItemRepository by FakeItemRepository() {
     val calls = mutableListOf<InventorySubmission>()
     val status = MutableStateFlow(InventorySubmissionStatus.PENDING)
+    var observation: Flow<InventorySubmissionStatus> = status
     var ack = CompletableDeferred<Result<Unit>>()
 
     override fun addItems(submission: InventorySubmission): ItemWrite {
@@ -315,6 +380,6 @@ class InventorySaveViewModelTest {
 
     override fun observeSubmission(
         submission: InventorySubmission
-    ): Flow<InventorySubmissionStatus> = status
+    ): Flow<InventorySubmissionStatus> = observation
   }
 }
