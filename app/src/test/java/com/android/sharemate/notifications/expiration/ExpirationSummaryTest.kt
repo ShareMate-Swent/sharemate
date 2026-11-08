@@ -4,6 +4,7 @@ package com.android.sharemate.notifications.expiration
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemStatus
+import com.android.sharemate.model.user.ExpirationPreferences
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,11 +39,63 @@ class ExpirationSummaryTest {
   }
 
   @Test
-  fun todayCountsAsExpiringSoon() {
+  fun expiryDayIsAnExpiredReminder() {
     val summary = ExpirationSummary.of(listOf(item("milk", 0)), today)
 
-    assertTrue(summary.expired.isEmpty())
-    assertEquals(listOf("milk"), summary.expiringSoon.map { it.name })
+    assertTrue(summary.expiringSoon.isEmpty())
+    assertEquals(listOf("milk"), summary.expired.map { it.name })
+  }
+
+  private fun due(offset: Long, preferences: ExpirationPreferences): ExpirationSummary =
+      ExpirationSummary.of(listOf(item("x", offset)), today, preferences)
+
+  @Test
+  fun soonPeriodRemindsOnFirstDayRepeatsAndDayBefore() {
+    val prefs = ExpirationPreferences(soonDays = 10, soonRepeatDays = 4, expiredRepeatDays = 1)
+
+    // 10 = first day, 6 = repeat, 2 = repeat, 1 = day before expiry.
+    val reminded = (1L..10L).filter { due(it, prefs).expiringSoon.isNotEmpty() }
+
+    assertEquals(listOf(1L, 2L, 6L, 10L), reminded)
+  }
+
+  @Test
+  fun noRepeatWhileSoonStillRemindsFirstAndLastDay() {
+    val prefs = ExpirationPreferences(soonDays = 5, soonRepeatDays = null)
+
+    assertEquals(listOf(1L, 5L), (1L..5L).filter { due(it, prefs).expiringSoon.isNotEmpty() })
+  }
+
+  @Test
+  fun itemsOutsideTheSoonWindowAreNotReminded() {
+    val prefs = ExpirationPreferences(soonDays = 5)
+
+    assertTrue(due(6, prefs).isEmpty)
+  }
+
+  @Test
+  fun expiredItemsAreRemindedOnExpiryDayThenEveryYDays() {
+    val prefs = ExpirationPreferences(expiredRepeatDays = 3)
+
+    val reminded = (0L..9L).filter { due(-it, prefs).expired.isNotEmpty() }
+
+    assertEquals(listOf(0L, 3L, 6L, 9L), reminded)
+  }
+
+  @Test
+  fun noRepeatOnceExpiredOnlyRemindsOnExpiryDay() {
+    val prefs = ExpirationPreferences(expiredRepeatDays = null)
+
+    assertEquals(listOf(0L), (0L..9L).filter { due(-it, prefs).expired.isNotEmpty() })
+  }
+
+  @Test
+  fun soonAndExpiredRepeatsAreIndependent() {
+    val prefs = ExpirationPreferences(soonDays = 6, soonRepeatDays = 2, expiredRepeatDays = 5)
+
+    assertEquals(
+        listOf(1L, 2L, 4L, 6L), (1L..6L).filter { due(it, prefs).expiringSoon.isNotEmpty() })
+    assertEquals(listOf(0L, 5L), (0L..9L).filter { due(-it, prefs).expired.isNotEmpty() })
   }
 
   @Test

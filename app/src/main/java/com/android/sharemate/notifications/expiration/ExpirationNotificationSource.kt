@@ -2,6 +2,7 @@
 package com.android.sharemate.notifications.expiration
 
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.notifications.AppNotification
 import com.android.sharemate.notifications.AppNotificationChannel
 import com.android.sharemate.notifications.NotificationRecipientProvider
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.first
 class ExpirationNotificationSource(
     private val itemRepository: ItemRepository,
     private val recipientProvider: NotificationRecipientProvider,
+    private val preferencesRepository: ExpirationPreferencesRepository,
     private val formatter: ExpirationNotificationFormatter,
     private val today: () -> LocalDate = { LocalDate.now() },
 ) : NotificationSource {
@@ -25,7 +27,8 @@ class ExpirationNotificationSource(
   override suspend fun dueNotifications(): List<AppNotification> {
     val recipient = recipientProvider.current() ?: return emptyList()
     val items = itemRepository.getSharedItems(recipient.householdId).first()
-    val summary = ExpirationSummary.of(items, today())
+    val preferences = preferencesRepository.get(recipient.userId)
+    val summary = ExpirationSummary.of(items, today(), preferences)
     if (summary.isEmpty) return emptyList()
     val text = formatter.format(summary)
     return listOf(

@@ -30,6 +30,10 @@ data class FridgeUiState(
     val pendingDeletionIds: Set<String> = emptySet(),
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
+    val itemSharing: ItemSharing = ItemSharing.SHARED,
+    val originalItemSharing: ItemSharing? = null,
+    val showSharingSelector: Boolean = false,
+    val canChangeSharing: Boolean = false,
     val currentUserId: String? = null,
     val ownerNames: Map<String, String> = emptyMap(),
 )

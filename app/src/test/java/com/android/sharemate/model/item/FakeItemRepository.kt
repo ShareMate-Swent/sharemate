@@ -117,7 +117,8 @@ class FakeItemRepository : ItemRepository {
           name = edit.name.trim(),
           quantity = edit.quantity,
           category = edit.category,
-          expirationDate = edit.expirationDate)
+          expirationDate = edit.expirationDate,
+          sharing = edit.sharing ?: it.sharing)
     }
   }
 

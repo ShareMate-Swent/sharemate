@@ -176,6 +176,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.androidx.work.testing)
     implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.mlkit.text.recognition)
     testImplementation(libs.kotlinx.coroutines.test)
     implementation(platform(libs.compose.bom))
     testImplementation(libs.junit)

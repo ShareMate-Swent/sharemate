@@ -13,13 +13,16 @@ enum class ItemStatus {
 
 /**
  * The complete editable form. Null category/expiration clears that field. Callers must supply all
- * four values; identity, sharing, lifecycle and image metadata are deliberately excluded.
+ * four ordinary values. Null [ItemEdit.sharing] preserves the latest persisted sharing value; a
+ * non-null value changes it atomically with the ordinary fields. Identity, lifecycle and image
+ * metadata are deliberately excluded.
  */
 data class ItemEdit(
     val name: String,
     val quantity: Int,
     val category: String?,
     val expirationDate: Date?,
+    val sharing: ItemSharing? = null,
 )
 
 /**

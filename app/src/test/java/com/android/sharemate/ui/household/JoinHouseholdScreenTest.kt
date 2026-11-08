@@ -4,14 +4,20 @@ package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.width
 import com.android.sharemate.model.auth.AuthRepository
@@ -48,6 +54,27 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithText("2", useUnmergedTree = true).assertIsDisplayed()
     composeTestRule.onNodeWithText("C", useUnmergedTree = true).assertIsDisplayed()
     composeTestRule.onNodeWithText("D", useUnmergedTree = true).assertIsDisplayed()
+  }
+
+  @Test
+  fun typedCharactersUseOnSurfaceColorInDarkMode() {
+    val onSurface = Color(0xFFE6E1E5)
+    composeTestRule.setContent {
+      MaterialTheme(colorScheme = darkColorScheme(onSurface = onSurface)) {
+        JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {})
+      }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("W")
+
+    val layouts = mutableListOf<TextLayoutResult>()
+    composeTestRule
+        .onNode(hasText("W") and !hasSetTextAction(), useUnmergedTree = true)
+        .fetchSemanticsNode()
+        .config[SemanticsActions.GetTextLayoutResult]
+        .action
+        ?.invoke(layouts)
+    // Without an explicit color the letter fell back to black, invisible on the dark code box.
+    assertEquals(onSurface, layouts.single().layoutInput.style.color)
   }
 
   @Test

@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,9 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 
+/** The user's "expiring soon" window in days; the connected fridge screen provides their choice. */
+val LocalSoonThresholdDays = compositionLocalOf { ExpirationDates.SOON_THRESHOLD_DAYS }
+
 /** Compact inventory tile reusing the shared image renderer and attribution components. */
 @Composable
 fun FridgeItem(
@@ -63,6 +67,7 @@ fun FridgeItem(
     onStatusChange: (ItemStatus) -> Unit = {},
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
     ownership: ItemOwnership = ItemOwnership(item.sharing),
+    personalPhotos: PersonalPhotoController? = null,
 ) {
   val sharingLabel =
       stringResource(
@@ -70,7 +75,9 @@ fun FridgeItem(
           else R.string.fridge_personal)
   val ownerLabel = ownerLabel(ownership.name, ownership.isCurrentUser)
   val ownerDescription = stringResource(R.string.fridge_item_owner, ownerLabel)
-  val expiryStatus = ExpirationDates.status(item.expirationDate)
+  val expiryStatus =
+      ExpirationDates.status(
+          item.expirationDate, soonThresholdDays = LocalSoonThresholdDays.current)
   val expiryColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
@@ -103,7 +110,7 @@ fun FridgeItem(
             shape = RoundedCornerShape(FridgeLayout.productCornerRadius),
             color = MaterialTheme.colorScheme.surfaceVariant) {
               Box(contentAlignment = Alignment.Center) {
-                FridgeItemImage(item, imageLoader, Modifier.fillMaxSize())
+                FridgeItemImage(item, imageLoader, Modifier.fillMaxSize(), personalPhotos)
                 Box(Modifier.align(Alignment.TopEnd)) {
                   ItemActions(
                       item,

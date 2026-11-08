@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.user
 
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -119,5 +120,90 @@ class MemberNameRepositoryTest {
     runCurrent()
     verify(registration).remove()
     queries.forEach { (_, _, listener) -> verify(listener).remove() }
+  }
+
+  @Test
+  fun invalidHouseholdAndUserIdsAreRejectedBeforeAnyFirestoreAccess() = runTest {
+    for (invalid in listOf("", " ", "bad/path")) {
+      assertThrows(IllegalArgumentException::class.java) {
+        repository.observeNames(invalid, "owner")
+      }
+      assertThrows(IllegalArgumentException::class.java) {
+        repository.observeNames("home", invalid)
+      }
+      assertTrue(
+          runCatching { repository.publishOwnName(invalid, "owner", "Alice") }.exceptionOrNull()
+              is IllegalArgumentException)
+      assertTrue(
+          runCatching { repository.publishOwnName("home", invalid, "Alice") }.exceptionOrNull()
+              is IllegalArgumentException)
+    }
+    verifyNoInteractions(firestore)
+  }
+
+  @Test
+  fun legacyProfilesWithoutStringNamesClearTheEntryWithoutReadingOtherFields() = runTest {
+    for (raw in listOf(null, 7, "  ")) {
+      `when`(snapshot.get("displayName")).thenReturn(raw)
+      repository.publishOwnName("home", "owner", null)
+    }
+    verify(entry, times(3)).delete()
+    verify(snapshot, times(3)).get("displayName")
+    verifyNoMoreInteractions(snapshot)
+    assertEquals("x".repeat(80), ownerDisplayName("x".repeat(80)))
+  }
+
+  @Test
+  fun aFailedPrivateProfileReadIsPropagatedWithoutPublishingAnything() = runTest {
+    val denied =
+        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    `when`(profile.get()).thenReturn(Tasks.forException(denied))
+    assertSame(
+        denied, runCatching { repository.publishOwnName("home", "owner", null) }.exceptionOrNull())
+    verifyNoInteractions(entry)
+  }
+
+  @Test
+  fun cancellingProfileLookupPreventsALaterPublication() = runTest {
+    val pending = TaskCompletionSource<DocumentSnapshot>()
+    `when`(profile.get()).thenReturn(pending.task)
+    val publication = launch { repository.publishOwnName("home", "owner", null) }
+    runCurrent()
+    publication.cancel()
+    runCurrent()
+    `when`(snapshot.get("displayName")).thenReturn("Alice Smith")
+    pending.setResult(snapshot)
+    runCurrent()
+    assertTrue(publication.isCancelled)
+    verifyNoInteractions(entry)
+  }
+
+  @Test
+  fun publicationWaitsForAcknowledgmentAndPropagatesWriteDenial() = runTest {
+    val pending = TaskCompletionSource<Void>()
+    `when`(entry.set(mapOf("displayName" to "Alice Smith"))).thenReturn(pending.task)
+    var failure: Throwable? = null
+    val publication = launch {
+      failure =
+          runCatching { repository.publishOwnName("home", "owner", "Alice Smith") }
+              .exceptionOrNull()
+    }
+    runCurrent()
+    assertTrue(publication.isActive)
+    val denied =
+        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    pending.setException(denied)
+    runCurrent()
+    assertTrue(publication.isCompleted)
+    assertSame(denied, failure)
+  }
+
+  @Test
+  fun failedRemovalOfAStaleNameIsNotReportedAsSuccess() = runTest {
+    val denied =
+        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    `when`(entry.delete()).thenReturn(Tasks.forException(denied))
+    assertSame(
+        denied, runCatching { repository.publishOwnName("home", "owner", null) }.exceptionOrNull())
   }
 }
