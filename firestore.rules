@@ -28,6 +28,26 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
+    // Private receipt handoff, not an expense ledger or trusted financial proof. The immutable
+    // marker is created in the inventory batch, so replays cannot overwrite existing inventory.
+    match /users/{userId}/inventorySubmissions/{submissionId} {
+      function validSubmission() {
+        let data = request.resource.data;
+        let household = get(documentPath('households', data.householdId)).data;
+        return data.keys().hasOnly(['id', 'ownerId', 'householdId', 'rows'])
+            && data.keys().hasAll(['id', 'ownerId', 'householdId', 'rows'])
+            && submissionId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+            && data.id == submissionId && data.ownerId == userId
+            && data.householdId is string
+            && household.type == 'SHARED' && request.auth.uid in household.memberIds
+            && data.rows is list && data.rows.size() > 0 && data.rows.size() <= 100;
+      }
+
+      allow get, list: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() && request.auth.uid == userId && validSubmission();
+      allow update, delete: if false;
+    }
+
     // A public profile is readable by its owner and by the members of the owner's household.
     // Only one document at a time: profiles cannot be listed, so they cannot be enumerated.
     match /profiles/{userId} {

@@ -26,6 +26,16 @@ interface ItemRepository {
   suspend fun addItem(item: Item): String?
 
   /**
+   * Atomically creates the reviewed inventory rows and a private immutable submission marker.
+   * Returns after SDK submission, including offline. Await Queued.confirmation for server success.
+   * Reusing an acknowledged identity is rejected atomically instead of overwriting inventory.
+   */
+  fun addItems(submission: InventorySubmission): ItemWrite
+
+  /** Observes a private marker across process restart without replaying any writes. */
+  fun observeSubmission(submission: InventorySubmission): Flow<InventorySubmissionStatus>
+
+  /**
    * Attaches a lookup result only if the item still exists, its persisted name exactly matches
    * [expectedName] and it has no image. Checks and the image-only write are atomic; image credits
    * are included in [image]. Pass the saved name used for the lookup, without normalizing it.
