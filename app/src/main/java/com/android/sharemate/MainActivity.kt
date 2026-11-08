@@ -62,6 +62,8 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.profile.FirestoreUserProfileRepository
+import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
@@ -96,6 +98,9 @@ open class MainActivity : ComponentActivity() {
   }
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
+  }
+  private val profileRepository: UserProfileRepository by lazy {
+    FirestoreUserProfileRepository(FirebaseFirestore.getInstance())
   }
 
   private val chatRepository: ChatRepository by lazy {
@@ -145,6 +150,7 @@ open class MainActivity : ComponentActivity() {
             authViewModel,
             authRepository,
             householdRepository,
+            profileRepository,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {

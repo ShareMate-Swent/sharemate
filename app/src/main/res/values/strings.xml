@@ -27,6 +27,7 @@
     <string name="fridge_owner_filter">Owner</string>
     <string name="fridge_owner_filter_selected">Owner: %1$s</string>
     <string name="fridge_owner_unknown">Unknown member</string>
+    <string name="fridge_owner_unknown_with_code">%1$s (%2$s)</string>
     <string name="fridge_owner_filter_all">All owners</string>
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>

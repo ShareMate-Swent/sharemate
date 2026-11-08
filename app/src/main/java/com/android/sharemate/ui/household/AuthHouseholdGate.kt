@@ -37,6 +37,7 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.ui.auth.AuthGate
 import com.android.sharemate.ui.auth.AuthViewModel
 
@@ -52,6 +53,7 @@ fun AuthHouseholdGate(
     authViewModel: AuthViewModel,
     authRepository: AuthRepository,
     householdRepository: HouseholdRepository,
+    profileRepository: UserProfileRepository,
     googleTokenProvider: suspend () -> String?,
     modifier: Modifier = Modifier,
     content:
@@ -71,7 +73,7 @@ fun AuthHouseholdGate(
       }
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         val factory = viewModelFactory {
-          initializer { HouseholdGateViewModel(householdRepository, session.uid) }
+          initializer { HouseholdGateViewModel(householdRepository, profileRepository, session) }
           initializer {
             CreateHouseholdViewModel(householdRepository, authRepository, createSavedStateHandle())
           }

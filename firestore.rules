@@ -29,22 +29,37 @@ service cloud.firestore {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
 
-    match /userPseudos/{userId} {
-      function sharesHousehold() {
-        let profile = get(documentPath('users', userId));
-        let householdId = profile.data.get('householdId', null);
-        return householdId is string
-            && userId in get(documentPath('households', householdId)).data.memberIds
-            && request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+    // A public profile is readable by its owner and by the members of the owner's household.
+    // Only one document at a time: profiles cannot be listed, so they cannot be enumerated.
+    match /profiles/{userId} {
+      // Membership is read from the household's memberIds, the source of truth; the reader's
+      // own user document only says which household to check.
+      function sharesHouseholdWith(otherId) {
+        let householdId = get(documentPath('users', request.auth.uid)).data.get('householdId', null);
+        let members = get(documentPath('households', householdId)).data.memberIds;
+        return householdId is string && request.auth.uid in members && otherId in members;
       }
 
-      allow get: if signedIn() && (request.auth.uid == userId || sharesHousehold());
-      allow create, update: if signedIn() && request.auth.uid == userId
-          && request.resource.data.keys().hasOnly(['pseudo'])
-          && request.resource.data.pseudo is string
-          && request.resource.data.pseudo.size() > 0
-          && request.resource.data.pseudo
-              == getAfter(documentPath('users', userId)).data.pseudo;
+      function optionalString(data, field) {
+        return !(field in data) || data[field] == null || data[field] is string;
+      }
+
+      // The email, when present, must be the signed-in account's own address.
+      function isValidProfile(data) {
+        return data.keys().hasOnly(['displayName', 'photoUrl', 'email'])
+            && optionalString(data, 'displayName')
+            && optionalString(data, 'photoUrl')
+            && optionalString(data, 'email')
+            && (!('email' in data) || data.email == null
+                || data.email == request.auth.token.get('email', null));
+      }
+
+      allow get: if signedIn()
+          && (request.auth.uid == userId || sharesHouseholdWith(userId));
+      allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && isValidProfile(request.resource.data);
+      allow delete: if false;
     }
 
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.
@@ -101,14 +116,18 @@ service cloud.firestore {
       }
 
       // Joining: a user may only append themselves to the members, and must point their own
-      // profile at the household in the same batch. No other field can change.
+      // profile at the household in the same batch, with the household's invite code as proof
+      // that they were invited. Knowing the household ID alone is not enough. No other field can
+      // change.
       function onlyAddsSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
+        let profile = getAfter(documentPath('users', request.auth.uid)).data;
         return onlyMemberIdsChange()
             && (after == before
-                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])))
-            && getAfter(documentPath('users', request.auth.uid)).data.householdId == householdId;
+                || (!(request.auth.uid in before) && after == before.concat([request.auth.uid])
+                    && profile.get('joinCode', null) == resource.data.inviteCode))
+            && profile.householdId == householdId;
       }
 
       // Leaving: a member may only remove themselves, and must clear the household from their

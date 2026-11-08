@@ -15,8 +15,8 @@ interface PseudoRepository {
   suspend fun getPseudo(userId: String): String?
 
   /**
-   * Saves the trimmed, non-blank [pseudo] to the private profile and shared directory atomically.
-   * Account creation and settings must use this method so other members can see the value.
+   * Saves the trimmed, non-blank [pseudo] as the public profile's display name, preserving its
+   * other fields. Account creation and settings should use this method.
    */
   suspend fun setPseudo(userId: String, pseudo: String)
 }

@@ -46,6 +46,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.android.sharemate.R
 import com.android.sharemate.resources.C
+import java.security.MessageDigest
+
+internal fun ownerFallbackCodes(ownerIds: Collection<String>): Map<String, String> {
+  val idsByCode =
+      ownerIds.distinct().groupBy { id ->
+        MessageDigest.getInstance("SHA-256")
+            .digest(id.toByteArray(Charsets.UTF_8))
+            .take(4)
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+      }
+  return idsByCode
+      .flatMap { (code, ids) ->
+        ids.sorted().mapIndexed { index, id ->
+          id to if (ids.size == 1) code else "$code-${index + 1}"
+        }
+      }
+      .toMap()
+}
 
 /** Displays inventory filters and separate, disabled shared/personal presentation controls. */
 @Composable
@@ -203,12 +221,21 @@ private fun OwnerControl(
 ) {
   var expanded by remember { mutableStateOf(false) }
   val unknownOwner = stringResource(R.string.fridge_owner_unknown)
+  val fallbackCodes =
+      remember(owners, selectedOwnerId) {
+        ownerFallbackCodes(owners.map { it.id } + listOfNotNull(selectedOwnerId))
+      }
+  val fallbackLabels =
+      fallbackCodes.mapValues { (_, code) ->
+        stringResource(R.string.fridge_owner_unknown_with_code, unknownOwner, code)
+      }
   val label =
       if (selectedOwnerId == null) stringResource(R.string.fridge_owner_filter)
       else
           stringResource(
               R.string.fridge_owner_filter_selected,
-              owners.firstOrNull { it.id == selectedOwnerId }?.pseudo ?: unknownOwner)
+              owners.firstOrNull { it.id == selectedOwnerId }?.pseudo
+                  ?: fallbackLabels.getValue(selectedOwnerId))
   Box {
     TextButton(
         onClick = { expanded = true },
@@ -220,7 +247,7 @@ private fun OwnerControl(
             }) {
           Text(
               label,
-              maxLines = 1,
+              maxLines = 3,
               overflow = TextOverflow.Ellipsis,
               style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
         }
@@ -234,7 +261,7 @@ private fun OwnerControl(
           })
       owners.forEach { owner ->
         DropdownMenuItem(
-            text = { Text(owner.pseudo ?: unknownOwner) },
+            text = { Text(owner.pseudo ?: fallbackLabels.getValue(owner.id)) },
             modifier = Modifier.testTag("fridge_filter_owner_${owner.id}"),
             onClick = {
               onSelected?.invoke(owner.id)

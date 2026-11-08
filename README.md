@@ -13,9 +13,9 @@ Diagram is on excalidraw.com : [https://excalidraw.com/#json=k1bdsqRfMnIZkC6OTVK
 
 ## User pseudos
 
-Use `PseudoRepository.setPseudo` when creating or changing a pseudo. It writes the private
-`users/{uid}.pseudo` and the pseudo-only `userPseudos/{uid}` document together. Firestore rules
-allow household members to read the latter without exposing the private user profile. Profiles
+Use `PseudoRepository.setPseudo` when creating or changing a pseudo. It updates
+`profiles/{uid}.displayName`, preserving the other public profile fields. Firestore rules
+allow household members to read the public profile without exposing the private user document. Profiles
 without a published pseudo appear as "Unknown member" in the Fridge owner filter.
 
 ## Good Code review process :

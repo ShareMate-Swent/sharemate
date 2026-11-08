@@ -27,10 +27,4 @@ class UserTest {
     assertEquals("inge@example.com", user.email)
     assertEquals("h1", user.householdId)
   }
-
-  @Test
-  fun pseudoIsEmptyByDefaultAndKeepsGivenValue() {
-    assertEquals("", User().pseudo)
-    assertEquals("Inge", User(pseudo = "Inge").pseudo)
-  }
 }

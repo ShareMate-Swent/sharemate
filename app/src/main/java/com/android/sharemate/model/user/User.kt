@@ -8,5 +8,4 @@ data class User(
     val displayName: String = "",
     val email: String = "",
     val householdId: String? = null,
-    val pseudo: String = "",
 )

@@ -364,7 +364,7 @@ class FridgeScreenTest {
 
     composeRule.onNodeWithText("Owner").performClick()
     composeRule.onNodeWithText("Alice").assertExists()
-    composeRule.onNodeWithText("Unknown member").assertExists()
+    composeRule.onNodeWithText("Unknown member (15321b2a)").assertExists()
     composeRule.onNodeWithText("owner-1").assertDoesNotExist()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
@@ -377,6 +377,60 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("Name").assertIsSelected()
     composeRule.onNodeWithText("Expiry date").assertIsNotSelected().performClick()
     assertEquals(FridgeSortOrder.EXPIRATION_DATE, viewModel.sortOrder.value)
+  }
+
+  @Test
+  fun unknownOwnersWithCollidingCodesRemainDistinctAndFilterById() {
+    val first = "unknown-100013"
+    val second = "unknown-20928"
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "milk", name = "Milk", ownerId = first),
+                Item(id = "bread", name = "Bread", ownerId = second)))
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.waitForIdle()
+
+    composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithText("Unknown member (97dcd513-1)").assertExists()
+    composeRule.onNodeWithText("Unknown member (97dcd513-2)").assertExists()
+    composeRule.onNodeWithText(first).assertDoesNotExist()
+    composeRule.onNodeWithText(second).assertDoesNotExist()
+    composeRule.onNodeWithTag("fridge_filter_owner_$first").performClick()
+    assertEquals(first, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Milk").assertExists()
+    composeRule.onNodeWithText("Bread").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-1)").assertExists().performClick()
+    composeRule.onNodeWithTag("fridge_filter_owner_$second").performClick()
+    assertEquals(second, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Bread").assertExists()
+    composeRule.onNodeWithText("Milk").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-2)").assertExists()
+  }
+
+  @Test
+  fun ownerFallbackCodesAreDistinctAndStableForShortAndCollidingIds() {
+    val ids = listOf("a", "b", "unknown-20928", "unknown-100013")
+    val codes = ownerFallbackCodes(ids)
+
+    assertEquals(ids.size, codes.values.toSet().size)
+    assertEquals(codes, ownerFallbackCodes(ids.reversed()))
+    assertEquals("ca978112", codes["a"])
+    assertEquals("3e23e816", codes["b"])
+    assertEquals("97dcd513-1", codes["unknown-100013"])
+    assertEquals("97dcd513-2", codes["unknown-20928"])
   }
 
   @Test

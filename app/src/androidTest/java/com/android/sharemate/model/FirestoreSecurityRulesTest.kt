@@ -66,7 +66,7 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun householdMemberCanReadOnlyTheSharedPseudo() {
+  fun householdMemberCanReadPublicNameButNotPrivateUser() {
     val household = createHouseholdAs("creator")
     val pseudoRepository = FirebasePseudoRepository(firestore)
     runBlocking { pseudoRepository.setPseudo(household.createdBy, "Alice") }
@@ -77,34 +77,39 @@ class FirestoreSecurityRulesTest {
         "Alice",
         Tasks.await(
                 firestore
-                    .collection(FirestoreCollections.USER_PSEUDOS)
+                    .collection(FirestoreCollections.PROFILES)
                     .document(household.createdBy)
                     .get())
-            .getString("pseudo"))
+            .getString("displayName"))
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("pseudo" to "hijacked")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
-    assertDenied(firestore.collection(FirestoreCollections.USER_PSEUDOS).get())
+    assertDenied(firestore.collection(FirestoreCollections.PROFILES).get())
     assertDenied(
         firestore
-            .collection(FirestoreCollections.USER_PSEUDOS)
+            .collection(FirestoreCollections.PROFILES)
             .document(household.createdBy)
-            .set(mapOf("pseudo" to "hijacked")))
+            .set(mapOf("displayName" to "hijacked")))
 
     FirebaseEmulator.signInAs("outsider")
     assertDenied(
-        firestore.collection(FirestoreCollections.USER_PSEUDOS).document(household.createdBy).get())
+        firestore.collection(FirestoreCollections.PROFILES).document(household.createdBy).get())
   }
 
   @Test
-  fun sharedPseudoMustMatchPrivateProfileAndCannotContainExtraFields() {
+  fun pseudoWritesPreserveOtherPublicFieldsAndRejectExtraFields() {
     val userId = FirebaseEmulator.signInAs("creator")
-    val pseudo = firestore.collection(FirestoreCollections.USER_PSEUDOS).document(userId)
+    val pseudo = firestore.collection(FirestoreCollections.PROFILES).document(userId)
+    Tasks.await(pseudo.set(mapOf("email" to "creator@example.com", "photoUrl" to "photo")))
     runBlocking { FirebasePseudoRepository(firestore).setPseudo(userId, "Alice") }
 
-    assertEquals("Alice", Tasks.await(userReference(userId).get()).getString("pseudo"))
-    assertDenied(pseudo.set(mapOf("pseudo" to "Bob")))
-    assertDenied(pseudo.set(mapOf("pseudo" to "Alice", "email" to "secret")))
+    val profile = Tasks.await(pseudo.get())
+    assertEquals("Alice", profile.getString("displayName"))
+    assertEquals("creator@example.com", profile.getString("email"))
+    assertEquals("photo", profile.getString("photoUrl"))
+    assertFalse(Tasks.await(userReference(userId).get()).contains("pseudo"))
+    assertDenied(pseudo.set(mapOf("displayName" to "Alice", "private" to "secret")))
+    assertDenied(firestore.collection("userPseudos").document(userId).get())
   }
 
   @Test
@@ -317,6 +322,47 @@ class FirestoreSecurityRulesTest {
 
     assertDenied(
         householdReference(household.id).update("memberIds", FieldValue.arrayUnion(outsiderId)))
+  }
+
+  @Test
+  fun joiningWithoutTheHouseholdsInviteCodeIsDenied() {
+    val household = createHouseholdAs("creator")
+    val otherCode = runBlocking {
+      val otherCreator = FirebaseEmulator.signInAs("other-creator")
+      repository.createHousehold("Elsewhere", otherCreator).inviteCode
+    }
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+
+    // An outsider who knows the household ID forges the app's join batch with no code, a wrong
+    // code, or another household's valid code.
+    for (profile in
+        listOf(
+            mapOf("householdId" to household.id),
+            mapOf("householdId" to household.id, "joinCode" to "WRONG1"),
+            mapOf("householdId" to household.id, "joinCode" to otherCode))) {
+      assertDenied(
+          firestore
+              .batch()
+              .update(
+                  householdReference(household.id), "memberIds", FieldValue.arrayUnion(outsiderId))
+              .set(userReference(outsiderId), profile, SetOptions.merge())
+              .commit())
+    }
+
+    FirebaseEmulator.signInAs("creator")
+    assertEquals(
+        listOf(household.createdBy),
+        Tasks.await(householdReference(household.id).get()).get("memberIds"))
+  }
+
+  @Test
+  fun joiningWithTheInviteCodeIsAllowed() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+
+    val joined = runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(listOf(household.createdBy, memberId), joined.memberIds)
   }
 
   @Test

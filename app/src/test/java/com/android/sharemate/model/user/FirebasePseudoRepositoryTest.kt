@@ -8,8 +8,9 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.WriteBatch
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -24,9 +25,9 @@ import org.mockito.Mockito.mock
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebasePseudoRepositoryTest {
   private var stored: Any? = null
-  private var listener: EventListener<DocumentSnapshot>? = null
+  private val listeners = mutableMapOf<String, EventListener<DocumentSnapshot>>()
   private var removed = 0
-  private val writes = mutableListOf<Pair<DocumentReference, Any>>()
+  private val writes = mutableListOf<Triple<String, Any, Any>>()
   private val registration =
       mock(ListenerRegistration::class.java) {
         if (it.method.name == "remove") removed++
@@ -35,44 +36,36 @@ class FirebasePseudoRepositoryTest {
 
   private fun snapshot(value: Any?) =
       mock(DocumentSnapshot::class.java) {
-        if (it.method.name == "get" && it.arguments.singleOrNull() == "pseudo") value else null
+        if (it.method.name == "get" && it.arguments.singleOrNull() == "displayName") value else null
       }
 
-  private val privateDocument =
+  private fun document(id: String) =
       mock(DocumentReference::class.java) {
-        if (it.method.name == "get") Tasks.forResult(snapshot(stored)) else null
-      }
-  private val sharedDocument =
-      mock(DocumentReference::class.java) {
-        if (it.method.name == "addSnapshotListener" && it.arguments.size == 1) {
-          @Suppress("UNCHECKED_CAST")
-          listener = it.arguments[0] as EventListener<DocumentSnapshot>
-          registration
-        } else null
-      }
-  private val privateCollection = mock(CollectionReference::class.java) { privateDocument }
-  private val sharedCollection = mock(CollectionReference::class.java) { sharedDocument }
-  private val batch =
-      mock(WriteBatch::class.java) {
         when (it.method.name) {
-          "set" -> {
-            writes += (it.arguments[0] as DocumentReference) to it.arguments[1]
-            it.mock
+          "get" -> Tasks.forResult(snapshot(stored))
+          "addSnapshotListener" -> {
+            @Suppress("UNCHECKED_CAST")
+            listeners[id] = it.arguments[0] as EventListener<DocumentSnapshot>
+            registration
           }
-          "commit" -> Tasks.forResult<Void>(null)
+          "set" -> {
+            writes += Triple(id, it.arguments[0], it.arguments[1])
+            Tasks.forResult<Void>(null)
+          }
           else -> null
         }
       }
+
+  private val collection =
+      mock(CollectionReference::class.java) { document(it.arguments[0] as String) }
   private val firestore =
       mock(FirebaseFirestore::class.java) {
         when (it.method.name) {
           "collection" ->
               when (it.arguments[0]) {
-                FirestoreCollections.USERS -> privateCollection
-                FirestoreCollections.USER_PSEUDOS -> sharedCollection
+                FirestoreCollections.PROFILES -> collection
                 else -> null
               }
-          "batch" -> batch
           else -> null
         }
       }
@@ -89,13 +82,10 @@ class FirebasePseudoRepositoryTest {
   }
 
   @Test
-  fun savesTrimmedPseudoInBothDocuments() = runTest {
+  fun savesTrimmedPseudoInPublicProfileWithoutReplacingOtherFields() = runTest {
     repository.setPseudo("alice", " Alice ")
     assertEquals(
-        listOf(
-            privateDocument to mapOf("pseudo" to "Alice"),
-            sharedDocument to mapOf("pseudo" to "Alice")),
-        writes)
+        listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
   }
 
   @Test
@@ -112,19 +102,52 @@ class FirebasePseudoRepositoryTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
           repository.observePseudos(setOf("alice")).collect { results += it }
         }
-    listener!!.onEvent(snapshot("Alice"), null)
-    listener!!.onEvent(snapshot("  "), null)
-    listener!!.onEvent(snapshot("Bob"), null)
-    assertEquals(
-        listOf(emptyMap(), mapOf("alice" to "Alice"), emptyMap(), mapOf("alice" to "Bob")), results)
+    assertTrue(results.isEmpty())
+    listeners.getValue("alice").onEvent(snapshot("Alice"), null)
+    listeners.getValue("alice").onEvent(snapshot("  "), null)
+    listeners.getValue("alice").onEvent(snapshot("Bob"), null)
+    assertEquals(listOf(mapOf("alice" to "Alice"), emptyMap(), mapOf("alice" to "Bob")), results)
     job.cancel()
     job.join()
     assertEquals(1, removed)
   }
 
   @Test
+  fun waitsForEachOwnerBeforeFirstEmission() = runTest {
+    val results = mutableListOf<Map<String, String>>()
+    val job =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observePseudos(setOf("alice", "bob")).collect { results += it }
+        }
+    listeners.getValue("alice").onEvent(snapshot("Alice"), null)
+    assertTrue(results.isEmpty())
+    listeners.getValue("bob").onEvent(snapshot(null), null)
+    assertEquals(listOf(mapOf("alice" to "Alice")), results)
+    job.cancel()
+    job.join()
+    assertEquals(2, removed)
+  }
+
+  @Test
+  fun listenerFailureEmitsFallbackAndLaterUpdatesRecover() = runTest {
+    val results = mutableListOf<Map<String, String>>()
+    val job =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observePseudos(setOf("alice")).collect { results += it }
+        }
+    listeners
+        .getValue("alice")
+        .onEvent(
+            null,
+            FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    listeners.getValue("alice").onEvent(snapshot("Alice"), null)
+    assertEquals(listOf(emptyMap(), mapOf("alice" to "Alice")), results)
+    job.cancel()
+  }
+
+  @Test
   fun noOwnersRequiresNoListener() = runTest {
     assertEquals(emptyMap<String, String>(), repository.observePseudos(emptySet()).first())
-    assertNull(listener)
+    assertTrue(listeners.isEmpty())
   }
 }
