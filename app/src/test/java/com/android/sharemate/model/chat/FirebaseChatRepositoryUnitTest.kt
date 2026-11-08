@@ -120,6 +120,73 @@ class FirebaseChatRepositoryUnitTest {
         assertNull(repository.sendMessage("h1", "u1", "Ann", "hi"))
       }
 
+  @Test
+  fun sendActivity_invalidInput_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        assertNull(repository.sendActivity("", "u1", "Ann", MessageType.EATEN, "Milk"))
+        assertNull(repository.sendActivity("h1", "", "Ann", MessageType.EATEN, "Milk"))
+        assertNull(repository.sendActivity("h1", "u1", "Ann", MessageType.TEXT, "Milk"))
+        assertNull(repository.sendActivity("h1", "u1", "Ann", MessageType.THROWN, " "))
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendActivity_writesActivityMessage() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        assertEquals(
+            "m1",
+            repository.sendActivity("h1", "u1", "Ann", MessageType.THROWN, " Milk ", "http://i"))
+        val captor = ArgumentCaptor.forClass(Message::class.java)
+        verify(document).set(captor.capture())
+        assertEquals(MessageType.THROWN, captor.value.type)
+        assertEquals("Milk", captor.value.itemName)
+        assertEquals("http://i", captor.value.itemImageUrl)
+        assertEquals("", captor.value.text)
+        assertNotNull(captor.value.timestamp)
+      }
+
+  @Test
+  fun sendActivity_returnsNullOnFailure() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forException(RuntimeException("x")))
+        assertNull(repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk"))
+      }
+
+  @Test
+  fun sendActivity_rethrowsCancellation() {
+    `when`(document.set(any())).thenThrow(CancellationException("c"))
+    try {
+      runBlocking { repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk") }
+      org.junit.Assert.fail("expected cancellation")
+    } catch (_: CancellationException) {}
+  }
+
+  @Test
+  fun toMessageOrNull_parsesActivityAndDefaultsUnknownTypeToText() {
+    val activity = mock(DocumentSnapshot::class.java)
+    `when`(activity.id).thenReturn("a")
+    `when`(activity.getString("senderId")).thenReturn("u1")
+    `when`(activity.getString("type")).thenReturn("EATEN")
+    `when`(activity.getString("itemName")).thenReturn("Milk")
+    `when`(activity.getString("itemImageUrl")).thenReturn("http://i")
+    assertEquals(
+        Message("a", "u1", "", "", null, MessageType.EATEN, "Milk", "http://i"),
+        activity.toMessageOrNull())
+
+    val noItem = mock(DocumentSnapshot::class.java)
+    `when`(noItem.getString("senderId")).thenReturn("u1")
+    `when`(noItem.getString("type")).thenReturn("THROWN")
+    assertNull(noItem.toMessageOrNull())
+
+    val unknown = mock(DocumentSnapshot::class.java)
+    `when`(unknown.id).thenReturn("b")
+    `when`(unknown.getString("senderId")).thenReturn("u1")
+    `when`(unknown.getString("type")).thenReturn("???")
+    `when`(unknown.getString("text")).thenReturn("hi")
+    assertEquals(Message("b", "u1", "", "hi", null), unknown.toMessageOrNull())
+  }
+
   @Suppress("UNCHECKED_CAST")
   private fun captureListener():
       Pair<ArgumentCaptor<EventListener<QuerySnapshot>>, ListenerRegistration> {

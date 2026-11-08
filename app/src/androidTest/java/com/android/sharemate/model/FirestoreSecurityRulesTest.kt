@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
@@ -20,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -517,12 +521,64 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun chatRepositoryWritesTextAndActivitiesUnderRules() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val chat = FirebaseChatRepository(firestore)
+
+    val textId = chat.sendMessage(household.id, senderId, "Sender", " hello ")
+    assertNotNull(textId)
+    assertEquals(
+        "hello", Tasks.await(messageReference(household.id, textId!!).get()).getString("text"))
+
+    for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
+      val activityId =
+          chat.sendActivity(
+              household.id, senderId, "Sender", type, " Milk ", "https://example.com/image")
+      assertNotNull(activityId)
+      val stored = Tasks.await(messageReference(household.id, activityId!!).get())
+      assertEquals(type.name, stored.getString("type"))
+      assertEquals("Milk", stored.getString("itemName"))
+    }
+
+    assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+  }
+
+  @Test
+  fun invalidTypedMessagesAreDenied() {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val base = messageData("bad", senderId)
+    val ref = messageReference(household.id, "bad")
+
+    assertDenied(ref.set(base + ("type" to "UNKNOWN")))
+    assertDenied(
+        ref.set(
+            messageData("bad", "someone-else", text = "") +
+                mapOf("type" to "THROWN", "itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "TEXT") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "EATEN") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + mapOf("type" to "EATEN", "text" to "", "itemName" to " ")))
+    assertDenied(ref.set(base + mapOf("type" to "THROWN", "text" to "", "itemName" to 123)))
+    assertDenied(
+        ref.set(
+            base +
+                mapOf(
+                    "type" to "EATEN", "text" to "", "itemName" to "Milk", "itemImageUrl" to 123)))
+    assertDenied(ref.set(base + mapOf("type" to "TEXT", "text" to "")))
+  }
+
+  @Test
   fun nonMemberCannotReadOrPostMessages() {
     val household = createHouseholdAs("creator")
     val outsiderId = FirebaseEmulator.signInAs("outsider")
     val messageRef = messageReference(household.id, "m1")
 
     assertDenied(messageRef.set(messageData("m1", outsiderId)))
+    assertDenied(
+        messageRef.set(
+            messageData("m1", outsiderId, text = "") +
+                mapOf("type" to "EATEN", "itemName" to "Milk")))
     assertDenied(messageReference(household.id, "m1").get())
   }
 
