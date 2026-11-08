@@ -4,6 +4,7 @@ package com.android.sharemate.model.item
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
@@ -300,6 +301,56 @@ class FirebaseItemRepositoryEmulatorTest {
         confirm(repository.deleteItemQueued(sharedId))
         assertEquals(404, adminRequest(sharedId).first)
       }
+
+  @Test
+  fun itemWithoutAHouseholdIsInaccessibleEvenToItsOwner() = runBlocking {
+    // Written by an administrator: the client can no longer create such an item.
+    val id = UUID.randomUUID().toString()
+    val fields =
+        JSONObject()
+            .put("name", field("stringValue", "Legacy"))
+            .put("ownerId", field("stringValue", owner))
+            .put("quantity", field("integerValue", "1"))
+            .put("status", field("stringValue", "ACTIVE"))
+            .put("sharing", field("stringValue", "PERSONAL"))
+    assertEquals(
+        200, adminRequest(id, "PATCH", JSONObject().put("fields", fields).toString()).first)
+
+    assertDenied(document(id).get(Source.SERVER))
+    assertWriteDenied(repository.updateItem(id, ItemEdit("Renamed", 1, null, null)))
+    assertWriteDenied(repository.setItemStatus(id, ItemStatus.EATEN))
+    assertWriteDenied(repository.deleteItemQueued(id))
+    // Nothing was changed, and the item was not deleted.
+    val stored = JSONObject(adminRequest(id).second).getJSONObject("fields")
+    assertEquals("Legacy", stored.getJSONObject("name").getString("stringValue"))
+  }
+
+  @Test
+  fun privateFridgeOnlyHoldsPersonalItemsReadThroughGetFridgeItems() = runBlocking {
+    val privateHome =
+        HouseholdRepositoryFirestore(firestore)
+            .createHousehold("Private", owner, FridgeType.PRIVATE)
+    val personalId =
+        checkNotNull(
+            repository.addItem(Item(name = "Milk", ownerId = owner, householdId = privateHome.id)))
+    // The server refuses a shared item in a private fridge, so nothing is stored.
+    assertNull(
+        repository.addItem(
+            Item(
+                name = "Cheese",
+                ownerId = owner,
+                householdId = privateHome.id,
+                sharing = ItemSharing.SHARED)))
+    assertEquals(
+        listOf(personalId),
+        withTimeout(10_000) {
+          repository.getFridgeItems(privateHome.id, owner).first { it.isNotEmpty() }.map(Item::id)
+        })
+    assertWriteDenied(repository.setItemSharing(personalId, ItemSharing.SHARED))
+    assertEquals(
+        ItemSharing.PERSONAL,
+        await(document(personalId).get(Source.SERVER)).toItemOrNull()?.sharing)
+  }
 
   @Test
   fun missingUpdateFailsWithoutCreatingADocument() = runBlocking {

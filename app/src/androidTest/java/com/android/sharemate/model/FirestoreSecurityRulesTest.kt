@@ -478,6 +478,10 @@ class FirestoreSecurityRulesTest {
     assertDenied(itemsOf(household.id).whereEqualTo("ownerId", memberId).get())
     assertDenied(itemsOf(household.id).whereEqualTo("sharing", "SHARED").get())
     assertDenied(itemReference("new").set(itemData(memberId, household.id, "PERSONAL")))
+    // A stale profile pointing at the household grants nothing: memberIds is the source of truth.
+    Tasks.await(userReference(memberId).set(mapOf("householdId" to household.id)))
+    assertDenied(itemReference("personal").get())
+    assertDenied(itemsOf(household.id).whereEqualTo("ownerId", memberId).get())
 
     // The remaining member still sees the shared item, but not the leaver's personal one.
     FirebaseEmulator.signInAs("creator")
