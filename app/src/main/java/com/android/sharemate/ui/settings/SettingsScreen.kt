@@ -49,7 +49,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.android.sharemate.R
@@ -59,6 +58,7 @@ import com.android.sharemate.ui.household.CopyInviteCodeButton
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [SettingsScreen]. */
 object SettingsTestTags {
@@ -86,7 +86,7 @@ object SettingsTestTags {
   const val LEAVE_ERROR = "settings_leave_error"
 }
 
-private val CardShape = RoundedCornerShape(24.dp)
+private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
 
 /**
  * Settings of the signed-in user: their profile, their account and their household.
@@ -110,23 +110,25 @@ fun SettingsScreen(
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
   Column(
       modifier =
-          Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+          Modifier.fillMaxSize()
+              .verticalScroll(rememberScrollState())
+              .padding(horizontal = SettingsLayout.horizontalPadding),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Dimens.spacingL))
     Text(
         text = stringResource(R.string.settings_title),
         modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurface,
     )
-    Spacer(Modifier.height(28.dp))
+    Spacer(Modifier.height(SettingsLayout.sectionSpacing))
     ProfileHeader(state)
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Dimens.spacingL))
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     HouseholdCard(state, onLeaveHousehold)
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(Dimens.spacingL))
   }
   if (leaveState.isConfirming) {
     LeaveHouseholdDialog(
@@ -142,7 +144,7 @@ fun SettingsScreen(
 @Composable
 private fun ProfileHeader(state: SettingsUiState) {
   Avatar(state.photoUrl)
-  Spacer(Modifier.height(16.dp))
+  Spacer(Modifier.height(Dimens.spacingM))
   Text(
       text = state.displayName ?: state.email.orEmpty(),
       style = MaterialTheme.typography.headlineSmall,
@@ -151,7 +153,7 @@ private fun ProfileHeader(state: SettingsUiState) {
       modifier = Modifier.testTag(SettingsTestTags.PROFILE_NAME),
   )
   if (state.displayName != null && state.email != null) {
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(Dimens.spacingXxs))
     Text(
         text = state.email,
         style = MaterialTheme.typography.bodyMedium,
@@ -168,7 +170,7 @@ private fun Avatar(photoUrl: String?) {
   val painter = photoUrl?.let { rememberAsyncImagePainter(model = it) }
   Box(
       modifier =
-          Modifier.size(72.dp)
+          Modifier.size(SettingsLayout.avatarSize)
               .clip(CircleShape)
               .background(MaterialTheme.colorScheme.primaryContainer),
       contentAlignment = Alignment.Center,
@@ -178,7 +180,9 @@ private fun Avatar(photoUrl: String?) {
           imageVector = Icons.Filled.Person,
           contentDescription = null,
           tint = MaterialTheme.colorScheme.onPrimaryContainer,
-          modifier = Modifier.size(40.dp).testTag(SettingsTestTags.PROFILE_PLACEHOLDER),
+          modifier =
+              Modifier.size(SettingsLayout.avatarIconSize)
+                  .testTag(SettingsTestTags.PROFILE_PLACEHOLDER),
       )
     }
     if (painter != null) {
@@ -205,72 +209,78 @@ private fun AccountCard(
   Card(
       shape = CardShape,
       colors = CardDefaults.cardColors(containerColor = colors.surface),
-      border = BorderStroke(1.dp, colors.outlineVariant),
+      border = BorderStroke(Dimens.borderWidth, colors.outlineVariant),
       modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.ACCOUNT_CARD),
   ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Row(
-          horizontalArrangement = Arrangement.spacedBy(16.dp),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        AccountIcon(if (isGoogle) Icons.Outlined.AccountCircle else Icons.Outlined.Email)
-        Column {
+    Column(
+        Modifier.padding(Dimens.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+          Row(
+              horizontalArrangement = Arrangement.spacedBy(Dimens.spacingM),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            AccountIcon(if (isGoogle) Icons.Outlined.AccountCircle else Icons.Outlined.Email)
+            Column {
+              Text(
+                  text =
+                      stringResource(
+                          if (isGoogle) R.string.settings_google_account
+                          else R.string.settings_email_account),
+                  style = MaterialTheme.typography.titleMedium,
+                  color = colors.onSurface,
+                  modifier = Modifier.testTag(SettingsTestTags.ACCOUNT_TITLE),
+              )
+              Text(
+                  text =
+                      stringResource(
+                          if (isGoogle) R.string.settings_connected
+                          else R.string.settings_signed_in_with_email),
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = colors.onSurfaceVariant,
+                  modifier = Modifier.testTag(SettingsTestTags.ACCOUNT_STATUS),
+              )
+            }
+          }
           Text(
               text =
                   stringResource(
-                      if (isGoogle) R.string.settings_google_account
-                      else R.string.settings_email_account),
-              style = MaterialTheme.typography.titleMedium,
-              color = colors.onSurface,
-              modifier = Modifier.testTag(SettingsTestTags.ACCOUNT_TITLE),
-          )
-          Text(
-              text =
-                  stringResource(
-                      if (isGoogle) R.string.settings_connected
-                      else R.string.settings_signed_in_with_email),
+                      if (isGoogle) R.string.settings_google_description
+                      else R.string.settings_email_description),
               style = MaterialTheme.typography.bodyMedium,
               color = colors.onSurfaceVariant,
-              modifier = Modifier.testTag(SettingsTestTags.ACCOUNT_STATUS),
           )
-        }
-      }
-      Text(
-          text =
-              stringResource(
-                  if (isGoogle) R.string.settings_google_description
-                  else R.string.settings_email_description),
-          style = MaterialTheme.typography.bodyMedium,
-          color = colors.onSurfaceVariant,
-      )
-      if (isGoogle) {
-        Button(
-            onClick = onSwitchGoogleAccount,
-            enabled = !state.isSwitchingAccount,
-            modifier =
-                Modifier.fillMaxWidth()
-                    .height(48.dp)
-                    .testTag(SettingsTestTags.SWITCH_GOOGLE_ACCOUNT),
-        ) {
-          if (state.isSwitchingAccount) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp).testTag(SettingsTestTags.SWITCH_LOADING),
-                strokeWidth = 2.dp,
-            )
-          } else {
-            Text(stringResource(R.string.settings_switch_google_account))
+          if (isGoogle) {
+            Button(
+                onClick = onSwitchGoogleAccount,
+                enabled = !state.isSwitchingAccount,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .height(Dimens.buttonHeight)
+                        .testTag(SettingsTestTags.SWITCH_GOOGLE_ACCOUNT),
+            ) {
+              if (state.isSwitchingAccount) {
+                CircularProgressIndicator(
+                    modifier =
+                        Modifier.size(Dimens.progressSize).testTag(SettingsTestTags.SWITCH_LOADING),
+                    strokeWidth = Dimens.progressStrokeWidth,
+                )
+              } else {
+                Text(stringResource(R.string.settings_switch_google_account))
+              }
+            }
+            state.accountError?.let { AccountError(it) }
+          }
+          OutlinedButton(
+              onClick = onSignOut,
+              enabled = !state.isSwitchingAccount,
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .height(Dimens.buttonHeight)
+                      .testTag(SettingsTestTags.SIGN_OUT),
+          ) {
+            Text(stringResource(R.string.auth_sign_out))
           }
         }
-        state.accountError?.let { AccountError(it) }
-      }
-      OutlinedButton(
-          onClick = onSignOut,
-          enabled = !state.isSwitchingAccount,
-          modifier = Modifier.fillMaxWidth().height(48.dp).testTag(SettingsTestTags.SIGN_OUT),
-      ) {
-        Text(stringResource(R.string.auth_sign_out))
-      }
-    }
   }
 }
 
@@ -284,78 +294,82 @@ private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) 
   Card(
       shape = CardShape,
       colors = CardDefaults.cardColors(containerColor = colors.surface),
-      border = BorderStroke(1.dp, colors.outlineVariant),
+      border = BorderStroke(Dimens.borderWidth, colors.outlineVariant),
       modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.HOUSEHOLD_CARD),
   ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Text(
-          text = stringResource(R.string.settings_household),
-          style = MaterialTheme.typography.titleMedium,
-          color = colors.onSurface,
-      )
-      Row(
-          horizontalArrangement = Arrangement.spacedBy(16.dp),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        AccountIcon(Icons.Outlined.Home)
-        Column {
+    Column(
+        Modifier.padding(Dimens.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
           Text(
-              text = state.householdName,
+              text = stringResource(R.string.settings_household),
               style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Bold,
               color = colors.onSurface,
-              modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_NAME),
           )
-          Text(
-              text =
-                  pluralStringResource(
-                      R.plurals.settings_members, state.memberCount, state.memberCount),
-              style = MaterialTheme.typography.bodyMedium,
-              color = colors.onSurfaceVariant,
-              modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_MEMBERS),
-          )
+          Row(
+              horizontalArrangement = Arrangement.spacedBy(Dimens.spacingM),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            AccountIcon(Icons.Outlined.Home)
+            Column {
+              Text(
+                  text = state.householdName,
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = colors.onSurface,
+                  modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_NAME),
+              )
+              Text(
+                  text =
+                      pluralStringResource(
+                          R.plurals.settings_members, state.memberCount, state.memberCount),
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = colors.onSurfaceVariant,
+                  modifier = Modifier.testTag(SettingsTestTags.HOUSEHOLD_MEMBERS),
+              )
+            }
+          }
+          if (state.fridgeType != FridgeType.PRIVATE) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                  text = stringResource(R.string.settings_invite_code),
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = colors.onSurfaceVariant,
+                  modifier = Modifier.weight(1f),
+              )
+              Text(
+                  text = state.inviteCode,
+                  style = MaterialTheme.typography.titleMedium,
+                  fontWeight = FontWeight.Bold,
+                  color = colors.onPrimaryContainer,
+                  modifier = Modifier.testTag(SettingsTestTags.INVITE_CODE),
+              )
+              Spacer(Modifier.width(Dimens.spacingXs))
+              CopyInviteCodeButton(
+                  inviteCode = state.inviteCode,
+                  modifier = Modifier.testTag(SettingsTestTags.COPY_INVITE_CODE),
+              )
+            }
+          }
+          OutlinedButton(
+              onClick = onLeaveHousehold,
+              enabled = state.fridgeType != FridgeType.PRIVATE,
+              colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
+              border = BorderStroke(Dimens.borderWidth, colors.error),
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .height(Dimens.buttonHeight)
+                      .testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
+          ) {
+            Text(stringResource(R.string.leave_household))
+          }
+          if (state.fridgeType == FridgeType.PRIVATE) {
+            Text(
+                stringResource(R.string.leave_private_household_blocked),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+            )
+          }
         }
-      }
-      if (state.fridgeType != FridgeType.PRIVATE) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-              text = stringResource(R.string.settings_invite_code),
-              style = MaterialTheme.typography.bodyMedium,
-              color = colors.onSurfaceVariant,
-              modifier = Modifier.weight(1f),
-          )
-          Text(
-              text = state.inviteCode,
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Bold,
-              color = colors.onPrimaryContainer,
-              modifier = Modifier.testTag(SettingsTestTags.INVITE_CODE),
-          )
-          Spacer(Modifier.width(8.dp))
-          CopyInviteCodeButton(
-              inviteCode = state.inviteCode,
-              modifier = Modifier.testTag(SettingsTestTags.COPY_INVITE_CODE),
-          )
-        }
-      }
-      OutlinedButton(
-          onClick = onLeaveHousehold,
-          enabled = state.fridgeType != FridgeType.PRIVATE,
-          colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
-          border = BorderStroke(1.dp, colors.error),
-          modifier =
-              Modifier.fillMaxWidth().height(48.dp).testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
-      ) {
-        Text(stringResource(R.string.leave_household))
-      }
-      if (state.fridgeType == FridgeType.PRIVATE) {
-        Text(
-            stringResource(R.string.leave_private_household_blocked),
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
-        )
-      }
-    }
   }
 }
 
@@ -364,8 +378,8 @@ private fun HouseholdCard(state: SettingsUiState, onLeaveHousehold: () -> Unit) 
 private fun AccountIcon(icon: ImageVector) {
   Box(
       modifier =
-          Modifier.size(44.dp)
-              .clip(RoundedCornerShape(12.dp))
+          Modifier.size(SettingsLayout.cardIconBoxSize)
+              .clip(RoundedCornerShape(SettingsLayout.cardIconBoxCornerRadius))
               .background(MaterialTheme.colorScheme.primaryContainer),
       contentAlignment = Alignment.Center,
   ) {
@@ -380,14 +394,14 @@ private fun AccountIcon(icon: ImageVector) {
 @Composable
 private fun AccountError(error: SettingsAccountError) {
   Row(
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Icon(
         imageVector = Icons.Filled.Error,
         contentDescription = null,
         tint = MaterialTheme.colorScheme.error,
-        modifier = Modifier.size(18.dp),
+        modifier = Modifier.size(Dimens.iconSmall),
     )
     Text(
         text =
@@ -419,7 +433,7 @@ private fun LeaveHouseholdDialog(
       onDismissRequest = { if (!state.isLeaving) onCancel() },
       title = { Text(stringResource(R.string.leave_household_title)) },
       text = {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
           Text(
               if (leaveBlocked) stringResource(R.string.leave_private_household_blocked)
               else stringResource(R.string.leave_household_message, householdName))
@@ -427,14 +441,14 @@ private fun LeaveHouseholdDialog(
               ?.takeUnless { leaveBlocked }
               ?.let { error ->
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                   Icon(
                       imageVector = Icons.Filled.Error,
                       contentDescription = null,
                       tint = colors.error,
-                      modifier = Modifier.size(18.dp),
+                      modifier = Modifier.size(Dimens.iconSmall),
                   )
                   Text(
                       text =
@@ -457,8 +471,10 @@ private fun LeaveHouseholdDialog(
       confirmButton = {
         if (state.isLeaving && !leaveBlocked) {
           CircularProgressIndicator(
-              modifier = Modifier.size(24.dp).testTag(SettingsTestTags.LEAVE_LOADING),
-              strokeWidth = 2.dp,
+              modifier =
+                  Modifier.size(SettingsLayout.dialogProgressSize)
+                      .testTag(SettingsTestTags.LEAVE_LOADING),
+              strokeWidth = Dimens.progressStrokeWidth,
           )
         } else if (!leaveBlocked) {
           TextButton(

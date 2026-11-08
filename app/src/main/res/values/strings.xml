@@ -134,6 +134,11 @@
     <string name="staging_price">CHF %1$s</string>
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
+    <string name="staging_delete_item">Delete %1$s</string>
+    <string name="staging_price_label">Price</string>
+    <string name="staging_currency">CHF</string>
+    <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
+    <string name="staging_price_invalid">Enter a price like 3.50.</string>
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
     <string name="fridge_image_source">Image source</string>
@@ -158,4 +163,18 @@
     <string name="balances_debt">%1$s owes %2$s %3$s</string>
     <string name="balances_you_owe">You owe %1$s %2$s</string>
     <string name="balances_positive_amount">+%1$s</string>
+
+    <string name="chat_title">Chat</string>
+    <string name="chat_empty">No messages yet. Say hello!</string>
+    <string name="chat_load_error">Could not load messages.</string>
+    <string name="chat_send_error">Message not sent. Try again.</string>
+    <string name="chat_input_placeholder">Message</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_default_sender_name">Member</string>
+    <string name="personal_photo_choose">Choose a personal photo</string>
+    <string name="personal_photo_change">Change personal photo</string>
+    <string name="personal_photo_preview">Selected personal photo</string>
+    <string name="personal_photo_remove">Remove personal photo</string>
+    <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
+    <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
 </resources>

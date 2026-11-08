@@ -38,8 +38,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [JoinHouseholdScreen]. */
 object JoinHouseholdTestTags {
@@ -71,14 +71,16 @@ fun JoinHouseholdScreen(
       modifier =
           Modifier.fillMaxSize()
               .background(colors.surfaceContainerLow)
-              .padding(horizontal = 24.dp, vertical = 16.dp),
+              .padding(
+                  horizontal = Dimens.screenHorizontalPadding,
+                  vertical = Dimens.screenVerticalPadding),
   ) {
     HouseholdTopBar(
         title = stringResource(R.string.join_household_title),
         onBack = onBack,
         backTestTag = JoinHouseholdTestTags.BACK,
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Dimens.spacingM))
     Text(
         text = stringResource(R.string.join_household_description),
         style = MaterialTheme.typography.bodyLarge,
@@ -103,14 +105,17 @@ fun JoinHouseholdScreen(
         decorationBox = {
           Row(
               modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+              horizontalArrangement =
+                  Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
           ) {
             repeat(JoinHouseholdViewModel.MAX_CODE_LENGTH) { index ->
               val isNext = index == state.inviteCode.length
               Box(
                   modifier =
                       Modifier.weight(1f, fill = false)
-                          .size(width = 48.dp, height = 58.dp)
+                          .size(
+                              width = HouseholdLayout.codeCellWidth,
+                              height = HouseholdLayout.codeCellHeight)
                           .testTag(
                               when (index) {
                                 0 -> JoinHouseholdTestTags.CODE_BOX_1
@@ -120,17 +125,20 @@ fun JoinHouseholdScreen(
                                 4 -> JoinHouseholdTestTags.CODE_BOX_5
                                 else -> JoinHouseholdTestTags.CODE_BOX_6
                               })
-                          .background(colors.surfaceContainerLowest, RoundedCornerShape(12.dp))
+                          .background(
+                              colors.surfaceContainerLowest,
+                              RoundedCornerShape(HouseholdLayout.codeCellCornerRadius))
                           .border(
-                              width = if (isNext) 2.dp else 1.dp,
+                              width = if (isNext) Dimens.focusedBorderWidth else Dimens.borderWidth,
                               color = if (isNext) colors.primary else colors.outlineVariant,
-                              shape = RoundedCornerShape(12.dp)),
+                              shape = RoundedCornerShape(HouseholdLayout.codeCellCornerRadius)),
                   contentAlignment = Alignment.Center,
               ) {
                 Text(
                     text = state.inviteCode.getOrNull(index)?.toString() ?: "",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
                 )
               }
             }
@@ -138,17 +146,18 @@ fun JoinHouseholdScreen(
         },
     )
     state.error?.let { error ->
-      Spacer(Modifier.height(12.dp))
+      Spacer(Modifier.height(Dimens.spacingS))
       Row(
           modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+          horizontalArrangement =
+              Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Icon(
             imageVector = Icons.Filled.Error,
             contentDescription = null,
             tint = colors.error,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(Dimens.iconSmall),
         )
         Text(
             text =
@@ -172,9 +181,9 @@ fun JoinHouseholdScreen(
     ) {
       if (state.isLoading) {
         CircularProgressIndicator(
-            modifier = Modifier.size(20.dp).testTag(JoinHouseholdTestTags.LOADING),
+            modifier = Modifier.size(Dimens.progressSize).testTag(JoinHouseholdTestTags.LOADING),
             color = colors.onPrimary,
-            strokeWidth = 2.dp,
+            strokeWidth = Dimens.progressStrokeWidth,
         )
       } else {
         Text(stringResource(R.string.join_household))

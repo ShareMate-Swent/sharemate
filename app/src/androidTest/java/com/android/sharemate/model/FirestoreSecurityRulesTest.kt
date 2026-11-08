@@ -13,6 +13,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
@@ -273,6 +274,48 @@ class FirestoreSecurityRulesTest {
 
     assertDenied(
         householdReference(household.id).update("memberIds", FieldValue.arrayUnion(outsiderId)))
+  }
+
+  @Test
+  fun joiningWithoutTheHouseholdsInviteCodeIsDenied() {
+    val household = createHouseholdAs("creator")
+    val otherCode = runBlocking {
+      val otherCreator = FirebaseEmulator.signInAs("other-creator")
+      repository.createHousehold("Elsewhere", otherCreator).inviteCode
+    }
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+
+    // An outsider who knows the household ID forges the app's join batch with no code, a wrong
+    // code, or another household's valid code.
+    for (profile in
+        listOf(
+            mapOf("householdId" to household.id),
+            mapOf("householdId" to household.id, "joinCode" to "WRONG1"),
+            mapOf("householdId" to household.id, "joinCode" to otherCode))) {
+      assertDenied(
+          firestore
+              .batch()
+              .update(
+                  householdReference(household.id), "memberIds", FieldValue.arrayUnion(outsiderId))
+              .set(userReference(outsiderId), profile, SetOptions.merge())
+              .commit())
+    }
+
+    assertDenied(householdReference(household.id).get(Source.SERVER))
+    FirebaseEmulator.signInAs("creator")
+    assertEquals(
+        listOf(household.createdBy),
+        Tasks.await(householdReference(household.id).get()).get("memberIds"))
+  }
+
+  @Test
+  fun joiningWithTheInviteCodeIsAllowed() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+
+    val joined = runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(listOf(household.createdBy, memberId), joined.memberIds)
   }
 
   @Test

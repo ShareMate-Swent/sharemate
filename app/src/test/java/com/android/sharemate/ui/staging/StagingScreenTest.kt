@@ -3,6 +3,9 @@ package com.android.sharemate.ui.staging
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -12,6 +15,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import com.android.sharemate.model.staging.StagedItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -42,7 +48,9 @@ class StagingScreenTest {
 
   private fun assertRowShows(id: String, text: String) {
     composeTestRule
-        .onNode(hasText(text) and hasAnyAncestor(hasTestTag(StagingTestTags.item(id))))
+        .onNode(
+            hasText(text) and hasAnyAncestor(hasTestTag(StagingTestTags.item(id))),
+            useUnmergedTree = true)
         .assertIsDisplayed()
   }
 
@@ -100,13 +108,18 @@ class StagingScreenTest {
 
   @Test
   fun confirmIsDisabledWhileAnItemIsBeingEdited() {
-    val viewModel = StagingViewModel(listOf(milk))
-    setScreen(viewModel)
-
-    viewModel.startEditing("milk")
+    // The edit dialog is covered by instrumented tests: text fields in dialogs never get idle
+    // under Robolectric, so this test draws the stateless content with an open draft instead.
+    var state by
+        mutableStateOf(StagingUiState(listOf(milk), StagedItemDraft("milk", "Milk", "2", "1.89")))
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingContent(state, onItemClick = {}, onDeleteItem = {}, onConfirm = {}, onBack = {})
+      }
+    }
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
 
-    viewModel.cancelEditing()
+    state = state.copy(draft = null)
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
   }
 
@@ -118,5 +131,72 @@ class StagingScreenTest {
 
     assertEquals(1, backs)
     assertNull(confirmed)
+  }
+
+  @Test
+  fun tappingARowReportsItsId() {
+    val clicked = mutableListOf<String>()
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingContent(
+            StagingUiState(listOf(milk, bread)),
+            onItemClick = { clicked += it },
+            onDeleteItem = {},
+            onConfirm = {},
+            onBack = {})
+      }
+    }
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
+
+    assertEquals(listOf("bread", "milk"), clicked)
+  }
+
+  @Test
+  fun deleteButtonRemovesOnlyThatItemWithoutEditingIt() {
+    val viewModel = StagingViewModel(listOf(milk, bread))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.delete("milk")).performClick()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).assertDoesNotExist()
+    assertRowShows("bread", "Bread")
+    assertEquals(listOf(bread), viewModel.state.value.items)
+    assertNull(viewModel.state.value.draft)
+  }
+
+  @Test
+  fun swipingARowToTheLeftDeletesIt() {
+    val viewModel = StagingViewModel(listOf(milk, bread))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).performTouchInput { swipeLeft() }
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).assertDoesNotExist()
+    assertEquals(listOf(milk), viewModel.state.value.items)
+  }
+
+  @Test
+  fun swipingARowToTheRightKeepsIt() {
+    val viewModel = StagingViewModel(listOf(milk))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performTouchInput { swipeRight() }
+    composeTestRule.waitForIdle()
+
+    assertRowShows("milk", "Milk")
+    assertEquals(listOf(milk), viewModel.state.value.items)
+  }
+
+  @Test
+  fun deletingTheLastItemShowsEmptyStateAndDisablesConfirm() {
+    setScreen(StagingViewModel(listOf(milk)))
+
+    composeTestRule.onNodeWithTag(StagingTestTags.delete("milk")).performClick()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.EMPTY).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
   }
 }

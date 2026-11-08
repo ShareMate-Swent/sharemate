@@ -54,9 +54,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [CreateHouseholdScreen]. */
 object CreateHouseholdTestTags {
@@ -84,7 +84,9 @@ fun CreateHouseholdScreen(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(horizontal = 24.dp, vertical = 16.dp),
+              .padding(
+                  horizontal = Dimens.screenHorizontalPadding,
+                  vertical = Dimens.screenVerticalPadding),
   ) {
     if (state.inviteCode == null) {
       BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -133,13 +135,13 @@ private fun ColumnScope.CreateHouseholdForm(
       onBack = onBack,
       backTestTag = CreateHouseholdTestTags.BACK,
   )
-  Spacer(Modifier.height(16.dp))
+  Spacer(Modifier.height(Dimens.spacingM))
   Text(
       text = stringResource(R.string.create_household_description),
       style = MaterialTheme.typography.bodyLarge,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
   )
-  Spacer(Modifier.height(16.dp))
+  Spacer(Modifier.height(Dimens.spacingM))
   OutlinedTextField(
       value = state.name,
       onValueChange = viewModel::updateName,
@@ -149,14 +151,14 @@ private fun ColumnScope.CreateHouseholdForm(
       enabled = !state.isLoading && !state.hasCreationOperation,
       singleLine = true,
   )
-  Spacer(Modifier.height(16.dp))
+  Spacer(Modifier.height(Dimens.spacingM))
   Text(stringResource(R.string.fridge_type), style = MaterialTheme.typography.titleSmall)
   Column(Modifier.selectableGroup()) {
     FridgeTypeOption(FridgeType.SHARED, state, viewModel::updateType)
     FridgeTypeOption(FridgeType.PRIVATE, state, viewModel::updateType)
   }
   state.error?.let {
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Dimens.spacingXs))
     Text(
         text = stringResource(R.string.household_generic_error),
         style = MaterialTheme.typography.labelLarge,
@@ -177,9 +179,9 @@ private fun ColumnScope.CreateHouseholdForm(
   ) {
     if (state.isLoading) {
       CircularProgressIndicator(
-          modifier = Modifier.size(20.dp).testTag(CreateHouseholdTestTags.LOADING),
+          modifier = Modifier.size(Dimens.progressSize).testTag(CreateHouseholdTestTags.LOADING),
           color = MaterialTheme.colorScheme.onPrimary,
-          strokeWidth = 2.dp,
+          strokeWidth = Dimens.progressStrokeWidth,
       )
     } else {
       Text(stringResource(R.string.create_household))
@@ -207,14 +209,14 @@ private fun FridgeTypeOption(
                   role = Role.RadioButton,
                   onClick = { onSelect(type) },
               )
-              .padding(vertical = 8.dp),
+              .padding(vertical = Dimens.spacingXs),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     RadioButton(
         selected = selected,
         onClick = null,
         enabled = !state.isLoading && !state.hasCreationOperation)
-    Spacer(Modifier.width(12.dp))
+    Spacer(Modifier.width(Dimens.spacingS))
     Column {
       Text(
           stringResource(
@@ -239,12 +241,12 @@ private fun ColumnScope.HouseholdReady(
   val isPrivate = type == FridgeType.PRIVATE
   val colors = MaterialTheme.colorScheme
   val context = LocalContext.current
-  Spacer(Modifier.height(48.dp))
+  Spacer(Modifier.height(Dimens.spacingXxl))
   Box(
       modifier =
           Modifier.align(Alignment.CenterHorizontally)
-              .size(96.dp)
-              .shadow(8.dp, CircleShape)
+              .size(HouseholdLayout.readyBadgeSize)
+              .shadow(HouseholdLayout.readyBadgeElevation, CircleShape)
               .background(colors.primary, CircleShape),
       contentAlignment = Alignment.Center,
   ) {
@@ -252,10 +254,10 @@ private fun ColumnScope.HouseholdReady(
         imageVector = Icons.Filled.Check,
         contentDescription = null,
         tint = colors.onPrimary,
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(HouseholdLayout.readyBadgeIconSize),
     )
   }
-  Spacer(Modifier.height(24.dp))
+  Spacer(Modifier.height(Dimens.spacingL))
   Text(
       text =
           stringResource(
@@ -266,7 +268,7 @@ private fun ColumnScope.HouseholdReady(
       textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth(),
   )
-  Spacer(Modifier.height(12.dp))
+  Spacer(Modifier.height(Dimens.spacingS))
   Text(
       text =
           stringResource(
@@ -275,9 +277,9 @@ private fun ColumnScope.HouseholdReady(
       style = MaterialTheme.typography.bodyLarge,
       color = colors.onSurfaceVariant,
       textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+      modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.screenHorizontalPadding),
   )
-  Spacer(Modifier.height(12.dp))
+  Spacer(Modifier.height(Dimens.spacingS))
   Text(
       text =
           stringResource(
@@ -290,13 +292,16 @@ private fun ColumnScope.HouseholdReady(
   if (!isPrivate) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(HouseholdLayout.cardCornerRadius),
         color = colors.surfaceContainerLowest,
-        border = BorderStroke(1.dp, colors.primaryContainer),
-        shadowElevation = 2.dp,
+        border = BorderStroke(Dimens.borderWidth, colors.primaryContainer),
+        shadowElevation = Dimens.cardElevation,
     ) {
       Column(
-          modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+          modifier =
+              Modifier.padding(
+                  horizontal = Dimens.spacingL,
+                  vertical = HouseholdLayout.readyCardVerticalPadding),
           horizontalAlignment = Alignment.CenterHorizontally,
       ) {
         Text(
@@ -304,7 +309,7 @@ private fun ColumnScope.HouseholdReady(
             style = MaterialTheme.typography.labelLarge,
             color = colors.onSurfaceVariant,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Dimens.spacingXs))
         Row(verticalAlignment = Alignment.CenterVertically) {
           Text(
               text = inviteCode,
@@ -312,7 +317,7 @@ private fun ColumnScope.HouseholdReady(
               fontWeight = FontWeight.Bold,
               color = colors.onPrimaryContainer,
           )
-          Spacer(Modifier.width(8.dp))
+          Spacer(Modifier.width(Dimens.spacingXs))
           CopyInviteCodeButton(
               inviteCode = inviteCode,
               modifier = Modifier.testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),

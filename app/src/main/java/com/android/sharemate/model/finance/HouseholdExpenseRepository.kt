@@ -7,12 +7,15 @@ import kotlinx.coroutines.flow.Flow
 interface HouseholdExpenseRepository {
   /**
    * Observes complete expense lists for a nonblank household document ID under a read-only data
-   * source. Each emission represents one consistent query snapshot, including an empty list for an
-   * empty collection. Snapshots reported as cached or pending by the SDK are skipped. Invalid
-   * records and observation failures terminate collection with an error, never a partial or empty
-   * fallback. Cancellation releases listeners. Membership authorization belongs to the trusted
-   * backend; [householdId] is not proof of access. Historical payers and share participants remain
-   * in records.
+   * source. Snapshots reported as cached or pending by the SDK are skipped, so the flow may stay
+   * silent until it receives a server snapshot, including while offline. Each emission represents
+   * one complete query snapshot. An empty list means the server confirmed there are no expenses.
+   *
+   * Invalid records and observation failures terminate collection with an error. A complete
+   * snapshot already queued may still be delivered before that error. Consumers should clear
+   * displayed expenses when handling permission or invalid-data errors. Cancellation releases
+   * listeners. Membership authorization belongs to the trusted backend; [householdId] is not proof
+   * of access. Historical payers and share participants remain in records.
    *
    * This expense-only boundary does not represent a complete ledger with settlements. No client
    * producer is enabled yet; expense writing requires an agreed allocation contract and trusted
