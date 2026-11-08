@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.image
 
 import androidx.lifecycle.ViewModelStore
@@ -9,6 +10,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemImageOrigin
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.decodePersonalThumbnail
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
@@ -123,7 +125,7 @@ class PersonalPhotoStorageEmulatorTest {
     homes.joinHousehold(home.inviteCode, member)
     assertNotEquals(owner, member)
     FirebaseEmulator.signInAs("photo-owner")
-    createItem(home.id)
+    createItem(home.id, sharing = "SHARED")
     val photo = upload()
     // Remove type after setup to isolate Storage compatibility from Firestore's schema policy.
     patchHousehold(home.id, "type", "{}")
@@ -132,10 +134,10 @@ class PersonalPhotoStorageEmulatorTest {
   }
 
   @Test
-  fun anotherMemberReadsPersonalItemPhotoAndCanUploadAndDelete() = runBlocking {
+  fun anotherMemberReadsSharedItemPhotoAndCanUploadAndDelete() = runBlocking {
     val homes = HouseholdRepositoryFirestore(firestore)
     val home = homes.createHousehold("Photo home", owner)
-    createItem(home.id)
+    createItem(home.id, sharing = "SHARED")
     val original = upload()
     assertArrayEquals(png, repository.load(original).getOrThrow())
     val member = FirebaseEmulator.signInAs("photo-member")
@@ -151,10 +153,38 @@ class PersonalPhotoStorageEmulatorTest {
         (repository.load(original).exceptionOrNull() as StorageException).errorCode)
     homes.leaveHousehold(member)
     denied(repository.load(second))
+    // Leaving the household also cuts the owner off from their own photos, which stay in place.
     FirebaseEmulator.signInAs("photo-owner")
     homes.leaveHousehold(owner)
+    denied(repository.load(second))
+    denied(repository.delete(second))
+    denied(repository.upload(itemId, temporary.newFile().apply { writeBytes(png) }))
+    homes.joinHousehold(home.inviteCode, owner)
     assertArrayEquals(png, repository.load(second).getOrThrow())
     repository.delete(second).getOrThrow()
+  }
+
+  @Test
+  fun personalItemPhotoIsReachableByItsOwnerOnlyAndUnsharingHidesIt() = runBlocking {
+    val homes = HouseholdRepositoryFirestore(firestore)
+    val home = homes.createHousehold("Photo home", owner)
+    createItem(home.id)
+    val photo = upload()
+    val member = FirebaseEmulator.signInAs("photo-member")
+    homes.joinHousehold(home.inviteCode, member)
+    denied(repository.load(photo))
+    denied(repository.delete(photo))
+    denied(repository.upload(itemId, temporary.newFile().apply { writeBytes(png) }))
+
+    FirebaseEmulator.signInAs("photo-owner")
+    firestore.collection("items").document(itemId).update("sharing", "SHARED").await()
+    FirebaseEmulator.signInAs("photo-member")
+    assertArrayEquals(png, repository.load(photo).getOrThrow())
+
+    FirebaseEmulator.signInAs("photo-owner")
+    firestore.collection("items").document(itemId).update("sharing", "PERSONAL").await()
+    FirebaseEmulator.signInAs("photo-member")
+    denied(repository.load(photo))
   }
 
   @Test
@@ -175,32 +205,30 @@ class PersonalPhotoStorageEmulatorTest {
   }
 
   @Test
-  fun standaloneAndPrivateFridgePhotosFollowItemOwnership() = runBlocking {
+  fun privateFridgePhotosAreReachableByItsCreatorOnly() = runBlocking {
     val homes = HouseholdRepositoryFirestore(firestore)
     val privateHome = homes.createHousehold("Private", owner, FridgeType.PRIVATE)
-    for (home in listOf(null, privateHome.id)) {
-      FirebaseEmulator.signInAs("photo-owner")
-      createItem(home)
-      val reference = upload()
-      val outsider = FirebaseEmulator.signInAs("photo-outsider")
-      if (home != null) {
-        patchHousehold(
-            home,
-            "memberIds",
-            """{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}""")
-      }
-      denied(repository.load(reference))
-      denied(repository.delete(reference))
-      FirebaseEmulator.signInAs("photo-owner")
-      repository.delete(reference).getOrThrow()
-    }
+    createItem(privateHome.id)
+    val reference = upload()
+    val outsider = FirebaseEmulator.signInAs("photo-outsider")
+    // Even listed among the members by an administrator, an outsider never reaches a private
+    // fridge.
+    patchHousehold(
+        privateHome.id,
+        "memberIds",
+        """{"memberIds":{"arrayValue":{"values":[{"stringValue":"$owner"},{"stringValue":"$outsider"}]}}}""")
+    denied(repository.load(reference))
+    denied(repository.delete(reference))
+    FirebaseEmulator.signInAs("photo-owner")
+    assertArrayEquals(png, repository.load(reference).getOrThrow())
+    repository.delete(reference).getOrThrow()
   }
 
   @Test
   fun recreatedItemDoesNotExposeOldPhotoToItsNewOwner() = runBlocking {
     val homes = HouseholdRepositoryFirestore(firestore)
     val home = homes.createHousehold("Photo home", owner)
-    createItem(home.id)
+    createItem(home.id, sharing = "SHARED")
     val original = upload()
     val formerMember = FirebaseEmulator.signInAs("photo-former-member")
     homes.joinHousehold(home.inviteCode, formerMember)
@@ -209,7 +237,8 @@ class PersonalPhotoStorageEmulatorTest {
     FirebaseEmulator.signInAs("photo-owner")
     firestore.collection("items").document(itemId).delete().await()
     FirebaseEmulator.signInAs("photo-former-member")
-    createItem(null, formerMember)
+    val formerMemberHome = homes.createHousehold("Former member home", formerMember)
+    createItem(formerMemberHome.id, formerMember)
     denied(repository.load(original))
     denied(repository.delete(original))
     val ownPhoto = upload()
@@ -219,7 +248,7 @@ class PersonalPhotoStorageEmulatorTest {
 
   @Test
   fun rulesRejectInvalidMetadataSizesOverwritesListingAndMissingItems() = runBlocking {
-    createItem(null)
+    createItem(HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner).id)
     val reference = upload()
     val validMetadata = photoMetadata()
     val objectRef = storage.reference.child(reference.path)
@@ -244,7 +273,7 @@ class PersonalPhotoStorageEmulatorTest {
 
   @Test
   fun cancellationActuallyCancelsSdkUpload() = runBlocking {
-    createItem(null)
+    createItem(HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner).id)
     val reading = CompletableDeferred<Unit>()
     val release = CountDownLatch(1)
     val source =
@@ -275,7 +304,7 @@ class PersonalPhotoStorageEmulatorTest {
 
   @Test
   fun cancellationStopsAnOpenedSdkDownloadAndClosesItsStream() = runBlocking {
-    createItem(null)
+    createItem(HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner).id)
     val reference = upload()
     val opened = CompletableDeferred<Unit>()
     val closed = CompletableDeferred<Unit>()
@@ -307,7 +336,11 @@ class PersonalPhotoStorageEmulatorTest {
     assertTrue(task.isCanceled)
   }
 
-  private suspend fun createItem(householdId: String?, ownerId: String = owner) {
+  private suspend fun createItem(
+      householdId: String,
+      ownerId: String = owner,
+      sharing: String = "PERSONAL"
+  ) {
     firestore
         .collection("items")
         .document(itemId)
@@ -315,7 +348,7 @@ class PersonalPhotoStorageEmulatorTest {
             mapOf(
                 "ownerId" to ownerId,
                 "householdId" to householdId,
-                "sharing" to "PERSONAL",
+                "sharing" to sharing,
                 "quantity" to 1,
                 "status" to "ACTIVE",
                 "name" to "Photo item"))
@@ -365,6 +398,8 @@ class PersonalPhotoStorageEmulatorTest {
       withContext(Dispatchers.Main) {
         creator.openAddItemDialog()
         creator.updateName("Gallery food")
+        // Personal items are invisible to other members, so share it for the second user.
+        creator.updateSharing(ItemSharing.SHARED)
         creator.personalPhotos!!.select("content://gallery/photo")
       }
       withTimeout(15_000) { creator.personalPhotos!!.draft.first { it.file != null } }
