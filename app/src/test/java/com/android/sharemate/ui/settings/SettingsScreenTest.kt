@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -44,6 +45,7 @@ class SettingsScreenTest {
   private var leftCalls = 0
   private var signOuts = 0
   private var switches = 0
+  private var memberListOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -68,10 +70,27 @@ class SettingsScreenTest {
             onCancelLeave = { cancels++ },
             onConfirmLeave = { confirms++ },
             onLeft = { leftCalls++ },
+            onShowMembers = { memberListOpens++ },
             onSwitchGoogleAccount = { switches++ },
             onSignOut = { signOuts++ })
       }
     }
+  }
+
+  @Test
+  fun tappingTheMemberCountOpensTheMembersList() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.SHOW_MEMBERS)
+        .performScrollTo()
+        .assert(hasClickAction())
+        // The row is read as one button, e.g. "Rue de Lausanne flat, 3 members".
+        .assertTextEquals("Rue de Lausanne flat", "3 members")
+        .performClick()
+
+    assertEquals(1, memberListOpens)
+    assertEquals(0, leaveRequests)
   }
 
   @Test
@@ -162,6 +181,7 @@ class SettingsScreenTest {
             onCancelLeave = {},
             onConfirmLeave = {},
             onLeft = {},
+            onShowMembers = {},
             onSwitchGoogleAccount = {},
             onSignOut = {})
       }
@@ -180,10 +200,12 @@ class SettingsScreenTest {
     showSettings()
 
     composeTestRule
-        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME, useUnmergedTree = true)
         .performScrollTo()
         .assertTextEquals("Rue de Lausanne flat")
-    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("3 members")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS, useUnmergedTree = true)
+        .assertTextEquals("3 members")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertTextEquals("K7XM4P")
   }
 
@@ -192,7 +214,7 @@ class SettingsScreenTest {
     showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
 
     composeTestRule
-        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME, useUnmergedTree = true)
         .performScrollTo()
         .assertTextEquals("Rue de Lausanne flat")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertDoesNotExist()
@@ -239,7 +261,9 @@ class SettingsScreenTest {
   fun aSingleMemberIsNotPluralized() {
     showSettings(settings = googleState.copy(memberCount = 1))
 
-    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("1 member")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS, useUnmergedTree = true)
+        .assertTextEquals("1 member")
   }
 
   @Test
