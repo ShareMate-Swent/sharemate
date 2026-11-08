@@ -13,6 +13,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
@@ -300,6 +301,7 @@ class FirestoreSecurityRulesTest {
               .commit())
     }
 
+    assertDenied(householdReference(household.id).get(Source.SERVER))
     FirebaseEmulator.signInAs("creator")
     assertEquals(
         listOf(household.createdBy),

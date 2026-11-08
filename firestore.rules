@@ -173,6 +173,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Only the settlement service writes immutable reimbursement records.
+    match /households/{householdId}/settlements/{settlementId} {
+      function canReadSettlements() {
+        let household = get(documentPath('households', householdId)).data;
+        return household.type == 'SHARED' && request.auth.uid in household.memberIds;
+      }
+
+      allow read: if signedIn() && canReadSettlements();
+    }
+
     // Chat messages: shared household members can read and post as themselves. Messages are
     // immutable and never deleted by clients. Private fridges have no chat.
     match /households/{householdId}/messages/{messageId} {
