@@ -68,7 +68,7 @@ class ItemSharingFormTest {
             FoodImageSelector(images),
             BarcodeScanner { barcodeResult },
             catalog,
-            type)
+            fridgeType = type)
         .also {
           store.put("vm-${nextVm++}", it)
           runCurrent()

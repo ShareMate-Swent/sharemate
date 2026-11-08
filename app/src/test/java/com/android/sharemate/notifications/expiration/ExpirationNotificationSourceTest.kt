@@ -4,6 +4,8 @@ package com.android.sharemate.notifications.expiration
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.notifications.AppNotificationChannel
 import com.android.sharemate.notifications.NotificationRecipient
 import com.android.sharemate.ui.navigation.AppDeepLinks
@@ -17,12 +19,14 @@ import org.junit.Test
 class ExpirationNotificationSourceTest {
   private val today = LocalDate.of(2026, 10, 15)
   private val repository = FakeItemRepository()
+  private val preferences = FakeExpirationPreferencesRepository()
   private var recipient: NotificationRecipient? = NotificationRecipient("alice", "home")
   private val formattedSummaries = mutableListOf<ExpirationSummary>()
   private val source =
       ExpirationNotificationSource(
           itemRepository = repository,
           recipientProvider = { recipient },
+          preferencesRepository = preferences,
           formatter = { summary ->
             formattedSummaries += summary
             NotificationText("title", "${summary.expired.size}/${summary.expiringSoon.size}")
@@ -50,6 +54,23 @@ class ExpirationNotificationSourceTest {
     assertEquals("title", notification.title)
     assertEquals("1/1", notification.text)
     assertEquals(AppDeepLinks.uri(TopLevelDestination.FRIDGE), notification.deepLink)
+  }
+
+  @Test
+  fun usesThePreferencesOfTheRecipient() = runTest {
+    // Soon window of 10 days: an item 10 days away is reminded, though the default (3) would not.
+    preferences.save("alice", ExpirationPreferences(soonDays = 10))
+    repository.emitItems(listOf(sharedItem("far", 10)))
+
+    assertEquals(1, source.dueNotifications().size)
+  }
+
+  @Test
+  fun staysSilentOnADayThatIsNotDueForThePreferences() = runTest {
+    preferences.save("alice", ExpirationPreferences(expiredRepeatDays = 5))
+    repository.emitItems(listOf(sharedItem("old", -2)))
+
+    assertTrue(source.dueNotifications().isEmpty())
   }
 
   @Test

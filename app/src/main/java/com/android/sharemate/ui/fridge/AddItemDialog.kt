@@ -53,6 +53,7 @@ fun AddItemDialog(
     onQuantityChange: (String) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     onSharingChange: (ItemSharing) -> Unit = {},
+    personalPhotos: PersonalPhotoController? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val photoViewModel: BarcodePhotoViewModel =
@@ -76,6 +77,7 @@ fun AddItemDialog(
               BarcodeLookupError.NO_DETAILS -> R.string.barcode_lookup_no_details
             })
       }
+  val personalDraft = personalPhotos?.draft?.collectAsState()?.value
   val inputEnabled = !uiState.isSaving && !uiState.isScanningBarcode && !photo.busy
   val activity = LocalContext.current.findActivity()
   DisposableEffect(photoViewModel) {
@@ -109,6 +111,9 @@ fun AddItemDialog(
                 if (photo.confirmed && !photo.failed)
                     Text(stringResource(R.string.barcode_photo_selected))
                 Text(stringResource(R.string.barcode_photo_manual))
+                if (personalPhotos != null && personalDraft != null) {
+                  PersonalPhotoPicker(personalDraft, personalPhotos, inputEnabled)
+                }
                 lookupError?.let {
                   Text(
                       it,
@@ -200,7 +205,7 @@ fun AddItemDialog(
       confirmButton = {
         TextButton(
             onClick = onSave,
-            enabled = inputEnabled,
+            enabled = inputEnabled && personalDraft?.importing != true,
             modifier = Modifier.testTag(C.Tag.fridge_save_item)) {
               Text(
                   stringResource(

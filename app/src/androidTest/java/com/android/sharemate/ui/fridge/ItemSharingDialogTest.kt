@@ -136,7 +136,7 @@ class ItemSharingDialogTest {
               FoodImageSelector(images),
               BarcodeScanner { BarcodeScanResult.NotFound },
               testProductCatalogRepository(),
-              FridgeType.SHARED)
+              fridgeType = FridgeType.SHARED)
       store.put("sharing-dialog", vm)
     }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }

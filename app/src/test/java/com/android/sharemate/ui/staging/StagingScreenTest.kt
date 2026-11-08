@@ -15,6 +15,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import com.android.sharemate.model.staging.StagedItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -110,7 +113,9 @@ class StagingScreenTest {
     var state by
         mutableStateOf(StagingUiState(listOf(milk), StagedItemDraft("milk", "Milk", "2", "1.89")))
     composeTestRule.setContent {
-      MaterialTheme { StagingContent(state, onItemClick = {}, onConfirm = {}, onBack = {}) }
+      MaterialTheme {
+        StagingContent(state, onItemClick = {}, onDeleteItem = {}, onConfirm = {}, onBack = {})
+      }
     }
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
 
@@ -136,6 +141,7 @@ class StagingScreenTest {
         StagingContent(
             StagingUiState(listOf(milk, bread)),
             onItemClick = { clicked += it },
+            onDeleteItem = {},
             onConfirm = {},
             onBack = {})
       }
@@ -145,5 +151,52 @@ class StagingScreenTest {
     composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
 
     assertEquals(listOf("bread", "milk"), clicked)
+  }
+
+  @Test
+  fun deleteButtonRemovesOnlyThatItemWithoutEditingIt() {
+    val viewModel = StagingViewModel(listOf(milk, bread))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.delete("milk")).performClick()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).assertDoesNotExist()
+    assertRowShows("bread", "Bread")
+    assertEquals(listOf(bread), viewModel.state.value.items)
+    assertNull(viewModel.state.value.draft)
+  }
+
+  @Test
+  fun swipingARowToTheLeftDeletesIt() {
+    val viewModel = StagingViewModel(listOf(milk, bread))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).performTouchInput { swipeLeft() }
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).assertDoesNotExist()
+    assertEquals(listOf(milk), viewModel.state.value.items)
+  }
+
+  @Test
+  fun swipingARowToTheRightKeepsIt() {
+    val viewModel = StagingViewModel(listOf(milk))
+    setScreen(viewModel)
+
+    composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performTouchInput { swipeRight() }
+    composeTestRule.waitForIdle()
+
+    assertRowShows("milk", "Milk")
+    assertEquals(listOf(milk), viewModel.state.value.items)
+  }
+
+  @Test
+  fun deletingTheLastItemShowsEmptyStateAndDisablesConfirm() {
+    setScreen(StagingViewModel(listOf(milk)))
+
+    composeTestRule.onNodeWithTag(StagingTestTags.delete("milk")).performClick()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.EMPTY).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
   }
 }
