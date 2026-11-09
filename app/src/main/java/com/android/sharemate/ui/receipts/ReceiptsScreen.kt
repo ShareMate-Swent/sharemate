@@ -29,6 +29,7 @@ import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.staging.StagingScreen
@@ -50,7 +51,9 @@ fun ReceiptsScreen(
     itemRepository: ItemRepository,
     userId: String,
     householdId: String,
-    sharedHousehold: Boolean
+    sharedHousehold: Boolean,
+    showBalances: Boolean = false,
+    onOpenBalances: () -> Unit = {}
 ) {
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
@@ -77,12 +80,17 @@ fun ReceiptsScreen(
                       sharedHousehold)
                 }
               })
-  ReceiptScanFlow(photo, reader, save, sharedHousehold)
+  ReceiptScanFlow(photo, reader, save, sharedHousehold, showBalances, onOpenBalances)
 }
 
 @Composable
-internal fun ReceiptScanFlow(photo: BarcodePhotoViewModel, reader: ReceiptReader) {
-  ReceiptScanFlow(photo, reader, null)
+internal fun ReceiptScanFlow(
+    photo: BarcodePhotoViewModel,
+    showBalances: Boolean = false,
+    onOpenBalances: () -> Unit = {},
+    reader: ReceiptReader
+) {
+  ReceiptScanFlow(photo, reader, null, showBalances = showBalances, onOpenBalances = onOpenBalances)
 }
 
 @Composable
@@ -91,6 +99,8 @@ internal fun ReceiptScanFlow(
     reader: ReceiptReader,
     save: InventorySaveViewModel?,
     sharedHousehold: Boolean = true,
+    showBalances: Boolean = false,
+    onOpenBalances: () -> Unit = {},
 ) {
   val nav = rememberNavController()
   val activity = LocalContext.current.findActivity()
@@ -139,6 +149,12 @@ internal fun ReceiptScanFlow(
               Button(onClick = { nav.navigate(REVIEW_ROUTE) }) {
                 Text(stringResource(R.string.staging_title))
               }
+            }
+            if (showBalances) {
+              Button(
+                  onClick = onOpenBalances, modifier = Modifier.testTag(BalancesTestTags.ENTRY)) {
+                    Text(stringResource(R.string.balances_title))
+                  }
             }
             InventorySaveFeedback(saveState, sharedHousehold, onRetry = { save?.retry() })
           }

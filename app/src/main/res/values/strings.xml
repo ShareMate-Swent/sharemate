@@ -161,6 +161,17 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+    <string name="balances_title">Balances</string>
+    <string name="balances_your_balance">Your balance</string>
+    <string name="balances_debts">Who owes whom</string>
+    <string name="balances_empty">No outstanding debts.</string>
+    <string name="balances_unavailable">Balances are available for shared households.</string>
+    <string name="balances_error">Could not load balances. Please try again.</string>
+    <string name="balances_you">You</string>
+    <string name="balances_member">Member %1$s</string>
+    <string name="balances_debt">%1$s owes %2$s %3$s</string>
+    <string name="balances_you_owe">You owe %1$s %2$s</string>
+    <string name="balances_positive_amount">+%1$s</string>
 
     <string name="chat_title">Chat</string>
     <string name="chat_empty">No messages yet. Say hello!</string>
@@ -175,6 +186,10 @@
     <string name="personal_photo_remove">Remove personal photo</string>
     <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
     <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
+    <string name="balances_back">Back to receipts</string>
+    <string name="balances_unknown_member">Household member</string>
+    <string name="balances_invalid_data">These expenses could not be calculated. Please check the household’s expense data.</string>
+    <string name="balances_offline">Still waiting for the server. Check your connection. Balances will appear when available.</string>
     <string name="inventory_save_shared_only">Saving scanned items requires a shared household.</string>
     <string name="inventory_save_loading">Checking the previous inventory save…</string>
     <string name="inventory_save_submitting">Preparing inventory save…</string>
