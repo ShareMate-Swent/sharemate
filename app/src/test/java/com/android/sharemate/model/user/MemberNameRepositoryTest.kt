@@ -4,39 +4,38 @@ package com.android.sharemate.model.user
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.*
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MemberNameRepositoryTest {
-  private val firestore = mock(FirebaseFirestore::class.java)
-  private val households = mock(CollectionReference::class.java)
-  private val home = mock(DocumentReference::class.java)
-  private val names = mock(CollectionReference::class.java)
-  private val entry = mock(DocumentReference::class.java)
-  private val users = mock(CollectionReference::class.java)
-  private val profile = mock(DocumentReference::class.java)
+  private val firestore = mock(FirebaseFirestore::class.java, RETURNS_DEEP_STUBS)
+  private val home = firestore.collection("households").document("home")
+  private val entry = home.collection("memberNames").document("owner")
+  private val profile = firestore.collection("users").document("owner")
   private val snapshot = mock(DocumentSnapshot::class.java)
   private val repository = FirebaseMemberNameRepository(firestore)
+  private val denied = FirebaseFirestoreException("Denied", PERMISSION_DENIED)
 
   @Before
   fun setup() {
-    `when`(firestore.collection("households")).thenReturn(households)
-    `when`(households.document("home")).thenReturn(home)
-    `when`(home.collection("memberNames")).thenReturn(names)
-    `when`(names.document("owner")).thenReturn(entry)
-    `when`(firestore.collection("users")).thenReturn(users)
-    `when`(users.document("owner")).thenReturn(profile)
+    clearInvocations(firestore)
     `when`(profile.get()).thenReturn(Tasks.forResult(snapshot))
     `when`(entry.set(mapOf("displayName" to "Alice Smith"))).thenReturn(Tasks.forResult(null))
     `when`(entry.delete()).thenReturn(Tasks.forResult(null))
   }
+
+  private suspend fun publish(name: String? = null) =
+      repository.publishOwnName("home", "owner", name)
+
+  private suspend fun queue(name: String? = null) = repository.queueOwnName("home", "owner", name)
 
   @Test
   fun namesAreBoundedNormalizedAndNeverFallBackToEmail() {
@@ -53,7 +52,7 @@ class MemberNameRepositoryTest {
 
   @Test
   fun authNamePublishesOnlyNameAndNeverReadsPrivateProfile() = runTest {
-    repository.publishOwnName("home", "owner", " Alice  Smith ")
+    publish(" Alice  Smith ")
     verify(entry).set(mapOf("displayName" to "Alice Smith"))
     verify(firestore, never()).collection("users")
   }
@@ -61,7 +60,7 @@ class MemberNameRepositoryTest {
   @Test
   fun existingPrivateProfileNameIsSupportedWithoutReadingEmail() = runTest {
     `when`(snapshot.get("displayName")).thenReturn(" Alice Smith ")
-    repository.publishOwnName("home", "owner", null)
+    publish(null)
     verify(snapshot).get("displayName")
     verifyNoMoreInteractions(snapshot)
     verify(entry).set(mapOf("displayName" to "Alice Smith"))
@@ -70,7 +69,7 @@ class MemberNameRepositoryTest {
   @Test
   fun missingNameClearsStaleDirectoryNameRatherThanPublishingEmail() = runTest {
     `when`(snapshot.get("displayName")).thenReturn("email@example.com")
-    repository.publishOwnName("home", "owner", "email@example.com")
+    publish("email@example.com")
     verify(entry).delete()
     verify(snapshot).get("displayName")
     verifyNoMoreInteractions(snapshot)
@@ -78,57 +77,21 @@ class MemberNameRepositoryTest {
 
   @Test
   fun namesAreQueriedPerMemberBatchAndListenersCloseWithTheirCollector() = runTest {
-    val members = (0..11).map { if (it == 0) "owner" else "member-$it" }.sorted()
-    val metadata = mock(SnapshotMetadata::class.java)
-    val household = mock(DocumentSnapshot::class.java)
-    `when`(household.metadata).thenReturn(metadata)
-    `when`(household.get("memberIds")).thenReturn(members)
-    `when`(household.getString("type")).thenReturn("SHARED")
-    val registration = mock(ListenerRegistration::class.java)
-    lateinit var membership: EventListener<DocumentSnapshot>
-    `when`(
-            home.addSnapshotListener(
-                eq(MetadataChanges.INCLUDE), any<EventListener<DocumentSnapshot>>()))
-        .thenAnswer {
-          membership = it.getArgument(1)
-          membership.onEvent(household, null)
-          registration
-        }
-    val queries =
-        members.chunked(10).map { ids ->
-          val query = mock(Query::class.java)
-          val result = mock(QuerySnapshot::class.java)
-          val listener = mock(ListenerRegistration::class.java)
-          val documents =
-              ids.map { id ->
-                mock(DocumentSnapshot::class.java).also {
-                  `when`(it.id).thenReturn(id)
-                  `when`(it.get("displayName")).thenReturn("Name $id")
-                }
-              }
-          `when`(result.documents).thenReturn(documents)
-          `when`(result.metadata).thenReturn(metadata)
-          `when`(names.whereIn(FieldPath.documentId(), ids)).thenReturn(query)
-          `when`(
-                  query.addSnapshotListener(
-                      eq(MetadataChanges.INCLUDE), any<EventListener<QuerySnapshot>>()))
-              .thenAnswer {
-                it.getArgument<EventListener<QuerySnapshot>>(1).onEvent(result, null)
-                listener
-              }
-          Triple(ids, query, listener)
-        }
-    var resolved = emptyMap<String, String>()
-    val collector = launch { repository.observeNames("home", "owner").collect { resolved = it } }
-    runCurrent()
-    assertEquals(12, resolved.size)
-    membership.onEvent(household, null)
-    runCurrent()
-    queries.forEach { (ids, _, _) -> verify(names).whereIn(FieldPath.documentId(), ids) }
-    collector.cancel()
-    runCurrent()
-    verify(registration).remove()
-    queries.forEach { (_, _, listener) -> verify(listener).remove() }
+    with(MemberNameObservationFixture()) {
+      val ids = (0..11).map { if (it == 0) "owner" else "member-$it" }.sorted()
+      val requests = ids.chunked(10).map { batch(*it.toTypedArray()) }
+      val collector = start()
+      emitMembership(household(ids))
+      requests.forEach { request ->
+        request.emit(*request.ids.map { it to "Name $it" }.toTypedArray())
+      }
+      assertEquals(12, emissions.last().size)
+      emitMembership(household(ids))
+      requests.forEach { verify(directory).whereIn(FieldPath.documentId(), it.ids) }
+      stop(collector)
+      verify(householdRegistration).remove()
+      requests.forEach { verify(it.registration).remove() }
+    }
   }
 
   @Test
@@ -154,7 +117,7 @@ class MemberNameRepositoryTest {
   fun legacyProfilesWithoutStringNamesClearTheEntryWithoutReadingOtherFields() = runTest {
     for (raw in listOf(null, 7, "  ")) {
       `when`(snapshot.get("displayName")).thenReturn(raw)
-      repository.publishOwnName("home", "owner", null)
+      publish(null)
     }
     verify(entry, times(3)).delete()
     verify(snapshot, times(3)).get("displayName")
@@ -164,11 +127,8 @@ class MemberNameRepositoryTest {
 
   @Test
   fun aFailedPrivateProfileReadIsPropagatedWithoutPublishingAnything() = runTest {
-    val denied =
-        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
     `when`(profile.get()).thenReturn(Tasks.forException(denied))
-    assertSame(
-        denied, runCatching { repository.publishOwnName("home", "owner", null) }.exceptionOrNull())
+    assertSame(denied, runCatching { publish(null) }.exceptionOrNull())
     verifyNoInteractions(entry)
   }
 
@@ -176,7 +136,7 @@ class MemberNameRepositoryTest {
   fun cancellingProfileLookupPreventsALaterPublication() = runTest {
     val pending = TaskCompletionSource<DocumentSnapshot>()
     `when`(profile.get()).thenReturn(pending.task)
-    val publication = launch { repository.publishOwnName("home", "owner", null) }
+    val publication = launch { publish(null) }
     runCurrent()
     publication.cancel()
     runCurrent()
@@ -188,31 +148,64 @@ class MemberNameRepositoryTest {
   }
 
   @Test
-  fun publicationWaitsForAcknowledgmentAndPropagatesWriteDenial() = runTest {
+  fun publicationQueuesOfflineAndReportsLaterServerDenial() = runTest {
     val pending = TaskCompletionSource<Void>()
     `when`(entry.set(mapOf("displayName" to "Alice Smith"))).thenReturn(pending.task)
-    var failure: Throwable? = null
-    val publication = launch {
-      failure =
-          runCatching { repository.publishOwnName("home", "owner", "Alice Smith") }
-              .exceptionOrNull()
-    }
-    runCurrent()
-    assertTrue(publication.isActive)
-    val denied =
-        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    publish("Alice Smith") // Compatibility caller also returns.
+    val acknowledgement = queue("Alice Smith")
+    assertFalse(acknowledgement.isCompleted)
     pending.setException(denied)
-    runCurrent()
-    assertTrue(publication.isCompleted)
-    assertSame(denied, failure)
+    assertSame(denied, acknowledgement.await().exceptionOrNull())
+  }
+
+  @Test
+  fun pendingSetAndDeleteConfirmAfterReconnectionWithoutLeakingAwaiters() = runTest {
+    for (name in listOf("Alice Smith", null)) {
+      val pending = TaskCompletionSource<Void>()
+      `when`(entry.set(mapOf("displayName" to "Alice Smith"))).thenReturn(pending.task)
+      `when`(entry.delete()).thenReturn(pending.task)
+      val acknowledgement = repository.queueOwnName("home", "owner", name)
+      val waiter = launch { acknowledgement.await() }
+      runCurrent()
+      waiter.cancelAndJoin()
+      assertFalse(acknowledgement.isCancelled)
+      pending.setResult(null)
+      assertTrue(acknowledgement.await().isSuccess)
+    }
+  }
+
+  @Test
+  fun rejectedOrCancelledSubmissionsAreNeverReportedAsConfirmed() = runTest {
+    val denied = IllegalStateException("Submission failed")
+    `when`(entry.delete()).thenThrow(denied)
+    assertSame(denied, runCatching { queue(null) }.exceptionOrNull())
+    `when`(entry.set(mapOf("displayName" to "Alice Smith"))).thenReturn(Tasks.forCanceled())
+    assertTrue(runCatching { queue("Alice Smith") }.exceptionOrNull() is IllegalStateException)
+  }
+
+  @Test
+  fun legacyImplementationsRemainCompatibleWithTheQueuedEntryPoint() = runTest {
+    var called = false
+    val legacy =
+        object : MemberNameRepository {
+          override fun observeNames(householdId: String, viewerId: String) =
+              kotlinx.coroutines.flow.emptyFlow<Map<String, String>>()
+
+          override suspend fun publishOwnName(
+              householdId: String,
+              userId: String,
+              authName: String?
+          ) {
+            called = true
+          }
+        }
+    assertTrue(legacy.queueOwnName("home", "owner", "Alice").await().isSuccess)
+    assertTrue(called)
   }
 
   @Test
   fun failedRemovalOfAStaleNameIsNotReportedAsSuccess() = runTest {
-    val denied =
-        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
     `when`(entry.delete()).thenReturn(Tasks.forException(denied))
-    assertSame(
-        denied, runCatching { repository.publishOwnName("home", "owner", null) }.exceptionOrNull())
+    assertSame(denied, runCatching { publish(null) }.exceptionOrNull())
   }
 }
