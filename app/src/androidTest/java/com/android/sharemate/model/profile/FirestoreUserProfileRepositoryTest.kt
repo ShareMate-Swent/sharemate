@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import androidx.test.core.app.ApplicationProvider
@@ -227,6 +228,20 @@ class FirestoreUserProfileRepositoryTest {
     assertDenied(profileReference(userId).delete())
   }
 
+  @Test
+  fun profileDisplayNameLengthIsLimitedOnCreateAndUpdate() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val profile = profileReference(userId)
+    val maxName = "😀".repeat(MAX_DISPLAY_NAME_LENGTH)
+    val tooLong = "x".repeat(MAX_DISPLAY_NAME_LENGTH + 1)
+
+    assertDenied(profile.set(mapOf("displayName" to tooLong)))
+    Tasks.await(profile.set(mapOf("displayName" to maxName)))
+    assertDenied(profile.update("displayName", tooLong))
+    assertDenied(profile.update("displayName", "😀".repeat(MAX_DISPLAY_NAME_LENGTH + 1)))
+    Tasks.await(profile.update("displayName", "x"))
+  }
+
   /** Creates a household whose creator saved a profile, leaving the creator signed in. */
   private fun createHouseholdWithProfile(alias: String): Household = runBlocking {
     val creatorId = FirebaseEmulator.signInAs(alias)
@@ -268,6 +283,7 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   private companion object {
+    const val MAX_DISPLAY_NAME_LENGTH = 40
     const val TIMEOUT = 10_000L
   }
 }

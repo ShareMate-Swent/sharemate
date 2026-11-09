@@ -49,6 +49,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
@@ -98,7 +99,8 @@ open class MainActivity : ComponentActivity() {
   private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
 
   private val authRepository: AuthRepository by lazy {
-    FirebaseAuthRepository(FirebaseAuth.getInstance())
+    FirebaseAuthRepository(
+        FirebaseAuth.getInstance(), FirestorePseudoRepository(FirebaseFirestore.getInstance()))
   }
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())

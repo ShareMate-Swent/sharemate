@@ -3,7 +3,9 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.utils
 
+import android.content.Context
 import android.os.Looper
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
@@ -103,6 +105,20 @@ object FirebaseEmulator {
     }
   }
 
+  /** Creates a separately authenticated emulator client for concurrency tests. */
+  fun newSignedInApp(alias: String): SignedInApp {
+    val app =
+        FirebaseApp.initializeApp(
+            ApplicationProvider.getApplicationContext<Context>(),
+            FirebaseApp.getInstance().options,
+            "pseudo-claim-$alias-${System.nanoTime()}")
+    val auth = FirebaseAuth.getInstance(app).apply { useEmulator(HOST, AUTH_PORT) }
+    val firestore = FirebaseFirestore.getInstance(app).apply { useEmulator(HOST, FIRESTORE_PORT) }
+    val user =
+        Tasks.await(auth.createUserWithEmailAndPassword("$alias@example.com", TEST_PASSWORD)).user!!
+    return SignedInApp(app, user.uid, firestore)
+  }
+
   /** Signs out and deletes every account and document stored in the emulators. */
   fun clear() {
     auth
@@ -125,4 +141,14 @@ object FirebaseEmulator {
       connection.disconnect()
     }
   }
+
+  /** A secondary Firebase app and user used to verify cross-client claim races. */
+  data class SignedInApp(
+      /** The separately initialized Firebase app. */
+      val app: FirebaseApp,
+      /** The UID authenticated in [app]. */
+      val uid: String,
+      /** Firestore client authenticated as [uid]. */
+      val firestore: FirebaseFirestore,
+  )
 }

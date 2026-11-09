@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.material3.MaterialTheme
@@ -8,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -27,6 +29,7 @@ class AuthScreenTest {
         AuthScreen(
             state,
             onEmailChange = { state = state.copy(email = it) },
+            onPseudoChange = { state = state.copy(pseudo = it) },
             onPasswordChange = { state = state.copy(password = it) },
             onConfirmPasswordChange = { state = state.copy(confirmPassword = it) },
             onSubmit = { submissions++ },
@@ -47,8 +50,33 @@ class AuthScreenTest {
       assertEquals(2, submissions)
     }
     compose.onNodeWithTag("auth_switch_mode").performScrollTo().performClick()
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
-    compose.runOnIdle { assertEquals("secret", state.confirmPassword) }
+    compose.runOnIdle {
+      assertEquals("Student", state.pseudo)
+      assertEquals("secret", state.confirmPassword)
+    }
+  }
+
+  @Test
+  fun pendingPseudoFlowShowsOnlyEditableNameAndRetryAction() {
+    val state =
+        AuthUiState(
+            isRestoringSession = false,
+            session = com.android.sharemate.model.auth.AuthSession("user", "user@example.org"),
+            pseudo = "Taken",
+            pendingProfileUpdate = PendingProfileUpdate("user", "Taken"),
+            error = AuthUiError.PSEUDO_TAKEN)
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
+
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsEnabled()
+    compose.onNodeWithTag("auth_email").assertDoesNotExist()
+    compose.onNodeWithTag("auth_password").assertDoesNotExist()
+    compose.onNodeWithTag("auth_confirm_password").assertDoesNotExist()
+    compose.onNodeWithTag("auth_submit").assertTextEquals("Save pseudo and continue")
+    compose
+        .onNodeWithTag("auth_error")
+        .assertTextEquals("That pseudo is already in use. Choose another one.")
   }
 
   @Test
@@ -59,6 +87,7 @@ class AuthScreenTest {
         AuthScreen(
             state,
             onEmailChange = {},
+            onPseudoChange = {},
             onPasswordChange = { state = state.copy(password = it) },
             onConfirmPasswordChange = {},
             onSubmit = {},
@@ -86,7 +115,8 @@ class AuthScreenTest {
   fun loadingDisablesActionsAndShowsFeedback() {
     compose.setContent {
       AuthScreen(
-          AuthUiState(isLoading = true, isRestoringSession = false),
+          AuthUiState(mode = AuthMode.SIGN_UP, isLoading = true, isRestoringSession = false),
+          {},
           {},
           {},
           {},
@@ -99,13 +129,15 @@ class AuthScreenTest {
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
     compose.onNodeWithTag("auth_email").assertIsNotEnabled()
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsNotEnabled()
     compose.onNodeWithTag("auth_password").assertIsNotEnabled()
+    compose.onNodeWithTag("auth_confirm_password").assertIsNotEnabled()
   }
 
   @Test
   fun restoringSessionShowsProgressAndDisablesSubmit() {
     var state by mutableStateOf(AuthUiState())
-    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
     compose.onNodeWithTag("auth_loading").assertExists()
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.runOnIdle { state = state.copy(isLoading = true) }
@@ -119,10 +151,14 @@ class AuthScreenTest {
   @Test
   fun validationAndProviderFailuresDisplaySafeActionableFeedback() {
     var state by mutableStateOf(AuthUiState(isRestoringSession = false))
-    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}) }
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
     val feedback =
         mapOf(
             AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
+            AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
+            AuthUiError.PSEUDO_TAKEN to "That pseudo is already in use. Choose another one.",
+            AuthUiError.PSEUDO_TOO_LONG to
+                "Use $MAX_PSEUDO_LENGTH characters or fewer for your pseudo.",
             AuthUiError.PASSWORD_REQUIRED to "Enter your password.",
             AuthUiError.WEAK_PASSWORD to "Choose a stronger password with at least 6 characters.",
             AuthUiError.PASSWORD_MISMATCH to "The passwords do not match.",

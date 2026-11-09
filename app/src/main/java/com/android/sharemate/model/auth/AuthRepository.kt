@@ -22,7 +22,7 @@ enum class SignInProvider {
  *
  * @property uid Unique user identifier.
  * @property email Account email, if the provider shares one.
- * @property displayName Account name, e.g. from the Google profile; null for email accounts.
+ * @property displayName Account name, from Google or selected during email sign-up.
  * @property photoUrl Account photo URL, e.g. from the Google profile; null if there is none.
  * @property provider Sign-in method linked to the account; see [SignInProvider].
  */
@@ -43,6 +43,8 @@ enum class AuthError {
   NETWORK,
   TOO_MANY_REQUESTS,
   PROVIDER_DISABLED,
+  /** Another account already owns this normalized pseudo. */
+  PSEUDO_TAKEN,
   GOOGLE_UNAVAILABLE,
   ACCOUNT_CONFLICT,
   UNKNOWN
@@ -57,7 +59,19 @@ interface AuthRepository {
 
   suspend fun signIn(email: String, password: String)
 
-  suspend fun signUp(email: String, password: String)
+  /** Creates an email account with its public display name. */
+  suspend fun signUp(email: String, password: String, displayName: String)
+
+  /**
+   * Updates the display name for the expected signed-in user without creating an account.
+   *
+   * Call this to retry the profile step when [signUp] created an account but its profile update
+   * failed. Implementations must reject the update if the current user no longer has [expectedUid].
+   * Implementations that do not support profile updates fail with a safe domain error.
+   */
+  suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+    throw AuthException(AuthError.UNKNOWN)
+  }
 
   /** Exchanges a Google ID token without storing it. */
   suspend fun signInWithGoogle(idToken: String)

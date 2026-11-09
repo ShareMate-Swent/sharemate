@@ -67,8 +67,12 @@ service cloud.firestore {
 
       // The email, when present, must be the signed-in account's own address.
       function isValidProfile(data) {
+        let maxPseudoLength = 40;
         return data.keys().hasOnly(['displayName', 'photoUrl', 'email'])
             && optionalString(data, 'displayName')
+            // Regex counts Unicode code points; size() counts UTF-16 code units.
+            && (data.get('displayName', null) == null
+                || data.displayName.matches('(?s).{0,' + string(maxPseudoLength) + '}'))
             && optionalString(data, 'photoUrl')
             && optionalString(data, 'email')
             && (!('email' in data) || data.email == null
@@ -81,6 +85,23 @@ service cloud.firestore {
           && request.auth.uid == userId
           && isValidProfile(request.resource.data);
       allow delete: if false;
+    }
+
+    // Pseudo claims are addressed by a normalized-name hash and cannot be enumerated.
+    match /pseudoClaims/{claimId} {
+      function ownsExistingClaim() {
+        return resource.data.get('uid', null) == request.auth.uid
+            || request.auth.uid in resource.data.get('legacyUids', []);
+      }
+
+      allow get: if signedIn()
+          && (!exists(documentPath('pseudoClaims', claimId)) || ownsExistingClaim());
+      allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid'])
+          && request.resource.data.uid == request.auth.uid
+          && !exists(documentPath('pseudoClaims', claimId));
+      allow list, update: if false;
+      allow delete: if signedIn() && resource.data.get('uid', null) == request.auth.uid;
     }
 
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.
