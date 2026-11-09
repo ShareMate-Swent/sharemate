@@ -31,8 +31,8 @@ object StagedItemEditTestTags {
 }
 
 /**
- * Dialog to edit the name, quantity and price of one staged item. It only shows [draft] and reports
- * what the user does; the ViewModel validates the values when [onSave] is called.
+ * Dialog to add or edit the name, quantity and price of a staged item. It only shows [draft] and
+ * reports what the user does; the ViewModel validates the values when [onSave] is called.
  */
 @Composable
 fun StagedItemEditDialog(
@@ -46,7 +46,11 @@ fun StagedItemEditDialog(
   AlertDialog(
       modifier = Modifier.testTag(StagedItemEditTestTags.DIALOG),
       onDismissRequest = onCancel,
-      title = { Text(stringResource(R.string.fridge_edit_item)) },
+      title = {
+        Text(
+            stringResource(
+                if (draft.itemId == null) R.string.staging_add_item else R.string.fridge_edit_item))
+      },
       text = {
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),

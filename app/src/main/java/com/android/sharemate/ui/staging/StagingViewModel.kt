@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import com.android.sharemate.model.staging.PriceInput
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,21 +18,21 @@ enum class StagedItemError {
   INVALID_PRICE,
 }
 
-/** Values typed in the edit dialog, kept as text until they are validated. */
+/** Values typed in the item dialog. A null [itemId] identifies a new row. */
 data class StagedItemDraft(
-    val itemId: String,
+    val itemId: String?,
     val name: String,
     val quantity: String,
     val price: String,
     val error: StagedItemError? = null,
 )
 
-/** State of the staging screen: the items and, while editing, the open draft. */
+/** State of the staging screen: the items and any open draft. */
 data class StagingUiState(
     val items: List<StagedItem> = emptyList(),
     val draft: StagedItemDraft? = null,
 ) {
-  /** The list can be confirmed when it has items and no edit is in progress. */
+  /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
     get() = items.isNotEmpty() && draft == null
 }
@@ -49,6 +50,16 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
 
   private val mutableState = MutableStateFlow(StagingUiState(items = initialItems))
   val state: StateFlow<StagingUiState> = mutableState.asStateFlow()
+
+  /** Opens a blank draft with the default quantity, leaving the current list unchanged. */
+  fun startAdding() {
+    mutableState.update {
+      it.copy(
+          draft =
+              StagedItemDraft(
+                  itemId = null, name = "", quantity = DEFAULT_ADD_QUANTITY, price = ""))
+    }
+  }
 
   /** Opens the edit dialog for [itemId] with its current values. */
   fun startEditing(itemId: String) {
@@ -76,33 +87,35 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state -> state.draft?.let { state.copy(draft = update(it)) } ?: state }
   }
 
-  /** Applies the draft when every value is valid; otherwise keeps it open with an error. */
+  /** Adds or edits a row when the draft is valid; otherwise keeps it open with an error. */
   fun saveDraft() {
-    val draft = state.value.draft ?: return
-    val name = draft.name.trim()
-    val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
-    val price = Prices.parse(draft.price)
-    if (name.isEmpty()) return updateDraftError(StagedItemError.NAME_REQUIRED)
-    if (quantity == null) return updateDraftError(StagedItemError.INVALID_QUANTITY)
-    if (price == PriceInput.Invalid) return updateDraftError(StagedItemError.INVALID_PRICE)
-    val priceCents = (price as? PriceInput.Valid)?.cents
     mutableState.update { state ->
-      state.copy(
-          items =
-              state.items.map { item ->
-                if (item.id == draft.itemId) {
-                  item.copy(name = name, quantity = quantity, priceCents = priceCents)
-                } else {
-                  item
-                }
-              },
-          draft = null)
+      val draft = state.draft ?: return@update state
+      val name = draft.name.trim()
+      val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
+      val price = Prices.parse(draft.price)
+      val error =
+          when {
+            name.isEmpty() -> StagedItemError.NAME_REQUIRED
+            quantity == null -> StagedItemError.INVALID_QUANTITY
+            price == PriceInput.Invalid -> StagedItemError.INVALID_PRICE
+            else -> null
+          }
+      if (error != null) return@update state.copy(draft = draft.copy(error = error))
+      val updated =
+          StagedItem(
+              id = draft.itemId ?: UUID.randomUUID().toString(),
+              name = name,
+              quantity = checkNotNull(quantity),
+              priceCents = (price as? PriceInput.Valid)?.cents)
+      val items =
+          if (draft.itemId == null) state.items + updated
+          else state.items.map { if (it.id == updated.id) updated else it }
+      state.copy(items = items, draft = null)
     }
   }
 
-  private fun updateDraftError(error: StagedItemError) = updateDraft { it.copy(error = error) }
-
-  /** Closes the edit dialog without changing the item. */
+  /** Closes the item dialog without changing the list. */
   fun cancelEditing() {
     mutableState.update { it.copy(draft = null) }
   }
@@ -119,3 +132,5 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
   /** The final list to save, or null when it cannot be confirmed yet. */
   fun confirmedItems(): List<StagedItem>? = state.value.takeIf { it.canConfirm }?.items
 }
+
+private const val DEFAULT_ADD_QUANTITY = "1"

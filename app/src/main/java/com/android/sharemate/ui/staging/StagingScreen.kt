@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -48,6 +49,7 @@ object StagingTestTags {
   const val LIST = "staging_list"
   const val EMPTY = "staging_empty"
   const val CONFIRM = "staging_confirm"
+  const val ADD = "staging_add"
 
   fun item(id: String) = "staging_item_$id"
 
@@ -75,17 +77,20 @@ fun StagingScreen(
       onBack = onBack,
       actionsEnabled = actionsEnabled,
       statusContent = statusContent,
+      onAddItem = viewModel::startAdding,
   )
-  state.draft?.let { draft ->
-    StagedItemEditDialog(
-        draft = draft,
-        onNameChange = viewModel::updateDraftName,
-        onQuantityChange = viewModel::updateDraftQuantity,
-        onPriceChange = viewModel::updateDraftPrice,
-        onSave = viewModel::saveDraft,
-        onCancel = viewModel::cancelEditing,
-    )
-  }
+  state.draft
+      ?.takeIf { actionsEnabled }
+      ?.let { draft ->
+        StagedItemEditDialog(
+            draft = draft,
+            onNameChange = viewModel::updateDraftName,
+            onQuantityChange = viewModel::updateDraftQuantity,
+            onPriceChange = viewModel::updateDraftPrice,
+            onSave = viewModel::saveDraft,
+            onCancel = viewModel::cancelEditing,
+        )
+      }
 }
 
 /** Stateless content of [StagingScreen], so it can be tested and previewed with any state. */
@@ -98,6 +103,7 @@ fun StagingContent(
     onBack: () -> Unit,
     actionsEnabled: Boolean = true,
     statusContent: @Composable () -> Unit = {},
+    onAddItem: (() -> Unit)? = null,
 ) {
   Column(
       modifier =
@@ -111,6 +117,17 @@ fun StagingContent(
         title = stringResource(R.string.staging_title),
         onBack = onBack,
         backTestTag = StagingTestTags.BACK,
+        actions = {
+          if (onAddItem != null) {
+            TextButton(
+                onClick = onAddItem,
+                enabled = actionsEnabled,
+                modifier = Modifier.testTag(StagingTestTags.ADD),
+            ) {
+              Text(stringResource(R.string.staging_add_item))
+            }
+          }
+        },
     )
     Box(Modifier.weight(1f).fillMaxWidth()) {
       LazyColumn(
