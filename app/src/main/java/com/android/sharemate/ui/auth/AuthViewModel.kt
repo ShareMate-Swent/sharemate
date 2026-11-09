@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -7,6 +8,9 @@ import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.user.PseudoValidationError
+import com.android.sharemate.model.user.trimPseudoPadding
+import com.android.sharemate.model.user.validatePseudo as validateModelPseudo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -294,48 +298,8 @@ internal fun AuthUiState.withDisplayNameForUid(uid: String, displayName: String)
 
 /** Returns the validation error for a sign-up pseudo, or null when it is acceptable. */
 internal fun validatePseudo(pseudo: String): AuthUiError? =
-    when {
-      !pseudo.hasVisiblePseudoCharacter() -> AuthUiError.PSEUDO_REQUIRED
-      pseudo.codePointCount(0, pseudo.length) > MAX_PSEUDO_LENGTH -> AuthUiError.PSEUDO_TOO_LONG
-      else -> null
+    when (validateModelPseudo(pseudo)) {
+      PseudoValidationError.REQUIRED -> AuthUiError.PSEUDO_REQUIRED
+      PseudoValidationError.TOO_LONG -> AuthUiError.PSEUDO_TOO_LONG
+      null -> null
     }
-
-private fun String.hasVisiblePseudoCharacter(): Boolean {
-  var index = 0
-  while (index < length) {
-    val codePoint = codePointAt(index)
-    if (!codePoint.isInvisiblePseudoCharacter()) return true
-    index += Character.charCount(codePoint)
-  }
-  return false
-}
-
-private fun String.trimPseudoPadding(): String {
-  var start = 0
-  var end = length
-  while (start < end) {
-    val codePoint = codePointAt(start)
-    if (!codePoint.isInvisiblePseudoCharacter()) break
-    start += Character.charCount(codePoint)
-  }
-  while (end > start) {
-    val codePoint = codePointBefore(end)
-    if (!codePoint.isInvisiblePseudoCharacter()) break
-    end -= Character.charCount(codePoint)
-  }
-  return substring(start, end)
-}
-
-private fun Int.isInvisiblePseudoCharacter(): Boolean {
-  val category = Character.getType(this).toInt()
-  return Character.isWhitespace(this) ||
-      Character.isSpaceChar(this) ||
-      category == Character.FORMAT.toInt() ||
-      category == Character.CONTROL.toInt() ||
-      category == Character.NON_SPACING_MARK.toInt() ||
-      category == Character.ENCLOSING_MARK.toInt() ||
-      category == Character.LINE_SEPARATOR.toInt() ||
-      category == Character.PARAGRAPH_SEPARATOR.toInt()
-}
-
-private const val MAX_PSEUDO_LENGTH = 40

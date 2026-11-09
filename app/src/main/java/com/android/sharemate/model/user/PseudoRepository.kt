@@ -15,8 +15,10 @@ interface PseudoRepository {
   suspend fun getPseudo(userId: String): String?
 
   /**
-   * Saves the trimmed, non-blank [pseudo] as the public profile's display name, preserving its
-   * other fields. Account creation and settings should use this method.
+   * Saves the [pseudo] after removing invisible padding, preserving the profile's other fields. The
+   * result must contain a visible character and at most 40 Unicode code points.
+   *
+   * @throws IllegalArgumentException if the pseudo is invalid.
    */
   suspend fun setPseudo(userId: String, pseudo: String)
 }

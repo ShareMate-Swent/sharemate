@@ -96,6 +96,21 @@ class FirebasePseudoRepositoryTest {
   }
 
   @Test
+  fun validatesPseudoBoundariesBeforeWriting() = runTest {
+    for (value in listOf("", "\u200B\u0301", "x".repeat(MAX_PSEUDO_LENGTH + 1))) {
+      assertTrue(
+          runCatching { repository.setPseudo("alice", value) }.exceptionOrNull()
+              is IllegalArgumentException)
+    }
+    assertTrue(writes.isEmpty())
+
+    repository.setPseudo("alice", "\u200Bx\u00A0")
+    repository.setPseudo("alice", "😀".repeat(MAX_PSEUDO_LENGTH))
+    assertEquals(mapOf("displayName" to "x"), writes[0].second)
+    assertEquals(mapOf("displayName" to "😀".repeat(MAX_PSEUDO_LENGTH)), writes[1].second)
+  }
+
+  @Test
   fun observesUpdatesAndRemovesListenerOnCancellation() = runTest {
     val results = mutableListOf<Map<String, String>>()
     val job =

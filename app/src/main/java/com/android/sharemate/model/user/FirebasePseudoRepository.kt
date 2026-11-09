@@ -47,8 +47,10 @@ class FirebasePseudoRepository(private val firestore: FirebaseFirestore) : Pseud
       document(userId).get().await().toPseudo()
 
   override suspend fun setPseudo(userId: String, pseudo: String) {
-    val value = pseudo.trim()
-    require(value.isNotEmpty()) { "A pseudo must not be blank" }
+    val value = pseudo.trimPseudoPadding()
+    require(validatePseudo(value) == null) {
+      "A pseudo must contain a visible character and at most $MAX_PSEUDO_LENGTH code points"
+    }
     document(userId).set(mapOf(UserProfileFields.DISPLAY_NAME to value), SetOptions.merge()).await()
   }
 
