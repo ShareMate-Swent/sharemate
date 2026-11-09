@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -153,6 +154,7 @@ class InventorySaveFlowTest {
         .performClick()
     compose.onNodeWithText("Corrected milk").assertExists()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(StagingTestTags.ADD).assertIsDisplayed().assertIsNotEnabled()
     compose.runOnIdle { status.value = InventorySubmissionStatus.MISSING }
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
     compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
@@ -196,7 +198,7 @@ class InventorySaveFlowTest {
   }
 
   @Test
-  fun scannedReceiptSavesOnlyReviewedCorrectionsAndWaitsForServerSuccess() {
+  fun scannedReceiptSavesReviewedCorrectionsAndManualItemsAndWaitsForServerSuccess() {
     val context = compose.activity
     val file = File.createTempFile("inventory-receipt", ".png", context.cacheDir)
     try {
@@ -250,13 +252,38 @@ class InventorySaveFlowTest {
       compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("7.20")
       compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
       compose.onNodeWithTag(StagingTestTags.delete("1")).performClick()
+
+      val addButton =
+          compose
+              .onNodeWithTag(StagingTestTags.ADD)
+              .assertIsDisplayed()
+              .assertTextEquals(context.getString(R.string.staging_add_item))
+      val titleBounds =
+          compose
+              .onNodeWithText(context.getString(R.string.staging_title))
+              .fetchSemanticsNode()
+              .boundsInRoot
+      val addBounds = addButton.fetchSemanticsNode().boundsInRoot
+      assertTrue(addBounds.center.x > titleBounds.center.x)
+      assertTrue(addBounds.top < titleBounds.bottom && titleBounds.top < addBounds.bottom)
+      addButton.performClick()
+      compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Coffee")
+      compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("2")
+      compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("4.60")
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+      compose.onNodeWithText("Coffee").assertIsDisplayed()
+
       compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
       compose.onNodeWithText(context.getString(R.string.inventory_save_pending)).assertIsDisplayed()
       compose
           .onNodeWithText(context.getString(R.string.inventory_save_success))
           .assertDoesNotExist()
       val captured = repository.calls.single()
-      assertEquals(listOf(StagedItem("0", "Oat milk", 3, 720)), captured.items)
+      assertEquals(2, captured.items.size)
+      val added = captured.items.last()
+      assertEquals(
+          listOf(StagedItem("0", "Oat milk", 3, 720), StagedItem(added.id, "Coffee", 2, 460)),
+          captured.items)
       assertEquals(captured, store.retained)
       compose.runOnIdle { ack.complete(Result.success(Unit)) }
       compose.onNodeWithText(context.getString(R.string.inventory_save_success)).assertIsDisplayed()
