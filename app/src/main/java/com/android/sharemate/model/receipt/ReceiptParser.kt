@@ -201,7 +201,7 @@ internal object ReceiptParser {
     val rowTotal = totals.singleOrNull()?.cents()
     val price =
         when {
-          totals.size == 1 && amounts.size <= 2 && unitAmounts.size <= 1 -> rowTotal
+          totals.size == 1 && unitAmounts.size <= 1 -> rowTotal
           totals.isEmpty() && unitAmounts.size == 1 && quantity != null ->
               unitAmounts.single().cents()?.times(quantity)
           else -> null
