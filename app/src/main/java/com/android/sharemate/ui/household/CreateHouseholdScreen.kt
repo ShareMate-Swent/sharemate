@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,10 +106,15 @@ fun CreateHouseholdScreen(
   }
 }
 
-/** Top bar shared by the household form screens: a back arrow and a centered title. */
+/** Shared top bar with a back arrow, centered title and optional trailing [actions]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HouseholdTopBar(title: String, onBack: () -> Unit, backTestTag: String) {
+internal fun HouseholdTopBar(
+    title: String,
+    onBack: () -> Unit,
+    backTestTag: String,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
   CenterAlignedTopAppBar(
       title = { Text(title) },
       navigationIcon = {
@@ -119,6 +125,7 @@ internal fun HouseholdTopBar(title: String, onBack: () -> Unit, backTestTag: Str
           )
         }
       },
+      actions = actions,
       colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent),
       windowInsets = WindowInsets(0),
   )
