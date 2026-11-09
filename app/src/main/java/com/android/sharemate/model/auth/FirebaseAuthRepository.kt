@@ -37,10 +37,16 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     authenticate {
       val user =
           auth.createUserWithEmailAndPassword(email, password).await().user
-              ?: throw IllegalStateException("Firebase did not return the created user")
-      user
-          .updateProfile(UserProfileChangeRequest.Builder().setDisplayName(displayName).build())
-          .await()
+              ?: throw IllegalStateException(CREATED_USER_MISSING_MESSAGE)
+      user.updateProfile(profileChangeRequest(displayName)).await()
+    }
+  }
+
+  override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+    authenticate {
+      val user = auth.currentUser ?: throw IllegalStateException(NO_SIGNED_IN_USER_MESSAGE)
+      if (user.uid != expectedUid) throw IllegalStateException(SIGNED_IN_USER_CHANGED_MESSAGE)
+      user.updateProfile(profileChangeRequest(displayName)).await()
     }
   }
 
@@ -52,6 +58,9 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
   }
 
   override fun signOut() = auth.signOut()
+
+  private fun profileChangeRequest(displayName: String) =
+      UserProfileChangeRequest.Builder().setDisplayName(displayName).build()
 
   private suspend fun <T> authenticate(action: suspend () -> T): T {
     try {
@@ -68,6 +77,12 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
           }
       throw AuthException(error)
     }
+  }
+
+  private companion object {
+    const val CREATED_USER_MISSING_MESSAGE = "Firebase did not return the created user"
+    const val NO_SIGNED_IN_USER_MESSAGE = "No Firebase user is signed in"
+    const val SIGNED_IN_USER_CHANGED_MESSAGE = "The signed-in Firebase user changed"
   }
 }
 

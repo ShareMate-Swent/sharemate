@@ -117,6 +117,63 @@ class FirebaseAuthRepositoryUnitTest {
       }
 
   @Test
+  fun retryingProfileUpdateChangesExistingUserWithoutCreatingAnotherAccount() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "Student")
+
+        val request = ArgumentCaptor.forClass(UserProfileChangeRequest::class.java)
+        verify(user).updateProfile(request.capture())
+        assertEquals("Student", request.value.displayName)
+        verify(auth, never()).createUserWithEmailAndPassword(anyString(), anyString())
+      }
+
+  @Test
+  fun retryingProfileUpdateMapsFailuresAndRequiresSignedInUser() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.updateCurrentUserDisplayName("uid", "Student")
+          fail("A failed profile update must remain retryable")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+          assertNull(failure.cause)
+        }
+        verify(auth, never()).createUserWithEmailAndPassword(anyString(), anyString())
+
+        `when`(auth.currentUser).thenReturn(null)
+        try {
+          repository.updateCurrentUserDisplayName("uid", "Student")
+          fail("A profile update requires an existing signed-in user")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+        }
+      }
+
+  @Test
+  fun retryingProfileUpdateRejectsAChangedSignedInUser() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+
+        try {
+          repository.updateCurrentUserDisplayName("different-user", "Student")
+          fail("A profile update must not target a different signed-in user")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+        }
+        verify(user, never()).updateProfile(any(UserProfileChangeRequest::class.java))
+      }
+
+  @Test
   fun blankGoogleTokenIsRejectedWithoutCallingFirebase() =
       runBlocking<Unit> {
         try {

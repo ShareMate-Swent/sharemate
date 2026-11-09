@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -137,6 +138,133 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun pseudoValidationRejectsInvisibleOnlyAndOverlongValues() = runTest {
+    ready()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updateConfirmPassword("secret")
+
+    for (pseudo in listOf(" ", "\u200B", "\u00A0\u200D", "\u0301", "\uDB40\uDC01")) {
+      viewModel.updatePseudo(pseudo)
+      viewModel.submit()
+      assertEquals(AuthUiError.PSEUDO_REQUIRED, viewModel.state.value.error)
+      assertTrue(repository.calls.isEmpty())
+    }
+
+    viewModel.updatePseudo("😀".repeat(41))
+    viewModel.submit()
+    assertEquals(AuthUiError.PSEUDO_TOO_LONG, viewModel.state.value.error)
+    assertTrue(repository.calls.isEmpty())
+
+    viewModel.updatePseudo("😀".repeat(40))
+    viewModel.submit()
+    advanceUntilIdle()
+    assertTrue(viewModel.state.value.isLoading)
+    repository.sessions.emit(AuthSession("new-user", "student@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.error)
+    assertEquals("😀".repeat(40), repository.calls.single().pseudo)
+  }
+
+  @Test
+  fun duplicatePseudosAndCaseVariantsAreAllowed() = runTest {
+    ready()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updateConfirmPassword("secret")
+    for ((index, pseudo) in listOf("Alex", "alex").withIndex()) {
+      viewModel.updatePseudo(pseudo)
+      viewModel.submit()
+      advanceUntilIdle()
+      repository.sessions.emit(AuthSession("user-$index", "student@example.org"))
+      advanceUntilIdle()
+      assertEquals(pseudo, viewModel.state.value.session?.displayName)
+      if (index == 0) {
+        viewModel.signOut()
+        advanceUntilIdle()
+        viewModel.selectMode(AuthMode.SIGN_UP)
+        fillLogin()
+        viewModel.updateConfirmPassword("secret")
+      }
+    }
+    assertEquals(listOf("Alex", "alex"), repository.calls.map { it.pseudo })
+  }
+
+  @Test
+  fun partialSignUpRetriesProfileUpdateWithoutRepeatingAccountCreation() = runTest {
+    ready()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updatePseudo("  Student  ")
+    viewModel.updateConfirmPassword("secret")
+    repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+    repository.signUpFailureAfterSession = AuthException(AuthError.NETWORK)
+
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(1, repository.calls.size)
+    assertEquals(listOf("Student"), repository.profileUpdateCalls)
+    assertEquals("Student", viewModel.state.value.session?.displayName)
+    assertFalse(viewModel.state.value.isLoading)
+    assertNull(viewModel.state.value.error)
+  }
+
+  @Test
+  fun failedProfileUpdateKeepsPseudoAndRetriesOnlyProfileStep() = runTest {
+    ready()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updatePseudo("Student")
+    viewModel.updateConfirmPassword("secret")
+    repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+    repository.signUpFailureAfterSession = AuthException(AuthError.NETWORK)
+    repository.profileUpdateFailure = AuthException(AuthError.NETWORK)
+
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(1, repository.calls.size)
+    assertEquals("Student", viewModel.state.value.pseudo)
+    assertEquals(
+        PendingProfileUpdate("new-user", "Student"), viewModel.state.value.pendingProfileUpdate)
+    assertEquals(AuthUiError.NETWORK, viewModel.state.value.error)
+    assertFalse(viewModel.state.value.isLoading)
+
+    repository.profileUpdateFailure = null
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(1, repository.calls.size)
+    assertEquals(listOf("Student", "Student"), repository.profileUpdateCalls)
+    assertNull(viewModel.state.value.pendingProfileUpdate)
+    assertNull(viewModel.state.value.error)
+    assertEquals("Student", viewModel.state.value.session?.displayName)
+  }
+
+  @Test
+  fun failedProfileRetryKeepsPseudoOnTheCurrentSession() = runTest {
+    ready()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updatePseudo("Student")
+    viewModel.updateConfirmPassword("secret")
+    repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+    repository.signUpFailureAfterSession = AuthException(AuthError.NETWORK)
+    repository.profileUpdateFailure = AuthException(AuthError.UNKNOWN)
+
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(listOf("Student"), repository.profileUpdateCalls)
+    assertNull(viewModel.state.value.session?.displayName)
+    assertEquals(
+        PendingProfileUpdate("new-user", "Student"), viewModel.state.value.pendingProfileUpdate)
+    assertEquals(AuthUiError.NETWORK, viewModel.state.value.error)
+    assertFalse(viewModel.state.value.isLoading)
+  }
+
+  @Test
   fun switchingModeClearsPasswordsAndValidationErrors() = runTest {
     ready()
     fillLogin(email = "invalid")
@@ -227,6 +355,40 @@ class AuthViewModelTest {
     repository.sessions.emit(null)
     advanceUntilIdle()
     assertNull(viewModel.state.value.session)
+  }
+
+  @Test
+  fun displayNameMergeKeepsOnlyAValidNameFromTheSameUser() {
+    val observed = AuthSession("user", "user@example.org")
+    assertEquals(
+        "Household",
+        mergeDisplayName(observed.copy(displayName = "Household"), observed).displayName,
+    )
+    assertNull(
+        mergeDisplayName(AuthSession("other", "other@example.org", "Other"), observed).displayName,
+    )
+    assertNull(
+        mergeDisplayName(observed.copy(displayName = " "), observed).displayName,
+    )
+    assertEquals(
+        "Observed",
+        mergeDisplayName(
+                observed.copy(displayName = "Old"), observed.copy(displayName = "Observed"))
+            .displayName,
+    )
+  }
+
+  @Test
+  fun displayNameUpdateDoesNotRestoreAChangedOrMissingSession() {
+    val original = AuthUiState(session = AuthSession("user", "user@example.org"))
+    assertEquals(
+        "Student",
+        original.withDisplayNameForUid("user", "Student").session?.displayName,
+    )
+    val signedOut = original.copy(session = null)
+    assertSame(signedOut, signedOut.withDisplayNameForUid("user", "Student"))
+    val switchedUser = original.copy(session = AuthSession("other", "other@example.org"))
+    assertSame(switchedUser, switchedUser.withDisplayNameForUid("user", "Student"))
   }
 
   @Test
@@ -364,12 +526,27 @@ class AuthViewModelTest {
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
     var signOutCalls = 0
+    var sessionOnSignUp: AuthSession? = null
+    var signUpFailureAfterSession: Exception? = null
+    var profileUpdateFailure: Exception? = null
+    val profileUpdateCalls = mutableListOf<String>()
 
     override suspend fun signIn(email: String, password: String) =
         authenticate(false, email, password)
 
-    override suspend fun signUp(email: String, password: String, displayName: String) =
-        authenticate(true, email, password, displayName)
+    override suspend fun signUp(email: String, password: String, displayName: String) {
+      authenticate(true, email, password, displayName)
+      sessionOnSignUp?.let {
+        sessions.emit(it)
+        yield()
+      }
+      signUpFailureAfterSession?.let { throw it }
+    }
+
+    override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+      profileUpdateCalls.add(displayName)
+      profileUpdateFailure?.let { throw it }
+    }
 
     private suspend fun authenticate(
         signup: Boolean,

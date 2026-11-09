@@ -60,6 +60,17 @@ interface AuthRepository {
   /** Creates an email account with its public display name. */
   suspend fun signUp(email: String, password: String, displayName: String)
 
+  /**
+   * Updates the display name for the expected signed-in user without creating an account.
+   *
+   * Call this to retry the profile step when [signUp] created an account but its profile update
+   * failed. Implementations must reject the update if the current user no longer has [expectedUid].
+   * Implementations that do not support profile updates fail with a safe domain error.
+   */
+  suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+    throw AuthException(AuthError.UNKNOWN)
+  }
+
   /** Exchanges a Google ID token without storing it. */
   suspend fun signInWithGoogle(idToken: String)
 

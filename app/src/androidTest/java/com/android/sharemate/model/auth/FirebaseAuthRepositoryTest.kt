@@ -101,6 +101,26 @@ class FirebaseAuthRepositoryTest {
   }
 
   @Test
+  fun profileUpdateRetryPersistsNameOnExistingAccount() = runBlocking {
+    withTimeout(20000) {
+      val email = "student-${UUID.randomUUID()}@example.org"
+      val password = "test-password"
+      val created = auth.createUserWithEmailAndPassword(email, password).await().user!!
+      assertNull(created.displayName)
+
+      repository.updateCurrentUserDisplayName(created.uid, "Recovered Name")
+
+      assertEquals(created.uid, auth.currentUser?.uid)
+      assertEquals("Recovered Name", auth.currentUser?.displayName)
+      assertEquals("Recovered Name", repository.session.first { it != null }?.displayName)
+      repository.signOut()
+      repository.signIn(email, password)
+      assertEquals(created.uid, repository.session.first { it != null }?.uid)
+      assertEquals("Recovered Name", repository.session.first { it != null }?.displayName)
+    }
+  }
+
+  @Test
   fun googleCredentialEstablishesFirebaseSessionAndSignsOut() = runBlocking {
     withTimeout(20000) {
       val id = UUID.randomUUID().toString()

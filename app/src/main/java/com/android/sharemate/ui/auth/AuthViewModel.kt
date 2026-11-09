@@ -23,7 +23,9 @@ enum class AuthMode {
 // UI-only.
 enum class AuthUiError {
   INVALID_EMAIL,
+  /** Sign-up requires a pseudo containing at least one visible character. */
   PSEUDO_REQUIRED,
+  PSEUDO_TOO_LONG,
   PASSWORD_REQUIRED,
   WEAK_PASSWORD,
   PASSWORD_MISMATCH,
@@ -46,8 +48,12 @@ data class AuthUiState(
     val isLoading: Boolean = false,
     val isRestoringSession: Boolean = true,
     val session: AuthSession? = null,
+    val pendingProfileUpdate: PendingProfileUpdate? = null,
     val error: AuthUiError? = null
 )
+
+/** A profile name that still needs to be saved for the signed-in user. */
+data class PendingProfileUpdate(val uid: String, val displayName: String)
 
 class AuthViewModel(
     private val repository: AuthRepository,
@@ -60,23 +66,17 @@ class AuthViewModel(
     viewModelScope.launch {
       repository.session.collect { session ->
         mutableState.update {
-          val currentSession = it.session
-          val updatedSession =
-              session?.let { observed ->
-                val displayName =
-                    observed.displayName?.takeIf { it.isNotBlank() }
-                        ?: currentSession
-                            ?.takeIf { it.uid == observed.uid }
-                            ?.displayName
-                            ?.takeIf { it.isNotBlank() }
-                observed.copy(displayName = displayName)
-              }
+          val updatedSession = session?.let { observed -> mergeDisplayName(it.session, observed) }
+          val pendingProfileUpdate =
+              it.pendingProfileUpdate?.takeIf { pending -> updatedSession?.uid == pending.uid }
           it.copy(
               session = updatedSession,
+              pendingProfileUpdate = pendingProfileUpdate,
               isRestoringSession = false,
               password = if (updatedSession != null) "" else it.password,
               confirmPassword = if (updatedSession != null) "" else it.confirmPassword,
-              error = if (updatedSession != null) null else it.error)
+              error =
+                  if (updatedSession != null && pendingProfileUpdate == null) null else it.error)
         }
       }
     }
@@ -110,13 +110,19 @@ class AuthViewModel(
 
   fun submit() {
     val current = state.value
-    if (current.isLoading || current.isRestoringSession || current.session != null) return
+    if (current.isLoading || current.isRestoringSession) return
+    current.pendingProfileUpdate?.let { pending ->
+      if (current.session?.uid == pending.uid) retryPendingProfileUpdate(pending)
+      return
+    }
+    if (current.session != null) return
     val email = current.email.trim()
+    val pseudo = current.pseudo.trimPseudoPadding()
+    val pseudoError = if (current.mode == AuthMode.SIGN_UP) validatePseudo(pseudo) else null
     val error =
         when {
           !EMAIL_PATTERN.matches(email) -> AuthUiError.INVALID_EMAIL
-          current.mode == AuthMode.SIGN_UP && current.pseudo.isBlank() ->
-              AuthUiError.PSEUDO_REQUIRED
+          pseudoError != null -> pseudoError
           current.password.isEmpty() -> AuthUiError.PASSWORD_REQUIRED
           current.mode == AuthMode.SIGN_UP && current.password.length < MIN_PASSWORD_LENGTH ->
               AuthUiError.WEAK_PASSWORD
@@ -136,18 +142,72 @@ class AuthViewModel(
           // Keep submissions disabled until the observed session reaches UI state.
           state.first { it.session != null }
         } else {
-          repository.signUp(email, current.password, current.pseudo.trim())
-          val session = state.first { it.session != null }.session!!
+          repository.signUp(email, current.password, pseudo)
+          val observedSession = state.first { it.session != null }.session!!
           mutableState.update {
-            it.copy(session = session.copy(displayName = current.pseudo.trim()))
+            it.withDisplayNameForUid(observedSession.uid, pseudo).copy(pendingProfileUpdate = null)
           }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (failure: AuthException) {
-        mutableState.update { it.copy(error = failure.error.toUiError()) }
+        val recovered = current.mode == AuthMode.SIGN_UP && retryProfileUpdateIfSignedIn(pseudo)
+        if (!recovered) mutableState.update { it.copy(error = failure.error.toUiError()) }
       } catch (failure: Exception) {
-        mutableState.update { it.copy(error = AuthUiError.UNKNOWN) }
+        val recovered = current.mode == AuthMode.SIGN_UP && retryProfileUpdateIfSignedIn(pseudo)
+        if (!recovered) mutableState.update { it.copy(error = AuthUiError.UNKNOWN) }
+      } finally {
+        mutableState.update { it.copy(isLoading = false) }
+      }
+    }
+  }
+
+  private suspend fun retryProfileUpdateIfSignedIn(pseudo: String): Boolean {
+    val observedSession = state.value.session ?: return false
+    return try {
+      repository.updateCurrentUserDisplayName(observedSession.uid, pseudo)
+      mutableState.update { currentState ->
+        val updatedState = currentState.withDisplayNameForUid(observedSession.uid, pseudo)
+        if (updatedState === currentState) currentState
+        else updatedState.copy(pendingProfileUpdate = null, error = null)
+      }
+      true
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      mutableState.update { currentState ->
+        if (currentState.session?.uid != observedSession.uid) currentState
+        else
+            currentState.copy(
+                pseudo = pseudo,
+                pendingProfileUpdate = PendingProfileUpdate(observedSession.uid, pseudo))
+      }
+      false
+    }
+  }
+
+  private fun retryPendingProfileUpdate(pending: PendingProfileUpdate) {
+    mutableState.update { it.copy(isLoading = true, error = null) }
+    viewModelScope.launch {
+      try {
+        repository.updateCurrentUserDisplayName(pending.uid, pending.displayName)
+        mutableState.update { currentState ->
+          val updatedState = currentState.withDisplayNameForUid(pending.uid, pending.displayName)
+          if (updatedState === currentState) currentState
+          else updatedState.copy(pendingProfileUpdate = null, error = null)
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: AuthException) {
+        mutableState.update { currentState ->
+          if (currentState.session?.uid != pending.uid) currentState
+          else currentState.copy(error = failure.error.toUiError())
+        }
+      } catch (_: Exception) {
+        mutableState.update { currentState ->
+          if (currentState.session?.uid != pending.uid) currentState
+          else currentState.copy(error = AuthUiError.UNKNOWN)
+        }
       } finally {
         mutableState.update { it.copy(isLoading = false) }
       }
@@ -217,3 +277,65 @@ class AuthViewModel(
 }
 
 private fun AuthError.toUiError(): AuthUiError = AuthUiError.valueOf(name)
+
+/** Keeps a non-blank display name for the same user when a refresh omits it. */
+internal fun mergeDisplayName(current: AuthSession?, observed: AuthSession): AuthSession {
+  val displayName =
+      observed.displayName?.takeIf { it.isNotBlank() }
+          ?: current?.takeIf { it.uid == observed.uid }?.displayName?.takeIf { it.isNotBlank() }
+  return observed.copy(displayName = displayName)
+}
+
+/** Updates a session only while the UI still holds the user that initiated the operation. */
+internal fun AuthUiState.withDisplayNameForUid(uid: String, displayName: String): AuthUiState {
+  val currentSession = session?.takeIf { it.uid == uid } ?: return this
+  return copy(session = currentSession.copy(displayName = displayName))
+}
+
+/** Returns the validation error for a sign-up pseudo, or null when it is acceptable. */
+internal fun validatePseudo(pseudo: String): AuthUiError? =
+    when {
+      !pseudo.hasVisiblePseudoCharacter() -> AuthUiError.PSEUDO_REQUIRED
+      pseudo.codePointCount(0, pseudo.length) > MAX_PSEUDO_LENGTH -> AuthUiError.PSEUDO_TOO_LONG
+      else -> null
+    }
+
+private fun String.hasVisiblePseudoCharacter(): Boolean {
+  var index = 0
+  while (index < length) {
+    val codePoint = codePointAt(index)
+    if (!codePoint.isInvisiblePseudoCharacter()) return true
+    index += Character.charCount(codePoint)
+  }
+  return false
+}
+
+private fun String.trimPseudoPadding(): String {
+  var start = 0
+  var end = length
+  while (start < end) {
+    val codePoint = codePointAt(start)
+    if (!codePoint.isInvisiblePseudoCharacter()) break
+    start += Character.charCount(codePoint)
+  }
+  while (end > start) {
+    val codePoint = codePointBefore(end)
+    if (!codePoint.isInvisiblePseudoCharacter()) break
+    end -= Character.charCount(codePoint)
+  }
+  return substring(start, end)
+}
+
+private fun Int.isInvisiblePseudoCharacter(): Boolean {
+  val category = Character.getType(this).toInt()
+  return Character.isWhitespace(this) ||
+      Character.isSpaceChar(this) ||
+      category == Character.FORMAT.toInt() ||
+      category == Character.CONTROL.toInt() ||
+      category == Character.NON_SPACING_MARK.toInt() ||
+      category == Character.ENCLOSING_MARK.toInt() ||
+      category == Character.LINE_SEPARATOR.toInt() ||
+      category == Character.PARAGRAPH_SEPARATOR.toInt()
+}
+
+private const val MAX_PSEUDO_LENGTH = 40

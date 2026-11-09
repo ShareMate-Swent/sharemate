@@ -49,7 +49,7 @@ class AuthScreenTest {
       assertEquals(2, submissions)
     }
     compose.onNodeWithTag("auth_switch_mode").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
     compose.runOnIdle {
       assertEquals("Student", state.pseudo)
@@ -107,7 +107,7 @@ class AuthScreenTest {
     compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
     compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
     compose.onNodeWithTag("auth_email").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_pseudo").assertIsNotEnabled()
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsNotEnabled()
     compose.onNodeWithTag("auth_password").assertIsNotEnabled()
     compose.onNodeWithTag("auth_confirm_password").assertIsNotEnabled()
   }
@@ -134,6 +134,7 @@ class AuthScreenTest {
         mapOf(
             AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
             AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
+            AuthUiError.PSEUDO_TOO_LONG to "Use 40 characters or fewer for your pseudo.",
             AuthUiError.PASSWORD_REQUIRED to "Enter your password.",
             AuthUiError.WEAK_PASSWORD to "Choose a stronger password with at least 6 characters.",
             AuthUiError.PASSWORD_MISMATCH to "The passwords do not match.",
