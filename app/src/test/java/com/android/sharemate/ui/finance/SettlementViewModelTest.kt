@@ -26,6 +26,7 @@ class SettlementViewModelTest {
   private val requests = mutableListOf<Settlement>()
   private var answer = CompletableDeferred<Settlement>()
   private var listenerFailure = false
+  private var silent = false
   private var nextOperation = 0
   private var subscriptions = 0
   private val store = ViewModelStore()
@@ -34,6 +35,7 @@ class SettlementViewModelTest {
         override fun observeHouseholdFinances(householdId: String) = flow {
           subscriptions++
           if (listenerFailure) error("denied")
+          if (silent) awaitCancellation()
           emitAll(ledger)
         }
 
@@ -57,12 +59,14 @@ class SettlementViewModelTest {
 
   private suspend fun create(
       saved: SavedStateHandle = SavedStateHandle(),
-      household: Household? = home
+      household: Household? = home,
+      profiles: com.android.sharemate.model.profile.UserProfileRepository? = null,
   ): SettlementViewModel {
     `when`(households.getHousehold("home")).thenReturn(household)
-    return SettlementViewModel(repository, households, auth, "home", "alice", saved, dispatcher) {
-          "operation-${nextOperation++}"
-        }
+    return SettlementViewModel(
+            repository, households, auth, "home", "alice", saved, dispatcher, profiles) {
+              "operation-${nextOperation++}"
+            }
         .also { store.put("vm${store.keys().size}", it) }
   }
 
@@ -75,6 +79,48 @@ class SettlementViewModelTest {
 
   private fun remaining(vm: SettlementViewModel) =
       ready(vm).summary.netBalancesCents.getValue("bob")
+
+  @Test
+  fun silentLedgerTimesOutAndRetryRecoversWithSafeNamesAndInvalidDataClearsAmounts() = runTest {
+    val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
+    `when`(profiles.observeMembers("home"))
+        .thenReturn(
+            flowOf(
+                listOf(
+                    com.android.sharemate.model.profile.UserProfile("bob", " Bob "),
+                    com.android.sharemate.model.profile.UserProfile("alice", " "))))
+    silent = true
+    val vm = create(profiles = profiles)
+    runCurrent()
+    advanceTimeBy(9999)
+    runCurrent()
+    assertEquals(SettlementUiState.Loading, vm.state.value)
+    advanceTimeBy(1)
+    runCurrent()
+    assertEquals(SettlementUiState.Offline, vm.state.value)
+    silent = false
+    vm.retryLoading()
+    advanceUntilIdle()
+    assertEquals(mapOf("bob" to "Bob"), ready(vm).memberNames)
+    ledger.value = HouseholdFinanceSnapshot("other", emptyList(), emptyList())
+    advanceUntilIdle()
+    assertEquals(SettlementUiState.InvalidData, vm.state.value)
+    assertFalse(vm.settle(Debt("alice", "bob", 1500), 1))
+  }
+
+  @Test
+  fun missingProfilesDoNotHideFinancialDataAndSignOutClearsNames() = runTest {
+    val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
+    `when`(profiles.observeMembers("home"))
+        .thenReturn(flow { throw java.io.IOException("offline") })
+    val vm = create(profiles = profiles)
+    advanceUntilIdle()
+    assertEquals(1500L, remaining(vm))
+    assertTrue(ready(vm).memberNames.isEmpty())
+    session.value = null
+    advanceUntilIdle()
+    assertEquals(SettlementUiState.Unavailable, vm.state.value)
+  }
 
   @Test
   fun optimisticPartialConfirmationAndFullPaymentNeverDoubleCount() = runTest {

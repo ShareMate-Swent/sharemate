@@ -7,6 +7,7 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.finance.*
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.profile.UserProfileRepository
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -32,17 +33,22 @@ sealed interface SettlementUiState {
 
   data object Error : SettlementUiState
 
+  data object Offline : SettlementUiState
+
+  data object InvalidData : SettlementUiState
+
   data class Ready(
       val currentUserId: String,
       val summary: BalanceSummary,
       val submission: SettlementSubmission,
+      val memberNames: Map<String, String> = emptyMap(),
   ) : SettlementUiState
 }
 
 /**
- * One account/household per navigation entry. The dialog consumes this state in the next UI PR. All
- * writes use the authoritative repository; a displayed debt only guards accidental input. An
- * uncertain failure retains the exact operation in saved state, including across recreation.
+ * One account/household per navigation entry. The settlement dialog consumes this state. All writes
+ * use the authoritative repository; a displayed debt only guards accidental input. An uncertain
+ * failure retains the exact operation in saved state, including across recreation.
  */
 class SettlementViewModel(
     private val finances: HouseholdFinanceRepository,
@@ -52,9 +58,14 @@ class SettlementViewModel(
     private val userId: String,
     private val savedState: SavedStateHandle = SavedStateHandle(),
     private val calculationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val profiles: UserProfileRepository? = null,
     private val operationId: () -> String = { UUID.randomUUID().toString() },
 ) : ViewModel() {
-  private data class Ledger(val snapshot: HouseholdFinanceSnapshot, val members: List<String>)
+  private data class Ledger(
+      val snapshot: HouseholdFinanceSnapshot,
+      val members: List<String>,
+      val names: Map<String, String>
+  )
 
   private val savedKey = "settlement_${householdId}_${userId}"
   private val restored =
@@ -105,7 +116,7 @@ class SettlementViewModel(
                         return@collectLatest
                       }
                   renderedLedger = records
-                  SettlementUiState.Ready(userId, summary, payment)
+                  SettlementUiState.Ready(userId, summary, payment, records.names)
                 }
           }
     }
@@ -114,6 +125,10 @@ class SettlementViewModel(
           .collectLatest { session ->
             ledger.value = null
             availability.value = SettlementUiState.Loading
+            val waiting = launch {
+              delay(BalancesViewModel.INITIAL_LOAD_TIMEOUT_MS)
+              if (ledger.value == null) availability.value = SettlementUiState.Offline
+            }
             writeJob?.cancel()
             if (submission.value.operation != null &&
                 submission.value.phase != SettlementPhase.REJECTED) {
@@ -125,29 +140,55 @@ class SettlementViewModel(
               if (home == null || home.type != FridgeType.SHARED || userId !in home.memberIds) {
                 availability.value = SettlementUiState.Unavailable
               } else {
-                finances.observeHouseholdFinances(householdId).collect { snapshot ->
-                  require(snapshot.householdId == householdId)
-                  // Validate the whole ledger before making it available for submissions.
-                  withContext(calculationDispatcher) {
-                    BalanceCalculator.calculate(snapshot, home.memberIds)
-                  }
-                  val pending = submission.value.operation
-                  val recorded = snapshot.settlements.firstOrNull { it.id == pending?.id }
-                  if (recorded != null) {
-                    require(recorded == pending) { "Settlement operation mismatch" }
-                    writeJob?.cancel()
-                    savedState.remove<ArrayList<String>>(savedKey)
-                    submission.value = SettlementSubmission()
-                  }
-                  ledger.value = Ledger(snapshot, home.memberIds)
-                }
+                val names =
+                    profiles
+                        ?.observeMembers(householdId)
+                        ?.map { members ->
+                          members
+                              .mapNotNull { member ->
+                                member.displayName
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?.let { member.uid to it }
+                              }
+                              .toMap()
+                        }
+                        ?.onStart { emit(emptyMap()) }
+                        ?.catch { failure ->
+                          if (failure is CancellationException) throw failure
+                          emit(emptyMap())
+                        } ?: flowOf(emptyMap())
+                combine(finances.observeHouseholdFinances(householdId), names) { snapshot, labels ->
+                      snapshot to labels
+                    }
+                    .collect { (snapshot, labels) ->
+                      require(snapshot.householdId == householdId)
+                      // Validate the whole ledger before making it available for submissions.
+                      withContext(calculationDispatcher) {
+                        BalanceCalculator.calculate(snapshot, home.memberIds)
+                      }
+                      val pending = submission.value.operation
+                      val recorded = snapshot.settlements.firstOrNull { it.id == pending?.id }
+                      if (recorded != null) {
+                        check(recorded == pending) { "Settlement operation mismatch" }
+                        writeJob?.cancel()
+                        savedState.remove<ArrayList<String>>(savedKey)
+                        submission.value = SettlementSubmission()
+                      }
+                      ledger.value = Ledger(snapshot, home.memberIds, labels)
+                      waiting.cancel()
+                    }
               }
             } catch (cancelled: CancellationException) {
               throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
               ledger.value = null
-              availability.value = SettlementUiState.Error
+              availability.value =
+                  if (failure is IllegalArgumentException) SettlementUiState.InvalidData
+                  else SettlementUiState.Error
               writeJob?.cancel()
+            } finally {
+              waiting.cancel()
             }
           }
     }
@@ -222,6 +263,7 @@ class SettlementViewModel(
   }
 
   fun retryLoading() {
-    if (state.value == SettlementUiState.Error) retries.value += 1
+    if (state.value == SettlementUiState.Error || state.value == SettlementUiState.Offline)
+        retries.value += 1
   }
 }

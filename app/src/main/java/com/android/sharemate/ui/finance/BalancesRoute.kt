@@ -7,12 +7,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
-import com.android.sharemate.model.finance.HouseholdExpenseRepository
+import com.android.sharemate.model.finance.HouseholdFinanceRepository
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.profile.UserProfileRepository
 
@@ -26,7 +27,7 @@ internal const val BALANCES_ROUTE = "receipts/balances"
  */
 @Composable
 fun BalancesRoute(
-    expenses: HouseholdExpenseRepository,
+    finances: HouseholdFinanceRepository,
     households: com.android.sharemate.model.household.HouseholdRepository,
     auth: AuthRepository,
     household: Household,
@@ -34,18 +35,25 @@ fun BalancesRoute(
     profiles: UserProfileRepository,
     onBack: () -> Unit,
 ) {
-  val model: BalancesViewModel =
+  val model: SettlementViewModel =
       viewModel(
           key = "balances_${userId}_${household.id}_${household.type}",
           factory =
               viewModelFactory {
                 initializer {
-                  BalancesViewModel(expenses, households, auth, household.id, profiles = profiles)
+                  SettlementViewModel(
+                      finances,
+                      households,
+                      auth,
+                      household.id,
+                      userId,
+                      createSavedStateHandle(),
+                      profiles = profiles)
                 }
               })
   val state by model.state.collectAsStateWithLifecycle()
   Column {
     TextButton(onClick = onBack) { Text(stringResource(R.string.balances_back)) }
-    BalancesScreen(state, model::retry)
+    SettlementBalances(state, model::retryLoading, model::settle, model::retrySettlement)
   }
 }

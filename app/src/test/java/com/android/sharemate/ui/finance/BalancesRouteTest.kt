@@ -10,7 +10,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
-import com.android.sharemate.model.finance.HouseholdExpenseRepository
+import com.android.sharemate.model.finance.HouseholdFinanceRepository
+import com.android.sharemate.model.finance.HouseholdFinanceSnapshot
+import com.android.sharemate.model.finance.Settlement
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
@@ -19,6 +21,7 @@ import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,11 +53,13 @@ class BalancesRouteTest {
   private val observed = mutableListOf<String>()
   private val records = MutableStateFlow<List<SharedExpense>>(emptyList())
   private val expenses =
-      object : HouseholdExpenseRepository {
-        override fun observeHouseholdExpenses(householdId: String) =
-            (if (householdId == "home") records else flowOf(emptyList())).also {
-              observed += householdId
-            }
+      object : HouseholdFinanceRepository {
+        override suspend fun recordSettlement(settlement: Settlement) = error("unused")
+
+        override fun observeHouseholdFinances(householdId: String) =
+            (if (householdId == "home") records else flowOf(emptyList()))
+                .also { observed += householdId }
+                .map { HouseholdFinanceSnapshot(householdId, it, emptyList()) }
       }
 
   @After fun clearModels() = compose.runOnIdle { compose.activity.viewModelStore.clear() }

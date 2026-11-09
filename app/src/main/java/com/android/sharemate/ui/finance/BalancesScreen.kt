@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.Debt
 import com.android.sharemate.model.finance.FinanceAmounts
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import java.math.BigDecimal
@@ -48,6 +49,7 @@ fun BalancesScreen(
     state: BalancesUiState,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onSettle: ((Debt) -> Unit)? = null,
 ) {
   val locale = LocalConfiguration.current.locales[0]
   LazyColumn(
@@ -114,6 +116,11 @@ fun BalancesScreen(
                       memberLabel(debt.debtorId, state.currentUserId, state.memberNames),
                       memberLabel(debt.creditorId, state.currentUserId, state.memberNames),
                       formatFinanceAmount(debt.amountCents, locale)))
+          if (debt.debtorId == state.currentUserId && onSettle != null) {
+            Button(onClick = { onSettle(debt) }) {
+              Text(stringResource(R.string.settlement_action))
+            }
+          }
         }
       }
     }

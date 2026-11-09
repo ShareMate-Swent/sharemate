@@ -53,8 +53,9 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
-import com.android.sharemate.model.finance.FirestoreHouseholdExpenseRepository
-import com.android.sharemate.model.finance.HouseholdExpenseRepository
+import com.android.sharemate.model.finance.FirebaseSettlementRepository
+import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
+import com.android.sharemate.model.finance.HouseholdFinanceRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
@@ -97,6 +98,7 @@ import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
@@ -129,10 +131,13 @@ open class MainActivity : ComponentActivity() {
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
 
-  protected open fun createHouseholdExpenseRepository(): HouseholdExpenseRepository =
-      FirestoreHouseholdExpenseRepository(FirebaseFirestore.getInstance())
+  protected open fun createHouseholdFinanceRepository(): HouseholdFinanceRepository =
+      FirestoreHouseholdFinanceRepository(
+          FirebaseFirestore.getInstance(),
+          FirebaseSettlementRepository(
+              FirebaseFunctions.getInstance(FirebaseSettlementRepository.REGION)))
 
-  private val expenseRepository by lazy { createHouseholdExpenseRepository() }
+  private val financeRepository by lazy { createHouseholdFinanceRepository() }
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -290,7 +295,7 @@ open class MainActivity : ComponentActivity() {
                       }
                   composable(BALANCES_ROUTE) {
                     BalancesRoute(
-                        expenseRepository,
+                        financeRepository,
                         householdRepository,
                         authRepository,
                         household,
