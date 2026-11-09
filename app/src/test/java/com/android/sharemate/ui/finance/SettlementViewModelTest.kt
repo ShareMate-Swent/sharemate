@@ -136,6 +136,42 @@ class SettlementViewModelTest {
   }
 
   @Test
+  fun repositoryCancellationRollsBackAndRetriesWithSavedPayload() = runTest {
+    val saved = SavedStateHandle()
+    val vm = create(saved)
+    advanceUntilIdle()
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    val payment = requests.single()
+    assertEquals(900L, remaining(vm))
+    answer.cancel(CancellationException("repository cancelled"))
+    advanceUntilIdle()
+    assertEquals(1500L, remaining(vm))
+    assertEquals(SettlementPhase.FAILED, ready(vm).submission.phase)
+    assertEquals(payment, ready(vm).submission.operation)
+    assertFalse(ready(vm).submission.optimistic)
+    assertEquals(
+        arrayListOf(payment.id, payment.recipientId, payment.amountCents.toString()),
+        saved.get<ArrayList<String>>("settlement_home_alice"))
+    assertFalse(vm.settle(debt(vm), 100))
+    answer = CompletableDeferred()
+    vm.retrySettlement()
+    vm.retrySettlement()
+    advanceUntilIdle()
+    assertEquals(listOf(payment, payment), requests)
+    assertEquals(SettlementPhase.SUBMITTING, ready(vm).submission.phase)
+    assertEquals(900L, remaining(vm))
+    answer.complete(payment)
+    advanceUntilIdle()
+    assertEquals(SettlementPhase.AWAITING_CONFIRMATION, ready(vm).submission.phase)
+    ledger.value = snapshot(payment)
+    advanceUntilIdle()
+    assertEquals(SettlementPhase.IDLE, ready(vm).submission.phase)
+    assertEquals(900L, remaining(vm))
+    assertNull(saved.get<ArrayList<String>>("settlement_home_alice"))
+  }
+
+  @Test
   fun recreationRetainsOriginalOperationAndReconcilesAnUncertainCommit() = runTest {
     val saved = SavedStateHandle()
     val vm = create(saved)

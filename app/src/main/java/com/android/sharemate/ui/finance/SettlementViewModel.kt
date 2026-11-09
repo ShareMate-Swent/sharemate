@@ -204,6 +204,9 @@ class SettlementViewModel(
                   submission.value.copy(phase = SettlementPhase.AWAITING_CONFIRMATION)
             }
           } catch (cancelled: CancellationException) {
+            if (submission.value.operation == payment) {
+              submission.value = SettlementSubmission(SettlementPhase.FAILED, payment)
+            }
             throw cancelled
           } catch (_: SettlementRejectedException) {
             if (submission.value.operation == payment) {
