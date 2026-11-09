@@ -52,12 +52,12 @@ import com.android.sharemate.resources.C
 /**
  * Compact inventory tile reusing the shared image renderer and attribution components.
  *
- * @param soonThresholdDays the user's "expiring soon" window in days, used to flag [item].
+ * @param expiryStatus how close [item] is to its expiration date, already worked out.
  */
 @Composable
 fun FridgeItem(
     item: Item,
-    soonThresholdDays: Long,
+    expiryStatus: ExpiryStatus,
     modifier: Modifier = Modifier,
     removalEnabled: Boolean = false,
     onRemove: () -> Unit = {},
@@ -68,8 +68,6 @@ fun FridgeItem(
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
     personalPhotos: PersonalPhotoController? = null,
 ) {
-  val expiryStatus =
-      ExpirationDates.status(item.expirationDate, soonThresholdDays = soonThresholdDays)
   val expiryColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error

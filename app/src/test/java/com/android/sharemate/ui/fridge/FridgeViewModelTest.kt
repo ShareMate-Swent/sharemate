@@ -18,6 +18,7 @@ import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTE
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -32,6 +33,10 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.model.user.PseudoRepository
 import java.io.IOException
@@ -1268,6 +1273,7 @@ class FridgeViewModelTest {
       householdId: String = "test-household",
       fridgeType: FridgeType = FridgeType.SHARED,
       pseudos: PseudoRepository? = null,
+      preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1276,9 +1282,104 @@ class FridgeViewModelTest {
               imageSelector,
               barcodeScanner,
               productCatalogRepository,
+              expirationPreferences = ExpirationPreferencesProvider(preferences),
               pseudoRepository = pseudos,
-              fridgeType = fridgeType)
+              fridgeType = fridgeType,
+              today = { STATUS_TODAY })
           .also { viewModelStore.put("fridge", it) }
+
+  private fun TestScope.observedStatuses(vm: FridgeViewModel): Map<String, ExpiryStatus> {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.expiryStatuses.collect {} }
+    runCurrent()
+    return vm.expiryStatuses.value
+  }
+
+  private fun expiringIn(id: String, days: Long) =
+      item(id).copy(expirationDate = ExpirationDates.toDate(STATUS_TODAY.plusDays(days)))
+
+  private val statusItems =
+      listOf(
+          expiringIn("old", -1),
+          expiringIn("today", 0),
+          expiringIn("next", 1),
+          expiringIn("edge", 3),
+          expiringIn("far", 4))
+
+  @Test
+  fun expiryStatusesUseTheDefaultWindowWhenNothingWasSaved() = runTest {
+    repository.emitItems(statusItems)
+
+    assertEquals(
+        mapOf(
+            "old" to ExpiryStatus.EXPIRED,
+            "today" to ExpiryStatus.EXPIRED,
+            "next" to ExpiryStatus.SOON,
+            "edge" to ExpiryStatus.SOON,
+            "far" to ExpiryStatus.NORMAL),
+        observedStatuses(viewModel()))
+  }
+
+  @Test
+  fun expiryStatusesFollowTheUsersSavedWindow() = runTest {
+    val preferences =
+        FakeExpirationPreferencesRepository(
+            mapOf("test-user" to ExpirationPreferences(soonDays = 4)))
+    repository.emitItems(statusItems)
+
+    assertEquals(ExpiryStatus.SOON, observedStatuses(viewModel(preferences = preferences))["far"])
+  }
+
+  @Test
+  fun expiryStatusesIgnoreAnotherUsersWindow() = runTest {
+    val preferences =
+        FakeExpirationPreferencesRepository(
+            mapOf("someone-else" to ExpirationPreferences(soonDays = 40)))
+    repository.emitItems(statusItems)
+
+    assertEquals(ExpiryStatus.NORMAL, observedStatuses(viewModel(preferences = preferences))["far"])
+  }
+
+  @Test
+  fun expiryStatusesUpdateWhenThePreferenceChanges() = runTest {
+    val preferences = FakeExpirationPreferencesRepository()
+    val vm = viewModel(preferences = preferences)
+    repository.emitItems(statusItems)
+    observedStatuses(vm)
+
+    preferences.save("test-user", ExpirationPreferences(soonDays = 4))
+    runCurrent()
+
+    assertEquals(ExpiryStatus.SOON, vm.expiryStatuses.value["far"])
+  }
+
+  @Test
+  fun expiryStatusesUpdateWhenTheItemsChange() = runTest {
+    val vm = viewModel()
+    repository.emitItems(listOf(expiringIn("milk", 10)))
+    observedStatuses(vm)
+
+    repository.emitItems(listOf(expiringIn("milk", 0)))
+    runCurrent()
+
+    assertEquals(mapOf("milk" to ExpiryStatus.EXPIRED), vm.expiryStatuses.value)
+  }
+
+  @Test
+  fun expiryStatusesFallBackToTheDefaultWindowWhenPreferencesCannotBeRead() = runTest {
+    val preferences = FakeExpirationPreferencesRepository()
+    preferences.readFailure = IOException("offline")
+    repository.emitItems(statusItems)
+
+    val statuses = observedStatuses(viewModel(preferences = preferences))
+
+    assertEquals(ExpiryStatus.SOON, statuses["edge"])
+    assertEquals(ExpiryStatus.NORMAL, statuses["far"])
+  }
+
+  @Test
+  fun expiryStatusesAreEmptyWithoutItems() = runTest {
+    assertEquals(emptyMap<String, ExpiryStatus>(), observedStatuses(viewModel()))
+  }
 
   private fun TestScope.observedOwners(vm: FridgeViewModel): List<OwnerOption> {
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ownerOptions.collect {} }
@@ -1345,6 +1446,8 @@ class FridgeViewModelTest {
           imageSelector,
           barcodeScanner,
           productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
           fridgeType = FridgeType.SHARED)
     }
     assertThrows(IllegalArgumentException::class.java) {
@@ -1355,6 +1458,8 @@ class FridgeViewModelTest {
           imageSelector,
           barcodeScanner,
           productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
           fridgeType = FridgeType.SHARED)
     }
 
@@ -2150,6 +2255,8 @@ class FridgeViewModelTest {
             imageSelector,
             barcodeScanner,
             productCatalogRepository,
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     viewModelStore.put("fridge", vm)
     vm.openAddItemDialog()
@@ -2336,6 +2443,11 @@ class FridgeViewModelTest {
     override fun close() {
       closed = true
     }
+  }
+
+  private companion object {
+    /** The day the expiry statuses are worked out on, so that the day limits are exact. */
+    val STATUS_TODAY: LocalDate = LocalDate.of(2026, 10, 15)
   }
 }
 

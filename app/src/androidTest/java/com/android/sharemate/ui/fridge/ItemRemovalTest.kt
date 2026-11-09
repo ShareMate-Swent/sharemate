@@ -21,7 +21,6 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
-import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
@@ -32,8 +31,11 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -204,6 +206,9 @@ class ItemRemovalTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(
+                    FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
             fridgeType = FridgeType.SHARED)
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
@@ -218,7 +223,7 @@ class ItemRemovalTest {
             onRemoveItem = viewModel::requestRemoval,
             onCancelRemoval = viewModel::cancelRemoval,
             onConfirmRemoval = viewModel::confirmRemoval,
-            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+            expiryStatuses = emptyMap())
       }
     }
     composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }

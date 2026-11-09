@@ -29,9 +29,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
-import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -42,12 +43,13 @@ import kotlinx.coroutines.delay
 /**
  * Displays the fridge inventory with caller-provided state and actions.
  *
- * @param soonThresholdDays the user's "expiring soon" window in days, used to flag the items.
+ * @param expiryStatuses how close each item, by id, is to its expiration date, already worked out;
+ *   an item missing from it is shown as [ExpiryStatus.NORMAL].
  */
 @Composable
 fun FridgeScreen(
     uiState: FridgeUiState,
-    soonThresholdDays: Long,
+    expiryStatuses: Map<String, ExpiryStatus>,
     modifier: Modifier = Modifier,
     onAddItem: (() -> Unit)? = null,
     onDismissAddItem: () -> Unit = {},
@@ -188,7 +190,7 @@ fun FridgeScreen(
                   items(activeItems, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
-                        soonThresholdDays = soonThresholdDays,
+                        expiryStatus = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL,
                         personalPhotos = personalPhotos,
                         editEnabled =
                             onEditItem != null &&
@@ -286,15 +288,10 @@ fun FridgeScreen(
   }
 }
 
-/**
- * Connects the fridge presentation to its existing inventory ViewModel.
- *
- * @param soonThresholdDays the user's "expiring soon" window in days, used to flag the items.
- */
+/** Connects the fridge presentation to its existing inventory ViewModel. */
 @Composable
 fun FridgeScreen(
     viewModel: FridgeViewModel,
-    soonThresholdDays: Long,
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.uiState.collectAsState()
@@ -312,11 +309,12 @@ fun FridgeScreen(
             .sorted()
       }
   val owners by viewModel.ownerOptions.collectAsState()
+  val expiryStatuses by viewModel.expiryStatuses.collectAsStateWithLifecycle()
 
   FridgeScreen(
       modifier = modifier,
       uiState = uiState.copy(items = visibleItems),
-      soonThresholdDays = soonThresholdDays,
+      expiryStatuses = expiryStatuses,
       onAddItem = viewModel::openAddItemDialog,
       onDismissAddItem = viewModel::dismissAddItemDialog,
       onNameChange = viewModel::updateName,
@@ -351,7 +349,6 @@ fun FridgeScreen(
 private fun FridgeScreenPreview() {
   SampleAppTheme(dynamicColor = false) {
     FridgeScreen(
-        uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
-        soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+        uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
   }
 }

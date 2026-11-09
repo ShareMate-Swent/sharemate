@@ -26,7 +26,6 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
-import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
@@ -36,9 +35,12 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -216,13 +218,14 @@ class FridgeScreenTest {
 
                     override suspend fun setPseudo(userId: String, pseudo: String) = Unit
                   },
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
               fridgeType = FridgeType.SHARED)
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
-        FridgeScreen(viewModel = viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
-      }
+      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
     }
     compose.waitUntil(5_000) {
       !viewModel.uiState.value.isLoading && viewModel.visibleItems.value.size == items.size

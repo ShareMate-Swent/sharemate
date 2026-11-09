@@ -19,10 +19,12 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
-import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.product.*
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
@@ -144,15 +146,16 @@ class BarcodeFormFlowTest {
                   return result
                 }
               },
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
               fridgeType = FridgeType.SHARED)
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }
     compose.setContent {
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        MaterialTheme {
-          FridgeScreen(viewModel = fridge, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
-        }
+        MaterialTheme { FridgeScreen(viewModel = fridge) }
       }
     }
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()

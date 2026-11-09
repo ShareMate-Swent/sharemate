@@ -29,7 +29,6 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
-import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -188,7 +187,7 @@ class FridgePersonalPhotoUiTest {
         FridgeScreen(
             uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
             personalPhotos = session.value,
-            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+            expiryStatuses = emptyMap())
       }
     }
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
@@ -240,7 +239,7 @@ class FridgePersonalPhotoUiTest {
         FridgeScreen(
             uiState = FridgeUiState(items = listOf(milk), fridgeType = FridgeType.SHARED),
             personalPhotos = photos,
-            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+            expiryStatuses = emptyMap())
       }
     }
 

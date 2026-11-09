@@ -31,7 +31,7 @@ import coil.intercept.Interceptor
 import coil.request.ErrorResult
 import coil.request.SuccessResult
 import coil.size.Size
-import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
@@ -115,7 +115,7 @@ class FridgeItemTest {
                   item = item.value,
                   imageLoader = loader,
                   modifier = Modifier.width(120.dp),
-                  soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+                  expiryStatus = ExpiryStatus.NORMAL)
             }
           }
     }
