@@ -1,0 +1,33 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Instrumentation only: pair with Firebase CLI --project demo-sharemate-ci.
+// Normal builds continue to use the application's existing Firebase configuration.
+def emulatorProject = 'demo-sharemate-ci'
+def googleServices = File.createTempFile('sharemate-emulator-', '.json')
+googleServices.deleteOnExit()
+googleServices.text = groovy.json.JsonOutput.toJson([
+    project_info: [
+        project_number: '123456789012',
+        project_id: emulatorProject,
+        storage_bucket: "${emulatorProject}.invalid"
+    ],
+    client: [[
+        client_info: [
+            mobilesdk_app_id: '1:123456789012:android:0123456789abcdef012345',
+            android_client_info: [package_name: 'com.android.sharemate']
+        ],
+        api_key: [[current_key: 'AIzaSyDemoOnlyKeyForLocalEmulator12345678']],
+        oauth_client: [[client_id: 'demo-only.apps.googleusercontent.com', client_type: 3]]
+    ]],
+    configuration_version: '1'
+])
+
+gradle.projectsEvaluated {
+    allprojects { project ->
+        project.tasks.configureEach { task ->
+            if (task.name.endsWith('GoogleServices')) {
+                task.googleServicesJsonFiles.set([googleServices])
+                task.googleServicesJsonFiles.disallowChanges()
+            }
+        }
+    }
+}
