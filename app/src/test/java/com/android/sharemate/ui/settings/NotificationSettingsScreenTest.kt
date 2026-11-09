@@ -36,6 +36,7 @@ class NotificationSettingsScreenTest {
   private var systemAllowed by mutableStateOf(true)
   private var backClicks = 0
   private var systemSettingsClicks = 0
+  private var retryClicks = 0
   private val soonChanges = mutableListOf<Int>()
   private val soonRepeatChanges = mutableListOf<Int?>()
   private val expiredRepeatChanges = mutableListOf<Int?>()
@@ -51,7 +52,8 @@ class NotificationSettingsScreenTest {
             onOpenSystemSettings = { systemSettingsClicks++ },
             onSoonDaysChange = { soonChanges += it },
             onSoonRepeatChange = { soonRepeatChanges += it },
-            onExpiredRepeatChange = { expiredRepeatChanges += it })
+            onExpiredRepeatChange = { expiredRepeatChanges += it },
+            onRetryLoad = { retryClicks++ })
       }
     }
   }
@@ -223,5 +225,32 @@ class NotificationSettingsScreenTest {
 
     tag(NotificationSettingsTestTags.SOON_VALUE).assertTextEquals(days(60))
     tag(NotificationSettingsTestTags.SOON_INCREASE).assertIsNotEnabled()
+  }
+
+  @Test
+  fun loadErrorHidesTheControlsAndOffersARetry() {
+    show(NotificationSettingsUiState(loadFailed = true))
+
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.LOAD_ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.RETRY).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.SOON_CARD).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.FREQUENCY_CARD).assertDoesNotExist()
+  }
+
+  @Test
+  fun retryButtonAsksToReadTheSettingsAgain() {
+    show(NotificationSettingsUiState(loadFailed = true))
+
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.RETRY).performClick()
+
+    assertEquals(1, retryClicks)
+  }
+
+  @Test
+  fun loadErrorIsNotShownWhenTheSettingsAreLoaded() {
+    show(NotificationSettingsUiState(isLoaded = true))
+
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.LOAD_ERROR).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(NotificationSettingsTestTags.RETRY).assertDoesNotExist()
   }
 }

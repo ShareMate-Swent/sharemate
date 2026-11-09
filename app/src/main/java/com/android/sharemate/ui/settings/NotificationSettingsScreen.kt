@@ -50,27 +50,49 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [NotificationSettingsScreen]. */
 object NotificationSettingsTestTags {
+  /** The row in Settings that opens this screen. */
   const val OPEN_ENTRY = "notification_settings_entry"
+  /** The back arrow of the screen. */
   const val BACK = "notification_settings_back"
+  /** The title of the screen. */
   const val TITLE = "notification_settings_title"
+  /** The card about the phone's notification permission. */
   const val SYSTEM_CARD = "notification_settings_system_card"
+  /** The text telling whether the phone allows notifications. */
   const val SYSTEM_STATUS = "notification_settings_system_status"
+  /** The button that opens the phone's notification settings. */
   const val OPEN_SYSTEM_SETTINGS = "notification_settings_open_system"
+  /** The card holding the "expiring soon" window. */
   const val SOON_CARD = "notification_settings_soon_card"
+  /** The number of days of the "expiring soon" window. */
   const val SOON_VALUE = "notification_settings_soon_value"
+  /** The button that lengthens the "expiring soon" window. */
   const val SOON_INCREASE = "notification_settings_soon_increase"
+  /** The button that shortens the "expiring soon" window. */
   const val SOON_DECREASE = "notification_settings_soon_decrease"
+  /** The card holding both reminder frequencies. */
   const val FREQUENCY_CARD = "notification_settings_frequency_card"
+  /** The switch turning the repeated reminder on or off while expiring soon. */
   const val SOON_REPEAT_SWITCH = "notification_settings_soon_repeat_switch"
+  /** The days between two reminders while expiring soon. */
   const val SOON_REPEAT_VALUE = "notification_settings_soon_repeat_value"
+  /** The button that lengthens the repeat while expiring soon. */
   const val SOON_REPEAT_INCREASE = "notification_settings_soon_repeat_increase"
+  /** The button that shortens the repeat while expiring soon. */
   const val SOON_REPEAT_DECREASE = "notification_settings_soon_repeat_decrease"
+  /** The switch turning the repeated reminder on or off once expired. */
   const val EXPIRED_REPEAT_SWITCH = "notification_settings_expired_repeat_switch"
+  /** The days between two reminders once expired. */
   const val EXPIRED_REPEAT_VALUE = "notification_settings_expired_repeat_value"
+  /** The button that lengthens the repeat once expired. */
   const val EXPIRED_REPEAT_INCREASE = "notification_settings_expired_repeat_increase"
+  /** The button that shortens the repeat once expired. */
   const val EXPIRED_REPEAT_DECREASE = "notification_settings_expired_repeat_decrease"
+  /** The message shown when a change could not be saved. */
   const val SAVE_ERROR = "notification_settings_save_error"
+  /** The message shown when the saved settings could not be read. */
   const val LOAD_ERROR = "notification_settings_load_error"
+  /** The button that reads the saved settings again after a failure. */
   const val RETRY = "notification_settings_retry"
 }
 
@@ -81,6 +103,7 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * "expiring soon" and how often to be reminded.
  *
  * @param isSystemAllowed Whether the system currently lets the app show notifications.
+ * @param onRetryLoad Asked when the user taps "Retry" after the saved settings could not be read.
  */
 @Composable
 fun NotificationSettingsScreen(
@@ -91,7 +114,7 @@ fun NotificationSettingsScreen(
     onSoonDaysChange: (Int) -> Unit,
     onSoonRepeatChange: (Int?) -> Unit,
     onExpiredRepeatChange: (Int?) -> Unit,
-    onRetryLoad: () -> Unit = {},
+    onRetryLoad: () -> Unit,
 ) {
   Column(modifier = Modifier.fillMaxSize()) {
     Row(

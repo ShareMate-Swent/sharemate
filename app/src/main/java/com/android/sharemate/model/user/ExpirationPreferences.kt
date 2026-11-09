@@ -56,8 +56,10 @@ data class ExpirationPreferences(
 
 /** One edit of a single preference, so that saving it never touches the other values. */
 sealed interface ExpirationChange {
+  /** The preferences [preferences] would become once this change is made. */
   fun applyTo(preferences: ExpirationPreferences): ExpirationPreferences
 
+  /** Sets the "expiring soon" window to [days]. */
   data class SoonDays(val days: Int) : ExpirationChange {
     override fun applyTo(preferences: ExpirationPreferences) = preferences.copy(soonDays = days)
   }
