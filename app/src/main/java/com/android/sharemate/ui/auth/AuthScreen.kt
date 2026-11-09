@@ -84,6 +84,7 @@ private fun AuthForm(
     onSwitchMode: () -> Unit,
     onBack: (() -> Unit)?
 ) {
+  val pseudoOnly = state.pendingProfileUpdate != null
   val signingUp = state.mode == AuthMode.SIGN_UP
   Column(
       modifier =
@@ -100,37 +101,44 @@ private fun AuthForm(
         }
         Text(stringResource(R.string.auth_title), style = MaterialTheme.typography.headlineLarge)
         Text(
-            stringResource(if (signingUp) R.string.auth_sign_up else R.string.auth_log_in),
+            stringResource(
+                when {
+                  pseudoOnly -> R.string.auth_choose_pseudo
+                  signingUp -> R.string.auth_sign_up
+                  else -> R.string.auth_log_in
+                }),
             style = MaterialTheme.typography.headlineMedium)
-        OutlinedTextField(
-            value = state.email,
-            onValueChange = onEmailChange,
-            label = { Text(stringResource(R.string.auth_email)) },
-            enabled = !state.isLoading && state.pendingProfileUpdate == null,
-            singleLine = true,
-            keyboardOptions =
-                KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth().testTag("auth_email"))
-        if (signingUp) {
+        if (!pseudoOnly)
+            OutlinedTextField(
+                value = state.email,
+                onValueChange = onEmailChange,
+                label = { Text(stringResource(R.string.auth_email)) },
+                enabled = !state.isLoading && state.pendingProfileUpdate == null,
+                singleLine = true,
+                keyboardOptions =
+                    KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth().testTag("auth_email"))
+        if (signingUp || pseudoOnly) {
           OutlinedTextField(
               value = state.pseudo,
               onValueChange = onPseudoChange,
               label = { Text(stringResource(R.string.auth_pseudo)) },
-              enabled = !state.isLoading && state.pendingProfileUpdate == null,
+              enabled = !state.isLoading,
               singleLine = true,
               keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
               modifier = Modifier.fillMaxWidth().testTag(AUTH_PSEUDO_TEST_TAG))
         }
-        PasswordField(
-            value = state.password,
-            onValueChange = onPasswordChange,
-            label = stringResource(R.string.auth_password),
-            enabled = !state.isLoading && state.pendingProfileUpdate == null,
-            tag = "auth_password",
-            mode = state.mode,
-            imeAction = if (signingUp) ImeAction.Next else ImeAction.Done,
-            onSubmit = onSubmit)
-        if (signingUp) {
+        if (!pseudoOnly)
+            PasswordField(
+                value = state.password,
+                onValueChange = onPasswordChange,
+                label = stringResource(R.string.auth_password),
+                enabled = !state.isLoading && state.pendingProfileUpdate == null,
+                tag = "auth_password",
+                mode = state.mode,
+                imeAction = if (signingUp) ImeAction.Next else ImeAction.Done,
+                onSubmit = onSubmit)
+        if (signingUp && !pseudoOnly) {
           PasswordField(
               value = state.confirmPassword,
               onValueChange = onConfirmPasswordChange,
@@ -165,17 +173,19 @@ private fun AuthForm(
             modifier = Modifier.fillMaxWidth().testTag("auth_submit")) {
               Text(
                   stringResource(
-                      if (state.pendingProfileUpdate != null) R.string.auth_save_pseudo
+                      if (pseudoOnly) R.string.auth_save_pseudo
                       else if (signingUp) R.string.auth_sign_up else R.string.auth_log_in))
             }
-        TextButton(
-            onClick = onSwitchMode,
-            enabled = !state.isLoading && state.pendingProfileUpdate == null,
-            modifier = Modifier.testTag("auth_switch_mode")) {
-              Text(
-                  stringResource(
-                      if (signingUp) R.string.auth_have_account else R.string.auth_need_account))
-            }
+        if (!pseudoOnly) {
+          TextButton(
+              onClick = onSwitchMode,
+              enabled = !state.isLoading,
+              modifier = Modifier.testTag("auth_switch_mode")) {
+                Text(
+                    stringResource(
+                        if (signingUp) R.string.auth_have_account else R.string.auth_need_account))
+              }
+        }
       }
 }
 
@@ -216,6 +226,7 @@ internal fun AuthUiError.messageResource(): Int =
     when (this) {
       AuthUiError.INVALID_EMAIL -> R.string.auth_error_email
       AuthUiError.PSEUDO_REQUIRED -> R.string.auth_error_pseudo_required
+      AuthUiError.PSEUDO_TAKEN -> R.string.auth_error_pseudo_taken
       AuthUiError.PSEUDO_TOO_LONG -> R.string.auth_error_pseudo_too_long
       AuthUiError.PASSWORD_REQUIRED -> R.string.auth_error_password_required
       AuthUiError.WEAK_PASSWORD -> R.string.auth_error_weak_password

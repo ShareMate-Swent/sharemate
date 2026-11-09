@@ -24,7 +24,8 @@ import org.mockito.Mockito.*
 
 class FirebaseAuthRepositoryUnitTest {
   private val auth = mock(FirebaseAuth::class.java)
-  private val repository = FirebaseAuthRepository(auth)
+  private val pseudoRepository = mock(PseudoRepository::class.java)
+  private val repository = FirebaseAuthRepository(auth, pseudoRepository)
 
   @Test
   fun forwardsCredentialsForLoginAndSignup() =
@@ -41,11 +42,33 @@ class FirebaseAuthRepositoryUnitTest {
             .thenReturn(Tasks.forResult<Void>(null))
         repository.signIn("student@example.org", " secret ")
         repository.signUp("new@example.org", "new-secret", "Student")
+        verify(pseudoRepository).claim("uid", "Student")
         verify(auth).signInWithEmailAndPassword("student@example.org", " secret ")
         verify(auth).createUserWithEmailAndPassword("new@example.org", "new-secret")
         val request = ArgumentCaptor.forClass(UserProfileChangeRequest::class.java)
         verify(user).updateProfile(request.capture())
         assertEquals("Student", request.value.displayName)
+      }
+
+  @Test
+  fun duplicatePseudoStopsSignupBeforeUpdatingFirebaseProfile() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(signupResult))
+        doAnswer { throw AuthException(AuthError.PSEUDO_TAKEN) }
+            .`when`(pseudoRepository)
+            .claim("uid", "Student")
+
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("A duplicate pseudo must be rejected")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.PSEUDO_TAKEN, failure.error)
+        }
+        verify(user, never()).updateProfile(any(UserProfileChangeRequest::class.java))
       }
 
   @Test

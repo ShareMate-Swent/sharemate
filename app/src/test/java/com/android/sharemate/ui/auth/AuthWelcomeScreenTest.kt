@@ -168,7 +168,8 @@ class AuthWelcomeScreenTest {
     compose.onNodeWithTag("auth_google_loading").assertExists()
     compose.onNodeWithText("Private content").assertDoesNotExist()
     compose.runOnIdle {
-      repository.session.value = AuthSession("google-user", "student@example.org")
+      repository.session.value =
+          AuthSession("google-user", "student@example.org", displayName = "Google User")
     }
     compose.onNodeWithText("Private content").assertIsDisplayed()
     compose.runOnIdle { vm.signOut() }
@@ -193,6 +194,9 @@ class AuthWelcomeScreenTest {
 
     override suspend fun signUp(email: String, password: String, displayName: String) =
         error("Invalid signup reached repository")
+
+    override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) =
+        Unit
 
     override fun signOut() {
       session.value = null

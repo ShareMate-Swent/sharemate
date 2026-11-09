@@ -8,6 +8,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,6 +72,9 @@ private fun AuthEntryFlow(
       viewModel.resetForm()
       showForm = false
     }
+  }
+  LaunchedEffect(state.pendingProfileUpdate) {
+    if (state.pendingProfileUpdate != null) showForm = true
   }
   BackHandler(enabled = showForm && state.pendingProfileUpdate == null, onBack = goBack)
   AuthTheme(updateSystemBars = true) {

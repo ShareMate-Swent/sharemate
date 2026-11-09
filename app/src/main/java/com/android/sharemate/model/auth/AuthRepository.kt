@@ -43,6 +43,8 @@ enum class AuthError {
   NETWORK,
   TOO_MANY_REQUESTS,
   PROVIDER_DISABLED,
+  /** Another account already owns this normalized pseudo. */
+  PSEUDO_TAKEN,
   GOOGLE_UNAVAILABLE,
   ACCOUNT_CONFLICT,
   UNKNOWN

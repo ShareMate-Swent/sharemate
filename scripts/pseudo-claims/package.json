@@ -1,0 +1,12 @@
+{
+  "name": "sharemate-pseudo-claims-migration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "migrate": "node migrate-pseudo-claims.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0"
+  }
+}

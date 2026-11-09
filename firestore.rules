@@ -86,6 +86,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Pseudo claims are addressed by a normalized-name hash and cannot be enumerated.
+    // Legacy owners are populated by the one-time Admin SDK migration before release.
+    match /pseudoClaims/{claimId} {
+      function ownsExistingClaim() {
+        return resource.data.get('uid', null) == request.auth.uid
+            || request.auth.uid in resource.data.get('legacyUids', []);
+      }
+
+      allow get: if signedIn()
+          && (!exists(documentPath('pseudoClaims', claimId)) || ownsExistingClaim());
+      allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid'])
+          && request.resource.data.uid == request.auth.uid
+          && !exists(documentPath('pseudoClaims', claimId));
+      allow list, update: if false;
+      allow delete: if signedIn() && resource.data.get('uid', null) == request.auth.uid;
+    }
+
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {

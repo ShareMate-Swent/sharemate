@@ -167,27 +167,44 @@ class AuthViewModelTest {
   }
 
   @Test
-  fun duplicatePseudosAndCaseVariantsAreAllowed() = runTest {
+  fun duplicatePseudoPromptsForAUniqueReplacementWithoutRepeatingSignup() = runTest {
     ready()
     viewModel.selectMode(AuthMode.SIGN_UP)
     fillLogin()
     viewModel.updateConfirmPassword("secret")
-    for ((index, pseudo) in listOf("Alex", "alex").withIndex()) {
-      viewModel.updatePseudo(pseudo)
-      viewModel.submit()
-      advanceUntilIdle()
-      repository.sessions.emit(AuthSession("user-$index", "student@example.org"))
-      advanceUntilIdle()
-      assertEquals(pseudo, viewModel.state.value.session?.displayName)
-      if (index == 0) {
-        viewModel.signOut()
-        advanceUntilIdle()
-        viewModel.selectMode(AuthMode.SIGN_UP)
-        fillLogin()
-        viewModel.updateConfirmPassword("secret")
-      }
-    }
+    viewModel.updatePseudo("Alex")
+    viewModel.submit()
+    advanceUntilIdle()
+    repository.sessions.emit(AuthSession("user-1", "student@example.org"))
+    advanceUntilIdle()
+    assertEquals("Alex", viewModel.state.value.session?.displayName)
+
+    viewModel.signOut()
+    advanceUntilIdle()
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updateConfirmPassword("secret")
+    viewModel.updatePseudo("alex")
+    repository.sessionOnSignUp = AuthSession("user-2", "student@example.org")
+    repository.signUpFailureAfterSession = AuthException(AuthError.PSEUDO_TAKEN)
+    repository.profileUpdateFailure = AuthException(AuthError.PSEUDO_TAKEN)
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(AuthUiError.PSEUDO_TAKEN, viewModel.state.value.error)
+    assertEquals("alex", viewModel.state.value.pseudo)
+    assertEquals("user-2", viewModel.state.value.pendingProfileUpdate?.uid)
+
+    repository.profileUpdateFailure = null
+    viewModel.updatePseudo("Alex Two")
+    viewModel.submit()
+    advanceUntilIdle()
+
+    assertEquals(2, repository.calls.size)
     assertEquals(listOf("Alex", "alex"), repository.calls.map { it.pseudo })
+    assertEquals(listOf("alex", "Alex Two"), repository.profileUpdateCalls)
+    assertNull(viewModel.state.value.pendingProfileUpdate)
+    assertEquals("Alex Two", viewModel.state.value.session?.displayName)
   }
 
   @Test

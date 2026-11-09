@@ -29,6 +29,8 @@ enum class AuthUiError {
   INVALID_EMAIL,
   /** Sign-up requires a pseudo containing at least one visible character. */
   PSEUDO_REQUIRED,
+  /** The pseudo is already claimed by another account. */
+  PSEUDO_TAKEN,
   PSEUDO_TOO_LONG,
   PASSWORD_REQUIRED,
   WEAK_PASSWORD,
@@ -116,7 +118,13 @@ class AuthViewModel(
     val current = state.value
     if (current.isLoading || current.isRestoringSession) return
     current.pendingProfileUpdate?.let { pending ->
-      if (current.session?.uid == pending.uid) retryPendingProfileUpdate(pending)
+      val pseudo = current.pseudo.trimPseudoPadding()
+      val pseudoError = validatePseudo(pseudo)
+      if (pseudoError != null) {
+        mutableState.update { it.copy(error = pseudoError) }
+      } else if (current.session?.uid == pending.uid) {
+        retryPendingProfileUpdate(pending.copy(displayName = pseudo))
+      }
       return
     }
     if (current.session != null) return
@@ -184,7 +192,13 @@ class AuthViewModel(
   }
 
   private fun retryPendingProfileUpdate(pending: PendingProfileUpdate) {
-    mutableState.update { it.copy(isLoading = true, error = null) }
+    mutableState.update {
+      it.copy(
+          pseudo = pending.displayName,
+          pendingProfileUpdate = pending,
+          isLoading = true,
+          error = null)
+    }
     viewModelScope.launch {
       try {
         repository.updateCurrentUserDisplayName(pending.uid, pending.displayName)
@@ -238,15 +252,45 @@ class AuthViewModel(
   private suspend fun exchangeGoogleToken(token: String) {
     try {
       repository.signInWithGoogle(token)
-      state.first { it.session != null }
+      val session = state.first { it.session != null }.session!!
+      val pseudo = session.displayName?.trimPseudoPadding().orEmpty()
+      val pseudoError = validatePseudo(pseudo)
+      if (pseudoError != null) {
+        mutableState.update { currentState ->
+          if (currentState.session?.uid != session.uid) currentState
+          else
+              currentState.copy(
+                  pseudo = pseudo,
+                  pendingProfileUpdate = PendingProfileUpdate(session.uid, pseudo),
+                  error = pseudoError)
+        }
+      } else {
+        try {
+          repository.updateCurrentUserDisplayName(session.uid, pseudo)
+          markProfileUpdated(session.uid, pseudo)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (failure: Exception) {
+          preservePendingPseudo(session.uid, pseudo, failure.toUiError())
+        }
+      }
     } catch (cancelled: CancellationException) {
       throw cancelled
-    } catch (failure: AuthException) {
-      mutableState.update { it.copy(error = failure.error.toUiError()) }
-    } catch (_: Exception) {
-      mutableState.update { it.copy(error = AuthUiError.UNKNOWN) }
+    } catch (failure: Exception) {
+      mutableState.update { it.copy(error = failure.toUiError()) }
     } finally {
       mutableState.update { it.copy(isLoading = false) }
+    }
+  }
+
+  private fun preservePendingPseudo(uid: String, pseudo: String, error: AuthUiError) {
+    mutableState.update { currentState ->
+      if (currentState.session?.uid != uid) currentState
+      else
+          currentState.copy(
+              pseudo = pseudo,
+              pendingProfileUpdate = PendingProfileUpdate(uid, pseudo),
+              error = error)
     }
   }
 

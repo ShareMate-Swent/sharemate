@@ -6,6 +6,7 @@
     <string name="auth_sign_up">Sign up</string>
     <string name="auth_email">Email</string>
     <string name="auth_pseudo">Pseudo</string>
+    <string name="auth_choose_pseudo">Choose a unique pseudo</string>
     <string name="auth_save_pseudo">Save pseudo and continue</string>
     <string name="auth_password">Password</string>
     <string name="auth_confirm_password">Confirm password</string>
@@ -16,6 +17,7 @@
     <string name="auth_have_account">Already have an account? Log in</string>
     <string name="auth_error_email">Enter a valid email address.</string>
     <string name="auth_error_pseudo_required">Enter a pseudo.</string>
+    <string name="auth_error_pseudo_taken">That pseudo is already in use. Choose another one.</string>
     <string name="auth_error_pseudo_too_long">Use %1$d characters or fewer for your pseudo.</string>
     <string name="auth_error_password_required">Enter your password.</string>
     <string name="auth_error_weak_password">Choose a stronger password with at least 6 characters.</string>

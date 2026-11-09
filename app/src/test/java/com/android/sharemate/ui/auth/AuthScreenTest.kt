@@ -59,6 +59,27 @@ class AuthScreenTest {
   }
 
   @Test
+  fun pendingPseudoFlowShowsOnlyEditableNameAndRetryAction() {
+    val state =
+        AuthUiState(
+            isRestoringSession = false,
+            session = com.android.sharemate.model.auth.AuthSession("user", "user@example.org"),
+            pseudo = "Taken",
+            pendingProfileUpdate = PendingProfileUpdate("user", "Taken"),
+            error = AuthUiError.PSEUDO_TAKEN)
+    compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
+
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsEnabled()
+    compose.onNodeWithTag("auth_email").assertDoesNotExist()
+    compose.onNodeWithTag("auth_password").assertDoesNotExist()
+    compose.onNodeWithTag("auth_confirm_password").assertDoesNotExist()
+    compose.onNodeWithTag("auth_submit").assertTextEquals("Save pseudo and continue")
+    compose
+        .onNodeWithTag("auth_error")
+        .assertTextEquals("That pseudo is already in use. Choose another one.")
+  }
+
+  @Test
   fun switchingModeMasksPasswordAfterItWasShown() {
     var state by mutableStateOf(AuthUiState(isRestoringSession = false))
     compose.setContent {
@@ -135,6 +156,7 @@ class AuthScreenTest {
         mapOf(
             AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
             AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
+            AuthUiError.PSEUDO_TAKEN to "That pseudo is already in use. Choose another one.",
             AuthUiError.PSEUDO_TOO_LONG to
                 "Use $MAX_PSEUDO_LENGTH characters or fewer for your pseudo.",
             AuthUiError.PASSWORD_REQUIRED to "Enter your password.",

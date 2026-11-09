@@ -2,6 +2,7 @@
 package com.android.sharemate.model.user
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.auth.PseudoRepository as PseudoClaimRepository
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -21,6 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebasePseudoRepositoryTest {
@@ -69,7 +71,8 @@ class FirebasePseudoRepositoryTest {
           else -> null
         }
       }
-  private val repository = FirebasePseudoRepository(firestore)
+  private val pseudoClaims = mock(PseudoClaimRepository::class.java)
+  private val repository = FirebasePseudoRepository(firestore, pseudoClaims)
 
   @Test
   fun readsOnlyValidNonblankPseudos() = runTest {
@@ -84,6 +87,7 @@ class FirebasePseudoRepositoryTest {
   @Test
   fun savesTrimmedPseudoInPublicProfileWithoutReplacingOtherFields() = runTest {
     repository.setPseudo("alice", " Alice ")
+    verify(pseudoClaims).claim("alice", "Alice")
     assertEquals(
         listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
   }

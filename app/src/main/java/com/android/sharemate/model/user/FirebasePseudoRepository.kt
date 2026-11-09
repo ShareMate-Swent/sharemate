@@ -4,6 +4,8 @@ package com.android.sharemate.model.user
 import android.util.Log
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
+import com.android.sharemate.model.auth.FirestorePseudoRepository
+import com.android.sharemate.model.auth.PseudoRepository as PseudoClaimRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -16,7 +18,10 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
 /** Stores the pseudo as the display name in the household-readable profile. */
-class FirebasePseudoRepository(private val firestore: FirebaseFirestore) : PseudoRepository {
+class FirebasePseudoRepository(
+    private val firestore: FirebaseFirestore,
+    private val pseudoClaims: PseudoClaimRepository = FirestorePseudoRepository(firestore),
+) : PseudoRepository {
 
   private fun document(userId: String) =
       firestore.collection(FirestoreCollections.PROFILES).document(userId)
@@ -51,6 +56,7 @@ class FirebasePseudoRepository(private val firestore: FirebaseFirestore) : Pseud
     require(validatePseudo(value) == null) {
       "A pseudo must contain a visible character and at most $MAX_PSEUDO_LENGTH code points"
     }
+    pseudoClaims.claim(userId, value)
     document(userId).set(mapOf(UserProfileFields.DISPLAY_NAME to value), SetOptions.merge()).await()
   }
 

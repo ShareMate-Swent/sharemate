@@ -17,7 +17,10 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
-class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
+class FirebaseAuthRepository(
+    private val auth: FirebaseAuth,
+    private val pseudoRepository: PseudoRepository,
+) : AuthRepository {
   override val session: Flow<AuthSession?> =
       callbackFlow {
             val listener =
@@ -38,6 +41,7 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
       val user =
           auth.createUserWithEmailAndPassword(email, password).await().user
               ?: throw IllegalStateException(CREATED_USER_MISSING_MESSAGE)
+      pseudoRepository.claim(user.uid, displayName)
       user.updateProfile(profileChangeRequest(displayName)).await()
     }
   }
@@ -46,7 +50,13 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     authenticate {
       val user = auth.currentUser ?: throw IllegalStateException(NO_SIGNED_IN_USER_MESSAGE)
       if (user.uid != expectedUid) throw IllegalStateException(SIGNED_IN_USER_CHANGED_MESSAGE)
+      val previousDisplayName = user.displayName
+      pseudoRepository.claim(user.uid, displayName)
       user.updateProfile(profileChangeRequest(displayName)).await()
+      if (previousDisplayName != null &&
+          normalizePseudo(previousDisplayName) != normalizePseudo(displayName)) {
+        pseudoRepository.release(user.uid, previousDisplayName)
+      }
     }
   }
 
@@ -67,6 +77,8 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
       return action()
     } catch (cancelled: CancellationException) {
       throw cancelled
+    } catch (failure: AuthException) {
+      throw failure
     } catch (failure: Exception) {
       val error =
           when (failure) {
