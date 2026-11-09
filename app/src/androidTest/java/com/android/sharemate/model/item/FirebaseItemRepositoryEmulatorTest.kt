@@ -19,9 +19,12 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -523,6 +526,29 @@ class FirebaseItemRepositoryEmulatorTest {
     confirm(repository.updateItem(id, ItemEdit("Member edit", 2, null, null)))
     assertEquals(
         ItemSharing.SHARED, await(document(id).get(Source.SERVER)).toItemOrNull()!!.sharing)
+
+    // The member's live query follows the owner's changes, made from another client so that the
+    // member's listener keeps its own identity: the item disappears when the owner makes it
+    // personal again, and comes back when it is shared again.
+    FirebaseEmulator.secondClientAs("item-owner").use { ownerClient ->
+      val ownerRepository = FirebaseItemRepository(ownerClient.firestore)
+      val seen = MutableStateFlow<List<Item>?>(null)
+      val collector =
+          launch(Dispatchers.IO) {
+            repository.getFridgeItems(home.id, member).collect { seen.value = it }
+          }
+      try {
+        withTimeout(10_000) { seen.first { items -> items?.any { it.id == id } == true } }
+        confirm(ownerRepository.setItemSharing(id, ItemSharing.PERSONAL))
+        withTimeout(10_000) { seen.first { items -> items != null && items.none { it.id == id } } }
+        assertDenied(document(id).get(Source.SERVER))
+        confirm(ownerRepository.setItemSharing(id, ItemSharing.SHARED))
+        withTimeout(10_000) { seen.first { items -> items?.any { it.id == id } == true } }
+      } finally {
+        collector.cancel()
+      }
+    }
+
     FirebaseEmulator.signInAs("sharing-outsider")
     assertDenied(document(id).get(Source.SERVER))
     assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
