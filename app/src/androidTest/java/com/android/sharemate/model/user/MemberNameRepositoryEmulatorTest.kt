@@ -260,7 +260,9 @@ class MemberNameRepositoryEmulatorTest {
         assertFalse(confirmation.isCompleted)
         val local = entry(home.id, alice).get(Source.CACHE).await()
         assertEquals(name, local.getString("displayName"))
-        assertTrue(local.metadata.hasPendingWrites())
+        assertEquals(name != null, local.exists())
+        // Missing-document snapshots omit pending-delete metadata; the handle tracks it.
+        if (local.exists()) assertTrue(local.metadata.hasPendingWrites())
         firestore.enableNetwork().await()
         withTimeout(15_000) { confirmation.await() }.getOrThrow()
         assertEquals(name, cachedName(home.id, alice, Source.SERVER))
