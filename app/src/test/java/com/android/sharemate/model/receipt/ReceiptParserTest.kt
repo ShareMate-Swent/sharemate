@@ -111,6 +111,16 @@ class ReceiptParserTest {
   }
 
   @Test
+  fun multiplierSyntaxDoesNotConsumeTheFirstLetterOfProductWords() {
+    assertEquals(
+        listOf(
+            ReceiptItem("Chips 2 XXL", 350),
+            ReceiptItem("3 Xylitol gum", 250),
+            ReceiptItem("Lait", 480, 2)),
+        parseRows("Chips 2 XXL 3.50", "3 Xylitol gum 2.50", "2x Lait 4.80"))
+  }
+
+  @Test
   fun explicitUnitPricesAreMultipliedOnlyWhenNoTotalWasPrinted() {
     for (row in
         listOf("Lait 2 x 2.40", "2x Lait @2.40", "Lait 2 pcs 2.40/pc", "Lait 2 pcs @2.40 each")) {
@@ -146,6 +156,23 @@ class ReceiptParserTest {
   }
 
   @Test
+  fun negativeDiscountsAreSkippedAndBreakQuantityDetailAssociation() {
+    for (discount in listOf("Aktion -0.60", "Aktion CHF −0.60", "Aktion 0.60-")) {
+      assertEquals(
+          discount,
+          listOf(ReceiptItem("Lait", 240), ReceiptItem("Asiago", 315)),
+          parseRows("Lait 2.40", discount, "2 x 1.20", "AKT Asiago 3.15 2"))
+      assertEquals(discount, emptyList<ReceiptItem>(), parseRows("Lait", discount, "2 x 1.20"))
+    }
+  }
+
+  @Test
+  fun embeddedHyphensAndSignedFractionalCountsAreNotDiscounts() {
+    assertEquals(listOf(ReceiptItem("Produit REF-2.40", 350)), parseRows("Produit REF-2.40 3.50"))
+    assertEquals(listOf(ReceiptItem("-0.50 x Lait", null)), parseRows("Lait -0.50 x 2.40"))
+  }
+
+  @Test
   fun retainsWeightInformationWithoutInventingAnIntegerCountOrUnitTotal() {
     assertEquals(listOf(ReceiptItem("Pommes 0.350 kg", 140)), parseRows("Pommes 0.350 kg 1.40"))
     assertEquals(listOf(ReceiptItem("Pommes 0.350 kg", 140)), parseRows("Pommes", "0.350 kg 1.40"))
@@ -158,17 +185,34 @@ class ReceiptParserTest {
 
   @Test
   fun ambiguousPricesAndInvalidCountsRemainReviewableWithoutCrashingTheReceipt() {
-    assertEquals(listOf(ReceiptItem("Lait", null)), parseRows("Lait 2.40 4.80"))
+    assertEquals(listOf(ReceiptItem("Lait 2.40", null)), parseRows("Lait 2.40 4.80"))
+    assertEquals(listOf(ReceiptItem("Coca-Cola 0.50", null)), parseRows("Coca-Cola 0.50 2.20"))
     assertEquals(listOf(ReceiptItem("Lait", null)), parseRows("Lait 12345678.90"))
     for (quantity in listOf("0", "-2", "2147483648", "0.50")) {
       assertEquals(
           listOf(ReceiptItem("${quantity}x Lait", null)), parseRows("${quantity}x Lait @2.40"))
     }
     assertEquals(
-        listOf(ReceiptItem("Lait", 2_147_483_647L * 999_999_999L, Int.MAX_VALUE)),
-        parseRows("Lait 2147483647 x 9999999.99"))
+        listOf(ReceiptItem("2147483647 x Lait", null)), parseRows("Lait 2147483647 x 9999999.99"))
     assertEquals(
         listOf(ReceiptItem("6-pack Eau 1.5 litres", 310)), parseRows("6-pack Eau 1.5 litres 3.10"))
+  }
+
+  @Test
+  fun countsAboveThePlausibilityLimitKeepTheirTextAndAnIndependentPrintedTotal() {
+    assertEquals(listOf(ReceiptItem("Lait", 11_760, 98)), parseRows("98x Lait @1.20"))
+    assertEquals(listOf(ReceiptItem("Lait", 11_880, 99)), parseRows("99x Lait @1.20"))
+    assertEquals(listOf(ReceiptItem("100x Lait", null)), parseRows("100x Lait @1.20"))
+    assertEquals(listOf(ReceiptItem("100x Lait", 240)), parseRows("100x Lait @1.20 2.40"))
+    assertEquals(
+        listOf(ReceiptItem("2147483648x Lait", 240)), parseRows("2147483648x Lait @1.20 2.40"))
+  }
+
+  @Test
+  fun invalidCountDetailsCannotReuseEarlierCountsOrDerivedTotals() {
+    assertEquals(listOf(ReceiptItem("100 x Lait", null)), parseRows("2x Lait", "100 x 1.20"))
+    assertEquals(listOf(ReceiptItem("100 pcs Lait", null)), parseRows("2x Lait @1.20", "100 pcs"))
+    assertEquals(listOf(ReceiptItem("100 pcs Lait", 240)), parseRows("2x Lait 2.40", "100 pcs"))
   }
 
   @Test
@@ -190,6 +234,13 @@ class ReceiptParserTest {
           listOf(ReceiptItem("Pommes $weight", null)), parseRows("Pommes", "$weight @4.00/kg"))
     }
     assertEquals(listOf(ReceiptItem("Eau 1.50 litres", 240)), parseRows("Eau 1.50 litres 2.40"))
+  }
+
+  @Test
+  fun uppercaseMeasurementUnitsAndTrailingTaxGroupsAreDistinguished() {
+    assertEquals(
+        listOf(ReceiptItem("Cola 1.50 L", 220), ReceiptItem("Épices 0.50 G", 240)),
+        parseRows("Cola 1.50 L 2.20 G", "Épices 0.50 G 2.40 L"))
   }
 
   @Test
@@ -254,6 +305,7 @@ class ReceiptParserTest {
             "Eau 2x 1.50 litres" to "Eau 2x 1.50 litres 3.00")) {
       assertEquals(listOf(ReceiptItem(name, 300)), parseRows(row))
     }
+    assertEquals(listOf(ReceiptItem("Eau 6x1.5L", 540)), parseRows("Eau 6x1.5L 5.40"))
   }
 
   @Test

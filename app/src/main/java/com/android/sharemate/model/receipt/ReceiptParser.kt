@@ -10,27 +10,35 @@ data class ReceiptItem(val name: String, val priceCents: Long?, val quantity: In
 internal object ReceiptParser {
   private const val CENTS_PER_UNIT = 100L
   private const val MAX_WHOLE_DIGITS = 7
+  private const val MAX_SCANNED_QUANTITY = 99
   private const val MAX_ROW_GAP_HEIGHTS = 2
   private const val MAX_DETAIL_INDENT_HEIGHTS = 4
+  // A separate uppercase G/L at the end of a row can be a tax group.
+  private const val MEASUREMENT_UNIT =
+      """(?:(?i:kg|mg|ml|cl|litres?|liters?)\b|[gl]\b|[GL]\b(?=\s+\S))"""
+  private const val COUNT_MARKER = """(?:PCS?\b|[x×*](?!\p{L}))"""
   private val amount =
       Regex(
           """(?<![\w.,+\-])(?:CHF\s*)?(\d+)[.,](\d{2})(?:\s*CHF)?(?![\w.,])""",
           RegexOption.IGNORE_CASE)
   private val total = Regex("""^total\b""", RegexOption.IGNORE_CASE)
+  // A sign inside a product reference or a signed count is not a discount.
+  private val negativeAmount =
+      Regex(
+          """(?<!\S)(?:CHF\s*)?(?:[-−]\s*(?:CHF\s*)?\d+[.,]\d{2}(?![\w.,]|\s*$COUNT_MARKER)|\d+[.,]\d{2}(?:\s*CHF)?\s*[-−](?![\w.,]))""",
+          RegexOption.IGNORE_CASE)
   private val summary =
       Regex(
           """^(?:(?:sous[- ]?|sub[- ]?)?total|tva|mwst|vat|cash|carte|visa|mastercard|rendu|rabais|remise)\b""",
           RegexOption.IGNORE_CASE)
   private val count =
-      Regex("""(?<!\S)(-?\d+(?:[.,]\d+)?)\s*(?:PCS?\b|[x×*])""", RegexOption.IGNORE_CASE)
+      Regex("""(?<!\S)([-−]?\d+(?:[.,]\d+)?)\s*$COUNT_MARKER""", RegexOption.IGNORE_CASE)
   private val unitPrefix = Regex("""(?:^|\s)(?:[x×*@]|à)\s*$""", RegexOption.IGNORE_CASE)
   private val unitSuffix = Regex("""^\s*(?:/\s*(?:pcs?|kg|g)\b|each\b)""", RegexOption.IGNORE_CASE)
   private val taxSuffix = Regex("""^\s*[A-Z0-9]?\s*$""", RegexOption.IGNORE_CASE)
   private val weightOnly = Regex("""^\d+(?:[.,]\d+)?\s*(?:kg|g)$""", RegexOption.IGNORE_CASE)
-  // Single uppercase G/L may be tax groups; lowercase g/l are measurement units.
-  private val measurementSuffix = Regex("""^\s*(?:(?:(?i:kg|mg|ml|cl|litres?|liters?)|g|l)\b|%)""")
-  private val packageSize =
-      Regex("""^\s*\d+(?:[.,]\d+)?\s*(?:(?i:kg|mg|ml|cl|litres?|liters?)|g|l)\b""")
+  private val measurementSuffix = Regex("""^\s*(?:$MEASUREMENT_UNIT|%)""")
+  private val packageSize = Regex("""^\s*\d+(?:[.,]\d+)?(?:\s*$MEASUREMENT_UNIT|[GL]\b)""")
   private val spaces = Regex("""\s+""")
   private val leadingBarcode = Regex("""^\d[\d+\-]{7,15}\s+""")
   // ML Kit reads the printed AKT promotion marker as iKT on the real Migros fixture.
@@ -43,8 +51,9 @@ internal object ReceiptParser {
 
   /**
    * Recognizes explicit x/pcs counts, adjacent quantity details and unit prices marked by x/@/à or
-   * /pc. An unmarked amount is a row total. Two unmarked amounts remain unknown. Weights stay in
-   * the label with one inventory row; no decimal weight is rounded into an item count.
+   * /pc. An unmarked amount is a row total. Multiple unmarked amounts leave the total unknown and
+   * preserve earlier tokens in the label for review. Only counts from 1 to 99 are applied. Weights
+   * stay in the label with one inventory row.
    */
   fun parse(lines: List<ReceiptLine>): List<ReceiptItem> {
     val rows = mutableListOf<MutableList<ReceiptLine>>()
@@ -60,7 +69,9 @@ internal object ReceiptParser {
       val row = PrintedRow(linesInRow)
       val rowText = row.text.replaceFirst(leadingBarcode, "").replaceFirst(marker, "")
       if (total.containsMatchIn(rowText)) break
-      if (header.containsMatchIn(rowText) || summary.containsMatchIn(rowText)) {
+      if (header.containsMatchIn(rowText) ||
+          summary.containsMatchIn(rowText) ||
+          negativeAmount.containsMatchIn(rowText)) {
         label = null
         candidate = null
         continue
@@ -84,7 +95,7 @@ internal object ReceiptParser {
           previousLabel != null &&
           row.follows(previousLabel, parsed.hasCount || weightDetail)) {
         val labelData = parseRow(previousLabel.text)
-        val explicitCount = parsed.quantity ?: labelData.quantity
+        val explicitCount = if (parsed.hasCount) parsed.quantity else labelData.quantity
         val name =
             if (weightDetail) "${labelData.reviewName()} ${parsed.name}" else labelData.reviewName()
         result +=
@@ -172,7 +183,10 @@ internal object ReceiptParser {
               } && !measurementSuffix.containsMatchIn(text.substring(money.range.last + 1))
             }
             .toList()
-    val quantity = counts.singleOrNull()?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
+    val quantity =
+        counts.singleOrNull()?.groupValues?.get(1)?.toIntOrNull()?.takeIf {
+          it in 1..MAX_SCANNED_QUANTITY
+        }
     val unitAmounts =
         amounts.filter { money ->
           counts.any {
@@ -206,7 +220,7 @@ internal object ReceiptParser {
               ?.let { (money.range.last + 1)..text.lastIndex }
         }
     val remove =
-        amounts.map { it.range } +
+        (unitAmounts + totals.takeLast(1)).map { it.range } +
             counts.map { it.range } +
             suffixes +
             listOfNotNull(tail) +
@@ -226,7 +240,7 @@ internal object ReceiptParser {
         unitAmounts.singleOrNull()?.cents())
   }
 
-  // Seven whole digits and a positive Int count bound multiplication well below Long.MAX_VALUE.
+  // Seven whole digits and at most 99 units keep multiplication well below Long.MAX_VALUE.
   private fun MatchResult.cents(): Long? =
       groupValues[1]
           .takeIf { it.length <= MAX_WHOLE_DIGITS }
