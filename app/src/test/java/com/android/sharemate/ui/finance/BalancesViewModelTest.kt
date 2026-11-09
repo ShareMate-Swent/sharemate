@@ -5,6 +5,8 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.finance.*
 import com.android.sharemate.model.household.*
+import com.android.sharemate.model.profile.UserProfile
+import com.android.sharemate.model.profile.UserProfileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -25,7 +27,7 @@ class BalancesViewModelTest {
   private val auth = mock(AuthRepository::class.java)
   private val households = mock(HouseholdRepository::class.java)
   private val home = Household(id = "home", memberIds = listOf("alice", "bob", "zero"))
-  private val ledger = MutableStateFlow(snapshot())
+  private val ledger = MutableStateFlow<List<SharedExpense>>(emptyList())
   private var failure = false
   private var active = 0
   private var subscriptions = 0
@@ -67,7 +69,7 @@ class BalancesViewModelTest {
     val empty = vm.state.value as BalancesUiState.Ready
     assertEquals(mapOf("alice" to 0L, "bob" to 0L, "zero" to 0L), empty.summary.netBalancesCents)
     assertTrue(empty.summary.debts.isEmpty())
-    ledger.value = snapshot(SharedExpense("e", "home", "bob", 1500, mapOf("alice" to 1500L)))
+    ledger.value = listOf(SharedExpense("e", "home", "bob", 1500, mapOf("alice" to 1500L)))
     advanceUntilIdle()
     val ready = vm.state.value as BalancesUiState.Ready
     assertEquals("alice", ready.currentUserId)
@@ -84,7 +86,7 @@ class BalancesViewModelTest {
 
   @Test
   fun failureClearsAmountsAndRetryReloadsMembershipWithoutDuplicateObservers() = runTest {
-    ledger.value = snapshot(SharedExpense("e", "home", "alice", 100, mapOf("bob" to 100L)))
+    ledger.value = listOf(SharedExpense("e", "home", "alice", 100, mapOf("bob" to 100L)))
     val vm = create()
     advanceUntilIdle()
     assertTrue(vm.state.value is BalancesUiState.Ready)
@@ -100,7 +102,7 @@ class BalancesViewModelTest {
     assertEquals(BalancesUiState.Error, vm.state.value)
     assertEquals(3, subscriptions)
     failure = false
-    ledger.value = snapshot()
+    ledger.value = emptyList()
     vm.retry()
     advanceUntilIdle()
     assertTrue(vm.state.value is BalancesUiState.Ready)
@@ -163,17 +165,26 @@ class BalancesViewModelTest {
     records.emit(emptyList())
     runCurrent()
     assertTrue(vm.state.value is BalancesUiState.Ready)
+    session.value = AuthSession("alice", "refresh")
+    advanceUntilIdle()
+    assertEquals(BalancesUiState.Offline, vm.state.value)
+    vm.retry()
+    runCurrent()
+    assertEquals(BalancesUiState.Loading, vm.state.value)
+    records.emit(emptyList())
+    runCurrent()
+    assertTrue(vm.state.value is BalancesUiState.Ready)
   }
 
   @Test
-  fun namesUpdateAndMissingNamesRemainAbsentForTheUiFallback() = runTest {
+  fun missingNamesAndProfileFailureKeepBalancesAvailableWithTheUiFallback() = runTest {
     val names =
         MutableStateFlow(
             listOf(
-                com.android.sharemate.model.profile.UserProfile("bob", "Bob"),
-                com.android.sharemate.model.profile.UserProfile("zero", "  ")))
-    val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
-    `when`(profiles.observeMembers("home")).thenReturn(names)
+                UserProfile("bob", "Bob"), UserProfile("alice", null), UserProfile("zero", "  ")))
+    val profiles = mock(UserProfileRepository::class.java)
+    `when`(profiles.observeMembers("home"))
+        .thenReturn(names.map { it.also { check(it.isNotEmpty()) } })
     `when`(households.getHousehold("home")).thenReturn(home)
     val vm = BalancesViewModel(finances, households, auth, "home", dispatcher, profiles)
     advanceUntilIdle()
@@ -181,6 +192,9 @@ class BalancesViewModelTest {
     names.value = emptyList()
     advanceUntilIdle()
     assertTrue((vm.state.value as BalancesUiState.Ready).memberNames.isEmpty())
+    assertEquals(
+        mapOf("alice" to 0L, "bob" to 0L, "zero" to 0L),
+        (vm.state.value as BalancesUiState.Ready).summary.netBalancesCents)
   }
 
   @Test
@@ -215,6 +229,4 @@ class BalancesViewModelTest {
     assertEquals(BalancesUiState.InvalidData, vm.state.value)
     assertEquals(0, active)
   }
-
-  private fun snapshot(vararg expenses: SharedExpense) = expenses.toList()
 }
