@@ -35,9 +35,12 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -215,6 +218,9 @@ class FridgeScreenTest {
 
                     override suspend fun setPseudo(userId: String, pseudo: String) = Unit
                   },
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
               fridgeType = FridgeType.SHARED)
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }

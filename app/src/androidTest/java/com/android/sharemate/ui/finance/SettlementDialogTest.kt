@@ -17,6 +17,29 @@ class SettlementDialogTest {
   private val debt = Debt("alice", "bob", 1500)
 
   @Test
+  fun frenchSwissConfigurationDisplaysAndAcceptsDecimalComma() {
+    val configuration =
+        android.content.res.Configuration(compose.activity.resources.configuration).apply {
+          setLocale(java.util.Locale.forLanguageTag("fr-CH"))
+        }
+    var amount: Long? = null
+    compose.setContent {
+      androidx.compose.runtime.CompositionLocalProvider(
+          androidx.compose.ui.platform.LocalConfiguration provides configuration) {
+            MaterialTheme { SettleUpDialog(debt, "Bob", {}, { amount = it }) }
+          }
+    }
+    compose
+        .onNodeWithText(
+            formatFinanceAmount(debt.amountCents, java.util.Locale.forLanguageTag("fr-CH")),
+            substring = true)
+        .assertIsDisplayed()
+    compose.onNodeWithTag("settlement_amount").performTextReplacement("6,00")
+    compose.onNodeWithTag("settlement_confirm").assertIsEnabled().performClick()
+    assertEquals(600L, amount)
+  }
+
+  @Test
   fun validatesExactCentsAndConfirmsFullOrPartialAmount() {
     val amounts = mutableListOf<Long>()
     var dismissals = 0
@@ -26,12 +49,32 @@ class SettlementDialogTest {
     compose.onNodeWithText("You owe Bob", substring = true).assertIsDisplayed()
     compose.onNodeWithTag("settlement_confirm").performClick()
     assertEquals(listOf(1500L), amounts)
-    for (input in listOf("", "0", "-1", "15.01", "1.001", "6,00", "92233720368547758.08")) {
+    for (input in
+        listOf(
+            "",
+            "0",
+            "-1",
+            "15.01",
+            "1.001",
+            "1,001",
+            "1,000.00",
+            "1.000,00",
+            "1,,00",
+            "15,01",
+            "0,00",
+            "92233720368547758.08")) {
       compose.onNodeWithTag("settlement_amount").performTextReplacement(input)
       compose.onNodeWithTag("settlement_confirm").assertIsNotEnabled()
     }
     for ((input, expected) in
-        listOf("0.01" to 1L, "14.99" to 1499L, "15.00" to 1500L, "6.00" to 600L)) {
+        listOf(
+            "0.01" to 1L,
+            "14.99" to 1499L,
+            "15.00" to 1500L,
+            "6.00" to 600L,
+            "6,00" to 600L,
+            "0,01" to 1L,
+            "15,00" to 1500L)) {
       compose.onNodeWithTag("settlement_amount").performTextReplacement(input)
       compose.onNodeWithTag("settlement_confirm").assertIsEnabled().performClick()
       assertEquals(expected, amounts.last())

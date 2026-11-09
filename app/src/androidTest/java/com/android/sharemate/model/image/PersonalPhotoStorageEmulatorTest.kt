@@ -11,6 +11,8 @@ import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.decodePersonalThumbnail
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
@@ -390,6 +392,9 @@ class PersonalPhotoStorageEmulatorTest {
                   testProductCatalogRepository(),
                   repository,
                   files,
+                  expirationPreferences =
+                      ExpirationPreferencesProvider(
+                          FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
                   fridgeType = FridgeType.SHARED)
               .also { models.put("fridge", it) }
         }

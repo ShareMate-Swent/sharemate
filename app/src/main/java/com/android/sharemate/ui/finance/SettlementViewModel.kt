@@ -126,7 +126,7 @@ class SettlementViewModel(
             ledger.value = null
             availability.value = SettlementUiState.Loading
             val waiting = launch {
-              delay(BalancesViewModel.INITIAL_LOAD_TIMEOUT_MS)
+              delay(INITIAL_LOAD_TIMEOUT_MS)
               if (ledger.value == null) availability.value = SettlementUiState.Offline
             }
             writeJob?.cancel()
@@ -265,5 +265,10 @@ class SettlementViewModel(
   fun retryLoading() {
     if (state.value == SettlementUiState.Error || state.value == SettlementUiState.Offline)
         retries.value += 1
+  }
+
+  companion object {
+    /** Time before a missing server result is presented as offline while observation continues. */
+    internal const val INITIAL_LOAD_TIMEOUT_MS = 10_000L
   }
 }

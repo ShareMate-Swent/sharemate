@@ -80,7 +80,7 @@ internal fun SettleUpDialog(
       rememberSaveable(debt.creditorId, debt.amountCents) {
         mutableStateOf(BigDecimal.valueOf(debt.amountCents, 2).toPlainString())
       }
-  val cents = FinanceAmounts.parseCents(input)?.takeIf { it <= debt.amountCents }
+  val cents = FinanceAmounts.parseCents(input.replace(',', '.'))?.takeIf { it <= debt.amountCents }
   val locale = LocalConfiguration.current.locales[0]
   AlertDialog(
       onDismissRequest = onDismiss,

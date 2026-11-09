@@ -9,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +17,10 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
-class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
+class FirebaseAuthRepository(
+    private val auth: FirebaseAuth,
+    private val pseudoRepository: PseudoRepository,
+) : AuthRepository {
   override val session: Flow<AuthSession?> =
       callbackFlow {
             val listener =
@@ -32,8 +36,28 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
     authenticate { auth.signInWithEmailAndPassword(email, password).await() }
   }
 
-  override suspend fun signUp(email: String, password: String) {
-    authenticate { auth.createUserWithEmailAndPassword(email, password).await() }
+  override suspend fun signUp(email: String, password: String, displayName: String) {
+    authenticate {
+      val user =
+          auth.createUserWithEmailAndPassword(email, password).await().user
+              ?: throw IllegalStateException(CREATED_USER_MISSING_MESSAGE)
+      pseudoRepository.claim(user.uid, displayName)
+      user.updateProfile(profileChangeRequest(displayName)).await()
+    }
+  }
+
+  override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+    authenticate {
+      val user = auth.currentUser ?: throw IllegalStateException(NO_SIGNED_IN_USER_MESSAGE)
+      if (user.uid != expectedUid) throw IllegalStateException(SIGNED_IN_USER_CHANGED_MESSAGE)
+      val previousDisplayName = user.displayName
+      pseudoRepository.claim(user.uid, displayName)
+      user.updateProfile(profileChangeRequest(displayName)).await()
+      if (previousDisplayName != null &&
+          normalizePseudo(previousDisplayName) != normalizePseudo(displayName)) {
+        pseudoRepository.release(user.uid, previousDisplayName)
+      }
+    }
   }
 
   override suspend fun signInWithGoogle(idToken: String) {
@@ -45,11 +69,16 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
 
   override fun signOut() = auth.signOut()
 
-  private suspend fun authenticate(action: suspend () -> Unit) {
+  private fun profileChangeRequest(displayName: String) =
+      UserProfileChangeRequest.Builder().setDisplayName(displayName).build()
+
+  private suspend fun <T> authenticate(action: suspend () -> T): T {
     try {
-      action()
+      return action()
     } catch (cancelled: CancellationException) {
       throw cancelled
+    } catch (failure: AuthException) {
+      throw failure
     } catch (failure: Exception) {
       val error =
           when (failure) {
@@ -60,6 +89,12 @@ class FirebaseAuthRepository(private val auth: FirebaseAuth) : AuthRepository {
           }
       throw AuthException(error)
     }
+  }
+
+  private companion object {
+    const val CREATED_USER_MISSING_MESSAGE = "Firebase did not return the created user"
+    const val NO_SIGNED_IN_USER_MESSAGE = "No Firebase user is signed in"
+    const val SIGNED_IN_USER_CHANGED_MESSAGE = "The signed-in Firebase user changed"
   }
 }
 

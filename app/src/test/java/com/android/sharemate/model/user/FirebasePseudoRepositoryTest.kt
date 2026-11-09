@@ -2,6 +2,7 @@
 package com.android.sharemate.model.user
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.auth.PseudoRepository as PseudoClaimRepository
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -21,6 +22,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebasePseudoRepositoryTest {
@@ -69,7 +71,8 @@ class FirebasePseudoRepositoryTest {
           else -> null
         }
       }
-  private val repository = FirebasePseudoRepository(firestore)
+  private val pseudoClaims = mock(PseudoClaimRepository::class.java)
+  private val repository = FirebasePseudoRepository(firestore, pseudoClaims)
 
   @Test
   fun readsOnlyValidNonblankPseudos() = runTest {
@@ -84,6 +87,7 @@ class FirebasePseudoRepositoryTest {
   @Test
   fun savesTrimmedPseudoInPublicProfileWithoutReplacingOtherFields() = runTest {
     repository.setPseudo("alice", " Alice ")
+    verify(pseudoClaims).claim("alice", "Alice")
     assertEquals(
         listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
   }
@@ -93,6 +97,21 @@ class FirebasePseudoRepositoryTest {
     val failure = runCatching { repository.setPseudo("alice", "  ") }.exceptionOrNull()
     assertTrue(failure is IllegalArgumentException)
     assertTrue(writes.isEmpty())
+  }
+
+  @Test
+  fun validatesPseudoBoundariesBeforeWriting() = runTest {
+    for (value in listOf("", "\u200B\u0301", "x".repeat(MAX_PSEUDO_LENGTH + 1))) {
+      assertTrue(
+          runCatching { repository.setPseudo("alice", value) }.exceptionOrNull()
+              is IllegalArgumentException)
+    }
+    assertTrue(writes.isEmpty())
+
+    repository.setPseudo("alice", "\u200Bx\u00A0")
+    repository.setPseudo("alice", "😀".repeat(MAX_PSEUDO_LENGTH))
+    assertEquals(mapOf("displayName" to "x"), writes[0].second)
+    assertEquals(mapOf("displayName" to "😀".repeat(MAX_PSEUDO_LENGTH)), writes[1].second)
   }
 
   @Test
