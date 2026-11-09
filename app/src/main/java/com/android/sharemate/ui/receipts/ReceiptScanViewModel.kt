@@ -30,7 +30,8 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
     require(products.isNotEmpty()) { "No priced products found" }
     val items =
         products.mapIndexed { index, item ->
-          StagedItem(index.toString(), item.name, priceCents = item.priceCents)
+          StagedItem(
+              index.toString(), item.name, quantity = item.quantity, priceCents = item.priceCents)
         }
     beforePublish(items)
     save(items)

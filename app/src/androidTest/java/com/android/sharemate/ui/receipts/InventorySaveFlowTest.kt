@@ -281,9 +281,7 @@ class InventorySaveFlowTest {
 
     override fun observeSubmission(submission: InventorySubmission) = status
 
-    override fun getPrivateItems(userId: String) = flowOf(emptyList<Item>())
-
-    override fun getSharedItems(householdId: String) = flowOf(emptyList<Item>())
+    override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
     override suspend fun addItem(item: Item): String? = error("Unexpected single-item save")
 

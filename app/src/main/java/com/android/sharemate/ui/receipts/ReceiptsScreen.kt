@@ -36,6 +36,15 @@ import com.android.sharemate.ui.staging.StagingTestTags
 import com.android.sharemate.ui.staging.StagingViewModel
 import com.android.sharemate.ui.theme.Dimens
 
+/**
+ * Lets the user scan a receipt and review its items. Saving reviewed items to the fridge requires a
+ * shared household.
+ *
+ * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
+ * @param userId ID of the signed-in user who owns the submission.
+ * @param householdId ID of the current household.
+ * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
+ */
 @Composable
 fun ReceiptsScreen(
     itemRepository: ItemRepository,
@@ -190,6 +199,7 @@ internal fun ReceiptScanFlow(
   }
 }
 
+/** Stable Compose test tags for the inventory save status and retry button. */
 object InventorySaveTestTags {
   const val STATUS = "inventory_save_status"
   const val RETRY = "inventory_save_retry"
