@@ -1,12 +1,16 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -14,12 +18,14 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -62,6 +68,53 @@ class FirestoreSecurityRulesTest {
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("householdId" to "stolen")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+  }
+
+  @Test
+  fun householdMemberCanReadPublicNameButNotPrivateUser() {
+    val household = createHouseholdAs("creator")
+    val pseudoRepository = FirebasePseudoRepository(firestore)
+    runBlocking { pseudoRepository.setPseudo(household.createdBy, "Alice") }
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(
+        "Alice",
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.PROFILES)
+                    .document(household.createdBy)
+                    .get())
+            .getString("displayName"))
+    assertDenied(userReference(household.createdBy).get())
+    assertDenied(userReference(household.createdBy).set(mapOf("pseudo" to "hijacked")))
+    assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+    assertDenied(firestore.collection(FirestoreCollections.PROFILES).get())
+    assertDenied(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(household.createdBy)
+            .set(mapOf("displayName" to "hijacked")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(
+        firestore.collection(FirestoreCollections.PROFILES).document(household.createdBy).get())
+  }
+
+  @Test
+  fun pseudoWritesPreserveOtherPublicFieldsAndRejectExtraFields() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val pseudo = firestore.collection(FirestoreCollections.PROFILES).document(userId)
+    Tasks.await(pseudo.set(mapOf("email" to "creator@example.com", "photoUrl" to "photo")))
+    runBlocking { FirebasePseudoRepository(firestore).setPseudo(userId, "Alice") }
+
+    val profile = Tasks.await(pseudo.get())
+    assertEquals("Alice", profile.getString("displayName"))
+    assertEquals("creator@example.com", profile.getString("email"))
+    assertEquals("photo", profile.getString("photoUrl"))
+    assertFalse(Tasks.await(userReference(userId).get()).contains("pseudo"))
+    assertDenied(pseudo.set(mapOf("displayName" to "Alice", "private" to "secret")))
+    assertDenied(firestore.collection("userPseudos").document(userId).get())
   }
 
   @Test
@@ -301,6 +354,7 @@ class FirestoreSecurityRulesTest {
               .commit())
     }
 
+    assertDenied(householdReference(household.id).get(Source.SERVER))
     FirebaseEmulator.signInAs("creator")
     assertEquals(
         listOf(household.createdBy),
@@ -571,12 +625,64 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun chatRepositoryWritesTextAndActivitiesUnderRules() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val chat = FirebaseChatRepository(firestore)
+
+    val textId = chat.sendMessage(household.id, senderId, "Sender", " hello ")
+    assertNotNull(textId)
+    assertEquals(
+        "hello", Tasks.await(messageReference(household.id, textId!!).get()).getString("text"))
+
+    for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
+      val activityId =
+          chat.sendActivity(
+              household.id, senderId, "Sender", type, " Milk ", "https://example.com/image")
+      assertNotNull(activityId)
+      val stored = Tasks.await(messageReference(household.id, activityId!!).get())
+      assertEquals(type.name, stored.getString("type"))
+      assertEquals("Milk", stored.getString("itemName"))
+    }
+
+    assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+  }
+
+  @Test
+  fun invalidTypedMessagesAreDenied() {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val base = messageData("bad", senderId)
+    val ref = messageReference(household.id, "bad")
+
+    assertDenied(ref.set(base + ("type" to "UNKNOWN")))
+    assertDenied(
+        ref.set(
+            messageData("bad", "someone-else", text = "") +
+                mapOf("type" to "THROWN", "itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "TEXT") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "EATEN") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + mapOf("type" to "EATEN", "text" to "", "itemName" to " ")))
+    assertDenied(ref.set(base + mapOf("type" to "THROWN", "text" to "", "itemName" to 123)))
+    assertDenied(
+        ref.set(
+            base +
+                mapOf(
+                    "type" to "EATEN", "text" to "", "itemName" to "Milk", "itemImageUrl" to 123)))
+    assertDenied(ref.set(base + mapOf("type" to "TEXT", "text" to "")))
+  }
+
+  @Test
   fun nonMemberCannotReadOrPostMessages() {
     val household = createHouseholdAs("creator")
     val outsiderId = FirebaseEmulator.signInAs("outsider")
     val messageRef = messageReference(household.id, "m1")
 
     assertDenied(messageRef.set(messageData("m1", outsiderId)))
+    assertDenied(
+        messageRef.set(
+            messageData("m1", outsiderId, text = "") +
+                mapOf("type" to "EATEN", "itemName" to "Milk")))
     assertDenied(messageReference(household.id, "m1").get())
   }
 

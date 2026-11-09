@@ -12,13 +12,19 @@ import java.util.Date
  * @property senderName Display name of the author at send time.
  * @property text Message content.
  * @property timestamp When the message was sent.
+ * @property type Whether this is a text message or a fridge activity (eaten / thrown).
+ * @property itemName Name of the concerned item, for activity messages.
+ * @property itemImageUrl Optional image of the concerned item, for activity messages.
  */
 data class Message(
     val id: String = "",
     val senderId: String = "",
     val senderName: String = "",
     val text: String = "",
-    val timestamp: Date? = null
+    val timestamp: Date? = null,
+    val type: MessageType = MessageType.TEXT,
+    val itemName: String = "",
+    val itemImageUrl: String? = null
 ) {
   /** Whether this message was sent by [userId]. */
   fun isSentBy(userId: String): Boolean = senderId.isNotEmpty() && senderId == userId
@@ -34,5 +40,17 @@ data class Message(
       val text = normalizeText(raw)
       return text.isNotEmpty() && text.length <= MAX_TEXT_LENGTH
     }
+  }
+}
+
+/** Kind of chat message; non-text kinds are fridge activities shown as badges. */
+enum class MessageType {
+  TEXT,
+  EATEN,
+  THROWN;
+
+  companion object {
+    /** Parses a stored value, falling back to [TEXT] for missing or unknown ones. */
+    fun fromStored(value: String?): MessageType = entries.firstOrNull { it.name == value } ?: TEXT
   }
 }

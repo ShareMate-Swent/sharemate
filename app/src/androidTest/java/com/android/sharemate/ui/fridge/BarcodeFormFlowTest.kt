@@ -176,6 +176,14 @@ class BarcodeFormFlowTest {
   private class EmptyItems : ItemRepository {
     override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
+    override fun addItems(submission: InventorySubmission): ItemWrite =
+        error("Batch saves are not used in this test")
+
+    override fun observeSubmission(
+        submission: InventorySubmission
+    ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+        error("Submission observation is not used in this test")
+
     override suspend fun addItem(item: Item): String? = error("Lookup must not save an item")
 
     override suspend fun updateItemImageIfAbsent(

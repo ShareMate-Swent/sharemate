@@ -39,6 +39,14 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
+  override fun addItems(submission: InventorySubmission): ItemWrite =
+      error("Batch saves are not used in this test")
+
+  override fun observeSubmission(
+      submission: InventorySubmission
+  ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+      error("Submission observation is not used in this test")
+
   /** Like the real repository: the household's SHARED items plus the user's own PERSONAL ones. */
   override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> {
     requestedHouseholdIds += householdId
