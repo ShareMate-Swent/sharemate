@@ -1826,7 +1826,10 @@ class FridgeViewModelTest {
     assertNull(viewModel.uiState.value.formError)
   }
 
-  @Test fun noImageResultStillSavesTheItemWithoutAnImage() = runTest { assertSavesWithoutImage() }
+  @Test
+  fun noImageResultStillSavesTheItemWithoutAnImage() = runTest {
+    assertSavesWithoutImage(expectedAttempts = IMAGE_LOOKUP_MAX_ATTEMPTS)
+  }
 
   @Test
   fun networkFailureResultStillSavesTheItemWithoutAnImage() = runTest {
