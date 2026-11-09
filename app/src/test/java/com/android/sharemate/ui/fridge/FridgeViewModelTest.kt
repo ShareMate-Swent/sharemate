@@ -33,6 +33,7 @@ import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
@@ -1270,7 +1271,7 @@ class FridgeViewModelTest {
   private fun viewModel(
       householdId: String = "test-household",
       fridgeType: FridgeType = FridgeType.SHARED,
-      preferences: ExpirationPreferencesRepository? = null,
+      preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
       pseudos: PseudoRepository? = null,
   ): FridgeViewModel =
       FridgeViewModel(
@@ -1280,7 +1281,7 @@ class FridgeViewModelTest {
               imageSelector,
               barcodeScanner,
               productCatalogRepository,
-              expirationPreferencesRepository = preferences,
+              expirationPreferences = ExpirationPreferencesProvider(preferences),
               pseudoRepository = pseudos,
               fridgeType = fridgeType)
           .also { viewModelStore.put("fridge", it) }
@@ -1412,6 +1413,8 @@ class FridgeViewModelTest {
           imageSelector,
           barcodeScanner,
           productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
           fridgeType = FridgeType.SHARED)
     }
     assertThrows(IllegalArgumentException::class.java) {
@@ -1422,6 +1425,8 @@ class FridgeViewModelTest {
           imageSelector,
           barcodeScanner,
           productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
           fridgeType = FridgeType.SHARED)
     }
 
@@ -2217,6 +2222,8 @@ class FridgeViewModelTest {
             imageSelector,
             barcodeScanner,
             productCatalogRepository,
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     viewModelStore.put("fridge", vm)
     vm.openAddItemDialog()

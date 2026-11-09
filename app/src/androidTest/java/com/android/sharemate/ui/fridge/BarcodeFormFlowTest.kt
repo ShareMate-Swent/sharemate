@@ -20,8 +20,11 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.*
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
@@ -143,6 +146,9 @@ class BarcodeFormFlowTest {
                   return result
                 }
               },
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
               fridgeType = FridgeType.SHARED)
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)

@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.user.ExpirationPreferences
@@ -13,9 +14,13 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+/** How close an item is to its expiration date; see [ExpirationDates.status] for the exact rule. */
 enum class ExpiryStatus {
+  /** The expiry day itself or later. */
   EXPIRED,
+  /** Not expired yet, and within the user's "expiring soon" window. */
   SOON,
+  /** Beyond the window, or without an expiration date. */
   NORMAL,
 }
 
@@ -37,6 +42,12 @@ sealed interface ExpirationInput {
 object ExpirationDates {
   /** Default "soon" window, used until the user picks their own (see `ExpirationPreferences`). */
   const val SOON_THRESHOLD_DAYS = ExpirationPreferences.DEFAULT_SOON_DAYS.toLong()
+
+  /** Days left on the expiry day itself: the item counts as expired from that day on. */
+  const val EXPIRY_DAY = 0L
+
+  /** Days left on the last day an item is "expiring soon", the day before it expires. */
+  const val LAST_SOON_DAY = EXPIRY_DAY + 1
 
   private val INPUT_FORMAT = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
@@ -75,16 +86,25 @@ object ExpirationDates {
   fun daysUntil(date: Date?, today: LocalDate = LocalDate.now()): Long? =
       date?.let { ChronoUnit.DAYS.between(today, toLocalDate(it)) }
 
+  /**
+   * The single rule telling whether an item is expired, expiring soon or fine, shared by the fridge
+   * and by the reminders so that they always agree: with [daysLeft] days left, the item is
+   * [ExpiryStatus.EXPIRED] on the expiry day (0) and after, [ExpiryStatus.SOON] from 1 to
+   * [soonThresholdDays] days, and [ExpiryStatus.NORMAL] beyond, or when it has no expiration date
+   * ([daysLeft] null).
+   */
+  fun statusOfDaysLeft(daysLeft: Long?, soonThresholdDays: Long): ExpiryStatus =
+      when {
+        daysLeft == null -> ExpiryStatus.NORMAL
+        daysLeft <= EXPIRY_DAY -> ExpiryStatus.EXPIRED
+        daysLeft <= soonThresholdDays -> ExpiryStatus.SOON
+        else -> ExpiryStatus.NORMAL
+      }
+
+  /** [status] of an item expiring on [date], seen from [today]. */
   fun status(
       date: Date?,
       today: LocalDate = LocalDate.now(),
       soonThresholdDays: Long = SOON_THRESHOLD_DAYS,
-  ): ExpiryStatus {
-    val days = daysUntil(date, today) ?: return ExpiryStatus.NORMAL
-    return when {
-      days < 0 -> ExpiryStatus.EXPIRED
-      days <= soonThresholdDays -> ExpiryStatus.SOON
-      else -> ExpiryStatus.NORMAL
-    }
-  }
+  ): ExpiryStatus = statusOfDaysLeft(daysUntil(date, today), soonThresholdDays)
 }

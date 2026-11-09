@@ -84,6 +84,26 @@ class FridgeItemSoonThresholdTest {
   }
 
   @Test
+  fun expiryDayIsFlaggedAsExpiredLikeTheReminders() {
+    val item = expiringIn(0)
+    show(item, thresholdDays = 3)
+
+    compose
+        .onNodeWithTag(C.Tag.fridge_item_prefix + item.id)
+        .assertContentDescriptionEquals(description(item, "Expired: Exp.: "))
+  }
+
+  @Test
+  fun dayBeforeExpiryIsExpiringSoonEvenWithTheSmallestWindow() {
+    val item = expiringIn(1)
+    show(item, thresholdDays = 1)
+
+    compose
+        .onNodeWithTag(C.Tag.fridge_item_prefix + item.id)
+        .assertContentDescriptionEquals(description(item, "Expires soon: Exp.: "))
+  }
+
+  @Test
   fun expiredItemStaysExpiredWhateverTheWindow() {
     val item = expiringIn(-1)
     show(item, thresholdDays = 60)
