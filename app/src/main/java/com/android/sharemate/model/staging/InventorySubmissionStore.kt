@@ -14,8 +14,16 @@ import org.json.JSONObject
  * Private durable receipt handoff. Persist before enqueueing; retain prices after inventory save.
  */
 interface InventorySubmissionStore {
+  /**
+   * Loads the last submission for [ownerId] and [householdId], including an unconfirmed draft.
+   * Returns null if the scope has no entry. Throws if the entry cannot be read or validated.
+   */
   suspend fun load(ownerId: String, householdId: String): InventorySubmission?
 
+  /**
+   * Replaces the entry for [submission]'s owner and household. Returns after the journal write is
+   * durable and throws if persistence fails.
+   */
   suspend fun save(submission: InventorySubmission)
 }
 
@@ -32,6 +40,7 @@ class AndroidInventorySubmissionStore(
       withContext(dispatcher) {
         preferences.getString(key(ownerId, householdId), null)?.let { value ->
           val json = JSONObject(value)
+          val draft = json.get(Fields.DRAFT) as? Boolean ?: error("Invalid submission draft flag")
           val rows = json.getJSONArray(Fields.ROWS)
           InventorySubmission(
                   json.requiredString(Fields.ID),
@@ -51,7 +60,7 @@ class AndroidInventorySubmissionStore(
                         (quantity as Number).toInt(),
                         (price as? Number)?.toLong())
                   },
-                  json.optBoolean(Fields.DRAFT, false))
+                  draft)
               .also { require(it.ownerId == ownerId && it.householdId == householdId) }
         }
       }

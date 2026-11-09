@@ -79,6 +79,32 @@ class InventorySubmissionStoreTest {
   }
 
   @Test
+  fun missingOrNonBooleanDraftFlagCannotRestoreAnUnconfirmedReceipt() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val draft =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 480)),
+            draft = true)
+    store.save(draft)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val key = JSONArray(listOf(draft.ownerId, draft.householdId)).toString()
+    val original = checkNotNull(preferences.getString(key, null))
+
+    for (value in listOf(null, JSONObject.NULL, "true", "false", 1)) {
+      val json = JSONObject(original)
+      if (value == null) json.remove(Fields.DRAFT) else json.put(Fields.DRAFT, value)
+      assertTrue(preferences.edit().putString(key, json.toString()).commit())
+      assertTrue(
+          "Reject draft flag $value (${value?.javaClass?.simpleName})",
+          runCatching { store.load(draft.ownerId, draft.householdId) }.isFailure)
+    }
+  }
+
+  @Test
   fun failedDiskCommitIsReportedToTheCaller() = runTest {
     val context = mock(Context::class.java)
     val preferences = mock(SharedPreferences::class.java)
