@@ -438,7 +438,9 @@ class ManualItemCreationTest {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
     composeTestRule.setContent {
-      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
+      SampleAppTheme(dynamicColor = false) {
+        FridgeScreen(viewModel = viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
     }
     return viewModel
   }

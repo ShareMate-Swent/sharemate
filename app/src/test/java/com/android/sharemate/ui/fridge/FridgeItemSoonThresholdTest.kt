@@ -2,7 +2,6 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -30,14 +29,8 @@ class FridgeItemSoonThresholdTest {
           expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)),
           householdId = "household-1")
 
-  private fun show(item: Item, thresholdDays: Long?) {
-    compose.setContent {
-      if (thresholdDays == null) FridgeItem(item)
-      else
-          CompositionLocalProvider(LocalSoonThresholdDays provides thresholdDays) {
-            FridgeItem(item)
-          }
-    }
+  private fun show(item: Item, thresholdDays: Long) {
+    compose.setContent { FridgeItem(item, soonThresholdDays = thresholdDays) }
   }
 
   private fun description(item: Item, prefix: String): String =
@@ -74,9 +67,9 @@ class FridgeItemSoonThresholdTest {
   }
 
   @Test
-  fun withoutAUserChoiceTheDefaultWindowApplies() {
+  fun theDefaultWindowFlagsItemsInsideIt() {
     val inside = expiringIn(ExpirationDates.SOON_THRESHOLD_DAYS)
-    show(inside, thresholdDays = null)
+    show(inside, thresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
 
     compose
         .onNodeWithTag(C.Tag.fridge_item_prefix + inside.id)

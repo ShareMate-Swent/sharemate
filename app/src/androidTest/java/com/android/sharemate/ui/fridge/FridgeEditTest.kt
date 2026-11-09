@@ -74,7 +74,11 @@ class FridgeEditTest {
             testProductCatalogRepository(),
             fridgeType = FridgeType.SHARED)
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
-    compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
+    compose.setContent {
+      SampleAppTheme(dynamicColor = false) {
+        FridgeScreen(vm, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
+    }
     openEdit()
   }
 

@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,13 +49,15 @@ import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 
-/** The user's "expiring soon" window in days; the connected fridge screen provides their choice. */
-val LocalSoonThresholdDays = compositionLocalOf { ExpirationDates.SOON_THRESHOLD_DAYS }
-
-/** Compact inventory tile reusing the shared image renderer and attribution components. */
+/**
+ * Compact inventory tile reusing the shared image renderer and attribution components.
+ *
+ * @param soonThresholdDays the user's "expiring soon" window in days, used to flag [item].
+ */
 @Composable
 fun FridgeItem(
     item: Item,
+    soonThresholdDays: Long,
     modifier: Modifier = Modifier,
     removalEnabled: Boolean = false,
     onRemove: () -> Unit = {},
@@ -68,8 +69,7 @@ fun FridgeItem(
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val expiryStatus =
-      ExpirationDates.status(
-          item.expirationDate, soonThresholdDays = LocalSoonThresholdDays.current)
+      ExpirationDates.status(item.expirationDate, soonThresholdDays = soonThresholdDays)
   val expiryColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error

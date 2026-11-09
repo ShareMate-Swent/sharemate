@@ -74,7 +74,8 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(360.dp),
-            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED))
+            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     val squares =
@@ -106,7 +107,11 @@ class FridgeScreenTest {
   fun typeLabelFollowsTheFridgeType() {
     val type = mutableStateOf(FridgeType.PRIVATE)
     composeRule.setContent {
-      MaterialTheme { FridgeScreen(uiState = FridgeUiState(fridgeType = type.value)) }
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(fridgeType = type.value),
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
     }
     composeRule
         .onNodeWithTag(C.Tag.fridge_type)
@@ -127,7 +132,8 @@ class FridgeScreenTest {
         FridgeItem(
             item = Item(id = "milk", name = "Milk", householdId = "household-1"),
             statusEnabled = true,
-            onStatusChange = { changes += it })
+            onStatusChange = { changes += it },
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     openActions("milk")
@@ -156,7 +162,8 @@ class FridgeScreenTest {
                     pendingStatusIds = setOf(item.id),
                     fridgeType = FridgeType.SHARED),
             onStatusChange = { _, _ -> },
-            onEditItem = {})
+            onEditItem = {},
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     openActions(item.id)
@@ -193,7 +200,11 @@ class FridgeScreenTest {
             fridgeType = FridgeType.SHARED)
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
-      composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+      composeRule.setContent {
+        MaterialTheme {
+          FridgeScreen(viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+        }
+      }
       openActions("milk")
       composeRule.onNodeWithContentDescription("Delete Milk").performClick()
       composeRule.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()
@@ -238,7 +249,10 @@ class FridgeScreenTest {
     composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = state.value, onDismissRemovalSyncError = { dismissed += it })
+        FridgeScreen(
+            uiState = state.value,
+            onDismissRemovalSyncError = { dismissed += it },
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     composeRule.mainClock.advanceTimeBy(9_000)
@@ -268,7 +282,8 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
-            onRemoveItem = { requests += it })
+            onRemoveItem = { requests += it },
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
 
@@ -298,7 +313,8 @@ class FridgeScreenTest {
             uiState =
                 FridgeUiState(
                     items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
-                    fridgeType = FridgeType.SHARED))
+                    fridgeType = FridgeType.SHARED),
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     openActions("milk")
@@ -315,7 +331,8 @@ class FridgeScreenTest {
                     items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
                     isDeleting = true,
                     fridgeType = FridgeType.SHARED),
-            onRemoveItem = {})
+            onRemoveItem = {},
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     openActions("milk")
@@ -326,7 +343,11 @@ class FridgeScreenTest {
   @Test
   fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
     composeRule.setContent {
-      MaterialTheme { FridgeScreen(uiState = FridgeUiState(fridgeType = FridgeType.SHARED)) }
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
     }
 
     composeRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
@@ -382,7 +403,11 @@ class FridgeScreenTest {
             pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")),
             fridgeType = FridgeType.SHARED)
 
-    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
+    }
     composeRule.waitForIdle()
 
     composeRule.onNodeWithText("Sort").performClick()
@@ -433,7 +458,11 @@ class FridgeScreenTest {
             testBarcodeScanner(),
             testProductCatalogRepository(),
             fridgeType = FridgeType.SHARED)
-    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
+    }
     composeRule.waitForIdle()
 
     composeRule.onNodeWithText("Owner").performClick()
@@ -496,7 +525,11 @@ class FridgeScreenTest {
             testBarcodeScanner(),
             testProductCatalogRepository(),
             fridgeType = FridgeType.SHARED)
-    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
+    }
 
     for (category in listOf("Fruits", "Vegetables")) {
       composeRule.onNodeWithTag("fridge_filter_category_$category").performScrollTo().performClick()
@@ -523,7 +556,8 @@ class FridgeScreenTest {
             selectedCategory = selectedCategory.value,
             onSortOrderChange = {},
             onCategoryFilterChange = { selectedCategory.value = it },
-            onOwnerFilterChange = {})
+            onOwnerFilterChange = {},
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     composeRule.onNodeWithTag("fridge_filter_category_all").assertIsSelected()
@@ -549,7 +583,8 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = FridgeType.SHARED),
-            onAddItem = { requests++ })
+            onAddItem = { requests++ },
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
@@ -567,10 +602,13 @@ class FridgeScreenTest {
       MaterialTheme {
         Column {
           FridgeItem(
-              item = itemExpiringIn(-1), modifier = androidx.compose.ui.Modifier.width(100.dp))
+              item = itemExpiringIn(-1),
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
           FridgeItem(
               item = itemExpiringIn(3).copy(id = "soon"),
-              modifier = androidx.compose.ui.Modifier.width(100.dp))
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
         }
       }
     }
@@ -583,7 +621,10 @@ class FridgeScreenTest {
   fun doesNotMarkItemsExpiringAfterThreeDaysAsSoon() {
     composeRule.setContent {
       MaterialTheme {
-        FridgeItem(item = itemExpiringIn(4), modifier = androidx.compose.ui.Modifier.width(100.dp))
+        FridgeItem(
+            item = itemExpiringIn(4),
+            modifier = androidx.compose.ui.Modifier.width(100.dp),
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
 
@@ -606,7 +647,8 @@ class FridgeScreenTest {
                       name = "Milk",
                       expirationDate = expiration,
                       householdId = "household-1"),
-              modifier = androidx.compose.ui.Modifier.width(100.dp))
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
         }
       }
       composeRule

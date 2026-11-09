@@ -21,6 +21,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
@@ -216,7 +217,8 @@ class ItemRemovalTest {
             onStatusChange = viewModel::setItemStatus,
             onRemoveItem = viewModel::requestRemoval,
             onCancelRemoval = viewModel::cancelRemoval,
-            onConfirmRemoval = viewModel::confirmRemoval)
+            onConfirmRemoval = viewModel::confirmRemoval,
+            soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
       }
     }
     composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }

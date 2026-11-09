@@ -19,6 +19,7 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.product.*
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
@@ -149,7 +150,9 @@ class BarcodeFormFlowTest {
     }
     compose.setContent {
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        MaterialTheme { FridgeScreen(viewModel = fridge) }
+        MaterialTheme {
+          FridgeScreen(viewModel = fridge, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+        }
       }
     }
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()

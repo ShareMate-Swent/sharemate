@@ -26,6 +26,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
@@ -219,7 +220,9 @@ class FridgeScreenTest {
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
+      SampleAppTheme(dynamicColor = false) {
+        FridgeScreen(viewModel = viewModel, soonThresholdDays = ExpirationDates.SOON_THRESHOLD_DAYS)
+      }
     }
     compose.waitUntil(5_000) {
       !viewModel.uiState.value.isLoading && viewModel.visibleItems.value.size == items.size

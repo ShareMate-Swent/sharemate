@@ -79,7 +79,6 @@ import com.android.sharemate.ui.chat.ChatScreen
 import com.android.sharemate.ui.chat.ChatViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
-import com.android.sharemate.ui.fridge.ProvideSoonThreshold
 import com.android.sharemate.ui.fridge.SoonThresholdViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.HouseholdMembersScreen
@@ -273,10 +272,11 @@ open class MainActivity : ComponentActivity() {
                                             expirationPreferencesProvider, session.uid)
                                       }
                                     })
+                        val soonThresholdDays by
+                            soonThresholdViewModel.soonThresholdDays.collectAsStateWithLifecycle()
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          ProvideSoonThreshold(soonThresholdViewModel) {
-                            FridgeScreen(viewModel = fridgeViewModel)
-                          }
+                          FridgeScreen(
+                              viewModel = fridgeViewModel, soonThresholdDays = soonThresholdDays)
                         }
                       }
                   composable(
