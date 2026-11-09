@@ -157,10 +157,9 @@ class FridgeImageNavigationTest {
                         })
             Text("Fridge")
           }
-          composable(TopLevelDestination.RECIPES.route) { Text("Recipes") }
-          composable(TopLevelDestination.RECEIPTS.route) { Text("Receipts") }
-          composable(TopLevelDestination.CHAT.route) { Text("Chat") }
-          composable(TopLevelDestination.SETTINGS.route) { Text("Settings") }
+          TopLevelDestination.entries
+              .filterNot { it == TopLevelDestination.FRIDGE }
+              .forEach { destination -> composable(destination.route) { Text(destination.textId) } }
         }
       } else Text("Signed out")
     }

@@ -23,13 +23,14 @@ import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.staging.StagingScreen
 import com.android.sharemate.ui.staging.StagingViewModel
 import com.android.sharemate.ui.theme.Dimens
 
 @Composable
-fun ReceiptsScreen() {
+fun ReceiptsScreen(showBalances: Boolean = false, onOpenBalances: () -> Unit = {}) {
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
   val photo: BarcodePhotoViewModel =
@@ -41,11 +42,16 @@ fun ReceiptsScreen() {
                   BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
                 }
               })
-  ReceiptScanFlow(photo, reader)
+  ReceiptScanFlow(photo, showBalances, onOpenBalances, reader)
 }
 
 @Composable
-internal fun ReceiptScanFlow(photo: BarcodePhotoViewModel, reader: ReceiptReader) {
+internal fun ReceiptScanFlow(
+    photo: BarcodePhotoViewModel,
+    showBalances: Boolean = false,
+    onOpenBalances: () -> Unit = {},
+    reader: ReceiptReader
+) {
   val nav = rememberNavController()
   val activity = LocalContext.current.findActivity()
   DisposableEffect(photo) {
@@ -81,6 +87,11 @@ internal fun ReceiptScanFlow(photo: BarcodePhotoViewModel, reader: ReceiptReader
             }) {
               Text(stringResource(R.string.scan_receipt))
             }
+        if (showBalances) {
+          Button(onClick = onOpenBalances, modifier = Modifier.testTag(BalancesTestTags.ENTRY)) {
+            Text(stringResource(R.string.balances_title))
+          }
+        }
         if (reviewed) {
           Text(stringResource(R.string.receipt_reviewed))
           Button(onClick = { nav.navigate(REVIEW_ROUTE) }) {
