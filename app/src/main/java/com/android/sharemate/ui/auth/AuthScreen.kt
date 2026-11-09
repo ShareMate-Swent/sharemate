@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 
 /** Test tag for the pseudo input shown during sign-up. */
 internal const val AUTH_PSEUDO_TEST_TAG = "auth_pseudo"
@@ -145,7 +146,10 @@ private fun AuthForm(
         }
         state.error?.let {
           Text(
-              text = stringResource(it.messageResource()),
+              text =
+                  if (it == AuthUiError.PSEUDO_TOO_LONG)
+                      stringResource(it.messageResource(), MAX_PSEUDO_LENGTH)
+                  else stringResource(it.messageResource()),
               color = MaterialTheme.colorScheme.error,
               modifier =
                   Modifier.testTag("auth_error").semantics { liveRegion = LiveRegionMode.Polite })

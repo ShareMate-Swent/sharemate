@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -134,7 +135,8 @@ class AuthScreenTest {
         mapOf(
             AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
             AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
-            AuthUiError.PSEUDO_TOO_LONG to "Use 40 characters or fewer for your pseudo.",
+            AuthUiError.PSEUDO_TOO_LONG to
+                "Use $MAX_PSEUDO_LENGTH characters or fewer for your pseudo.",
             AuthUiError.PASSWORD_REQUIRED to "Enter your password.",
             AuthUiError.WEAK_PASSWORD to "Choose a stronger password with at least 6 characters.",
             AuthUiError.PASSWORD_MISMATCH to "The passwords do not match.",
