@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +27,8 @@ class InMemoryUserProfileRepository : UserProfileRepository {
     require(profile.uid.isNotBlank()) { "A profile needs a user id" }
     saved.add(profile)
     saveFailure?.let { throw it }
-    profiles.value += profile.uid to profile
+    profiles.value +=
+        profile.uid to profile.withExistingDisplayName(profiles.value[profile.uid]?.displayName)
   }
 
   override fun observeMembers(householdId: String): Flow<List<UserProfile>> {

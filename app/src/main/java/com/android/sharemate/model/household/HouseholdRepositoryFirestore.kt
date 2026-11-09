@@ -171,7 +171,11 @@ class HouseholdRepositoryFirestore(
       batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
     }
     batch
-        .set(userReference, mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()), SetOptions.merge())
+        .set(
+            userReference,
+            mapOf(
+                HOUSEHOLD_ID_FIELD to FieldValue.delete(), JOIN_CODE_FIELD to FieldValue.delete()),
+            SetOptions.merge())
         .commit()
         .await()
   }

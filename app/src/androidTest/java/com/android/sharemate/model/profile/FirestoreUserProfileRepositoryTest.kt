@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import androidx.test.core.app.ApplicationProvider
@@ -6,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -78,16 +80,36 @@ class FirestoreUserProfileRepositoryTest {
       }
 
   @Test
-  fun savingAgainReplacesTheProfile() =
+  fun signInRefreshPreservesChosenNameAndUpdatesOtherProfileFields() =
       runBlocking<Unit> {
         val creatorId = FirebaseEmulator.signInAs("creator")
         val household = households.createHousehold("Home", creatorId)
-        repository.savePublicProfile(UserProfile(creatorId, "Old name", "https://example.com/old"))
-        repository.savePublicProfile(UserProfile(creatorId, "New name"))
+        repository.savePublicProfile(
+            UserProfile(creatorId, "Provider name", "https://example.com/old"))
+        FirebasePseudoRepository(firestore).setPseudo(creatorId, "Chosen name")
+        repository.savePublicProfile(UserProfile(creatorId, "Provider name"))
 
         val members = withTimeout(TIMEOUT) { repository.observeMembers(household.id).first() }
 
-        assertEquals(listOf(UserProfile(creatorId, "New name")), members)
+        assertEquals(listOf(UserProfile(creatorId, "Chosen name")), members)
+      }
+
+  @Test
+  fun signInFillsMissingDisplayNameAndPseudoChangesAreObserved() =
+      runBlocking<Unit> {
+        val userId = FirebaseEmulator.signInAs("creator")
+        val pseudoRepository = FirebasePseudoRepository(firestore)
+        repository.savePublicProfile(UserProfile(userId, email = "creator@example.com"))
+        repository.savePublicProfile(
+            UserProfile(userId, "Google name", email = "creator@example.com"))
+        assertEquals("Google name", pseudoRepository.getPseudo(userId))
+
+        val names = pseudoRepository.observePseudos(setOf(userId))
+        assertEquals(mapOf(userId to "Google name"), withTimeout(TIMEOUT) { names.first() })
+        pseudoRepository.setPseudo(userId, "Chosen name")
+        assertEquals(
+            mapOf(userId to "Chosen name"),
+            withTimeout(TIMEOUT) { names.first { it[userId] == "Chosen name" } })
       }
 
   @Test
@@ -153,10 +175,22 @@ class FirestoreUserProfileRepositoryTest {
                 FieldValue.arrayUnion(outsiderId))
             .set(users.document(outsiderId), mapOf("householdId" to household.id))
             .commit())
+    assertDenied(
+        firestore
+            .batch()
+            .update(
+                firestore.collection(FirestoreCollections.HOUSEHOLDS).document(household.id),
+                "memberIds",
+                FieldValue.arrayUnion(outsiderId))
+            .set(
+                users.document(outsiderId),
+                mapOf("householdId" to household.id, "joinCode" to "incorrect"))
+            .commit())
     // Pointing their own user document at the household is allowed, but grants nothing.
     Tasks.await(users.document(outsiderId).set(mapOf("householdId" to household.id)))
 
     assertDenied(profileReference(household.createdBy).get())
+    assertDenied(firestore.collection("userPseudos").document(household.createdBy).get())
   }
 
   @Test

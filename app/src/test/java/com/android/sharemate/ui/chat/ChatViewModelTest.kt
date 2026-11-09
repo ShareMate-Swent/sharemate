@@ -3,6 +3,7 @@ package com.android.sharemate.ui.chat
 
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.model.chat.MessageType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,15 @@ class ChatViewModelTest {
 
     override fun observeMessages(householdId: String): Flow<List<Message>> =
         if (failObserve) flow { throw IllegalStateException("boom") } else messages
+
+    override suspend fun sendActivity(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        type: MessageType,
+        itemName: String,
+        itemImageUrl: String?
+    ): String? = null
 
     override suspend fun sendMessage(
         householdId: String,
@@ -110,6 +120,15 @@ class ChatViewModelTest {
               override fun observeMessages(householdId: String): Flow<List<Message>> =
                   MutableStateFlow(emptyList())
 
+              override suspend fun sendActivity(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  type: MessageType,
+                  itemName: String,
+                  itemImageUrl: String?
+              ): String? = null
+
               override suspend fun sendMessage(
                   householdId: String,
                   senderId: String,
@@ -143,6 +162,15 @@ class ChatViewModelTest {
             object : ChatRepository {
               override fun observeMessages(householdId: String): Flow<List<Message>> =
                   MutableStateFlow(emptyList())
+
+              override suspend fun sendActivity(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  type: MessageType,
+                  itemName: String,
+                  itemImageUrl: String?
+              ): String? = null
 
               override suspend fun sendMessage(
                   householdId: String,
