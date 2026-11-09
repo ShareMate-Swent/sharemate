@@ -25,7 +25,7 @@ class HouseholdMembersViewModelTest {
       UserProfile(
           uid = "alex",
           displayName = "Alex Morgan",
-          photoUrl = "https://example.org/alex.png",
+          photoUrl = "https://lh3.googleusercontent.com/a/alex=s96-c",
           email = "alex@example.com")
   private val sam = UserProfile(uid = "sam", email = "sam@example.com")
   private val me = UserProfile(uid = "me", displayName = "Inge", email = "inge@example.com")
@@ -124,5 +124,18 @@ class HouseholdMembersViewModelTest {
     advanceUntilIdle()
 
     assertEquals(HouseholdMembersUiState(isLoading = false, hasError = true), viewModel.state.value)
+  }
+
+  @Test
+  fun photosFromUnsupportedSourcesAreReplacedByThePlaceholder() = runTest {
+    // A member using a modified client could point their photo at a server they control.
+    profiles.profiles.value +=
+        "sam" to sam.copy(photoUrl = "https://tracker.example/pixel.png?member=sam")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    val photos = viewModel.state.value.members.associate { it.uid to it.photoUrl }
+    assertEquals(null, photos["sam"])
+    assertEquals(alex.photoUrl, photos["alex"])
   }
 }

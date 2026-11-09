@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.profile.UserProfile
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.profile.supportedPhotoUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,8 @@ import kotlinx.coroutines.launch
  * @property uid User identifier.
  * @property displayName Account name; null when the UI should fall back to [email].
  * @property email Account email; null when the provider does not share one.
- * @property photoUrl Account photo URL; null when the UI should show a placeholder avatar.
+ * @property photoUrl Account photo URL from a supported source; null when the UI should show a
+ *   placeholder avatar.
  * @property isCurrentUser Whether this member is the signed-in user, shown as "You".
  */
 data class HouseholdMember(
@@ -44,8 +46,18 @@ data class HouseholdMembersUiState(
 )
 
 /**
- * Keeps the members of [householdId] up to date while the list is open, so joins and leaves show
- * without restarting the app. It depends only on [UserProfileRepository], not on Firebase.
+ * Keeps the members of [householdId] up to date, so joins and leaves show without restarting the
+ * app. It depends only on [UserProfileRepository], not on Firebase.
+ *
+ * The members listener lives as long as this ViewModel, which belongs to the members screen:
+ * - It stops when the list is closed (Back, or tapping the Settings tab again) and when the session
+ *   ends, because the ViewModel is cleared.
+ * - It keeps running while another tab is shown or the app is in the background. The tabs save
+ *   their screens, so the list is still up to date when the user comes back to Settings. This costs
+ *   one listener on the household document, plus profile reads only when someone joins or leaves.
+ *
+ * Member photos from sources ShareMate does not support are dropped (see [supportedPhotoUrl]), so
+ * opening the list never sends a request to a server another member chose.
  *
  * @param currentUserId The signed-in user, marked as "You" and listed first.
  */
@@ -93,7 +105,7 @@ class HouseholdMembersViewModel(
                 uid = profile.uid,
                 displayName = profile.displayName,
                 email = profile.email,
-                photoUrl = profile.photoUrl,
+                photoUrl = supportedPhotoUrl(profile.photoUrl),
                 isCurrentUser = profile.uid == currentUserId,
             )
           }
