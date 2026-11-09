@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -67,9 +68,10 @@ class SettingsScreenTest {
   ) {
     leaveState = state
     composeTestRule.setContent {
+      var current by remember { mutableStateOf(settings) }
       MaterialTheme {
         SettingsScreen(
-            state = settings,
+            state = current,
             leaveState = leaveState,
             onLeaveHousehold = { leaveRequests++ },
             onCancelLeave = { cancels++ },
@@ -77,7 +79,10 @@ class SettingsScreenTest {
             onLeft = { leftCalls++ },
             onShowMembers = { memberListOpens++ },
             onSwitchGoogleAccount = { switches++ },
-            onPseudoChanged = { editedPseudo = it },
+            onPseudoChanged = {
+              editedPseudo = it
+              current = current.copy(pseudo = it)
+            },
             onSavePseudo = { pseudoSaves++ },
             onSignOut = { signOuts++ })
       }
@@ -91,9 +96,9 @@ class SettingsScreenTest {
     composeTestRule
         .onNodeWithTag(SettingsTestTags.PSEUDO_FIELD)
         .performScrollTo()
-        .assertTextEquals("Alex")
+        .assert(hasText("Alex"))
         .performTextClearance()
-        .performTextInput("Sam")
+    composeTestRule.onNodeWithTag(SettingsTestTags.PSEUDO_FIELD).performTextInput("Sam")
     composeTestRule
         .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
         .performScrollTo()
