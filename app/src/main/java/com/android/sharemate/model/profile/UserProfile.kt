@@ -3,6 +3,7 @@
 package com.android.sharemate.model.profile
 
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 
 /**
  * The part of a user's account that the other members of their household can see.
@@ -24,13 +25,19 @@ data class UserProfile(
 
 /** Retain the user's chosen display name when refreshing provider details at sign-in. */
 internal fun UserProfile.withExistingDisplayName(existing: String?): UserProfile =
-    copy(displayName = existing?.takeIf { it.isNotBlank() } ?: displayName)
+    copy(displayName = (existing?.takeIf { it.isNotBlank() } ?: displayName)?.truncatePseudo())
 
-/** The public profile of this session, with blank values treated as missing. */
+/**
+ * The public profile of this session, with blank values omitted and names limited in code points.
+ */
 fun AuthSession.toPublicProfile(): UserProfile =
     UserProfile(
         uid = uid,
-        displayName = displayName?.takeIf { it.isNotBlank() },
+        displayName = displayName?.takeIf { it.isNotBlank() }?.truncatePseudo(),
         photoUrl = photoUrl?.takeIf { it.isNotBlank() },
         email = email?.takeIf { it.isNotBlank() },
     )
+
+private fun String.truncatePseudo(): String =
+    if (codePointCount(0, length) <= MAX_PSEUDO_LENGTH) this
+    else substring(0, offsetByCodePoints(0, MAX_PSEUDO_LENGTH))
