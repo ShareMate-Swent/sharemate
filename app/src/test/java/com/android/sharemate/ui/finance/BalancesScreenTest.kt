@@ -60,16 +60,16 @@ class BalancesScreenTest {
                 listOf(SharedExpense("one", "home", "alice", 1500, mapOf("bob" to 1500L))),
                 emptyList()),
             listOf("alice", "bob"))
-    state = BalancesUiState.Ready("bob", summary)
+    state = BalancesUiState.Ready("bob", summary, mapOf("alice" to "Alice"))
     show()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("15.00", substring = true)
-    compose.onNodeWithText("You owe Member alice", substring = true).assertIsDisplayed()
-    compose.runOnIdle { state = BalancesUiState.Ready("alice", summary) }
+    compose.onNodeWithText("You owe Alice", substring = true).assertIsDisplayed()
+    compose.runOnIdle { state = BalancesUiState.Ready("alice", summary, mapOf("bob" to "Bob")) }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("+", substring = true)
-    compose.onNodeWithText("Member bob owes You", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("Bob owes You", substring = true).assertIsDisplayed()
     compose.runOnIdle { state = BalancesUiState.Error }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
-    compose.onNodeWithText("Member bob owes You", substring = true).assertDoesNotExist()
+    compose.onNodeWithText("Bob owes You", substring = true).assertDoesNotExist()
   }
 
   @Test
@@ -82,6 +82,29 @@ class BalancesScreenTest {
     show()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
     compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
+  }
+
+  @Test
+  fun missingMemberNameUsesAGenericLabelWithoutExposingTheId() {
+    state =
+        BalancesUiState.Ready(
+            "alice",
+            BalanceCalculator.calculate(
+                HouseholdFinanceSnapshot(
+                    "home",
+                    listOf(
+                        SharedExpense(
+                            "e", "home", "opaque-user-id", 1500, mapOf("alice" to 1500L))),
+                    emptyList()),
+                listOf("alice", "opaque-user-id")))
+    show()
+    compose.onNodeWithText("You owe Household member", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("opaque-user-id", substring = true).assertDoesNotExist()
+    compose.runOnIdle { state = BalancesUiState.Offline }
+    compose.onNodeWithTag(BalancesTestTags.RETRY).assertIsDisplayed()
+    compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
+    compose.runOnIdle { state = BalancesUiState.InvalidData }
+    compose.onNodeWithTag(BalancesTestTags.RETRY).assertDoesNotExist()
   }
 
   @Test

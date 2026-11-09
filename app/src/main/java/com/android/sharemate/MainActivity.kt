@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Kitchen
 import androidx.compose.material.icons.filled.MenuBook
@@ -34,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
@@ -79,7 +77,9 @@ import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
 import com.android.sharemate.ui.chat.ChatScreen
 import com.android.sharemate.ui.chat.ChatViewModel
+import com.android.sharemate.ui.finance.BALANCES_ROUTE
 import com.android.sharemate.ui.finance.BalancesRoute
+import com.android.sharemate.ui.finance.canViewBalances
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
@@ -198,7 +198,10 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.entries.forEach { destination ->
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
-                            selected = currentRoute == destination.route,
+                            selected =
+                                currentRoute == destination.route ||
+                                    (destination == TopLevelDestination.RECEIPTS &&
+                                        currentRoute == BALANCES_ROUTE),
                             onClick = {
                               navController.navigate(destination.route) {
                                 popUpTo(navController.graph.findStartDestination().id) {
@@ -219,18 +222,9 @@ open class MainActivity : ComponentActivity() {
                                 TopLevelDestination.CHAT -> Icon(Icons.Filled.Chat, "Chat")
                                 TopLevelDestination.SETTINGS ->
                                     Icon(Icons.Filled.Settings, "Settings")
-                                TopLevelDestination.BALANCES ->
-                                    Icon(
-                                        Icons.Filled.AccountBalanceWallet,
-                                        stringResource(R.string.balances_title))
                               }
                             },
-                            label = {
-                              Text(
-                                  if (destination == TopLevelDestination.BALANCES)
-                                      stringResource(R.string.balances_title)
-                                  else destination.textId)
-                            },
+                            label = { Text(destination.textId) },
                         )
                       }
                     }
@@ -282,19 +276,21 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.RECEIPTS.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          ReceiptsScreen()
+                          ReceiptsScreen(
+                              showBalances = household.canViewBalances(session.uid),
+                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) })
                         }
                       }
-                  composable(
-                      TopLevelDestination.BALANCES.route,
-                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.BALANCES)) {
-                        BalancesRoute(
-                            expenseRepository,
-                            householdRepository,
-                            authRepository,
-                            household,
-                            session.uid)
-                      }
+                  composable(BALANCES_ROUTE) {
+                    BalancesRoute(
+                        expenseRepository,
+                        householdRepository,
+                        authRepository,
+                        household,
+                        session.uid,
+                        profileRepository,
+                        onBack = { navController.popBackStack() })
+                  }
                   composable(
                       TopLevelDestination.CHAT.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {

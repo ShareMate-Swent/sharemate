@@ -49,7 +49,6 @@ class MainActivityTest : TestCase() {
               NavigationTestTags.RECIPES_TAB to "Recipes",
               NavigationTestTags.RECEIPTS_TAB to "Receipts",
               NavigationTestTags.CHAT_TAB to "Chat",
-              NavigationTestTags.BALANCES_TAB to "Balances",
               NavigationTestTags.SETTINGS_TAB to "Settings",
           )
 

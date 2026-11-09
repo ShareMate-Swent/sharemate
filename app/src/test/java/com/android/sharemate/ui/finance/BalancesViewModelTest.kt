@@ -13,8 +13,11 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 import org.mockito.Mockito.*
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class BalancesViewModelTest {
   private val dispatcher = StandardTestDispatcher()
@@ -85,7 +88,8 @@ class BalancesViewModelTest {
     val vm = create()
     advanceUntilIdle()
     assertTrue(vm.state.value is BalancesUiState.Ready)
-    ledger.value = listOf(SharedExpense("foreign", "other", "alice", 100, mapOf("bob" to 100L)))
+    session.value = AuthSession("alice", "changed")
+    failure = true
     advanceUntilIdle()
     assertEquals(BalancesUiState.Error, vm.state.value)
     assertEquals(0, active)
@@ -94,13 +98,13 @@ class BalancesViewModelTest {
     vm.retry()
     advanceUntilIdle()
     assertEquals(BalancesUiState.Error, vm.state.value)
-    assertEquals(2, subscriptions)
+    assertEquals(3, subscriptions)
     failure = false
     ledger.value = snapshot()
     vm.retry()
     advanceUntilIdle()
     assertTrue(vm.state.value is BalancesUiState.Ready)
-    verify(households, times(3)).getHousehold("home")
+    verify(households, times(4)).getHousehold("home")
     session.value = AuthSession("outsider", null)
     advanceUntilIdle()
     assertEquals(BalancesUiState.Unavailable, vm.state.value)
@@ -137,6 +141,78 @@ class BalancesViewModelTest {
     assertEquals(1, active)
     session.value = null
     advanceUntilIdle()
+    assertEquals(0, active)
+  }
+
+  @Test
+  fun silentFlowTimesOutAndRecoversWithoutRestarting() = runTest {
+    val records = MutableSharedFlow<List<SharedExpense>>()
+    val silent =
+        object : HouseholdExpenseRepository {
+          override fun observeHouseholdExpenses(householdId: String) = records
+        }
+    `when`(households.getHousehold("home")).thenReturn(home)
+    val vm = BalancesViewModel(silent, households, auth, "home", dispatcher)
+    runCurrent()
+    advanceTimeBy(BalancesViewModel.INITIAL_LOAD_TIMEOUT_MS - 1)
+    runCurrent()
+    assertEquals(BalancesUiState.Loading, vm.state.value)
+    advanceTimeBy(1)
+    runCurrent()
+    assertEquals(BalancesUiState.Offline, vm.state.value)
+    records.emit(emptyList())
+    runCurrent()
+    assertTrue(vm.state.value is BalancesUiState.Ready)
+  }
+
+  @Test
+  fun namesUpdateAndMissingNamesRemainAbsentForTheUiFallback() = runTest {
+    val names =
+        MutableStateFlow(
+            listOf(
+                com.android.sharemate.model.profile.UserProfile("bob", "Bob"),
+                com.android.sharemate.model.profile.UserProfile("zero", "  ")))
+    val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
+    `when`(profiles.observeMembers("home")).thenReturn(names)
+    `when`(households.getHousehold("home")).thenReturn(home)
+    val vm = BalancesViewModel(finances, households, auth, "home", dispatcher, profiles)
+    advanceUntilIdle()
+    assertEquals(mapOf("bob" to "Bob"), (vm.state.value as BalancesUiState.Ready).memberNames)
+    names.value = emptyList()
+    advanceUntilIdle()
+    assertTrue((vm.state.value as BalancesUiState.Ready).memberNames.isEmpty())
+  }
+
+  @Test
+  fun privateSharedAndTypeTransitionsUseOneAccessPolicy() = runTest {
+    assertFalse(home.copy(type = FridgeType.PRIVATE).canViewBalances("alice"))
+    assertTrue(home.canViewBalances("alice"))
+    assertFalse(home.canViewBalances(null))
+    assertFalse(home.canViewBalances("outsider"))
+    val vm = create()
+    advanceUntilIdle()
+    assertTrue(vm.state.value is BalancesUiState.Ready)
+    `when`(households.getHousehold("home")).thenReturn(home.copy(type = FridgeType.PRIVATE))
+    session.value = AuthSession("alice", "refresh")
+    advanceUntilIdle()
+    assertEquals(BalancesUiState.Unavailable, vm.state.value)
+    `when`(households.getHousehold("home")).thenReturn(home)
+    session.value = AuthSession("alice", null)
+    advanceUntilIdle()
+    assertTrue(vm.state.value is BalancesUiState.Ready)
+  }
+
+  @Test
+  fun invalidLedgerClearsAmountsAndDoesNotOfferARetry() = runTest {
+    val vm = create()
+    advanceUntilIdle()
+    ledger.value = listOf(SharedExpense("foreign", "other", "bob", 100, mapOf("alice" to 100L)))
+    advanceUntilIdle()
+    assertEquals(BalancesUiState.InvalidData, vm.state.value)
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(1, subscriptions)
+    assertEquals(BalancesUiState.InvalidData, vm.state.value)
     assertEquals(0, active)
   }
 

@@ -27,9 +27,15 @@ import java.text.NumberFormat
 import java.util.Currency
 import java.util.Locale
 
+/** Stable semantics identifiers for balance rendering and interaction tests. */
 object BalancesTestTags {
+  /** Entry button inside Receipts, visible only for eligible shared members. */
+  const val ENTRY = "receipts_balances"
+  /** Initial progress indicator. */
   const val LOADING = "balances_loading"
+  /** Current member�s formatted net balance. */
   const val SUMMARY = "balances_summary"
+  /** Retry action after observation failure or a server timeout. */
   const val RETRY = "balances_retry"
 }
 
@@ -58,9 +64,15 @@ fun BalancesScreen(
       BalancesUiState.Loading ->
           item { CircularProgressIndicator(Modifier.testTag(BalancesTestTags.LOADING)) }
       BalancesUiState.Unavailable -> item { Text(stringResource(R.string.balances_unavailable)) }
+      BalancesUiState.InvalidData -> item { Text(stringResource(R.string.balances_invalid_data)) }
+      BalancesUiState.Offline,
       BalancesUiState.Error ->
           item {
-            Text(stringResource(R.string.balances_error), color = MaterialTheme.colorScheme.error)
+            Text(
+                stringResource(
+                    if (state == BalancesUiState.Offline) R.string.balances_offline
+                    else R.string.balances_error),
+                color = MaterialTheme.colorScheme.error)
             Button(onClick = onRetry, modifier = Modifier.testTag(BalancesTestTags.RETRY)) {
               Text(stringResource(R.string.household_retry))
             }
@@ -94,13 +106,13 @@ fun BalancesScreen(
               if (debt.debtorId == state.currentUserId)
                   stringResource(
                       R.string.balances_you_owe,
-                      memberLabel(debt.creditorId, state.currentUserId),
+                      memberLabel(debt.creditorId, state.currentUserId, state.memberNames),
                       formatFinanceAmount(debt.amountCents, locale))
               else
                   stringResource(
                       R.string.balances_debt,
-                      memberLabel(debt.debtorId, state.currentUserId),
-                      memberLabel(debt.creditorId, state.currentUserId),
+                      memberLabel(debt.debtorId, state.currentUserId, state.memberNames),
+                      memberLabel(debt.creditorId, state.currentUserId, state.memberNames),
                       formatFinanceAmount(debt.amountCents, locale)))
         }
       }
@@ -109,10 +121,11 @@ fun BalancesScreen(
 }
 
 @Composable
-private fun memberLabel(userId: String, currentUserId: String): String =
+private fun memberLabel(userId: String, currentUserId: String, names: Map<String, String>): String =
     if (userId == currentUserId) stringResource(R.string.balances_you)
-    else stringResource(R.string.balances_member, userId)
+    else names[userId] ?: stringResource(R.string.balances_unknown_member)
 
+/** Formats exact integer cents as CHF for the supplied locale without floating-point rounding. */
 internal fun formatFinanceAmount(cents: Long, locale: Locale): String =
     NumberFormat.getCurrencyInstance(locale)
         .apply {

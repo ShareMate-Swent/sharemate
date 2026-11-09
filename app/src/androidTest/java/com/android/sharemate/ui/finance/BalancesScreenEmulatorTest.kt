@@ -38,18 +38,54 @@ class BalancesScreenEmulatorTest {
                 listOf(SharedExpense("e", "home", "bob", 1500, mapOf("alice" to 1500L))),
                 emptyList()),
             listOf("alice", "bob"))
-    var state by mutableStateOf<BalancesUiState>(BalancesUiState.Ready("alice", summary))
+    var state by
+        mutableStateOf<BalancesUiState>(
+            BalancesUiState.Ready("alice", summary, mapOf("bob" to "Bob")))
     var retries = 0
     compose.setContent {
       SampleAppTheme(dynamicColor = false) { BalancesScreen(state, { retries++ }) }
     }
-    compose.onNodeWithText("You owe Member bob", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("You owe Bob", substring = true).assertIsDisplayed()
     screenshot("balances-ready")
     compose.runOnIdle { state = BalancesUiState.Error }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
     compose.onNodeWithTag(BalancesTestTags.RETRY).performClick()
     assertEquals(1, retries)
     screenshot("balances-error")
+  }
+
+  @Test
+  fun receiptsEntryIsHiddenForPrivateFridgesAndShownForSharedFridges() {
+    val store =
+        object : com.android.sharemate.model.image.BarcodePhotoStore {
+          override suspend fun createCapture(): String = error("unused")
+
+          override suspend fun importImage(uri: String): String = error("unused")
+
+          override suspend fun validate(uri: String) = Unit
+
+          override suspend fun delete(uri: String) = Unit
+        }
+    val photo =
+        com.android.sharemate.ui.barcode.BarcodePhotoViewModel(
+            store, androidx.lifecycle.SavedStateHandle())
+    var shared by mutableStateOf(false)
+    var opens = 0
+    compose.setContent {
+      SampleAppTheme(dynamicColor = false) {
+        com.android.sharemate.ui.receipts.ReceiptScanFlow(photo, shared, { opens++ }) {
+          emptyList()
+        }
+      }
+    }
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).assertDoesNotExist()
+    screenshot("balances-receipts-private")
+    compose.runOnIdle { shared = true }
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).performClick()
+    assertEquals(1, opens)
+    screenshot("balances-receipts-shared")
+    compose.runOnIdle { shared = false }
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).assertDoesNotExist()
   }
 
   private fun screenshot(name: String) {

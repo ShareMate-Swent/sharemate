@@ -26,7 +26,6 @@ class AppDeepLinksTest {
             "sharemate://app/recipes",
             "sharemate://app/receipts",
             "sharemate://app/chat",
-            "sharemate://app/balances",
             "sharemate://app/settings"),
         TopLevelDestination.entries.map { AppDeepLinks.uri(it) })
   }

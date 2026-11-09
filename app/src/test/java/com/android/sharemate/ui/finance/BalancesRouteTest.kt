@@ -16,6 +16,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.After
@@ -60,7 +61,10 @@ class BalancesRouteTest {
 
   private fun show() {
     compose.setContent {
-      MaterialTheme { BalancesRoute(expenses, households, auth, household, "bob") }
+      MaterialTheme {
+        BalancesRoute(
+            expenses, households, auth, household, "bob", InMemoryUserProfileRepository(), {})
+      }
     }
   }
 
@@ -77,12 +81,12 @@ class BalancesRouteTest {
   }
 
   @Test
-  fun privateHouseholdDoesNotReadExpensesOrMembership() {
+  fun privateHouseholdChecksMembershipButDoesNotReadExpenses() {
     household = household.copy(type = FridgeType.PRIVATE)
     show()
     compose.onNodeWithText("Balances are available for shared households.").assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
-    assertTrue(requests.isEmpty())
+    assertEquals(listOf("home"), requests)
     assertTrue(observed.isEmpty())
   }
 
@@ -94,7 +98,7 @@ class BalancesRouteTest {
       compose.onAllNodesWithTag(BalancesTestTags.SUMMARY).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("15.00", substring = true)
-    compose.onNodeWithText("You owe Member alice", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("You owe Household member", substring = true).assertIsDisplayed()
     compose.runOnIdle { records.value = emptyList() }
     compose.waitUntil(5000) {
       compose.onAllNodesWithText("No outstanding debts.").fetchSemanticsNodes().isNotEmpty()
@@ -104,7 +108,7 @@ class BalancesRouteTest {
     }
     compose.waitUntil(5000) {
       compose
-          .onAllNodesWithText("You owe Member alice", substring = true)
+          .onAllNodesWithText("You owe Household member", substring = true)
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
@@ -117,7 +121,7 @@ class BalancesRouteTest {
     }
     compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
-    compose.onNodeWithText("You owe Member alice", substring = true).assertDoesNotExist()
+    compose.onNodeWithText("You owe Household member", substring = true).assertDoesNotExist()
     assertEquals(listOf("home", "new-home"), requests)
     assertEquals(requests, observed)
   }
