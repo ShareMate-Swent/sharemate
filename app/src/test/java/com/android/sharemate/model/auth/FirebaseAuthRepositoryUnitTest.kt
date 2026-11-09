@@ -156,6 +156,54 @@ class FirebaseAuthRepositoryUnitTest {
       }
 
   @Test
+  fun changingPseudoReleasesPreviousClaimAfterProfileUpdate() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Old Name")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "New Name")
+
+        val order = inOrder(pseudoRepository, user)
+        order.verify(pseudoRepository).claim("uid", "New Name")
+        order.verify(user).updateProfile(any(UserProfileChangeRequest::class.java))
+        order.verify(pseudoRepository).release("uid", "Old Name")
+      }
+
+  @Test
+  fun changingOnlyPseudoCaseKeepsExistingClaim() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Student")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "student")
+
+        verify(pseudoRepository).claim("uid", "student")
+        verify(pseudoRepository, never()).release(anyString(), anyString())
+      }
+
+  @Test
+  fun failedProfileUpdateKeepsPreviousPseudoClaim() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Old Name")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.updateCurrentUserDisplayName("uid", "New Name")
+          fail("A failed profile update must not release the previous claim")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+        }
+        verify(pseudoRepository).claim("uid", "New Name")
+        verify(pseudoRepository, never()).release(anyString(), anyString())
+      }
+
+  @Test
   fun retryingProfileUpdateMapsFailuresAndRequiresSignedInUser() =
       runBlocking<Unit> {
         val user = user(providers = listOf("firebase", "password"))
