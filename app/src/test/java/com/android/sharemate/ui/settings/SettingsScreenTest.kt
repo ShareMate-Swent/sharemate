@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.settings
 
 import android.content.ClipboardManager
@@ -22,6 +23,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
@@ -45,6 +48,8 @@ class SettingsScreenTest {
   private var leftCalls = 0
   private var signOuts = 0
   private var switches = 0
+  private var pseudoSaves = 0
+  private var editedPseudo = ""
   private var memberListOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
@@ -72,9 +77,31 @@ class SettingsScreenTest {
             onLeft = { leftCalls++ },
             onShowMembers = { memberListOpens++ },
             onSwitchGoogleAccount = { switches++ },
+            onPseudoChanged = { editedPseudo = it },
+            onSavePseudo = { pseudoSaves++ },
             onSignOut = { signOuts++ })
       }
     }
+  }
+
+  @Test
+  fun pseudoCanBeEditedAndSaved() {
+    showSettings(settings = googleState.copy(pseudo = "Alex", savedPseudo = "Alex"))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_FIELD)
+        .performScrollTo()
+        .assertTextEquals("Alex")
+        .performTextClearance()
+        .performTextInput("Sam")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+
+    assertEquals("Sam", editedPseudo)
+    assertEquals(1, pseudoSaves)
   }
 
   @Test
@@ -183,6 +210,8 @@ class SettingsScreenTest {
             onLeft = {},
             onShowMembers = {},
             onSwitchGoogleAccount = {},
+            onPseudoChanged = {},
+            onSavePseudo = {},
             onSignOut = {})
       }
     }
