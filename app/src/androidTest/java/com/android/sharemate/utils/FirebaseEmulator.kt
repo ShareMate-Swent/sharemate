@@ -1,9 +1,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.utils
 
 import android.content.Context
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -11,6 +14,7 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.firestore.FirebaseFirestore
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 import java.util.concurrent.ExecutionException
 
 /**
@@ -41,7 +45,35 @@ object FirebaseEmulator {
    *
    * @return The user identifier of the signed-in account.
    */
-  fun signInAs(alias: String): String {
+  fun signInAs(alias: String): String = signIn(auth, alias)
+
+  /**
+   * A second client, independent of [firestore], signed in as the account [alias].
+   *
+   * [signInAs] switches the user of the shared client, which would also switch the user of any
+   * listener it has open. A second client lets another user act while such a listener stays open.
+   * Close it when done.
+   */
+  class SecondClient internal constructor(private val app: FirebaseApp) : AutoCloseable {
+    val firestore: FirebaseFirestore =
+        FirebaseFirestore.getInstance(app).apply { useEmulator(HOST, FIRESTORE_PORT) }
+
+    override fun close() {
+      Tasks.await(firestore.terminate())
+      app.delete()
+    }
+  }
+
+  fun secondClientAs(alias: String): SecondClient {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val app =
+        FirebaseApp.initializeApp(
+            context, FirebaseApp.getInstance().options, "second-client-${UUID.randomUUID()}")
+    signIn(FirebaseAuth.getInstance(app).apply { useEmulator(HOST, AUTH_PORT) }, alias)
+    return SecondClient(app)
+  }
+
+  private fun signIn(auth: FirebaseAuth, alias: String): String {
     val email = "$alias@example.com"
     val result =
         try {
@@ -50,10 +82,28 @@ object FirebaseEmulator {
           if (e.cause !is FirebaseAuthUserCollisionException) throw e
           Tasks.await(auth.signInWithEmailAndPassword(email, TEST_PASSWORD))
         }
+    awaitUserSwitch()
     return checkNotNull(result.user).uid
   }
 
-  fun signOut() = auth.signOut()
+  fun signOut() {
+    auth.signOut()
+    awaitUserSwitch()
+  }
+
+  /**
+   * Lets Firestore see the new user before the test writes anything.
+   *
+   * Firebase Auth tells Firestore about a user change on the main thread. A write issued before
+   * that is filed under the previous user and never sent, so its confirmation never arrives (#285).
+   * Draining the main thread delivers the change first; Firestore then handles it before any later
+   * write.
+   */
+  private fun awaitUserSwitch() {
+    if (Looper.myLooper() != Looper.getMainLooper()) {
+      InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+  }
 
   /** Creates a separately authenticated emulator client for concurrency tests. */
   fun newSignedInApp(alias: String): SignedInApp {

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.image.FoodImage
@@ -14,7 +15,8 @@ class ItemImageTest {
     val image = ItemImage.fromSelection(FoodImageSelection.PersonalPhoto(reference))
 
     assertEquals(ItemImage(origin = ItemImageOrigin.PERSONAL_PHOTO, reference = reference), image)
-    assertEquals(image, Item(image = image).copy(id = "saved-id").image)
+    assertEquals(
+        image, Item(image = image, householdId = "household-1").copy(id = "saved-id").image)
   }
 
   @Test

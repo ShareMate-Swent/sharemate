@@ -31,6 +31,7 @@
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
+    <string name="fridge_item_share_with_household">Share with the household</string>
     <string name="fridge_empty">Your fridge is empty</string>
     <string name="fridge_add_item">Add Item</string>
     <string name="fridge_item_name">Item name</string>
@@ -116,6 +117,12 @@
     <string name="settings_switch_failed">Could not switch to that Google account. Please try again.</string>
     <string name="settings_household">Household</string>
     <string name="settings_invite_code">Invite code</string>
+    <string name="settings_show_members">See members</string>
+    <string name="household_members_title">Members</string>
+    <string name="household_members_you">You</string>
+    <string name="household_member_unknown">Household member</string>
+    <string name="household_member_photo">Photo of %1$s</string>
+    <string name="household_members_error">Could not load the members. Check your connection and try again.</string>
     <plurals name="settings_members">
         <item quantity="one">%d member</item>
         <item quantity="other">%d members</item>
@@ -137,7 +144,7 @@
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
     <string name="staging_delete_item">Delete %1$s</string>
-    <string name="staging_price_label">Price</string>
+    <string name="staging_price_label">Line total</string>
     <string name="staging_currency">CHF</string>
     <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
     <string name="staging_price_invalid">Enter a price like 3.50.</string>

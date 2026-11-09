@@ -16,3 +16,10 @@ interface HouseholdFinanceRepository : SettlementRepository {
    */
   fun observeHouseholdFinances(householdId: String): Flow<HouseholdFinanceSnapshot>
 }
+
+/**
+ * A trusted backend has conclusively refused this operation without committing it. Adapters must
+ * not translate timeouts, cancellation or ambiguous transport failures into this exception: those
+ * require retrying the original operation identity.
+ */
+class SettlementRejectedException : Exception("Settlement rejected")

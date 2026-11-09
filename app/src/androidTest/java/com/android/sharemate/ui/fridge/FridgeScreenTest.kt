@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -212,7 +214,8 @@ class FridgeScreenTest {
                     override suspend fun getPseudo(userId: String): String? = null
 
                     override suspend fun setPseudo(userId: String, pseudo: String) = Unit
-                  })
+                  },
+              fridgeType = FridgeType.SHARED)
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
@@ -241,7 +244,7 @@ class FridgeScreenTest {
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
     override fun addItems(submission: InventorySubmission): ItemWrite =
@@ -251,9 +254,6 @@ class FridgeScreenTest {
         submission: InventorySubmission
     ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
         error("Submission observation is not used in this test")
-
-    override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        inventory.map { items -> items.filter { it.ownerId == userId && it.householdId == null } }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

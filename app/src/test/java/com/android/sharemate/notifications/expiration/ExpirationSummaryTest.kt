@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.expiration
 
 import com.android.sharemate.model.item.ExpirationDates
@@ -23,7 +24,8 @@ class ExpirationSummaryTest {
           id = name,
           name = name,
           expirationDate = offsetDays?.let { ExpirationDates.toDate(today.plusDays(it)) },
-          status = status)
+          status = status,
+          householdId = "household-1")
 
   @Test
   fun splitsItemsByExpiryStatus() {
