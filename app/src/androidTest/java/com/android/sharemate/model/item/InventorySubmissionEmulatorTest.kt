@@ -193,6 +193,8 @@ class InventorySubmissionEmulatorTest {
         firestore
             .collection(FirestoreCollections.ITEMS)
             .whereEqualTo("householdId", home.id)
+            // The rules reject a query that could return other members' personal items.
+            .whereEqualTo("sharing", "SHARED")
             .get(Source.SERVER)
             .await()
     assertEquals(InventorySubmission.MAX_ITEMS, saved.size())
@@ -246,6 +248,7 @@ class InventorySubmissionEmulatorTest {
       val saved =
           db.collection(FirestoreCollections.ITEMS)
               .whereEqualTo("householdId", home.id)
+              .whereEqualTo("sharing", "SHARED")
               .get(Source.SERVER)
               .await()
       assertEquals(submitted.items.size, saved.size())
