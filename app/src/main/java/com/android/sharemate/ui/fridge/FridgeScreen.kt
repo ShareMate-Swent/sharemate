@@ -19,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -291,7 +290,6 @@ fun FridgeScreen(
   val sortOrder by viewModel.sortOrder.collectAsState()
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
-  val soonThresholdDays by viewModel.soonThresholdDays.collectAsState()
   val categories =
       remember(uiState.items) {
         uiState.items
@@ -303,38 +301,36 @@ fun FridgeScreen(
       }
   val owners by viewModel.ownerOptions.collectAsState()
 
-  CompositionLocalProvider(LocalSoonThresholdDays provides soonThresholdDays) {
-    FridgeScreen(
-        modifier = modifier,
-        uiState = uiState.copy(items = visibleItems),
-        onAddItem = viewModel::openAddItemDialog,
-        onDismissAddItem = viewModel::dismissAddItemDialog,
-        onNameChange = viewModel::updateName,
-        onCategoryChange = viewModel::updateCategory,
-        onExpirationDateChange = viewModel::updateExpirationDate,
-        onSaveItem = viewModel::saveItem,
-        onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
-        onEditItem = viewModel::openEditItemDialog,
-        onQuantityChange = viewModel::updateQuantity,
-        onSharingChange = viewModel::updateSharing,
-        onDismissEditSyncError = viewModel::dismissEditSyncError,
-        onStatusChange = viewModel::setItemStatus,
-        onDismissStatusError = viewModel::dismissStatusError,
-        onDismissRemovalSyncError = viewModel::dismissRemovalSyncError,
-        sortOrder = sortOrder,
-        selectedCategory = selectedCategory,
-        selectedOwnerId = selectedOwnerId,
-        categories = categories,
-        owners = owners,
-        onSortOrderChange = viewModel::setSortOrder,
-        onCategoryFilterChange = viewModel::setCategoryFilter,
-        onOwnerFilterChange = viewModel::setOwnerFilter,
-        onRemoveItem = viewModel::requestRemoval,
-        onCancelRemoval = viewModel::cancelRemoval,
-        onConfirmRemoval = viewModel::confirmRemoval,
-        personalPhotos = viewModel.personalPhotos,
-    )
-  }
+  FridgeScreen(
+      modifier = modifier,
+      uiState = uiState.copy(items = visibleItems),
+      onAddItem = viewModel::openAddItemDialog,
+      onDismissAddItem = viewModel::dismissAddItemDialog,
+      onNameChange = viewModel::updateName,
+      onCategoryChange = viewModel::updateCategory,
+      onExpirationDateChange = viewModel::updateExpirationDate,
+      onSaveItem = viewModel::saveItem,
+      onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
+      onEditItem = viewModel::openEditItemDialog,
+      onQuantityChange = viewModel::updateQuantity,
+      onSharingChange = viewModel::updateSharing,
+      onDismissEditSyncError = viewModel::dismissEditSyncError,
+      onStatusChange = viewModel::setItemStatus,
+      onDismissStatusError = viewModel::dismissStatusError,
+      onDismissRemovalSyncError = viewModel::dismissRemovalSyncError,
+      sortOrder = sortOrder,
+      selectedCategory = selectedCategory,
+      selectedOwnerId = selectedOwnerId,
+      categories = categories,
+      owners = owners,
+      onSortOrderChange = viewModel::setSortOrder,
+      onCategoryFilterChange = viewModel::setCategoryFilter,
+      onOwnerFilterChange = viewModel::setOwnerFilter,
+      onRemoveItem = viewModel::requestRemoval,
+      onCancelRemoval = viewModel::cancelRemoval,
+      onConfirmRemoval = viewModel::confirmRemoval,
+      personalPhotos = viewModel.personalPhotos,
+  )
 }
 
 @Preview(showBackground = true)

@@ -40,8 +40,6 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import com.android.sharemate.model.user.ExpirationPreferencesProvider
-import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.resources.C
 import java.time.LocalDate
@@ -192,8 +190,6 @@ class FridgeScreenTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
-            expirationPreferences =
-                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
@@ -384,8 +380,6 @@ class FridgeScreenTest {
             testBarcodeScanner(),
             testProductCatalogRepository(),
             pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")),
-            expirationPreferences =
-                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -438,8 +432,6 @@ class FridgeScreenTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
-            expirationPreferences =
-                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -503,8 +495,6 @@ class FridgeScreenTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
-            expirationPreferences =
-                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 

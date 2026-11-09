@@ -79,6 +79,8 @@ import com.android.sharemate.ui.chat.ChatScreen
 import com.android.sharemate.ui.chat.ChatViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.ProvideSoonThreshold
+import com.android.sharemate.ui.fridge.SoonThresholdViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.HouseholdMembersScreen
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
@@ -257,12 +259,24 @@ open class MainActivity : ComponentActivity() {
                                             photoStorage = FirebasePersonalPhotoRepository.create(),
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
-                                            expirationPreferences = expirationPreferencesProvider,
                                             pseudoRepository = pseudoRepository)
                                       }
                                     })
+                        val soonThresholdViewModel: SoonThresholdViewModel =
+                            viewModel(
+                                viewModelStoreOwner = entry,
+                                key = "soon_threshold_${session.uid}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        SoonThresholdViewModel(
+                                            expirationPreferencesProvider, session.uid)
+                                      }
+                                    })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          FridgeScreen(viewModel = fridgeViewModel)
+                          ProvideSoonThreshold(soonThresholdViewModel) {
+                            FridgeScreen(viewModel = fridgeViewModel)
+                          }
                         }
                       }
                   composable(

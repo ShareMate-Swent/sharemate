@@ -30,11 +30,8 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import com.android.sharemate.model.user.ExpirationPreferencesProvider
-import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
@@ -75,9 +72,6 @@ class FridgeEditTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
-            expirationPreferences =
-                ExpirationPreferencesProvider(
-                    FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
             fridgeType = FridgeType.SHARED)
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }

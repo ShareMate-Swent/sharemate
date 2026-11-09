@@ -27,8 +27,8 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
-import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -68,7 +68,6 @@ class FridgeViewModel(
     private val productCatalogRepository: ProductCatalogRepository,
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
-    private val expirationPreferences: ExpirationPreferencesProvider,
     private val pseudoRepository: PseudoRepository? = null,
     private val fridgeType: FridgeType,
 ) : ViewModel() {
@@ -81,15 +80,6 @@ class FridgeViewModel(
       MutableStateFlow(FridgeUiState(fridgeType = fridgeType, isLoading = true))
   val uiState = mutableUiState.asStateFlow()
 
-  /** The user's "expiring soon" window; the default until their preferences load. */
-  val soonThresholdDays: StateFlow<Long> =
-      expirationPreferences
-          .observe(userId)
-          .map { it.soonDays.toLong() }
-          .stateIn(
-              viewModelScope,
-              SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-              ExpirationDates.SOON_THRESHOLD_DAYS)
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
@@ -123,7 +113,10 @@ class FridgeViewModel(
                           .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
             }
           }
-          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+          .stateIn(
+              viewModelScope,
+              SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
+              emptyList())
 
   val visibleItems: StateFlow<List<Item>> =
       combine(
@@ -150,7 +143,7 @@ class FridgeViewModel(
           }
           .stateIn(
               scope = viewModelScope,
-              started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+              started = SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
               initialValue = emptyList(),
           )
 
@@ -786,9 +779,4 @@ class FridgeViewModel(
   }
 
   private fun String?.normalizedFilter(): String? = this?.trim()?.takeIf(String::isNotEmpty)
-
-  private companion object {
-    /** How long the screen state stays alive after its last subscriber left (e.g. on rotation). */
-    const val STOP_TIMEOUT_MILLIS = 5_000L
-  }
 }

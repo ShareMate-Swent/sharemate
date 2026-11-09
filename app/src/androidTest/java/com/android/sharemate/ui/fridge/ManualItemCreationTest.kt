@@ -40,11 +40,8 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
-import com.android.sharemate.model.user.ExpirationPreferencesProvider
-import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
-import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -436,9 +433,6 @@ class ManualItemCreationTest {
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
             testProductCatalogRepository(),
-            expirationPreferences =
-                ExpirationPreferencesProvider(
-                    FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
             fridgeType = fridgeType)
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
