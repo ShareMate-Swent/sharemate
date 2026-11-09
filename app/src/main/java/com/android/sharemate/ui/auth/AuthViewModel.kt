@@ -154,12 +154,9 @@ class AuthViewModel(
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
-      } catch (failure: AuthException) {
-        val recovered = current.mode == AuthMode.SIGN_UP && retryProfileUpdateIfSignedIn(pseudo)
-        if (!recovered) mutableState.update { it.copy(error = failure.error.toUiError()) }
       } catch (failure: Exception) {
         val recovered = current.mode == AuthMode.SIGN_UP && retryProfileUpdateIfSignedIn(pseudo)
-        if (!recovered) mutableState.update { it.copy(error = AuthUiError.UNKNOWN) }
+        if (!recovered) mutableState.update { it.copy(error = failure.toUiError()) }
       } finally {
         mutableState.update { it.copy(isLoading = false) }
       }
@@ -170,11 +167,7 @@ class AuthViewModel(
     val observedSession = state.value.session ?: return false
     return try {
       repository.updateCurrentUserDisplayName(observedSession.uid, pseudo)
-      mutableState.update { currentState ->
-        val updatedState = currentState.withDisplayNameForUid(observedSession.uid, pseudo)
-        if (updatedState === currentState) currentState
-        else updatedState.copy(pendingProfileUpdate = null, error = null)
-      }
+      markProfileUpdated(observedSession.uid, pseudo)
       true
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -195,26 +188,26 @@ class AuthViewModel(
     viewModelScope.launch {
       try {
         repository.updateCurrentUserDisplayName(pending.uid, pending.displayName)
-        mutableState.update { currentState ->
-          val updatedState = currentState.withDisplayNameForUid(pending.uid, pending.displayName)
-          if (updatedState === currentState) currentState
-          else updatedState.copy(pendingProfileUpdate = null, error = null)
-        }
+        markProfileUpdated(pending.uid, pending.displayName)
       } catch (cancelled: CancellationException) {
         throw cancelled
-      } catch (failure: AuthException) {
+      } catch (failure: Exception) {
         mutableState.update { currentState ->
           if (currentState.session?.uid != pending.uid) currentState
-          else currentState.copy(error = failure.error.toUiError())
-        }
-      } catch (_: Exception) {
-        mutableState.update { currentState ->
-          if (currentState.session?.uid != pending.uid) currentState
-          else currentState.copy(error = AuthUiError.UNKNOWN)
+          else currentState.copy(error = failure.toUiError())
         }
       } finally {
         mutableState.update { it.copy(isLoading = false) }
       }
+    }
+  }
+
+  /** Records a saved display name for [uid] and clears any pending retry, if still signed in. */
+  private fun markProfileUpdated(uid: String, displayName: String) {
+    mutableState.update { currentState ->
+      val updatedState = currentState.withDisplayNameForUid(uid, displayName)
+      if (updatedState === currentState) currentState
+      else updatedState.copy(pendingProfileUpdate = null, error = null)
     }
   }
 
@@ -281,6 +274,9 @@ class AuthViewModel(
 }
 
 private fun AuthError.toUiError(): AuthUiError = AuthUiError.valueOf(name)
+
+private fun Exception.toUiError(): AuthUiError =
+    (this as? AuthException)?.error?.toUiError() ?: AuthUiError.UNKNOWN
 
 /** Keeps a non-blank display name for the same user when a refresh omits it. */
 internal fun mergeDisplayName(current: AuthSession?, observed: AuthSession): AuthSession {
