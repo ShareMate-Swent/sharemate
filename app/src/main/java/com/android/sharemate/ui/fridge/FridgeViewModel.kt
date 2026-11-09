@@ -3,6 +3,7 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
@@ -24,9 +25,11 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.PseudoRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,11 +40,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
+data class OwnerOption(val id: String, val pseudo: String?)
 
 enum class FridgeSortOrder {
   EXPIRATION_DATE,
@@ -58,6 +66,7 @@ class FridgeViewModel(
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
+    private val pseudoRepository: PseudoRepository? = null,
 ) : ViewModel() {
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
@@ -89,6 +98,27 @@ class FridgeViewModel(
   val sortOrder: StateFlow<FridgeSortOrder> = sortOrderState
   val selectedCategory: StateFlow<String?> = categoryFilterState
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
+
+  /** The owners of the loaded items, with the pseudo to show for each. */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val ownerOptions: StateFlow<List<OwnerOption>> =
+      mutableUiState
+          .map { state -> state.items.map(Item::ownerId).filter(String::isNotBlank).toSortedSet() }
+          .distinctUntilChanged()
+          .flatMapLatest { ids ->
+            val pseudos =
+                pseudoRepository?.observePseudos(ids)?.catch { error ->
+                  Log.w("FridgeViewModel", "Unable to load owner pseudos", error)
+                  emit(emptyMap())
+                } ?: flowOf(emptyMap())
+            pseudos.map { names ->
+              ids.map { OwnerOption(it, names[it]?.trim()?.takeIf(String::isNotEmpty)) }
+                  .sortedWith(
+                      compareBy<OwnerOption> { it.pseudo == null }
+                          .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
+            }
+          }
+          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
   val visibleItems: StateFlow<List<Item>> =
       combine(

@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.resources.C
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -347,7 +349,8 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")))
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -362,9 +365,12 @@ class FridgeScreenTest {
     assertEquals("Dairy", viewModel.selectedCategory.value)
 
     composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithText("Alice").assertExists()
+    composeRule.onNodeWithText("Unknown member (15321b2a)").assertExists()
+    composeRule.onNodeWithText("owner-1").assertDoesNotExist()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
-    composeRule.onNodeWithText("Owner: owner-1").performClick()
+    composeRule.onNodeWithText("Owner: Alice").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_all").performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals("Dairy", viewModel.selectedCategory.value)
@@ -373,6 +379,60 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("Name").assertIsSelected()
     composeRule.onNodeWithText("Expiry date").assertIsNotSelected().performClick()
     assertEquals(FridgeSortOrder.EXPIRATION_DATE, viewModel.sortOrder.value)
+  }
+
+  @Test
+  fun unknownOwnersWithCollidingCodesRemainDistinctAndFilterById() {
+    val first = "unknown-100013"
+    val second = "unknown-20928"
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(id = "milk", name = "Milk", ownerId = first),
+                Item(id = "bread", name = "Bread", ownerId = second)))
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository())
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.waitForIdle()
+
+    composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithText("Unknown member (97dcd513-1)").assertExists()
+    composeRule.onNodeWithText("Unknown member (97dcd513-2)").assertExists()
+    composeRule.onNodeWithText(first).assertDoesNotExist()
+    composeRule.onNodeWithText(second).assertDoesNotExist()
+    composeRule.onNodeWithTag("fridge_filter_owner_$first").performClick()
+    assertEquals(first, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Milk").assertExists()
+    composeRule.onNodeWithText("Bread").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-1)").assertExists().performClick()
+    composeRule.onNodeWithTag("fridge_filter_owner_$second").performClick()
+    assertEquals(second, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Bread").assertExists()
+    composeRule.onNodeWithText("Milk").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-2)").assertExists()
+  }
+
+  @Test
+  fun ownerFallbackCodesAreDistinctAndStableForShortAndCollidingIds() {
+    val ids = listOf("a", "b", "unknown-20928", "unknown-100013")
+    val codes = ownerFallbackCodes(ids)
+
+    assertEquals(ids.size, codes.values.toSet().size)
+    assertEquals(codes, ownerFallbackCodes(ids.reversed()))
+    assertEquals("ca978112", codes["a"])
+    assertEquals("3e23e816", codes["b"])
+    assertEquals("97dcd513-1", codes["unknown-100013"])
+    assertEquals("97dcd513-2", codes["unknown-20928"])
   }
 
   @Test
