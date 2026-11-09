@@ -208,10 +208,7 @@ class SettingsViewModel(
         if (currentUserId == userId) {
           mutableState.update {
             it.copy(
-                pseudo = pseudo,
-                savedPseudo = pseudo,
-                isSavingPseudo = false,
-                pseudoError = null)
+                pseudo = pseudo, savedPseudo = pseudo, isSavingPseudo = false, pseudoError = null)
           }
         }
       } catch (cancelled: CancellationException) {
