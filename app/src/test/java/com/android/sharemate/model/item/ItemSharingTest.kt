@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -35,18 +36,26 @@ class ItemSharingTest {
   }
 
   @Test
-  fun householdItemsDefaultToShared() {
-    assertEquals(ItemSharing.SHARED, Item("item", "Milk", "owner", "home").sharing)
-    assertEquals(ItemSharing.SHARED, snapshot("home").toItemOrNull()!!.sharing)
-    assertTrue(snapshot("home").toItemOrNull()!!.isShared)
+  fun itemsDefaultToPersonal() {
+    assertEquals(ItemSharing.PERSONAL, Item("item", "Milk", "owner", "home").sharing)
+    assertFalse(Item("item", "Milk", "owner", "home").isShared)
   }
 
   @Test
-  fun standaloneItemsRemainOwnerOnlyRegardlessOfSharingLabel() {
-    val standalone = snapshot(null).toItemOrNull()!!
-    assertEquals(ItemSharing.PERSONAL, standalone.sharing)
-    assertFalse(standalone.isShared)
-    assertFalse(standalone.copy(sharing = ItemSharing.SHARED).isShared)
+  fun storedSharingIsRestoredAsIs() {
+    val shared = snapshot("home", ItemSharing.SHARED).toItemOrNull()!!
+    assertEquals(ItemSharing.SHARED, shared.sharing)
+    assertTrue(shared.isShared)
+    val personal = snapshot("home", ItemSharing.PERSONAL).toItemOrNull()!!
+    assertEquals(ItemSharing.PERSONAL, personal.sharing)
+    assertFalse(personal.isShared)
+  }
+
+  @Test
+  fun storedItemsWithoutAHouseholdAreSkipped() {
+    assertNull(snapshot(null).toItemOrNull())
+    assertNull(snapshot("").toItemOrNull())
+    assertNull(snapshot("  ").toItemOrNull())
   }
 
   @Test
@@ -57,31 +66,24 @@ class ItemSharingTest {
     for (sharing in listOf(ItemSharing.PERSONAL, ItemSharing.SHARED)) {
       val write = fake.setItemSharing("item", sharing) as ItemWrite.Queued
       assertTrue(write.confirmation.await().isSuccess)
-      assertEquals(original.copy(sharing = sharing), fake.getSharedItems("home").first().single())
-      assertTrue(fake.getPrivateItems("owner").first().isEmpty())
+      assertEquals(
+          original.copy(sharing = sharing), fake.getFridgeItems("home", "owner").first().single())
     }
   }
 
   @Test
-  fun ordinaryMutationsPreservePersonalSharingAndStandalonePrivacy() = runBlocking {
+  fun ordinaryMutationsPreservePersonalSharing() = runBlocking {
     val fake = FakeItemRepository()
     val personal = Item("personal", "Milk", "owner", "home", sharing = ItemSharing.PERSONAL)
-    val standalone = Item("standalone", "Bread", "owner")
-    fake.emitItems(listOf(personal, standalone))
+    fake.emitItems(listOf(personal))
     assertTrue(
         fake.updateItem(personal.id, ItemEdit("Oat milk", 2, null, null)) is ItemWrite.Queued)
     assertTrue(fake.setItemStatus(personal.id, ItemStatus.EATEN) is ItemWrite.Queued)
     assertEquals(
         personal.copy(name = "Oat milk", quantity = 2, status = ItemStatus.EATEN),
-        fake.getSharedItems("home").first().single())
-    assertEquals(listOf(standalone), fake.getPrivateItems("owner").first())
-    assertTrue(fake.setItemSharing(standalone.id, ItemSharing.SHARED) is ItemWrite.Queued)
-    assertEquals(
-        listOf(standalone.copy(sharing = ItemSharing.SHARED)),
-        fake.getPrivateItems("owner").first())
-    assertEquals(1, fake.getSharedItems("home").first().size)
+        fake.getFridgeItems("home", "owner").first().single())
     assertTrue(fake.deleteItemQueued(personal.id) is ItemWrite.Queued)
-    assertTrue(fake.getSharedItems("home").first().isEmpty())
+    assertTrue(fake.getFridgeItems("home", "owner").first().isEmpty())
   }
 
   @Test
@@ -99,7 +101,7 @@ class ItemSharingTest {
 
   @Test
   fun firestoreSerializationPersistsSharingWithoutDerivedBoolean() {
-    for (householdId in listOf(null, "home")) {
+    for (householdId in listOf("home", "other-home")) {
       for (sharing in ItemSharing.values()) {
         val item =
             Item(name = "Milk", ownerId = "owner", householdId = householdId, sharing = sharing)
@@ -109,7 +111,7 @@ class ItemSharingTest {
         assertFalse(fields.containsKey("isShared"))
         assertEquals("owner", fields["ownerId"])
         assertEquals(householdId, fields["householdId"])
-        assertEquals(householdId != null && sharing == ItemSharing.SHARED, item.isShared)
+        assertEquals(sharing == ItemSharing.SHARED, item.isShared)
       }
     }
   }
@@ -180,13 +182,15 @@ class ItemSharingTest {
         (repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Rejected).cause)
   }
 
-  private fun snapshot(householdId: String?): DocumentSnapshot =
+  private fun snapshot(
+      householdId: String?,
+      sharing: ItemSharing = ItemSharing.PERSONAL
+  ): DocumentSnapshot =
       mock(DocumentSnapshot::class.java).also {
         `when`(it.id).thenReturn("item")
         `when`(it.getString("name")).thenReturn("Milk")
         `when`(it.getString("ownerId")).thenReturn("owner")
         `when`(it.getString("householdId")).thenReturn(householdId)
-        it.stubRequiredItemFields(
-            if (householdId == null) ItemSharing.PERSONAL else ItemSharing.SHARED)
+        it.stubRequiredItemFields(sharing)
       }
 }

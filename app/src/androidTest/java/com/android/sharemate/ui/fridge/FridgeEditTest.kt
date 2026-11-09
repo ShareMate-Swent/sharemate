@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -69,7 +71,8 @@ class FridgeEditTest {
             "household",
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            fridgeType = FridgeType.SHARED)
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()
@@ -277,7 +280,7 @@ class FridgeEditTest {
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String) = items
+    override fun getFridgeItems(householdId: String, userId: String) = items
 
     override fun addItems(submission: InventorySubmission): ItemWrite =
         error("Batch saves are not used in this test")
@@ -286,8 +289,6 @@ class FridgeEditTest {
         submission: InventorySubmission
     ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
         error("Submission observation is not used in this test")
-
-    override fun getPrivateItems(userId: String) = error("Unexpected private query")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

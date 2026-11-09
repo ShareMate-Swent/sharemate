@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -134,7 +135,7 @@ class PrivateFridgeSecurityRulesTest {
             "name" to "Apple",
             "quantity" to 1,
             "status" to "ACTIVE",
-            "sharing" to "SHARED")
+            "sharing" to "PERSONAL")
     val receiptData =
         mapOf(
             "ownerId" to owner,
@@ -142,10 +143,12 @@ class PrivateFridgeSecurityRulesTest {
             "storeName" to "Shop",
             "totalAmountCents" to 100L)
     Tasks.await(item.set(itemData))
-    for (sharing in ItemSharing.values()) {
-      Tasks.await(item.update("sharing", sharing.name))
-      assertEquals(sharing.name, Tasks.await(item.get()).getString("sharing"))
-    }
+    // A private fridge only holds personal items: sharing one is never allowed, not even by its
+    // owner.
+    assertDenied(item.update("sharing", ItemSharing.SHARED.name))
+    assertDenied(item.parent.document("shared").set(itemData + ("sharing" to "SHARED")))
+    Tasks.await(item.update("sharing", ItemSharing.PERSONAL.name))
+    assertEquals("PERSONAL", Tasks.await(item.get()).getString("sharing"))
     Tasks.await(receipt.set(receiptData))
     assertEquals("Apple", Tasks.await(item.get()).getString("name"))
     assertEquals("Shop", Tasks.await(receipt.get()).getString("storeName"))
@@ -153,9 +156,13 @@ class PrivateFridgeSecurityRulesTest {
     Tasks.await(receipt.update("storeName", "Other shop"))
     assertEquals(
         listOf("food"),
-        Tasks.await(item.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {
-          it.id
-        })
+        Tasks.await(
+                item.parent
+                    .whereEqualTo("householdId", fridge.id)
+                    .whereEqualTo("ownerId", owner)
+                    .get())
+            .documents
+            .map { it.id })
     assertEquals(
         listOf("receipt"),
         Tasks.await(receipt.parent.whereEqualTo("householdId", fridge.id).get()).documents.map {
@@ -170,8 +177,10 @@ class PrivateFridgeSecurityRulesTest {
       assertDenied(reference.update("ownerId", outsider))
       assertDenied(reference.parent.whereEqualTo("householdId", fridge.id).get())
     }
+    assertDenied(
+        item.parent.whereEqualTo("householdId", fridge.id).whereEqualTo("ownerId", owner).get())
     assertDenied(item.update("name", "Stolen"))
-    assertDenied(item.update("sharing", "PERSONAL"))
+    assertDenied(item.update("sharing", "SHARED"))
     assertDenied(receipt.update("storeName", "Stolen"))
     assertDenied(item.parent.document("outsider").set(itemData + ("ownerId" to outsider)))
     assertDenied(receipt.parent.document("outsider").set(receiptData + ("ownerId" to outsider)))
@@ -214,28 +223,29 @@ class PrivateFridgeSecurityRulesTest {
   }
 
   @Test
-  fun neitherSharingValueGrantsOutsiderAccessToPrivateFridge() = runBlocking {
+  fun privateFridgeOnlyAcceptsPersonalItemsAndNobodyElseSeesThem() = runBlocking {
     val owner = FirebaseEmulator.signInAs("sharing-private-owner")
     val fridge = createFridge("sharing-private", owner, FridgeType.PRIVATE)
-    for (sharing in ItemSharing.values()) {
-      FirebaseEmulator.signInAs("sharing-private-owner")
-      val item = firestore.collection(FirestoreCollections.ITEMS).document(sharing.name)
-      Tasks.await(
-          item.set(
-              mapOf(
-                  "name" to "Milk",
-                  "ownerId" to owner,
-                  "householdId" to fridge.id,
-                  "quantity" to 1,
-                  "status" to "ACTIVE",
-                  "sharing" to sharing.name)))
-      FirebaseEmulator.signInAs("sharing-private-outsider")
-      assertDenied(item.get())
-      assertDenied(item.parent.whereEqualTo("householdId", fridge.id).get())
-      assertDenied(
-          item.update("sharing", if (sharing == ItemSharing.SHARED) "PERSONAL" else "SHARED"))
-      assertDenied(item.delete())
-    }
+    val items = firestore.collection(FirestoreCollections.ITEMS)
+    fun data(sharing: ItemSharing) =
+        mapOf(
+            "name" to "Milk",
+            "ownerId" to owner,
+            "householdId" to fridge.id,
+            "quantity" to 1,
+            "status" to "ACTIVE",
+            "sharing" to sharing.name)
+    Tasks.await(items.document("personal").set(data(ItemSharing.PERSONAL)))
+    assertDenied(items.document("shared").set(data(ItemSharing.SHARED)))
+
+    FirebaseEmulator.signInAs("sharing-private-outsider")
+    val item = items.document("personal")
+    assertDenied(item.get())
+    assertDenied(items.whereEqualTo("householdId", fridge.id).get())
+    assertDenied(
+        items.whereEqualTo("householdId", fridge.id).whereEqualTo("sharing", "SHARED").get())
+    assertDenied(item.update("sharing", "SHARED"))
+    assertDenied(item.delete())
     Unit
   }
 

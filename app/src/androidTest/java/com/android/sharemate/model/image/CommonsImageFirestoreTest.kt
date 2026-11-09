@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.image
 
 import androidx.lifecycle.ViewModelStore
@@ -11,6 +12,8 @@ import com.android.sharemate.AuthenticatedUserRule
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.toItemOrNull
@@ -96,6 +99,7 @@ class CommonsImageFirestoreTest {
     val firestore = FirebaseEmulator.firestore
     firestore.enableNetwork().await()
     val userId = checkNotNull(FirebaseEmulator.auth.uid)
+    val householdId = HouseholdRepositoryFirestore(firestore).createHousehold("Home", userId).id
     val repository = FirebaseItemRepository(firestore)
     val store = ViewModelStore()
     val lookupStarted = CompletableDeferred<Unit>()
@@ -113,10 +117,11 @@ class CommonsImageFirestoreTest {
           FridgeViewModel(
                   repository,
                   userId,
-                  null,
+                  householdId,
                   FoodImageSelector(gatedImages),
                   BarcodeScanner { BarcodeScanResult.NotFound },
-                  testProductCatalogRepository())
+                  testProductCatalogRepository(),
+                  fridgeType = FridgeType.SHARED)
               .also { store.put("commons", it) }
         }
     var id: String? = null
@@ -170,7 +175,7 @@ class CommonsImageFirestoreTest {
       val reloaded =
           withTimeout(10_000) {
             FirebaseItemRepository(firestore)
-                .getPrivateItems(userId)
+                .getFridgeItems(householdId, userId)
                 .first { items -> items.any { it.id == saved.id } }
                 .single { it.id == saved.id }
           }

@@ -18,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -150,7 +151,8 @@ class FridgeImageNavigationTest {
                                 "home",
                                 selector,
                                 BarcodeScanner { BarcodeScanResult.NotFound },
-                                testProductCatalogRepository())
+                                testProductCatalogRepository(),
+                                fridgeType = FridgeType.SHARED)
                           }
                         })
             Text("Fridge")

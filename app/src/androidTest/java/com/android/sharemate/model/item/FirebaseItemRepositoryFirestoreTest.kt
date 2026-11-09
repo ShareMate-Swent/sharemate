@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,7 +58,7 @@ class FirebaseItemRepositoryFirestoreTest {
 
     val stored =
         repository
-            .getSharedItems(household.id)
+            .getFridgeItems(household.id, userId)
             .first { items -> items.any { it.id == itemId } }
             .single { it.id == itemId }
 

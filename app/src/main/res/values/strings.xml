@@ -31,6 +31,7 @@
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
+    <string name="fridge_item_share_with_household">Share with the household</string>
     <string name="fridge_empty">Your fridge is empty</string>
     <string name="fridge_add_item">Add Item</string>
     <string name="fridge_item_name">Item name</string>

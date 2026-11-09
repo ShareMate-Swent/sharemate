@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -150,6 +151,7 @@ class MainUserFlowE2ETest {
     val password = "secret123"
     val householdName = "Shared Home"
     val itemName = "Shared Milk"
+    val privateItemName = "Private Cheese"
 
     waitUntil("authentication welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
@@ -186,19 +188,10 @@ class MainUserFlowE2ETest {
     waitUntil("fridge after household creation") {
       compose.onAllNodesWithTag(NavigationTestTags.FRIDGE_TAB).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
-    compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(itemName)
-    compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("1")
-    compose.onNodeWithTag(C.Tag.fridge_category_input).performTextInput("Dairy")
-    compose
-        .onNodeWithTag(C.Tag.fridge_expiration_input)
-        .performTextReplacement(LocalDate.now().plusDays(7).toString())
-    Espresso.closeSoftKeyboard()
-    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
-    waitUntil("item creation dialog dismissal and item visibility") {
-      compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty() &&
-          compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
-    }
+    // Items are private to their owner unless shared explicitly.
+    addFridgeItem(privateItemName, share = false)
+    addFridgeItem(itemName, share = true)
+    compose.onNodeWithText(privateItemName).assertIsDisplayed()
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
@@ -229,10 +222,26 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText(itemName).assertIsDisplayed()
+    // The first user's personal item never reaches the second user.
+    compose.onNodeWithText(privateItemName).assertDoesNotExist()
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Shared")
+  }
+
+  /** Adds an item from the fridge screen, privately or shared with the household. */
+  private fun addFridgeItem(name: String, share: Boolean) {
+    compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(name)
+    compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("1")
+    Espresso.closeSoftKeyboard()
+    if (share) compose.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    waitUntil("item creation dialog dismissal and item visibility") {
+      compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty() &&
+          compose.onAllNodesWithText(name).fetchSemanticsNodes().isNotEmpty()
+    }
   }
 
   private fun waitForHouseholdChoice(testTag: String) {

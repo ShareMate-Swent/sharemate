@@ -1,10 +1,15 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 
 data class FridgeUiState(
+    /** Type of the fridge shown. Items can only be shared in a [FridgeType.SHARED] fridge. */
+    val fridgeType: FridgeType,
     val items: List<Item> = emptyList(),
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
@@ -16,6 +21,8 @@ data class FridgeUiState(
     val statusError: FridgeStatusError? = null,
     val itemName: String = "",
     val itemCategory: String = "",
+    /** Sharing chosen for the item being created; items are private unless shared explicitly. */
+    val itemSharing: ItemSharing = ItemSharing.PERSONAL,
     val expirationDateInput: String = "",
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,

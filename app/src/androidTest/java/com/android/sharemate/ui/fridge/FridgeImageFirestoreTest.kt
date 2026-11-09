@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -6,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -51,6 +54,7 @@ class FridgeImageFirestoreTest {
   @Test
   fun temporaryImageServiceFailureRecoversWithImageAndFirestoreReread() = runBlocking {
     val owner = FirebaseEmulator.signInAs("image-creation-owner")
+    val householdId = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner).id
     val repository = FirebaseItemRepository(firestore)
     var lookupCalls = 0
     val selector =
@@ -69,10 +73,11 @@ class FridgeImageFirestoreTest {
           FridgeViewModel(
                   repository,
                   owner,
-                  null,
+                  householdId,
                   selector,
                   BarcodeScanner { BarcodeScanResult.NotFound },
-                  testProductCatalogRepository())
+                  testProductCatalogRepository(),
+                  fridgeType = FridgeType.SHARED)
               .also { store.put("fridge", it) }
         }
     withContext(Dispatchers.Main) {
@@ -116,7 +121,7 @@ class FridgeImageFirestoreTest {
     withContext(Dispatchers.Main) { store.clear() }
     val reread =
         withTimeout(15_000) {
-          FirebaseItemRepository(firestore).getPrivateItems(owner).first {
+          FirebaseItemRepository(firestore).getFridgeItems(householdId, owner).first {
             it.singleOrNull()?.image != null
           }
         }

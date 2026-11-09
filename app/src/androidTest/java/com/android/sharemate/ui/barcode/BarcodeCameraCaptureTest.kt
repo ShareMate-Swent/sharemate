@@ -27,6 +27,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.fridge.AddItemDialog
@@ -55,7 +56,7 @@ class BarcodeCameraCaptureTest {
         object : ViewModelStoreOwner {
           override val viewModelStore = ViewModelStore().apply { put("add-item-barcode-photo", vm) }
         }
-    val form = mutableStateOf(FridgeUiState())
+    val form = mutableStateOf(FridgeUiState(fridgeType = FridgeType.SHARED))
     compose.setContent {
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         MaterialTheme {
@@ -104,7 +105,11 @@ class BarcodeCameraCaptureTest {
       MaterialTheme {
         Box(Modifier.fillMaxSize()) {
           AddItemDialog(
-              FridgeUiState(itemName = "Milk", itemQuantity = "2", itemCategory = "Dairy"),
+              FridgeUiState(
+                  itemName = "Milk",
+                  itemQuantity = "2",
+                  itemCategory = "Dairy",
+                  fridgeType = FridgeType.SHARED),
               {},
               {},
               {},

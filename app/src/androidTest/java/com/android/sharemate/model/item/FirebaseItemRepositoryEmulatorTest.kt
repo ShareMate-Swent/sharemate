@@ -1,9 +1,11 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
@@ -18,9 +20,12 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -40,12 +45,17 @@ class FirebaseItemRepositoryEmulatorTest {
   private val firestore = FirebaseEmulator.firestore
   private val repository = FirebaseItemRepository(firestore)
   private lateinit var owner: String
+  private lateinit var homeId: String
 
   @Before
   fun setUp() {
     await(firestore.enableNetwork())
     FirebaseEmulator.clear()
     owner = FirebaseEmulator.signInAs("item-owner")
+    // Every item belongs to a household, so the tests need one the owner is a member of.
+    homeId = runBlocking {
+      HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner).id
+    }
   }
 
   @After
@@ -85,9 +95,9 @@ class FirebaseItemRepositoryEmulatorTest {
     val personal = ItemImage(reference = "content://personal")
     for (original in
         listOf(
-            Item(name = "Oat milk", ownerId = owner),
-            Item(name = "Milk", ownerId = owner, image = personal),
-            Item(name = "Milk", ownerId = owner, image = lookupImage))) {
+            Item(name = "Oat milk", ownerId = owner, householdId = homeId),
+            Item(name = "Milk", ownerId = owner, image = personal, householdId = homeId),
+            Item(name = "Milk", ownerId = owner, image = lookupImage, householdId = homeId))) {
       val id = checkNotNull(repository.addItem(original))
       val before = await(document(id).get(Source.SERVER)).data
       assertEquals(
@@ -99,7 +109,8 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun imageAttachmentIgnoresDeletedItemWithoutRecreatingIt() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     assertTrue(repository.deleteItem(id))
     assertEquals(
         ItemImageUpdateResult.Ignored, repository.updateItemImageIfAbsent(id, "Milk", lookupImage))
@@ -108,7 +119,8 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun imageWriteDeniedByRulesReturnsErrorAndPreservesDocument() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     // Simulate invalid stored data: reading is allowed, but any update fails validation.
     val fields = JSONObject().put("quantity", field("integerValue", "0"))
     assertEquals(
@@ -129,7 +141,8 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun competingImageAttachmentsHaveExactlyOneWinner() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     val images = listOf(lookupImage, lookupImage.copy(reference = "https://example.org/other.jpg"))
     val results =
         images
@@ -163,7 +176,8 @@ class FirebaseItemRepositoryEmulatorTest {
             ownerId = owner,
             category = "Dairy",
             expirationDate = Date(1_800_000_000_000),
-            quantity = 3)
+            quantity = 3,
+            householdId = homeId)
     val id = checkNotNull(repository.addItem(original))
     val doc = document(id)
     assertEquals(original.copy(id = id), await(doc.get(Source.SERVER)).toItemOrNull())
@@ -178,7 +192,7 @@ class FirebaseItemRepositoryEmulatorTest {
     assertEquals(edited, snapshot.toItemOrNull())
     assertEquals("https://example.org/milk", snapshot.getString("imageUrl"))
     assertEquals(owner, snapshot.getString("ownerId"))
-    assertNull(snapshot.getString("householdId"))
+    assertEquals(homeId, snapshot.getString("householdId"))
     val newExpiry = Date(1_900_000_000_000)
     confirm(repository.updateItem(id, ItemEdit("Oat milk", 2, "Dairy", newExpiry)))
     val dated = edited.copy(category = "Dairy", expirationDate = newExpiry)
@@ -190,7 +204,7 @@ class FirebaseItemRepositoryEmulatorTest {
       assertEquals(dated.copy(status = status), await(doc.get(Source.SERVER)).toItemOrNull())
       val read =
           withTimeout(10_000) {
-            repository.getPrivateItems(owner).first { items ->
+            repository.getFridgeItems(homeId, owner).first { items ->
               items.any { it.id == id && it.status == status }
             }
           }
@@ -203,7 +217,9 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun invalidQuantitiesStatusesAndOwnershipTransfersAreDeniedByRules() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Apple", ownerId = owner)))
+    val id =
+        checkNotNull(
+            repository.addItem(Item(name = "Apple", ownerId = owner, householdId = homeId)))
     val doc = document(id)
     for (quantity in listOf(0, -1, 1.5, "2", 2_147_483_648L)) {
       assertDenied(doc.update("quantity", quantity))
@@ -215,59 +231,130 @@ class FirebaseItemRepositoryEmulatorTest {
     assertDenied(doc.update("householdId", "another-household"))
     assertDenied(doc.update("name", ""))
     assertTrue(repository.updateItem(id, ItemEdit("Apple", 0, null, null)) is ItemWrite.Rejected)
-    assertNull(repository.addItem(Item(name = "Apple", ownerId = owner, quantity = 0)))
-    assertDenied(document("invalid").set(Item(name = "Apple", ownerId = owner, quantity = -1)))
+    assertNull(
+        repository.addItem(
+            Item(name = "Apple", ownerId = owner, quantity = 0, householdId = homeId)))
+    assertDenied(
+        document("invalid")
+            .set(Item(name = "Apple", ownerId = owner, quantity = -1, householdId = homeId)))
     assertEquals(1, await(doc.get(Source.SERVER)).toItemOrNull()?.quantity)
     assertEquals(ItemStatus.ACTIVE, await(doc.get(Source.SERVER)).toItemOrNull()?.status)
   }
 
   @Test
-  fun privateOwnersSharedMembersOutsidersAndSignedOutUsersAreSeparated() = runBlocking {
-    val householdRepository = HouseholdRepositoryFirestore(firestore)
-    val household = householdRepository.createHousehold("Home", owner)
-    val privateId = checkNotNull(repository.addItem(Item(name = "Private", ownerId = owner)))
-    val sharedId =
+  fun personalAndSharedItemsAreSeparatedBetweenOwnerMembersOutsidersAndSignedOutUsers() =
+      runBlocking {
+        val householdRepository = HouseholdRepositoryFirestore(firestore)
+        val household = householdRepository.createHousehold("Home", owner)
+        val personalId =
+            checkNotNull(
+                repository.addItem(
+                    Item(name = "Personal", ownerId = owner, householdId = household.id)))
+        val sharedId =
+            checkNotNull(
+                repository.addItem(
+                    Item(
+                        name = "Shared",
+                        ownerId = owner,
+                        householdId = household.id,
+                        sharing = ItemSharing.SHARED)))
+        assertEquals(
+            setOf(personalId, sharedId),
+            withTimeout(10_000) {
+              repository
+                  .getFridgeItems(household.id, owner)
+                  .first { it.size == 2 }
+                  .map(Item::id)
+                  .toSet()
+            })
+        val member = FirebaseEmulator.signInAs("item-member")
+        householdRepository.joinHousehold(household.inviteCode, member)
+        confirm(repository.updateItem(sharedId, ItemEdit("Member edit", 2, "Pantry", null)))
+        assertEquals(owner, await(document(sharedId).get(Source.SERVER)).getString("ownerId"))
+        assertEquals(
+            household.id, await(document(sharedId).get(Source.SERVER)).getString("householdId"))
+        // A member sees the shared items, never the personal ones of someone else.
+        assertEquals(
+            listOf(sharedId),
+            withTimeout(10_000) {
+              repository
+                  .getFridgeItems(household.id, member)
+                  .first { it.isNotEmpty() }
+                  .map(Item::id)
+            })
+        assertDenied(document(personalId).get(Source.SERVER))
+        assertWriteDenied(repository.updateItem(personalId, ItemEdit("Stolen", 1, null, null)))
+        assertWriteDenied(repository.deleteItemQueued(personalId))
+        assertDenied(document(sharedId).update("ownerId", member))
+        assertDenied(document(sharedId).update("householdId", null))
+        confirm(repository.setItemStatus(sharedId, ItemStatus.EATEN))
+        FirebaseEmulator.signInAs("item-outsider")
+        assertDenied(document(sharedId).get(Source.SERVER))
+        assertWriteDenied(repository.setItemStatus(sharedId, ItemStatus.DISCARDED))
+        assertWriteDenied(repository.deleteItemQueued(sharedId))
+        assertNull(repository.addItem(Item(name = "Forged", ownerId = owner, householdId = homeId)))
+        assertNull(
+            repository.addItem(
+                Item(
+                    name = "Intrusion",
+                    ownerId = FirebaseEmulator.auth.uid!!,
+                    householdId = household.id)))
+        FirebaseEmulator.signOut()
+        assertDenied(document(personalId).get(Source.SERVER))
+        assertWriteDenied(repository.setItemStatus(personalId, ItemStatus.EATEN))
+        FirebaseEmulator.signInAs("item-member")
+        confirm(repository.deleteItemQueued(sharedId))
+        assertEquals(404, adminRequest(sharedId).first)
+      }
+
+  @Test
+  fun itemWithoutAHouseholdIsInaccessibleEvenToItsOwner() = runBlocking {
+    // Written by an administrator: the client can no longer create such an item.
+    val id = UUID.randomUUID().toString()
+    val fields =
+        JSONObject()
+            .put("name", field("stringValue", "Legacy"))
+            .put("ownerId", field("stringValue", owner))
+            .put("quantity", field("integerValue", "1"))
+            .put("status", field("stringValue", "ACTIVE"))
+            .put("sharing", field("stringValue", "PERSONAL"))
+    assertEquals(
+        200, adminRequest(id, "PATCH", JSONObject().put("fields", fields).toString()).first)
+
+    assertDenied(document(id).get(Source.SERVER))
+    assertWriteDenied(repository.updateItem(id, ItemEdit("Renamed", 1, null, null)))
+    assertWriteDenied(repository.setItemStatus(id, ItemStatus.EATEN))
+    assertWriteDenied(repository.deleteItemQueued(id))
+    // Nothing was changed, and the item was not deleted.
+    val stored = JSONObject(adminRequest(id).second).getJSONObject("fields")
+    assertEquals("Legacy", stored.getJSONObject("name").getString("stringValue"))
+  }
+
+  @Test
+  fun privateFridgeOnlyHoldsPersonalItemsReadThroughGetFridgeItems() = runBlocking {
+    val privateHome =
+        HouseholdRepositoryFirestore(firestore)
+            .createHousehold("Private", owner, FridgeType.PRIVATE)
+    val personalId =
         checkNotNull(
-            repository.addItem(Item(name = "Shared", ownerId = owner, householdId = household.id)))
-    assertEquals(
-        listOf(privateId),
-        withTimeout(10_000) {
-          repository.getPrivateItems(owner).first { it.isNotEmpty() }.map(Item::id)
-        })
-    val member = FirebaseEmulator.signInAs("item-member")
-    householdRepository.joinHousehold(household.inviteCode, member)
-    confirm(repository.updateItem(sharedId, ItemEdit("Member edit", 2, "Pantry", null)))
-    assertEquals(owner, await(document(sharedId).get(Source.SERVER)).getString("ownerId"))
-    assertEquals(
-        household.id, await(document(sharedId).get(Source.SERVER)).getString("householdId"))
-    assertEquals(
-        listOf(sharedId),
-        withTimeout(10_000) {
-          repository.getSharedItems(household.id).first { it.isNotEmpty() }.map(Item::id)
-        })
-    assertDenied(document(privateId).get(Source.SERVER))
-    assertWriteDenied(repository.updateItem(privateId, ItemEdit("Stolen", 1, null, null)))
-    assertWriteDenied(repository.deleteItemQueued(privateId))
-    assertDenied(document(sharedId).update("ownerId", member))
-    assertDenied(document(sharedId).update("householdId", null))
-    confirm(repository.setItemStatus(sharedId, ItemStatus.EATEN))
-    FirebaseEmulator.signInAs("item-outsider")
-    assertDenied(document(sharedId).get(Source.SERVER))
-    assertWriteDenied(repository.setItemStatus(sharedId, ItemStatus.DISCARDED))
-    assertWriteDenied(repository.deleteItemQueued(sharedId))
-    assertNull(repository.addItem(Item(name = "Forged", ownerId = owner)))
+            repository.addItem(Item(name = "Milk", ownerId = owner, householdId = privateHome.id)))
+    // The server refuses a shared item in a private fridge, so nothing is stored.
     assertNull(
         repository.addItem(
             Item(
-                name = "Intrusion",
-                ownerId = FirebaseEmulator.auth.uid!!,
-                householdId = household.id)))
-    FirebaseEmulator.signOut()
-    assertDenied(document(privateId).get(Source.SERVER))
-    assertWriteDenied(repository.setItemStatus(privateId, ItemStatus.EATEN))
-    FirebaseEmulator.signInAs("item-member")
-    confirm(repository.deleteItemQueued(sharedId))
-    assertEquals(404, adminRequest(sharedId).first)
+                name = "Cheese",
+                ownerId = owner,
+                householdId = privateHome.id,
+                sharing = ItemSharing.SHARED)))
+    assertEquals(
+        listOf(personalId),
+        withTimeout(10_000) {
+          repository.getFridgeItems(privateHome.id, owner).first { it.isNotEmpty() }.map(Item::id)
+        })
+    assertWriteDenied(repository.setItemSharing(personalId, ItemSharing.SHARED))
+    assertEquals(
+        ItemSharing.PERSONAL,
+        await(document(personalId).get(Source.SERVER)).toItemOrNull()?.sharing)
   }
 
   @Test
@@ -281,7 +368,8 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun offlineEditsAndStatusUpdateCacheThenSynchronize() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     await(document(id).get(Source.SERVER))
     await(firestore.disableNetwork())
     try {
@@ -290,7 +378,7 @@ class FirebaseItemRepositoryEmulatorTest {
       val status = repository.setItemStatus(id, ItemStatus.EATEN) as ItemWrite.Queued
       val local =
           withTimeout(10_000) {
-                repository.getPrivateItems(owner).first { items ->
+                repository.getFridgeItems(homeId, owner).first { items ->
                   items.any {
                     it.id == id && it.name == "Offline milk" && it.status == ItemStatus.EATEN
                   }
@@ -318,14 +406,15 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun offlineDeletionRemovesCachedItemBeforeServerAcknowledgement() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     await(document(id).get(Source.SERVER))
     await(firestore.disableNetwork())
     try {
       val deletion = repository.deleteItemQueued(id) as ItemWrite.Queued
       assertFalse(await(document(id).get(Source.CACHE)).exists())
       assertTrue(
-          withTimeout(10_000) { repository.getPrivateItems(owner).first { it.isEmpty() } }
+          withTimeout(10_000) { repository.getFridgeItems(homeId, owner).first { it.isEmpty() } }
               .isEmpty())
       assertFalse(deletion.confirmation.isCompleted)
       assertEquals(200, adminRequest(id).first)
@@ -339,7 +428,8 @@ class FirebaseItemRepositoryEmulatorTest {
 
   @Test
   fun offlineUnauthorizedWriteReportsServerRejectionAndRollsBack() = runBlocking {
-    val id = checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner)))
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Milk", ownerId = owner, householdId = homeId)))
     await(document(id).get(Source.SERVER))
     FirebaseEmulator.signInAs("item-outsider")
     await(firestore.disableNetwork())
@@ -390,7 +480,7 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
-  fun personalHouseholdItemsRemainVisibleButOnlyOwnerChangesSharing() = runBlocking {
+  fun personalItemsAreHiddenFromMembersAndOnlyOwnerChangesSharing() = runBlocking {
     val households = HouseholdRepositoryFirestore(firestore)
     val home = households.createHousehold("Home", owner)
     val id =
@@ -403,30 +493,69 @@ class FirebaseItemRepositoryEmulatorTest {
                     sharing = ItemSharing.PERSONAL)))
     val member = FirebaseEmulator.signInAs("sharing-member")
     households.joinHousehold(home.inviteCode, member)
+    // A personal item of someone else can be neither read nor changed by a member.
+    assertDenied(document(id).get(Source.SERVER))
+    assertWriteDenied(repository.setItemSharing(id, ItemSharing.SHARED))
+    assertWriteDenied(repository.updateItem(id, ItemEdit("Member edit", 2, null, null)))
+    assertWriteDenied(repository.setItemStatus(id, ItemStatus.EATEN))
+    assertWriteDenied(repository.deleteItemQueued(id))
+    // Nothing happened to it: the item is still there, still personal.
     assertEquals(
-        ItemSharing.PERSONAL, await(document(id).get(Source.SERVER)).toItemOrNull()!!.sharing)
+        "PERSONAL",
+        JSONObject(adminRequest(id).second)
+            .getJSONObject("fields")
+            .getJSONObject("sharing")
+            .getString("stringValue"))
+
+    // Once the owner shares it, the member sees and edits it, but still cannot change its sharing.
+    FirebaseEmulator.signInAs("item-owner")
+    confirm(repository.setItemSharing(id, ItemSharing.SHARED))
+    FirebaseEmulator.signInAs("sharing-member")
     assertTrue(
         withTimeout(10_000) {
-              repository.getSharedItems(home.id).first { it.any { item -> item.id == id } }
+              repository.getFridgeItems(home.id, member).first { it.any { item -> item.id == id } }
             }
             .any { it.id == id })
-    assertWriteDenied(repository.setItemSharing(id, ItemSharing.SHARED))
+    assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
     val deniedSnapshot = await(document(id).get(Source.SERVER))
-    assertEquals("PERSONAL", deniedSnapshot.getString("sharing"))
+    assertEquals("SHARED", deniedSnapshot.getString("sharing"))
     assertEquals(owner, deniedSnapshot.getString("ownerId"))
     assertEquals(home.id, deniedSnapshot.getString("householdId"))
     assertDenied(document(id).update("sharing", com.google.firebase.firestore.FieldValue.delete()))
     assertDenied(document(id).update("ownerId", member))
     assertDenied(document(id).update("householdId", null))
-    // Ordinary member edits remain allowed without changing sharing or associations.
+    // Ordinary member edits are allowed without changing sharing or associations.
     confirm(repository.updateItem(id, ItemEdit("Member edit", 2, null, null)))
     assertEquals(
-        ItemSharing.PERSONAL, await(document(id).get(Source.SERVER)).toItemOrNull()!!.sharing)
+        ItemSharing.SHARED, await(document(id).get(Source.SERVER)).toItemOrNull()!!.sharing)
+
+    // The member's live query follows the owner's changes, made from another client so that the
+    // member's listener keeps its own identity: the item disappears when the owner makes it
+    // personal again, and comes back when it is shared again.
+    FirebaseEmulator.secondClientAs("item-owner").use { ownerClient ->
+      val ownerRepository = FirebaseItemRepository(ownerClient.firestore)
+      val seen = MutableStateFlow<List<Item>?>(null)
+      val collector =
+          launch(Dispatchers.IO) {
+            repository.getFridgeItems(home.id, member).collect { seen.value = it }
+          }
+      try {
+        withTimeout(10_000) { seen.first { items -> items?.any { it.id == id } == true } }
+        confirm(ownerRepository.setItemSharing(id, ItemSharing.PERSONAL))
+        withTimeout(10_000) { seen.first { items -> items != null && items.none { it.id == id } } }
+        assertDenied(document(id).get(Source.SERVER))
+        confirm(ownerRepository.setItemSharing(id, ItemSharing.SHARED))
+        withTimeout(10_000) { seen.first { items -> items?.any { it.id == id } == true } }
+      } finally {
+        collector.cancel()
+      }
+    }
+
     FirebaseEmulator.signInAs("sharing-outsider")
     assertDenied(document(id).get(Source.SERVER))
-    assertWriteDenied(repository.setItemSharing(id, ItemSharing.SHARED))
+    assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
     FirebaseEmulator.signOut()
-    assertWriteDenied(repository.setItemSharing(id, ItemSharing.SHARED))
+    assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
   }
 
   @Test
@@ -453,14 +582,19 @@ class FirebaseItemRepositoryEmulatorTest {
     FirebaseEmulator.signInAs("item-owner")
     confirm(repository.setItemSharing(doc.id, ItemSharing.PERSONAL))
     assertEquals(home.id, await(doc.get(Source.SERVER)).getString("householdId"))
-    val standalone = document("standalone-sharing")
-    await(standalone.set(Item(name = "Private", ownerId = owner)))
+    // A household the member never joined stands in for "not visible to other members".
+    val elsewhere = HouseholdRepositoryFirestore(firestore).createHousehold("Elsewhere", owner)
+    val otherHouseholdItem = document("other-household-sharing")
+    await(
+        otherHouseholdItem.set(
+            Item(name = "Not visible to the member", ownerId = owner, householdId = elsewhere.id)))
     assertEquals(
-        ItemSharing.PERSONAL, await(standalone.get(Source.SERVER)).toItemOrNull()!!.sharing)
-    confirm(repository.setItemSharing(standalone.id, ItemSharing.SHARED))
-    assertNull(await(standalone.get(Source.SERVER)).getString("householdId"))
+        ItemSharing.PERSONAL, await(otherHouseholdItem.get(Source.SERVER)).toItemOrNull()!!.sharing)
+    confirm(repository.setItemSharing(otherHouseholdItem.id, ItemSharing.SHARED))
+    assertEquals(
+        elsewhere.id, await(otherHouseholdItem.get(Source.SERVER)).getString("householdId"))
     FirebaseEmulator.signInAs("sharing-item-member")
-    assertDenied(standalone.get(Source.SERVER))
+    assertDenied(otherHouseholdItem.get(Source.SERVER))
   }
 
   private fun document(id: String): DocumentReference =

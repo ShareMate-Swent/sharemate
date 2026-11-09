@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.*
@@ -140,7 +142,8 @@ class BarcodeFormFlowTest {
                   assertEquals("123", barcode)
                   return result
                 }
-              })
+              },
+              fridgeType = FridgeType.SHARED)
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }
@@ -171,6 +174,8 @@ class BarcodeFormFlowTest {
   }
 
   private class EmptyItems : ItemRepository {
+    override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
+
     override fun addItems(submission: InventorySubmission): ItemWrite =
         error("Batch saves are not used in this test")
 
@@ -178,10 +183,6 @@ class BarcodeFormFlowTest {
         submission: InventorySubmission
     ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
         error("Submission observation is not used in this test")
-
-    override fun getPrivateItems(userId: String) = flowOf(emptyList<Item>())
-
-    override fun getSharedItems(householdId: String) = flowOf(emptyList<Item>())
 
     override suspend fun addItem(item: Item): String? = error("Lookup must not save an item")
 
