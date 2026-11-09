@@ -26,10 +26,16 @@ class ReceiptScanViewModelTest {
                 ReceiptLine("Pommes 0.350 kg @4.00/kg", 0, 20, 30)))
     val saved = SavedStateHandle()
     val model = ReceiptScanViewModel(ReceiptReader { parsed }, saved)
-    model.read("content://receipt")
-    assertEquals(
-        listOf(StagedItem("0", "Lait", 2, 480), StagedItem("1", "Pommes 0.350 kg", 1, null)),
-        model.currentItems())
+    val expected =
+        listOf(StagedItem("0", "Lait", 2, 480), StagedItem("1", "Pommes 0.350 kg", 1, null))
+    var retained: List<StagedItem>? = null
+    model.read("content://receipt") { items ->
+      assertTrue(model.currentItems().isEmpty())
+      assertFalse(model.needsReview.value)
+      retained = items
+    }
+    assertEquals(expected, retained)
+    assertEquals(expected, model.currentItems())
     val beforeEditing =
         ReceiptScanViewModel(
             ReceiptReader { error("Do not rerun OCR on restoration") },

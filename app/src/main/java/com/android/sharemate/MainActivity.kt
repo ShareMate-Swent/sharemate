@@ -284,6 +284,11 @@ open class MainActivity : ComponentActivity() {
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                           ReceiptsScreen(
+                              itemRepository,
+                              session.uid,
+                              household.id,
+                              household.type ==
+                                  com.android.sharemate.model.household.FridgeType.SHARED,
                               showBalances = household.canViewBalances(session.uid),
                               onOpenBalances = { navController.navigate(BALANCES_ROUTE) })
                         }
