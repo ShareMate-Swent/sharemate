@@ -79,16 +79,21 @@ class MemberNameRepositoryTest {
   @Test
   fun namesAreQueriedPerMemberBatchAndListenersCloseWithTheirCollector() = runTest {
     val members = (0..11).map { if (it == 0) "owner" else "member-$it" }.sorted()
+    val metadata = mock(SnapshotMetadata::class.java)
     val household = mock(DocumentSnapshot::class.java)
+    `when`(household.metadata).thenReturn(metadata)
     `when`(household.get("memberIds")).thenReturn(members)
     `when`(household.getString("type")).thenReturn("SHARED")
     val registration = mock(ListenerRegistration::class.java)
     lateinit var membership: EventListener<DocumentSnapshot>
-    `when`(home.addSnapshotListener(any<EventListener<DocumentSnapshot>>())).thenAnswer {
-      membership = it.getArgument(0)
-      membership.onEvent(household, null)
-      registration
-    }
+    `when`(
+            home.addSnapshotListener(
+                eq(MetadataChanges.INCLUDE), any<EventListener<DocumentSnapshot>>()))
+        .thenAnswer {
+          membership = it.getArgument(1)
+          membership.onEvent(household, null)
+          registration
+        }
     val queries =
         members.chunked(10).map { ids ->
           val query = mock(Query::class.java)
@@ -102,11 +107,15 @@ class MemberNameRepositoryTest {
                 }
               }
           `when`(result.documents).thenReturn(documents)
+          `when`(result.metadata).thenReturn(metadata)
           `when`(names.whereIn(FieldPath.documentId(), ids)).thenReturn(query)
-          `when`(query.addSnapshotListener(any<EventListener<QuerySnapshot>>())).thenAnswer {
-            it.getArgument<EventListener<QuerySnapshot>>(0).onEvent(result, null)
-            listener
-          }
+          `when`(
+                  query.addSnapshotListener(
+                      eq(MetadataChanges.INCLUDE), any<EventListener<QuerySnapshot>>()))
+              .thenAnswer {
+                it.getArgument<EventListener<QuerySnapshot>>(1).onEvent(result, null)
+                listener
+              }
           Triple(ids, query, listener)
         }
     var resolved = emptyMap<String, String>()

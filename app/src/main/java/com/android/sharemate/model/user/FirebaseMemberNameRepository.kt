@@ -4,6 +4,7 @@ package com.android.sharemate.model.user
 import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -15,7 +16,11 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.tasks.await
 
-/** One membership listener and one cached query per ten members, independent of card count. */
+/**
+ * One membership listener and one query per ten members, independent of card count. Cached or
+ * locally pending snapshots never authorize display: emit the name fallback until the server
+ * confirms membership and each query, including on a new observation after an offline restart.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
     MemberNameRepository {
@@ -28,7 +33,9 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
     val members =
         callbackFlow<List<String>> {
               val registration =
-                  household(householdId).addSnapshotListener { snapshot, error ->
+                  household(householdId).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
                     if (error != null) close(error)
                     else {
                       val ids =
@@ -37,8 +44,11 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                               .orEmpty()
                       val privateFridge = snapshot?.getString("type") == "PRIVATE"
                       trySend(
-                          if (viewerId in ids &&
-                              (!privateFridge || snapshot?.getString("createdBy") == viewerId))
+                          if (snapshot != null &&
+                              !snapshot.metadata.isFromCache &&
+                              !snapshot.metadata.hasPendingWrites() &&
+                              viewerId in ids &&
+                              (!privateFridge || snapshot.getString("createdBy") == viewerId))
                               ids.filter { it.isNotBlank() && '/' !in it }.distinct().sorted()
                           else emptyList())
                     }
@@ -58,6 +68,7 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                   .onStart { emit(emptyMap()) }
         }
         .distinctUntilChanged()
+        .onStart { emit(emptyMap()) }
   }
 
   private fun observeBatch(householdId: String, ids: List<String>): Flow<Map<String, String>> =
@@ -66,12 +77,15 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
             household(householdId)
                 .collection(FirestoreCollections.MEMBER_NAMES)
                 .whereIn(FieldPath.documentId(), ids)
-                .addSnapshotListener { snapshot, error ->
+                .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                   if (error != null) close(error)
-                  else
+                  else if (snapshot == null ||
+                      snapshot.metadata.isFromCache ||
+                      snapshot.metadata.hasPendingWrites()) {
+                    trySend(emptyMap())
+                  } else
                       trySend(
-                          snapshot
-                              ?.documents
+                          snapshot.documents
                               .orEmpty()
                               .mapNotNull { document ->
                                 ownerDisplayName(document.get("displayName") as? String)?.let {

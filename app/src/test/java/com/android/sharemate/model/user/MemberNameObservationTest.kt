@@ -28,10 +28,13 @@ class MemberNameObservationTest {
     `when`(firestore.collection("households")).thenReturn(households)
     `when`(households.document("home")).thenReturn(home)
     `when`(home.collection("memberNames")).thenReturn(directory)
-    `when`(home.addSnapshotListener(any<EventListener<DocumentSnapshot>>())).thenAnswer {
-      membership = it.getArgument(0)
-      householdRegistration
-    }
+    `when`(
+            home.addSnapshotListener(
+                eq(MetadataChanges.INCLUDE), any<EventListener<DocumentSnapshot>>()))
+        .thenAnswer {
+          membership = it.getArgument(1)
+          householdRegistration
+        }
   }
 
   private inner class Batch(val ids: List<String>) {
@@ -41,13 +44,20 @@ class MemberNameObservationTest {
 
     init {
       `when`(directory.whereIn(FieldPath.documentId(), ids)).thenReturn(query)
-      `when`(query.addSnapshotListener(any<EventListener<QuerySnapshot>>())).thenAnswer {
-        listener = it.getArgument(0)
-        registration
-      }
+      `when`(
+              query.addSnapshotListener(
+                  eq(MetadataChanges.INCLUDE), any<EventListener<QuerySnapshot>>()))
+          .thenAnswer {
+            listener = it.getArgument(1)
+            registration
+          }
     }
 
-    fun emit(vararg entries: Pair<String, Any?>) {
+    fun emit(
+        vararg entries: Pair<String, Any?>,
+        cached: Boolean = false,
+        pending: Boolean = false
+    ) {
       val result = mock(QuerySnapshot::class.java)
       val documents =
           entries.map { (id, name) ->
@@ -57,18 +67,30 @@ class MemberNameObservationTest {
             }
           }
       `when`(result.documents).thenReturn(documents)
+      val snapshotMetadata = metadata(cached, pending)
+      `when`(result.metadata).thenReturn(snapshotMetadata)
       listener.onEvent(result, null)
     }
   }
+
+  private fun metadata(cached: Boolean, pending: Boolean) =
+      mock(SnapshotMetadata::class.java).also {
+        `when`(it.isFromCache).thenReturn(cached)
+        `when`(it.hasPendingWrites()).thenReturn(pending)
+      }
 
   private fun batch(vararg ids: String) = Batch(ids.toList())
 
   private fun household(
       ids: Any? = listOf("owner"),
       type: String? = "SHARED",
-      creator: String? = "owner"
+      creator: String? = "owner",
+      cached: Boolean = false,
+      pending: Boolean = false,
   ): DocumentSnapshot =
       mock(DocumentSnapshot::class.java).also {
+        val snapshotMetadata = metadata(cached, pending)
+        `when`(it.metadata).thenReturn(snapshotMetadata)
         `when`(it.get("memberIds")).thenReturn(ids)
         `when`(it.getString("type")).thenReturn(type)
         `when`(it.getString("createdBy")).thenReturn(creator)
@@ -165,7 +187,8 @@ class MemberNameObservationTest {
     runCurrent()
     assertTrue(emissions.last().isEmpty())
     verify(own.registration).remove()
-    verify(home, times(1)).addSnapshotListener(any<EventListener<DocumentSnapshot>>())
+    verify(home, times(1))
+        .addSnapshotListener(eq(MetadataChanges.INCLUDE), any<EventListener<DocumentSnapshot>>())
     job.cancel()
     runCurrent()
     verify(householdRegistration).remove()
@@ -232,5 +255,89 @@ class MemberNameObservationTest {
     verify(householdRegistration).remove()
     verify(first.registration).remove()
     verify(second.registration).remove()
+  }
+
+  @Test
+  fun cachedOrPendingMembershipNeverAuthorizesNameQueries() = runTest {
+    val job = start()
+    membership.onEvent(household(cached = true), null)
+    runCurrent()
+    assertEquals(emptyMap<String, String>(), emissions.last())
+    verifyNoInteractions(directory)
+    membership.onEvent(household(pending = true), null)
+    runCurrent()
+    verifyNoInteractions(directory)
+    val own = batch("owner")
+    membership.onEvent(household(), null)
+    runCurrent()
+    own.emit("owner" to "Alice")
+    runCurrent()
+    assertEquals(mapOf("owner" to "Alice"), emissions.last())
+    job.cancel()
+    runCurrent()
+  }
+
+  @Test
+  fun cachedOrPendingNamesStayHiddenUntilServerConfirmed() = runTest {
+    val own = batch("owner")
+    val job = start()
+    membership.onEvent(household(), null)
+    runCurrent()
+    own.emit("owner" to "Stale Alice", cached = true)
+    runCurrent()
+    assertTrue(emissions.last().isEmpty())
+    own.emit("owner" to "Pending Alice", pending = true)
+    runCurrent()
+    assertTrue(emissions.last().isEmpty())
+    own.emit("owner" to "Alice")
+    runCurrent()
+    assertEquals(mapOf("owner" to "Alice"), emissions.last())
+    own.emit("owner" to "Stale Alice", cached = true)
+    runCurrent()
+    assertTrue(emissions.last().isEmpty())
+    job.cancel()
+    runCurrent()
+  }
+
+  @Test
+  fun losingServerConfirmationClearsNamesAndStopsPreviousQueries() = runTest {
+    val own = batch("owner")
+    val job = start()
+    membership.onEvent(household(), null)
+    runCurrent()
+    own.emit("owner" to "Alice")
+    runCurrent()
+    assertEquals(mapOf("owner" to "Alice"), emissions.last())
+    membership.onEvent(household(cached = true), null)
+    runCurrent()
+    assertTrue(emissions.last().isEmpty())
+    verify(own.registration).remove()
+    own.emit("owner" to "Stale Alice")
+    runCurrent()
+    assertTrue(emissions.last().isEmpty())
+    job.cancel()
+    runCurrent()
+  }
+
+  @Test
+  fun newObservationMustConfirmMembershipAgain() = runTest {
+    val own = batch("owner")
+    var job = start()
+    membership.onEvent(household(), null)
+    runCurrent()
+    own.emit("owner" to "Alice")
+    runCurrent()
+    job.cancel()
+    runCurrent()
+    emissions.clear()
+    job = start()
+    membership.onEvent(household(cached = true), null)
+    runCurrent()
+    own.emit("owner" to "Stale Alice")
+    runCurrent()
+    assertTrue(emissions.isNotEmpty())
+    assertTrue(emissions.all { it.isEmpty() })
+    job.cancel()
+    runCurrent()
   }
 }

@@ -11,11 +11,17 @@ import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.ExecutionException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -178,5 +184,105 @@ class MemberNameRepositoryEmulatorTest {
     }
     FirebaseEmulator.signInAs("name-alice")
     assertEquals(expected, resolved(home.id, alice, expected))
+  }
+
+  @Test
+  fun offlineNewObservationHidesCachedNamesUntilServerConfirmation() = runBlocking {
+    val alice = FirebaseEmulator.signInAs("offline-name-alice")
+    val home = households.createHousehold("Home", alice)
+    repository.publishOwnName(home.id, alice, "Alice")
+    resolved(home.id, alice, mapOf(alice to "Alice"))
+    entry(home.id, alice)
+        .parent
+        .whereIn(FieldPath.documentId(), listOf(alice))
+        .get(Source.SERVER)
+        .await()
+    firestore.disableNetwork().await()
+    val names = CompletableDeferred<Map<String, String>>()
+    val job = launch {
+      repository.observeNames(home.id, alice).collect { if (it.isNotEmpty()) names.complete(it) }
+    }
+    try {
+      assertEquals(
+          "Alice", entry(home.id, alice).get(Source.CACHE).await().getString("displayName"))
+      // This is an assertion of non-delivery while offline, not a startup delay.
+      assertNull(withTimeoutOrNull(1_500) { names.await() })
+      firestore.enableNetwork().await()
+      assertEquals(mapOf(alice to "Alice"), withTimeout(15_000) { names.await() })
+    } finally {
+      firestore.enableNetwork().await()
+      job.cancelAndJoin()
+    }
+  }
+
+  @Test
+  fun revokedMemberOpeningOfflineNeverReceivesCachedNames() = runBlocking {
+    val alice = FirebaseEmulator.signInAs("revocation-name-alice")
+    val home = households.createHousehold("Home", alice)
+    repository.publishOwnName(home.id, alice, "Alice")
+    val bob = FirebaseEmulator.signInAs("revocation-name-bob")
+    households.joinHousehold(home.inviteCode, bob)
+    repository.publishOwnName(home.id, bob, "Bob")
+    resolved(home.id, bob, mapOf(alice to "Alice", bob to "Bob"))
+    entry(home.id, alice)
+        .parent
+        .whereIn(FieldPath.documentId(), listOf(alice, bob).sorted())
+        .get(Source.SERVER)
+        .await()
+    firestore.collection("households").document(home.id).get(Source.SERVER).await()
+    firestore.disableNetwork().await()
+    val leaked = CompletableDeferred<Map<String, String>>()
+    val denied = CompletableDeferred<Throwable>()
+    var observation: kotlinx.coroutines.Job? = null
+    try {
+      val project = checkNotNull(firestore.app.options.projectId)
+      check(project.startsWith("demo-"))
+      // Revoke on the emulator server without refreshing this client's offline cache.
+      val connection =
+          URL(
+                  "http://${FirebaseEmulator.HOST}:8080/v1/projects/$project/databases/(default)/documents/households/${home.id}?updateMask.fieldPaths=memberIds")
+              .openConnection() as HttpURLConnection
+      try {
+        connection.requestMethod = "PATCH"
+        connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer owner")
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.outputStream.use {
+          it.write(
+              """{"fields":{"memberIds":{"arrayValue":{"values":[{"stringValue":"$alice"}]}}}}"""
+                  .toByteArray())
+        }
+        check(connection.responseCode in 200..299)
+      } finally {
+        connection.disconnect()
+      }
+      assertTrue(
+          firestore
+              .collection("households")
+              .document(home.id)
+              .get(Source.CACHE)
+              .await()
+              .get("memberIds")
+              .let { it as List<*> }
+              .contains(bob))
+      assertEquals(
+          "Alice", entry(home.id, alice).get(Source.CACHE).await().getString("displayName"))
+      observation = launch {
+        try {
+          repository.observeNames(home.id, bob).collect { if (it.isNotEmpty()) leaked.complete(it) }
+        } catch (failure: FirebaseFirestoreException) {
+          denied.complete(failure)
+        }
+      }
+      assertNull(withTimeoutOrNull(1_500) { leaked.await() })
+      firestore.enableNetwork().await()
+      assertEquals(
+          FirebaseFirestoreException.Code.PERMISSION_DENIED,
+          (withTimeout(15_000) { denied.await() } as FirebaseFirestoreException).code)
+      assertFalse(leaked.isCompleted)
+    } finally {
+      firestore.enableNetwork().await()
+      observation?.cancelAndJoin()
+    }
   }
 }
