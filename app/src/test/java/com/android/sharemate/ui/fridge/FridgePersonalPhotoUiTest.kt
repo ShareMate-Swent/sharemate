@@ -186,7 +186,8 @@ class FridgePersonalPhotoUiTest {
       MaterialTheme {
         FridgeScreen(
             uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
-            personalPhotos = session.value)
+            personalPhotos = session.value,
+            expiryStatuses = emptyMap())
       }
     }
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
@@ -237,7 +238,8 @@ class FridgePersonalPhotoUiTest {
       MaterialTheme {
         FridgeScreen(
             uiState = FridgeUiState(items = listOf(milk), fridgeType = FridgeType.SHARED),
-            personalPhotos = photos)
+            personalPhotos = photos,
+            expiryStatuses = emptyMap())
       }
     }
 

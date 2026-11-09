@@ -68,6 +68,7 @@ import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
@@ -127,6 +128,9 @@ open class MainActivity : ComponentActivity() {
   }
   private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
     FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
+  }
+  private val expirationPreferencesProvider: ExpirationPreferencesProvider by lazy {
+    ExpirationPreferencesProvider(expirationPreferencesRepository)
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -265,8 +269,7 @@ open class MainActivity : ComponentActivity() {
                                             photoStorage = FirebasePersonalPhotoRepository.create(),
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
-                                            expirationPreferencesRepository =
-                                                expirationPreferencesRepository,
+                                            expirationPreferences = expirationPreferencesProvider,
                                             pseudoRepository = pseudoRepository)
                                       }
                                     })
