@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -28,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -598,11 +600,23 @@ class FirebaseItemRepositoryEmulatorTest {
   private fun document(id: String): DocumentReference =
       firestore.collection(FirestoreCollections.ITEMS).document(id)
 
-  private suspend fun confirmation(write: ItemWrite): Result<Unit> =
-      when (write) {
-        is ItemWrite.Rejected -> Result.failure(write.cause)
-        is ItemWrite.Queued -> withTimeout(20_000) { write.confirmation.await() }
-      }
+  /**
+   * Waits for [write] to be confirmed or rejected by the emulator. A timeout fails with the
+   * signed-in user and, as its cause, the stack of the test line that made the write (#285).
+   */
+  private suspend fun confirmation(write: ItemWrite): Result<Unit> {
+    // Captured before suspending, so its stack still contains the calling test line.
+    val callSite = Throwable("Write made here")
+    return when (write) {
+      is ItemWrite.Rejected -> Result.failure(write.cause)
+      is ItemWrite.Queued ->
+          withTimeoutOrNull(WRITE_TIMEOUT_MS) { write.confirmation.await() }
+              ?: throw AssertionError(
+                  "Write not confirmed within ${WRITE_TIMEOUT_MS / 1000} s " +
+                      "as user ${FirebaseEmulator.auth.uid}",
+                  callSite)
+    }
+  }
 
   private suspend fun confirm(write: ItemWrite) {
     confirmation(write).getOrThrow()
@@ -664,5 +678,9 @@ class FirebaseItemRepositoryEmulatorTest {
     } finally {
       connection.disconnect()
     }
+  }
+
+  private companion object {
+    const val WRITE_TIMEOUT_MS = 20_000L
   }
 }

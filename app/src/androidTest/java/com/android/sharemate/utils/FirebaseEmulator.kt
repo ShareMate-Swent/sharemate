@@ -3,6 +3,7 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.utils
 
+import android.os.Looper
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
@@ -79,10 +80,28 @@ object FirebaseEmulator {
           if (e.cause !is FirebaseAuthUserCollisionException) throw e
           Tasks.await(auth.signInWithEmailAndPassword(email, TEST_PASSWORD))
         }
+    awaitUserSwitch()
     return checkNotNull(result.user).uid
   }
 
-  fun signOut() = auth.signOut()
+  fun signOut() {
+    auth.signOut()
+    awaitUserSwitch()
+  }
+
+  /**
+   * Lets Firestore see the new user before the test writes anything.
+   *
+   * Firebase Auth tells Firestore about a user change on the main thread. A write issued before
+   * that is filed under the previous user and never sent, so its confirmation never arrives (#285).
+   * Draining the main thread delivers the change first; Firestore then handles it before any later
+   * write.
+   */
+  private fun awaitUserSwitch() {
+    if (Looper.myLooper() != Looper.getMainLooper()) {
+      InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+  }
 
   /** Signs out and deletes every account and document stored in the emulators. */
   fun clear() {
