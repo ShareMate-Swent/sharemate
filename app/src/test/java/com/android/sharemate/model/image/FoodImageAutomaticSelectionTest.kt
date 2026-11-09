@@ -5,6 +5,8 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_CANDIDATE_INCREMENT
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_INITIAL_CANDIDATES
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
@@ -26,6 +28,45 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FoodImageAutomaticSelectionTest {
+  @Test
+  fun emptyResultsExpandTheCandidatePoolUntilAnImageIsFound() = runTest {
+    val calls = mutableListOf<Pair<Long, Int>>()
+    val images =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String): FoodImageSearchResult = NotFound
+
+          override suspend fun searchByTitle(
+              title: String,
+              candidateLimit: Int
+          ): FoodImageSearchResult {
+            calls += currentTime to candidateLimit
+            return if (calls.size == IMAGE_LOOKUP_MAX_ATTEMPTS) Found(image()) else NotFound
+          }
+        }
+
+    assertEquals(
+        FoodImageSelection.RemoteImage(image()), FoodImageSelector(images).selectAutomatic("apple"))
+    assertEquals(
+        List(IMAGE_LOOKUP_MAX_ATTEMPTS) { attempt ->
+          attempt * IMAGE_LOOKUP_RETRY_DELAY_MS to
+              IMAGE_LOOKUP_INITIAL_CANDIDATES + attempt * IMAGE_LOOKUP_CANDIDATE_INCREMENT
+        },
+        calls)
+  }
+
+  @Test
+  fun emptyResultExhaustionWaitsOnlyBetweenAttempts() = runTest {
+    var calls = 0
+    val images = repository {
+      calls++
+      NotFound
+    }
+
+    assertEquals(FoodImageSelection.Generic, FoodImageSelector(images).selectAutomatic("apple"))
+    assertEquals(IMAGE_LOOKUP_MAX_ATTEMPTS, calls)
+    assertEquals((IMAGE_LOOKUP_MAX_ATTEMPTS - 1) * IMAGE_LOOKUP_RETRY_DELAY_MS, currentTime)
+  }
+
   @Test
   fun temporaryFailuresRetryAfterDelayAndPreserveImageCredits() = runTest {
     for (failure in
@@ -112,8 +153,8 @@ class FoodImageAutomaticSelectionTest {
 
     assertEquals(FoodImageSelection.Generic, selector.selectAutomatic("soupe"))
     assertEquals(IMAGE_LOOKUP_MAX_ATTEMPTS, calls.size)
-    assertEquals(listOf(0L, 2_000L, 4_000L), calls)
-    assertEquals(4_000L, currentTime)
+    assertEquals(List(IMAGE_LOOKUP_MAX_ATTEMPTS) { it * IMAGE_LOOKUP_RETRY_DELAY_MS }, calls)
+    assertEquals((IMAGE_LOOKUP_MAX_ATTEMPTS - 1) * IMAGE_LOOKUP_RETRY_DELAY_MS, currentTime)
   }
 
   @Test
@@ -132,16 +173,18 @@ class FoodImageAutomaticSelectionTest {
             })
 
     assertEquals(FoodImageSelection.Generic, selector.selectAutomatic("soupe"))
-    assertEquals(3, calls)
+    assertEquals(IMAGE_LOOKUP_MAX_ATTEMPTS, calls)
     assertEquals(calls, cancelledCalls)
-    assertEquals(64_000L, currentTime)
+    assertEquals(
+        IMAGE_LOOKUP_MAX_ATTEMPTS * IMAGE_LOOKUP_TIMEOUT_MS +
+            (IMAGE_LOOKUP_MAX_ATTEMPTS - 1) * IMAGE_LOOKUP_RETRY_DELAY_MS,
+        currentTime)
   }
 
   @Test
   fun terminalResultsDoNotRetryOrWait() = runTest {
     for (result in
         listOf(
-            NotFound,
             Failure(Reason.EMPTY_TITLE),
             Failure(Reason.INVALID_RESPONSE),
             Failure(Reason.HTTP, 400),

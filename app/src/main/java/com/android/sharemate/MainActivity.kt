@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.content.Intent
@@ -66,6 +67,8 @@ import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebasePseudoRepository
+import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.resources.C
@@ -76,8 +79,11 @@ import com.android.sharemate.ui.chat.ChatViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
+import com.android.sharemate.ui.household.HouseholdMembersScreen
+import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.AppDeepLinks
+import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
@@ -108,6 +114,9 @@ open class MainActivity : ComponentActivity() {
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
+  private val pseudoRepository: PseudoRepository by lazy {
+    FirebasePseudoRepository(FirebaseFirestore.getInstance())
   }
   private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
     FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
@@ -183,15 +192,20 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.entries.forEach { destination ->
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
-                            selected = currentRoute == destination.route,
+                            selected = destination.isSelected(currentRoute),
                             onClick = {
-                              navController.navigate(destination.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                  // Retain the fridge ViewModel and its image jobs across tabs.
-                                  saveState = true
+                              if (destination.isParentOf(currentRoute)) {
+                                // Tapping the tab of the open screen goes back to the tab itself.
+                                navController.popBackStack(destination.route, inclusive = false)
+                              } else {
+                                navController.navigate(destination.route) {
+                                  popUpTo(navController.graph.findStartDestination().id) {
+                                    // Retain the fridge ViewModel and its image jobs across tabs.
+                                    saveState = true
+                                  }
+                                  launchSingleTop = true
+                                  restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                               }
                             },
                             icon = {
@@ -231,6 +245,7 @@ open class MainActivity : ComponentActivity() {
                                             itemRepository = itemRepository,
                                             userId = session.uid,
                                             householdId = household.id,
+                                            fridgeType = household.type,
                                             foodImageSelector = createFoodImageSelector(),
                                             barcodeScanner = createBarcodeScanner(),
                                             productCatalogRepository =
@@ -239,11 +254,12 @@ open class MainActivity : ComponentActivity() {
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferencesRepository =
-                                                expirationPreferencesRepository)
+                                                expirationPreferencesRepository,
+                                            pseudoRepository = pseudoRepository)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          FridgeScreen(viewModel = fridgeViewModel, fridgeType = household.type)
+                          FridgeScreen(viewModel = fridgeViewModel)
                         }
                       }
                   composable(
@@ -317,6 +333,11 @@ open class MainActivity : ComponentActivity() {
                             onCancelLeave = leaveViewModel::cancel,
                             onConfirmLeave = leaveViewModel::confirmLeave,
                             onLeft = onMembershipChanged,
+                            onShowMembers = {
+                              navController.navigate(ChildRoutes.HOUSEHOLD_MEMBERS) {
+                                launchSingleTop = true
+                              }
+                            },
                             onSwitchGoogleAccount = {
                               settingsScope.launch {
                                 settingsViewModel.switchGoogleAccount {
@@ -326,6 +347,27 @@ open class MainActivity : ComponentActivity() {
                             },
                             onSignOut = authViewModel::signOut)
                       }
+                  composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
+                    // Scoped to this screen, so the members listener stops when it is closed.
+                    val membersViewModel: HouseholdMembersViewModel =
+                        viewModel(
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    HouseholdMembersViewModel(
+                                        profileRepository, household.id, session.uid)
+                                  }
+                                })
+                    val membersState by membersViewModel.state.collectAsStateWithLifecycle()
+                    HouseholdMembersScreen(
+                        state = membersState,
+                        onRetry = membersViewModel::retry,
+                        onBack = {
+                          // Pops only this screen, even if Back is tapped twice.
+                          navController.popBackStack(
+                              ChildRoutes.HOUSEHOLD_MEMBERS, inclusive = true)
+                        })
+                  }
                 }
               }
             }

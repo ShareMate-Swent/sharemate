@@ -27,4 +27,8 @@ internal object HouseholdLayout {
   val readyBadgeElevation = 8.dp
   val readyBadgeIconSize = 48.dp
   val readyCardVerticalPadding = 20.dp
+
+  // Rows of the members list.
+  val memberAvatarSize = 40.dp
+  val memberAvatarIconSize = 24.dp
 }

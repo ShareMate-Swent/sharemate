@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -26,7 +27,8 @@ class FridgeItemSoonThresholdTest {
       Item(
           id = "milk",
           name = "Milk",
-          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
+          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)),
+          householdId = "household-1")
 
   private fun show(item: Item, thresholdDays: Long?) {
     compose.setContent {

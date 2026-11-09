@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * Receipt save progress. [LOADING] reads the journal and [READY] allows draft review. [SUBMITTING]
+ * persists the draft or reviewed rows, [PENDING] awaits the server, and [CONFIRMED] follows server
+ * acknowledgement. [FAILED] reports a failed attempt and [RECOVERY_FAILED] an uncertain recovery.
+ */
 enum class InventorySavePhase {
   LOADING,
   READY,
@@ -26,14 +31,23 @@ enum class InventorySavePhase {
   RECOVERY_FAILED
 }
 
+/**
+ * Receipt save [phase] and retained [submission] for the current user and household. [invalidInput]
+ * marks rows that need correction before retrying.
+ */
 data class InventorySaveState(
     val phase: InventorySavePhase = InventorySavePhase.LOADING,
     val submission: InventorySubmission? = null,
     val invalidInput: Boolean = false,
 ) {
+  /** A new scan may begin in [InventorySavePhase.READY] or after server confirmation. */
   val canStartScan: Boolean
     get() = phase == InventorySavePhase.READY || phase == InventorySavePhase.CONFIRMED
 
+  /**
+   * The phase allows confirmation in [InventorySavePhase.READY] or [InventorySavePhase.FAILED]. The
+   * ViewModel still checks whether saving is enabled and validates the reviewed rows.
+   */
   val canConfirm: Boolean
     get() = phase == InventorySavePhase.READY || phase == InventorySavePhase.FAILED
 }

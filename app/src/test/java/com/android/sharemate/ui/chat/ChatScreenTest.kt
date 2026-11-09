@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.model.chat.MessageType
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.flow.Flow
@@ -114,6 +115,15 @@ class ChatScreenTest {
     val repository =
         object : ChatRepository {
           override fun observeMessages(householdId: String): Flow<List<Message>> = flow
+
+          override suspend fun sendActivity(
+              householdId: String,
+              senderId: String,
+              senderName: String,
+              type: MessageType,
+              itemName: String,
+              itemImageUrl: String?
+          ): String? = null
 
           override suspend fun sendMessage(
               householdId: String,

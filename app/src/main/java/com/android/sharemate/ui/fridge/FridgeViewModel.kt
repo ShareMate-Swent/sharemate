@@ -1,12 +1,15 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -17,6 +20,7 @@ import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.product.ProductCatalogRepository
@@ -24,9 +28,11 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.PseudoRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -37,11 +43,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
+data class OwnerOption(val id: String, val pseudo: String?)
 
 enum class FridgeSortOrder {
   EXPIRATION_DATE,
@@ -51,20 +62,23 @@ enum class FridgeSortOrder {
 class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
-    private val householdId: String?,
+    private val householdId: String,
     private val foodImageSelector: FoodImageSelector,
     private val barcodeScanner: BarcodeScanner,
     private val productCatalogRepository: ProductCatalogRepository,
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
+    private val pseudoRepository: PseudoRepository? = null,
+    private val fridgeType: FridgeType,
 ) : ViewModel() {
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
           PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
       else null
 
-  private val mutableUiState = MutableStateFlow(FridgeUiState(isLoading = true))
+  private val mutableUiState =
+      MutableStateFlow(FridgeUiState(fridgeType = fridgeType, isLoading = true))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
@@ -89,6 +103,27 @@ class FridgeViewModel(
   val sortOrder: StateFlow<FridgeSortOrder> = sortOrderState
   val selectedCategory: StateFlow<String?> = categoryFilterState
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
+
+  /** The owners of the loaded items, with the pseudo to show for each. */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  val ownerOptions: StateFlow<List<OwnerOption>> =
+      mutableUiState
+          .map { state -> state.items.map(Item::ownerId).filter(String::isNotBlank).toSortedSet() }
+          .distinctUntilChanged()
+          .flatMapLatest { ids ->
+            val pseudos =
+                pseudoRepository?.observePseudos(ids)?.catch { error ->
+                  Log.w("FridgeViewModel", "Unable to load owner pseudos", error)
+                  emit(emptyMap())
+                } ?: flowOf(emptyMap())
+            pseudos.map { names ->
+              ids.map { OwnerOption(it, names[it]?.trim()?.takeIf(String::isNotEmpty)) }
+                  .sortedWith(
+                      compareBy<OwnerOption> { it.pseudo == null }
+                          .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
+            }
+          }
+          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
   val visibleItems: StateFlow<List<Item>> =
       combine(
@@ -121,15 +156,10 @@ class FridgeViewModel(
 
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
-    require(householdId == null || householdId.isNotBlank()) {
-      "A household ID must be non-blank when provided"
-    }
+    require(householdId.isNotBlank()) { "A household ID is required" }
     viewModelScope.launch {
       try {
-        val inventory =
-            if (householdId == null) itemRepository.getPrivateItems(userId)
-            else itemRepository.getSharedItems(householdId)
-        inventory.collect { items ->
+        itemRepository.getFridgeItems(householdId, userId).collect { items ->
           mutableUiState.update { state ->
             val pending = state.pendingRemovalItem
             val stale =
@@ -323,6 +353,7 @@ class FridgeViewModel(
           itemQuantity = "1",
           itemName = "",
           itemCategory = "",
+          itemSharing = ItemSharing.PERSONAL,
           expirationDateInput = "",
           isScanningBarcode = false,
           barcodeValue = null,
@@ -344,6 +375,7 @@ class FridgeViewModel(
           itemQuantity = "1",
           itemName = "",
           itemCategory = "",
+          itemSharing = ItemSharing.PERSONAL,
           expirationDateInput = "",
           isScanningBarcode = false,
           barcodeValue = null,
@@ -535,6 +567,7 @@ class FridgeViewModel(
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
+          itemSharing = item.sharing,
           expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
@@ -548,6 +581,11 @@ class FridgeViewModel(
 
   fun updateCategory(category: String) = updateDraft {
     it.copy(itemCategory = category, formError = null)
+  }
+
+  /** The only way to set the sharing of a new item: a private fridge never leaves PERSONAL. */
+  fun updateSharing(sharing: ItemSharing) = updateDraft {
+    it.copy(itemSharing = if (fridgeType == FridgeType.SHARED) sharing else ItemSharing.PERSONAL)
   }
 
   fun updateExpirationDate(date: String) = updateDraft {
@@ -594,6 +632,7 @@ class FridgeViewModel(
             name = name,
             ownerId = userId,
             householdId = householdId,
+            sharing = state.itemSharing,
             quantity = quantity,
             expirationDate = expirationDate,
             category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
@@ -614,6 +653,7 @@ class FridgeViewModel(
                 itemQuantity = "1",
                 itemName = "",
                 itemCategory = "",
+                itemSharing = ItemSharing.PERSONAL,
                 expirationDateInput = "",
                 barcodeValue = null,
                 barcodeScanFailed = false,
@@ -683,6 +723,7 @@ class FridgeViewModel(
                   itemName = "",
                   itemQuantity = "1",
                   itemCategory = "",
+                  itemSharing = ItemSharing.PERSONAL,
                   expirationDateInput = "")
             }
             trackConfirmation(write) { reportEditSyncError(edit.name) }

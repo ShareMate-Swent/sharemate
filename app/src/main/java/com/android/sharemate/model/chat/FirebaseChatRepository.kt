@@ -61,13 +61,48 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
       null
     }
   }
+
+  override suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+      itemImageUrl: String?
+  ): String? {
+    if (householdId.isBlank() ||
+        senderId.isBlank() ||
+        type == MessageType.TEXT ||
+        itemName.isBlank())
+        return null
+    return try {
+      val document = messages(householdId).document()
+      val message =
+          Message(
+              id = document.id,
+              senderId = senderId,
+              senderName = senderName,
+              timestamp = Date(),
+              type = type,
+              itemName = itemName.trim(),
+              itemImageUrl = itemImageUrl?.takeIf { it.isNotBlank() })
+      document.set(message).await()
+      document.id
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      null
+    }
+  }
 }
 
 internal fun DocumentSnapshot.toMessageOrNull(): Message? =
     try {
       val senderId = getString("senderId")?.takeIf { it.isNotBlank() }
-      val text = getString("text")
-      if (senderId == null || text == null) {
+      val type = MessageType.fromStored(getString("type"))
+      val text = getString("text") ?: if (type == MessageType.TEXT) null else ""
+      val itemName = getString("itemName").orEmpty()
+      if (senderId == null || text == null || (type != MessageType.TEXT && itemName.isBlank())) {
         null
       } else {
         Message(
@@ -75,7 +110,10 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
             senderId = senderId,
             senderName = getString("senderName").orEmpty(),
             text = text,
-            timestamp = getTimestamp("timestamp")?.toDate())
+            timestamp = getTimestamp("timestamp")?.toDate(),
+            type = type,
+            itemName = itemName,
+            itemImageUrl = getString("itemImageUrl")?.takeIf { it.isNotBlank() })
       }
     } catch (_: RuntimeException) {
       // Wrongly typed fields make the Firestore getters throw; skip the malformed document.
