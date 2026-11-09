@@ -196,6 +196,33 @@ class SettingsScreenTest {
     composeTestRule.onNodeWithTag(SettingsTestTags.SIGN_OUT).assertIsNotEnabled()
   }
 
+  private fun assertPseudoError(error: SettingsPseudoError, message: Int) {
+    showSettings(settings = googleState.copy(pseudoError = error))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_ERROR)
+        .performScrollTo()
+        .assertTextEquals(composeTestRule.activity.getString(message))
+  }
+
+  @Test
+  fun pseudoLoadFailureShowsItsMessage() =
+      assertPseudoError(SettingsPseudoError.LOAD_FAILED, R.string.settings_pseudo_load_failed)
+
+  @Test
+  fun pseudoSaveFailureShowsItsMessage() =
+      assertPseudoError(SettingsPseudoError.SAVE_FAILED, R.string.settings_pseudo_save_failed)
+
+  @Test
+  fun whileSavingThePseudoTheSaveButtonShowsProgressAndIsDisabled() {
+    showSettings(settings = googleState.copy(pseudo = "Sam", isSavingPseudo = true))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsNotEnabled()
+        .assert(hasText(composeTestRule.activity.getString(R.string.settings_pseudo_save)).not())
+  }
+
   @Test
   fun eachSwitchFailureShowsItsMessage() {
     val messages =

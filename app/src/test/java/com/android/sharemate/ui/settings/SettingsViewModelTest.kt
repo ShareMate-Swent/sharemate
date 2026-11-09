@@ -12,6 +12,7 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.user.PseudoRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -123,6 +124,29 @@ class SettingsViewModelTest {
     advanceUntilIdle()
     assertEquals("New pseudo", viewModel.state.value.savedPseudo)
     assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
+  fun cancellationDuringASaveIsNotReportedAsAFailure() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    pseudos.setFailure = CancellationException("cancelled")
+    viewModel.updatePseudo("New pseudo")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
+  fun cancellationDuringARefreshKeepsTheLoadedHousehold() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    households.failure = CancellationException("cancelled")
+    viewModel.refreshHousehold()
+    advanceUntilIdle()
+
+    assertEquals("Flat", viewModel.state.value.householdName)
   }
 
   @Test
