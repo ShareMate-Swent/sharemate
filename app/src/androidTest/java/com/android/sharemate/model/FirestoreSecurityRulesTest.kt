@@ -10,6 +10,8 @@ import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
@@ -68,6 +70,90 @@ class FirestoreSecurityRulesTest {
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("householdId" to "stolen")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+  }
+
+  @Test
+  fun userCanSaveExpiryPreferencesOnTheBoundariesOfTheRanges() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val repository = FirebaseExpirationPreferencesRepository(firestore)
+    val soon = ExpirationPreferences.SOON_DAYS_RANGE
+    val repeat = ExpirationPreferences.REPEAT_DAYS_RANGE
+    val accepted =
+        listOf(
+            ExpirationPreferences(soon.first, repeat.first, repeat.first),
+            ExpirationPreferences(soon.last, repeat.last, repeat.last),
+            ExpirationPreferences(soon.first, soonRepeatDays = null, expiredRepeatDays = null))
+
+    accepted.forEach {
+      repository.save(userId, it)
+
+      assertEquals(it, repository.get(userId))
+    }
+  }
+
+  @Test
+  fun userCanSaveOneExpiryPreferenceAtATime() {
+    val userId = FirebaseEmulator.signInAs("alice")
+
+    Tasks.await(expiryPreferencesWrite(userId, mapOf(UserExpirationFields.SOON_DAYS to 7)))
+    Tasks.await(
+        expiryPreferencesWrite(userId, mapOf(UserExpirationFields.EXPIRED_REPEAT_DAYS to 0)))
+
+    val saved = Tasks.await(userReference(userId).get(Source.SERVER))
+    assertEquals(
+        mapOf(UserExpirationFields.SOON_DAYS to 7L, UserExpirationFields.EXPIRED_REPEAT_DAYS to 0L),
+        saved.get(UserExpirationFields.PREFERENCES))
+  }
+
+  @Test
+  fun userCannotSaveExpiryPreferencesOutsideTheAllowedRanges() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val soon = ExpirationPreferences.SOON_DAYS_RANGE
+    val repeat = ExpirationPreferences.REPEAT_DAYS_RANGE
+    val refused =
+        listOf(
+            mapOf(UserExpirationFields.SOON_DAYS to soon.first - 1),
+            mapOf(UserExpirationFields.SOON_DAYS to soon.last + 1),
+            mapOf(UserExpirationFields.SOON_REPEAT_DAYS to -1),
+            mapOf(UserExpirationFields.SOON_REPEAT_DAYS to repeat.last + 1),
+            mapOf(UserExpirationFields.EXPIRED_REPEAT_DAYS to repeat.last + 1),
+            mapOf(UserExpirationFields.SOON_DAYS to "3"),
+            mapOf(UserExpirationFields.SOON_DAYS to 2.5),
+            mapOf(UserExpirationFields.SOON_DAYS to 3, "unknownField" to 1))
+
+    refused.forEach { assertDenied(expiryPreferencesWrite(userId, it)) }
+    assertDenied(expiryPreferencesWrite(userId, "not a map"))
+  }
+
+  @Test
+  fun refusedExpiryPreferencesLeaveTheSavedOnesUntouched() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val repository = FirebaseExpirationPreferencesRepository(firestore)
+    val saved = ExpirationPreferences(soonDays = 10, soonRepeatDays = 2, expiredRepeatDays = 5)
+    repository.save(userId, saved)
+
+    assertDenied(expiryPreferencesWrite(userId, mapOf(UserExpirationFields.SOON_DAYS to 1000)))
+
+    assertEquals(saved, repository.get(userId))
+  }
+
+  @Test
+  fun userCanStillUpdateOtherProfileFieldsAlongsideSavedExpiryPreferences() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    FirebaseExpirationPreferencesRepository(firestore).save(userId, ExpirationPreferences())
+
+    Tasks.await(userReference(userId).set(mapOf("householdId" to "home"), SetOptions.merge()))
+
+    assertEquals(
+        "home", Tasks.await(userReference(userId).get(Source.SERVER)).getString("householdId"))
+  }
+
+  @Test
+  fun userCannotSaveExpiryPreferencesIntoAnotherUsersDocument() {
+    val otherId = FirebaseEmulator.signInAs("other")
+    FirebaseEmulator.signInAs("alice")
+
+    assertDenied(expiryPreferencesWrite(otherId, mapOf(UserExpirationFields.SOON_DAYS to 7)))
   }
 
   @Test
@@ -773,6 +859,11 @@ class FirestoreSecurityRulesTest {
 
   private fun itemsOf(householdId: String) =
       firestore.collection(FirestoreCollections.ITEMS).whereEqualTo("householdId", householdId)
+
+  /** Merges [preferences], whatever its shape, into the expiry preferences of [userId]. */
+  private fun expiryPreferencesWrite(userId: String, preferences: Any): Task<Void> =
+      userReference(userId)
+          .set(mapOf(UserExpirationFields.PREFERENCES to preferences), SetOptions.merge())
 
   private fun userReference(userId: String): DocumentReference =
       firestore.collection(FirestoreCollections.USERS).document(userId)

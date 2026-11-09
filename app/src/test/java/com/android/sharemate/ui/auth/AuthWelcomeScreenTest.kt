@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
 import androidx.activity.ComponentActivity
@@ -40,6 +41,7 @@ class AuthWelcomeScreenTest {
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_confirm_password").assertExists()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("different")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -166,7 +168,8 @@ class AuthWelcomeScreenTest {
     compose.onNodeWithTag("auth_google_loading").assertExists()
     compose.onNodeWithText("Private content").assertDoesNotExist()
     compose.runOnIdle {
-      repository.session.value = AuthSession("google-user", "student@example.org")
+      repository.session.value =
+          AuthSession("google-user", "student@example.org", displayName = "Google User")
     }
     compose.onNodeWithText("Private content").assertIsDisplayed()
     compose.runOnIdle { vm.signOut() }
@@ -189,8 +192,11 @@ class AuthWelcomeScreenTest {
       pending.await()
     }
 
-    override suspend fun signUp(email: String, password: String) =
+    override suspend fun signUp(email: String, password: String, displayName: String) =
         error("Invalid signup reached repository")
+
+    override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) =
+        Unit
 
     override fun signOut() {
       session.value = null

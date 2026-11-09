@@ -27,7 +27,28 @@ service cloud.firestore {
 
     // A user profile is private to its owner.
     match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+      function optionalIntInRange(values, field, low, high) {
+        return !(field in values)
+            || (values[field] is int && values[field] >= low && values[field] <= high);
+      }
+
+      // Expiry reminder preferences. They are optional, and every field of the map is optional
+      // too, because the app saves one field at a time. The ranges mirror ExpirationPreferences:
+      // soon window 1-60 days, repeat every 1-30 days, with 0 standing for "never".
+      function hasValidExpirationPreferences(data) {
+        let preferences = data.get('expirationPreferences', null);
+        return preferences == null
+            || (preferences is map
+                && preferences.keys().hasOnly(['soonDays', 'soonRepeatDays', 'expiredRepeatDays'])
+                && optionalIntInRange(preferences, 'soonDays', 1, 60)
+                && optionalIntInRange(preferences, 'soonRepeatDays', 0, 30)
+                && optionalIntInRange(preferences, 'expiredRepeatDays', 0, 30));
+      }
+
+      allow read, delete: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && hasValidExpirationPreferences(request.resource.data);
     }
 
     // Private receipt handoff, not an expense ledger or trusted financial proof. The immutable
@@ -67,8 +88,12 @@ service cloud.firestore {
 
       // The email, when present, must be the signed-in account's own address.
       function isValidProfile(data) {
+        let maxPseudoLength = 40;
         return data.keys().hasOnly(['displayName', 'photoUrl', 'email'])
             && optionalString(data, 'displayName')
+            // Regex counts Unicode code points; size() counts UTF-16 code units.
+            && (data.get('displayName', null) == null
+                || data.displayName.matches('(?s).{0,' + string(maxPseudoLength) + '}'))
             && optionalString(data, 'photoUrl')
             && optionalString(data, 'email')
             && (!('email' in data) || data.email == null
@@ -81,6 +106,23 @@ service cloud.firestore {
           && request.auth.uid == userId
           && isValidProfile(request.resource.data);
       allow delete: if false;
+    }
+
+    // Pseudo claims are addressed by a normalized-name hash and cannot be enumerated.
+    match /pseudoClaims/{claimId} {
+      function ownsExistingClaim() {
+        return resource.data.get('uid', null) == request.auth.uid
+            || request.auth.uid in resource.data.get('legacyUids', []);
+      }
+
+      allow get: if signedIn()
+          && (!exists(documentPath('pseudoClaims', claimId)) || ownsExistingClaim());
+      allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid'])
+          && request.resource.data.uid == request.auth.uid
+          && !exists(documentPath('pseudoClaims', claimId));
+      allow list, update: if false;
+      allow delete: if signedIn() && resource.data.get('uid', null) == request.auth.uid;
     }
 
     // Codes only exist for shared fridges, so anyone who knows one can fetch it.

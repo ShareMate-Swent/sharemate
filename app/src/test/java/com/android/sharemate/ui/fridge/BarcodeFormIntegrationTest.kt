@@ -11,6 +11,8 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -57,6 +59,8 @@ class BarcodeFormIntegrationTest {
                 return lookup()
               }
             },
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED)
     owner.put("fridge", vm)
     vm.openAddItemDialog()
