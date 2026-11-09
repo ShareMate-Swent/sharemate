@@ -9,6 +9,7 @@ import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -66,6 +67,53 @@ class FirestoreSecurityRulesTest {
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("householdId" to "stolen")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+  }
+
+  @Test
+  fun householdMemberCanReadPublicNameButNotPrivateUser() {
+    val household = createHouseholdAs("creator")
+    val pseudoRepository = FirebasePseudoRepository(firestore)
+    runBlocking { pseudoRepository.setPseudo(household.createdBy, "Alice") }
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(
+        "Alice",
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.PROFILES)
+                    .document(household.createdBy)
+                    .get())
+            .getString("displayName"))
+    assertDenied(userReference(household.createdBy).get())
+    assertDenied(userReference(household.createdBy).set(mapOf("pseudo" to "hijacked")))
+    assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+    assertDenied(firestore.collection(FirestoreCollections.PROFILES).get())
+    assertDenied(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(household.createdBy)
+            .set(mapOf("displayName" to "hijacked")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(
+        firestore.collection(FirestoreCollections.PROFILES).document(household.createdBy).get())
+  }
+
+  @Test
+  fun pseudoWritesPreserveOtherPublicFieldsAndRejectExtraFields() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val pseudo = firestore.collection(FirestoreCollections.PROFILES).document(userId)
+    Tasks.await(pseudo.set(mapOf("email" to "creator@example.com", "photoUrl" to "photo")))
+    runBlocking { FirebasePseudoRepository(firestore).setPseudo(userId, "Alice") }
+
+    val profile = Tasks.await(pseudo.get())
+    assertEquals("Alice", profile.getString("displayName"))
+    assertEquals("creator@example.com", profile.getString("email"))
+    assertEquals("photo", profile.getString("photoUrl"))
+    assertFalse(Tasks.await(userReference(userId).get()).contains("pseudo"))
+    assertDenied(pseudo.set(mapOf("displayName" to "Alice", "private" to "secret")))
+    assertDenied(firestore.collection("userPseudos").document(userId).get())
   }
 
   @Test

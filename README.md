@@ -11,6 +11,13 @@ There can be a lot of problems when sharing a flat with roommates such as managi
 ## Architecture Diagram
 Diagram is on excalidraw.com : [https://excalidraw.com/#json=k1bdsqRfMnIZkC6OTVKxL,0NhaCwdW5YgQPC8xo-5wEA](https://excalidraw.com/#json=mqEBfNNeAStqVv6rvqXjb,jKHbqIs-7lAr7gAnHZ-njw)
 
+## User pseudos
+
+Use `PseudoRepository.setPseudo` when creating or changing a pseudo. It updates
+`profiles/{uid}.displayName`, preserving the other public profile fields. Firestore rules
+allow household members to read the public profile without exposing the private user document. Profiles
+without a published pseudo appear as "Unknown member" in the Fridge owner filter.
+
 ## Good Code review process :
 https://github.com/swent-epfl/public/blob/main/project/README.md#reviewing-code
 
