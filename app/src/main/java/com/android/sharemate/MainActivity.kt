@@ -273,7 +273,12 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.RECEIPTS.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          ReceiptsScreen()
+                          ReceiptsScreen(
+                              itemRepository,
+                              session.uid,
+                              household.id,
+                              household.type ==
+                                  com.android.sharemate.model.household.FridgeType.SHARED)
                         }
                       }
                   composable(
