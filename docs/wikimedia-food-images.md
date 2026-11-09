@@ -1,9 +1,9 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 # Wikimedia Commons food images
 
-`MainActivity.createFoodImageSelector` now uses `CommonsFoodImageRepository`, behind the existing
-`FoodImageRepository` interface. No account or API key is needed. The former Openverse implementation
-and its provider-specific tests have been removed; there is no fallback to Openverse.
+`MainActivity.createFoodImageSelector` uses `CommonsFoodImageRepository`, behind the existing
+`FoodImageRepository` interface. It searches Wikimedia Commons directly using the supplied English
+ingredient name, then ranks usable thumbnails by title similarity. No account or API key is needed.
 
 After validation, `FridgeViewModel` saves the item with a placeholder and closes the form as soon as
 creation succeeds. It then searches for an image in a separate job and attaches the result through
@@ -12,9 +12,10 @@ and items that already have an image. Inventory flows supply the updated image a
 
 Lookup jobs belong to the retained fridge ViewModel: switching tabs preserves them, while leaving
 the session or household cancels them and their network calls. No work resumes after process death.
-Temporary failures receive at most three attempts, each bounded by the existing 20-second timeout,
-with two-second pauses. Failed lookups, timeouts and failed image writes keep the saved placeholder.
-They never reopen the form or repeat creation. Old placeholder items do not automatically retry.
+The automatic selector makes up to three attempts, each bounded to ten seconds, with two-second
+pauses between attempts. Requests expand from ten to twenty to thirty candidates after empty results,
+timeouts or temporary failures. A found image ends the lookup immediately. Exhausted lookups and
+failed image writes keep the saved placeholder. Lookup policy values live in `FoodImageTimeouts`.
 
 ## Manual verification
 
@@ -32,17 +33,17 @@ They never reopen the form or repeat creation. Old placeholder items do not auto
 - Use the MediaWiki Action API on `commons.wikimedia.org`, with a descriptive project User-Agent.
   The same User-Agent is required on thumbnail requests: the default OkHttp identification was
   observed to receive HTTP 403, while ShareMate's identification received HTTP 200 for the same URL.
-- Search file titles, with an English food context to reduce non-food matches such as English "pain".
-  User text stays inside a quoted literal. Select the first usable result by the generator's relevance
-  index, rather than the JSON array order.
-- Request at most ten results and a 640-pixel thumbnail. Store its HTTPS reference, not the original
-  image bytes. JPEG, PNG and WebP thumbnails are supported by the existing image loader.
+- Search the supplied English name as a quoted literal, requesting progressively larger candidate
+  pools and 640-pixel thumbnails. Rank compatible files by title similarity and use Commons relevance
+  to break ties.
+- Prefer exact titles and ingredient descriptions such as "raw" or "fresh". Reject unrequested
+  dishes and weak title matches. A missing suitable candidate yields the generic placeholder.
 - Accept CC0, CC BY and CC BY-SA with a matching Creative Commons license URL. Keep the source page,
   title, author, author link when available, and license/version. Attributed licenses require an author.
   Decode Commons' HTML metadata to text; never render it as HTML in the UI.
 - Preserve the existing HTTP limits and cancel the underlying OkHttp call when its coroutine is
   cancelled. MediaWiki errors inside HTTP 200 responses are failures, not empty search results.
-- Image relevance is a suggestion, not recognition. Ambiguous names, French wording, the license
+- Image relevance is a suggestion, not recognition. Ambiguous names, the license
   filter and Commons overload can reduce coverage. There is no translation service or uptime promise.
 
 Sources: [Commons API](https://commons.wikimedia.org/wiki/Commons:API),
@@ -72,11 +73,6 @@ adb reverse tcp:9099 tcp:9099
 firebase emulators:exec --only auth,firestore --project sharemate-swent \
   './gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.sharemate.model.image.CommonsImageFirestoreTest -Pandroid.testInstrumentationRunnerArguments.commonsLive=true --console=plain'
 ```
-
-Manual API observations on 27 October 2026: the contextual title query returned compatible images for
-tacos, pomme, banane, tomate, carotte, riz and soupe à l'oignon, generally in 2–4 seconds. "Pain"
-returned a temporary search-overload error on that run. Some results show prepared dishes containing
-the named ingredient; these observations do not establish exact relevance or long-term availability.
 
 Validation executed on 27 October 2026:
 
