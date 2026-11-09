@@ -140,7 +140,7 @@
     <string name="notification_settings_decrease">Decrease</string>
     <string name="notification_settings_load_failed">Could not load your saved settings. Check your connection and try again.</string>
     <string name="notification_settings_retry">Retry</string>
-    <string name="notification_settings_save_failed">Could not save your change. Check your connection and try again.</string>
+    <string name="notification_settings_save_failed">Your change was refused and could not be saved. Please try again.</string>
     <plurals name="notification_settings_days">
         <item quantity="one">%d day</item>
         <item quantity="other">%d days</item>

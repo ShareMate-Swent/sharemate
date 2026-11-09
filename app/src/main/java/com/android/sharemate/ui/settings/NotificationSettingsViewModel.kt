@@ -1,6 +1,8 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.user.ExpirationChange
@@ -9,6 +11,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -16,12 +19,12 @@ import kotlinx.coroutines.launch
 /**
  * What the notification settings screen shows.
  *
- * @property preferences The user's current reminder preferences.
+ * @property preferences The user's current reminder preferences, as last reported by the store.
  * @property isLoaded False until the saved preferences have been read, so the screen never shows
  *   defaults that are about to be replaced.
  * @property loadFailed Whether the saved preferences could not be read; the controls stay hidden
  *   until a retry succeeds, so nothing is saved on top of values the user never saw.
- * @property saveFailed Whether the last change could not be saved.
+ * @property saveFailed Whether the last change was refused and could not be saved.
  */
 data class NotificationSettingsUiState(
     val preferences: ExpirationPreferences = ExpirationPreferences(),
@@ -30,27 +33,37 @@ data class NotificationSettingsUiState(
     val saveFailed: Boolean = false,
 )
 
-/** Reads and updates the expiration reminder preferences of one user. */
+/**
+ * Reads and updates the expiration reminder preferences of one user.
+ *
+ * The screen only shows what the store reports. The store reports a change as soon as it is made
+ * locally, before the server confirms it, even without a connection, and reports the previous value
+ * again if the change is refused. This view model therefore never keeps edits of its own, so a late
+ * report cannot undo a newer edit. Each change saves only its own value, so it cannot overwrite
+ * another one either.
+ *
+ * @param repository where the preferences are read and saved.
+ * @param userId the user whose preferences are edited.
+ */
 class NotificationSettingsViewModel(
     private val repository: ExpirationPreferencesRepository,
     private val userId: String,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(NotificationSettingsUiState())
-  val state = mutableState.asStateFlow()
 
-  private var saved = ExpirationPreferences()
-  // Latest edit per setting, kept until its save is done and a snapshot confirms it.
-  private val pending = mutableMapOf<Class<out ExpirationChange>, PendingEdit>()
+  /** What the screen shows. */
+  val state: StateFlow<NotificationSettingsUiState> = mutableState.asStateFlow()
+
   private var observing: Job? = null
 
   init {
+    require(userId.isNotBlank()) { "A real user ID is required" }
     load()
   }
 
-  /** Tries again to read the saved preferences after a failure. */
+  /** Tries again to read the saved preferences after a failure; does nothing otherwise. */
   fun retryLoad() {
-    if (!mutableState.value.loadFailed) return
-    load()
+    if (mutableState.value.loadFailed) load()
   }
 
   private fun load() {
@@ -60,70 +73,53 @@ class NotificationSettingsViewModel(
         viewModelScope.launch {
           try {
             repository.observe(userId).collect { snapshot ->
-              saved = snapshot
-              clearConfirmed()
-              publish(isLoaded = true)
+              mutableState.update { it.copy(preferences = snapshot, isLoaded = true) }
             }
           } catch (cancelled: CancellationException) {
             throw cancelled
-          } catch (_: Exception) {
+          } catch (error: Exception) {
+            Log.w(TAG, "Unable to read the expiry preferences", error)
             mutableState.update { it.copy(loadFailed = true) }
           }
         }
   }
 
+  /** Saves the "expiring soon" window, brought into its allowed range. */
   fun setSoonDays(days: Int) =
       submit(ExpirationChange.SoonDays(days.coerceIn(ExpirationPreferences.SOON_DAYS_RANGE)))
 
-  /** [days] null means no repeated reminder while expiring soon. */
+  /** Saves the repeat interval while expiring soon; [days] null means no repeated reminder. */
   fun setSoonRepeatDays(days: Int?) =
       submit(
           ExpirationChange.SoonRepeatDays(days?.coerceIn(ExpirationPreferences.REPEAT_DAYS_RANGE)))
 
-  /** [days] null means no repeated reminder once expired. */
+  /** Saves the repeat interval once expired; [days] null means no repeated reminder. */
   fun setExpiredRepeatDays(days: Int?) =
       submit(
           ExpirationChange.ExpiredRepeatDays(
               days?.coerceIn(ExpirationPreferences.REPEAT_DAYS_RANGE)))
 
+  /** Hides the message about a change that could not be saved. */
   fun dismissSaveError() = mutableState.update { it.copy(saveFailed = false) }
 
-  private fun clearConfirmed() =
-      pending.values.removeAll { it.saveDone && it.change.applyTo(saved) == saved }
-
-  private fun shown() =
-      pending.values.fold(saved) { preferences, edit -> edit.change.applyTo(preferences) }
-
-  private fun publish(
-      isLoaded: Boolean = mutableState.value.isLoaded,
-      saveFailed: Boolean? = null
-  ) =
-      mutableState.update {
-        it.copy(
-            preferences = shown(), isLoaded = isLoaded, saveFailed = saveFailed ?: it.saveFailed)
-      }
-
+  /** Saves [change], unless the preferences are not loaded yet or it changes nothing. */
   private fun submit(change: ExpirationChange) {
-    if (!mutableState.value.isLoaded || change.applyTo(shown()) == shown()) return
-    val edit = PendingEdit(change)
-    pending[change.javaClass] = edit
-    publish(saveFailed = false)
+    val current = mutableState.value
+    if (!current.isLoaded || change.applyTo(current.preferences) == current.preferences) return
+    mutableState.update { it.copy(saveFailed = false) }
     viewModelScope.launch {
       try {
         repository.update(userId, change)
-        edit.saveDone = true
-        clearConfirmed()
-        publish()
       } catch (cancelled: CancellationException) {
         throw cancelled
-      } catch (_: Exception) {
-        if (pending[change.javaClass] == edit) pending.remove(change.javaClass)
-        publish(saveFailed = true)
+      } catch (error: Exception) {
+        Log.w(TAG, "Unable to save the expiry preferences", error)
+        mutableState.update { it.copy(saveFailed = true) }
       }
     }
   }
-}
 
-private class PendingEdit(val change: ExpirationChange) {
-  var saveDone = false
+  private companion object {
+    const val TAG = "NotificationSettings"
+  }
 }
