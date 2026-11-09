@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.background
@@ -51,7 +52,7 @@ fun FridgeScreen(
     selectedCategory: String? = null,
     selectedOwnerId: String? = null,
     categories: List<String> = emptyList(),
-    ownerIds: List<String> = emptyList(),
+    owners: List<OwnerOption> = emptyList(),
     onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
     onCategoryFilterChange: ((String?) -> Unit)? = null,
     onOwnerFilterChange: ((String?) -> Unit)? = null,
@@ -105,7 +106,7 @@ fun FridgeScreen(
         selectedCategory = selectedCategory,
         selectedOwnerId = selectedOwnerId,
         categories = categories,
-        ownerIds = ownerIds,
+        owners = owners,
         onSortOrderChange = onSortOrderChange,
         onCategoryFilterChange = onCategoryFilterChange,
         onOwnerFilterChange = onOwnerFilterChange,
@@ -300,10 +301,7 @@ fun FridgeScreen(
             .distinct()
             .sorted()
       }
-  val ownerIds =
-      remember(uiState.items) {
-        uiState.items.map(Item::ownerId).filter(String::isNotBlank).distinct().sorted()
-      }
+  val owners by viewModel.ownerOptions.collectAsState()
 
   CompositionLocalProvider(LocalSoonThresholdDays provides soonThresholdDays) {
     FridgeScreen(
@@ -326,7 +324,7 @@ fun FridgeScreen(
         selectedCategory = selectedCategory,
         selectedOwnerId = selectedOwnerId,
         categories = categories,
-        ownerIds = ownerIds,
+        owners = owners,
         onSortOrderChange = viewModel::setSortOrder,
         onCategoryFilterChange = viewModel::setCategoryFilter,
         onOwnerFilterChange = viewModel::setOwnerFilter,

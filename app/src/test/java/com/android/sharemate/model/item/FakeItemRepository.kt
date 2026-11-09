@@ -38,6 +38,14 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
+  override fun addItems(submission: InventorySubmission): ItemWrite =
+      error("Batch saves are not used in this test")
+
+  override fun observeSubmission(
+      submission: InventorySubmission
+  ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+      error("Submission observation is not used in this test")
+
   override fun getPrivateItems(userId: String): Flow<List<Item>> {
     requestedUserIds += userId
     return items.map { current ->

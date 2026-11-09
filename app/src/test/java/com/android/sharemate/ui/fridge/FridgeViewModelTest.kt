@@ -32,6 +32,8 @@ import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakePseudoRepository
+import com.android.sharemate.model.user.PseudoRepository
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -1230,6 +1232,7 @@ class FridgeViewModelTest {
   private fun viewModel(
       householdId: String? = "test-household",
       preferences: ExpirationPreferencesRepository? = null,
+      pseudos: PseudoRepository? = null,
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1238,7 +1241,8 @@ class FridgeViewModelTest {
               imageSelector,
               barcodeScanner,
               productCatalogRepository,
-              expirationPreferencesRepository = preferences)
+              expirationPreferencesRepository = preferences,
+              pseudoRepository = pseudos)
           .also { viewModelStore.put("fridge", it) }
 
   private fun TestScope.observedThreshold(vm: FridgeViewModel): Long {
@@ -1301,6 +1305,61 @@ class FridgeViewModelTest {
 
     assertEquals(
         ExpirationDates.SOON_THRESHOLD_DAYS, observedThreshold(viewModel(preferences = failing)))
+  }
+
+  private fun TestScope.observedOwners(vm: FridgeViewModel): List<OwnerOption> {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ownerOptions.collect {} }
+    runCurrent()
+    return vm.ownerOptions.value
+  }
+
+  @Test
+  fun ownerOptionsShowPseudosSortedWithoutLeakingMissingOnesFirst() = runTest {
+    val vm =
+        viewModel(
+            pseudos = FakePseudoRepository(mapOf("u1" to "zoe", "u2" to "Alice", "u3" to "  ")))
+    repository.emitItems(
+        listOf(
+            item("a", ownerId = "u1"),
+            item("b", ownerId = "u2"),
+            item("c", ownerId = "u3"),
+            item("d", ownerId = "u1"),
+            item("e", ownerId = "")))
+
+    assertEquals(
+        listOf(OwnerOption("u2", "Alice"), OwnerOption("u1", "zoe"), OwnerOption("u3", null)),
+        observedOwners(vm))
+  }
+
+  @Test
+  fun ownerOptionsFollowPseudoChanges() = runTest {
+    val pseudos = FakePseudoRepository(mapOf("u1" to "Old"))
+    val vm = viewModel(pseudos = pseudos)
+    repository.emitItems(listOf(item("a", ownerId = "u1")))
+    observedOwners(vm)
+
+    pseudos.setPseudo("u1", "New")
+    runCurrent()
+
+    assertEquals(listOf(OwnerOption("u1", "New")), vm.ownerOptions.value)
+  }
+
+  @Test
+  fun ownerOptionsHaveNoPseudoWithoutARepositoryOrWhenItFails() = runTest {
+    repository.emitItems(listOf(item("a", ownerId = "u1")))
+    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel()))
+
+    val failing =
+        object : PseudoRepository {
+          override fun observePseudos(userIds: Set<String>): Flow<Map<String, String>> = flow {
+            throw IllegalStateException("denied")
+          }
+
+          override suspend fun getPseudo(userId: String): String? = null
+
+          override suspend fun setPseudo(userId: String, pseudo: String) = Unit
+        }
+    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel(pseudos = failing)))
   }
 
   @Test

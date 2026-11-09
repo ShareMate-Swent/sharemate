@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import com.android.sharemate.model.FirestoreCollections
@@ -31,14 +32,19 @@ class FirestoreUserProfileRepository(private val firestore: FirebaseFirestore) :
 
   override suspend fun savePublicProfile(profile: UserProfile) {
     require(profile.uid.isNotBlank()) { "A profile needs a user id" }
-    profiles
-        .document(profile.uid)
-        .set(
-            mapOf(
-                UserProfileFields.DISPLAY_NAME to profile.displayName,
-                UserProfileFields.PHOTO_URL to profile.photoUrl,
-                UserProfileFields.EMAIL to profile.email,
-            ))
+    val document = profiles.document(profile.uid)
+    firestore
+        .runTransaction { transaction ->
+          val existingName = transaction.get(document).getString(UserProfileFields.DISPLAY_NAME)
+          val refreshed = profile.withExistingDisplayName(existingName)
+          transaction.set(
+              document,
+              mapOf(
+                  UserProfileFields.DISPLAY_NAME to refreshed.displayName,
+                  UserProfileFields.PHOTO_URL to refreshed.photoUrl,
+                  UserProfileFields.EMAIL to refreshed.email,
+              ))
+        }
         .await()
   }
 
