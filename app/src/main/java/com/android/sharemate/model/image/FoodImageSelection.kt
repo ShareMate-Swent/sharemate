@@ -2,6 +2,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_CANDIDATE_INCREMENT
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_INITIAL_CANDIDATES
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
@@ -41,15 +43,19 @@ class FoodImageSelector(private val repository: FoodImageRepository) {
   }
 
   /**
-   * Retries temporary service failures after creation, without extending any individual network
-   * attempt's deadline. Cancellation from the owning session always propagates.
+   * Expands the candidate pool after empty results, deadlines and temporary service failures.
+   * Cancellation from the owning session always propagates.
    */
   suspend fun selectAutomatic(title: String): FoodImageSelection {
     repeat(IMAGE_LOOKUP_MAX_ATTEMPTS) { attempt ->
       currentCoroutineContext().ensureActive()
+      val candidateLimit =
+          IMAGE_LOOKUP_INITIAL_CANDIDATES + attempt * IMAGE_LOOKUP_CANDIDATE_INCREMENT
       val result =
           try {
-            withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) { repository.searchByTitle(title) }
+            withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
+              repository.searchByTitle(title, candidateLimit)
+            }
           } catch (_: IOException) {
             currentCoroutineContext().ensureActive()
             FoodImageSearchResult.Failure(FoodImageSearchResult.Reason.NETWORK)
@@ -57,7 +63,7 @@ class FoodImageSelector(private val repository: FoodImageRepository) {
       currentCoroutineContext().ensureActive()
       when (result) {
         is FoodImageSearchResult.Found -> return FoodImageSelection.RemoteImage(result.image)
-        FoodImageSearchResult.NotFound -> return FoodImageSelection.Generic
+        FoodImageSearchResult.NotFound -> Unit
         is FoodImageSearchResult.Failure ->
             if (!result.isRetryable()) return FoodImageSelection.Generic
         null -> Unit // Only this attempt's own deadline expired.

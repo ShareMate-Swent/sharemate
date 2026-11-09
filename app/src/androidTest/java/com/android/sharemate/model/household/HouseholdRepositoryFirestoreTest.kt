@@ -422,6 +422,7 @@ class HouseholdRepositoryFirestoreTest {
     assertNull(repository.getHouseholdForUser(memberId))
     assertTrue(storedUser.exists())
     assertFalse(storedUser.contains("householdId"))
+    assertFalse(storedUser.contains("joinCode"))
     FirebaseEmulator.signInAs("creator")
     assertEquals(listOf(creatorId), repository.getHousehold(created.id)?.memberIds)
   }

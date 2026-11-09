@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.resources
 
 // Like R, but C
@@ -24,6 +25,7 @@ object C {
     const val fridge_status_error = "fridge_status_error"
     const val fridge_category_input = "fridge_category_input"
     const val fridge_expiration_input = "fridge_expiration_input"
+    const val fridge_share_switch = "fridge_share_switch"
     const val fridge_save_item = "fridge_save_item"
     const val fridge_cancel_item = "fridge_cancel_item"
     const val fridge_form_error = "fridge_form_error"

@@ -1,8 +1,8 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
+<!-- Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com> -->
 <resources>
     <string name="app_name">ShareMate</string>
-    <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
 
     <string name="fridge_title">Fridge</string>
@@ -25,10 +25,13 @@
     <string name="fridge_sort_name">Name</string>
     <string name="fridge_owner_filter">Owner</string>
     <string name="fridge_owner_filter_selected">Owner: %1$s</string>
+    <string name="fridge_owner_unknown">Unknown member</string>
+    <string name="fridge_owner_unknown_with_code">%1$s (%2$s)</string>
     <string name="fridge_owner_filter_all">All owners</string>
     <string name="fridge_view_options">View options</string>
     <string name="fridge_yours">Yours</string>
     <string name="fridge_shared">Shared</string>
+    <string name="fridge_item_share_with_household">Share with the household</string>
     <string name="fridge_empty">Your fridge is empty</string>
     <string name="fridge_add_item">Add Item</string>
     <string name="fridge_item_name">Item name</string>
@@ -114,6 +117,12 @@
     <string name="settings_switch_failed">Could not switch to that Google account. Please try again.</string>
     <string name="settings_household">Household</string>
     <string name="settings_invite_code">Invite code</string>
+    <string name="settings_show_members">See members</string>
+    <string name="household_members_title">Members</string>
+    <string name="household_members_you">You</string>
+    <string name="household_member_unknown">Household member</string>
+    <string name="household_member_photo">Photo of %1$s</string>
+    <string name="household_members_error">Could not load the members. Check your connection and try again.</string>
     <plurals name="settings_members">
         <item quantity="one">%d member</item>
         <item quantity="other">%d members</item>
@@ -135,7 +144,7 @@
     <string name="staging_no_price">No price</string>
     <string name="staging_confirm">Confirm</string>
     <string name="staging_delete_item">Delete %1$s</string>
-    <string name="staging_price_label">Price</string>
+    <string name="staging_price_label">Line total</string>
     <string name="staging_currency">CHF</string>
     <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
     <string name="staging_price_invalid">Enter a price like 3.50.</string>
@@ -152,6 +161,17 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+    <string name="balances_title">Balances</string>
+    <string name="balances_your_balance">Your balance</string>
+    <string name="balances_debts">Who owes whom</string>
+    <string name="balances_empty">No outstanding debts.</string>
+    <string name="balances_unavailable">Balances are available for shared households.</string>
+    <string name="balances_error">Could not load balances. Please try again.</string>
+    <string name="balances_you">You</string>
+    <string name="balances_member">Member %1$s</string>
+    <string name="balances_debt">%1$s owes %2$s %3$s</string>
+    <string name="balances_you_owe">You owe %1$s %2$s</string>
+    <string name="balances_positive_amount">+%1$s</string>
 
     <string name="chat_title">Chat</string>
     <string name="chat_empty">No messages yet. Say hello!</string>
@@ -166,4 +186,15 @@
     <string name="personal_photo_remove">Remove personal photo</string>
     <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
     <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
+    <string name="balances_back">Back to receipts</string>
+    <string name="balances_unknown_member">Household member</string>
+    <string name="balances_invalid_data">These expenses could not be calculated. Please check the household’s expense data.</string>
+    <string name="balances_offline">Still waiting for the server. Check your connection. Balances will appear when available.</string>
+    <string name="inventory_save_shared_only">Saving scanned items requires a shared household.</string>
+    <string name="inventory_save_loading">Checking the previous inventory save…</string>
+    <string name="inventory_save_submitting">Preparing inventory save…</string>
+    <string name="inventory_save_pending">Items are waiting for server confirmation. They will sync when a connection is available.</string>
+    <string name="inventory_save_success">Items saved to the shared fridge.</string>
+    <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
+    <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
 </resources>

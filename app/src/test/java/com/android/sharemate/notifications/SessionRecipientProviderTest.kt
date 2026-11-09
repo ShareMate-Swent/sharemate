@@ -16,7 +16,7 @@ class SessionRecipientProviderTest {
   private class FakeAuthRepository(override val session: Flow<AuthSession?>) : AuthRepository {
     override suspend fun signIn(email: String, password: String) = Unit
 
-    override suspend fun signUp(email: String, password: String) = Unit
+    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
 
     override suspend fun signInWithGoogle(idToken: String) = Unit
 

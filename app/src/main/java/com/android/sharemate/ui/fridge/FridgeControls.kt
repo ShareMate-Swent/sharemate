@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.BorderStroke
@@ -45,6 +46,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.android.sharemate.R
 import com.android.sharemate.resources.C
+import java.security.MessageDigest
+
+internal fun ownerFallbackCodes(ownerIds: Collection<String>): Map<String, String> {
+  val idsByCode =
+      ownerIds.distinct().groupBy { id ->
+        MessageDigest.getInstance("SHA-256")
+            .digest(id.toByteArray(Charsets.UTF_8))
+            .take(4)
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+      }
+  return idsByCode
+      .flatMap { (code, ids) ->
+        ids.sorted().mapIndexed { index, id ->
+          id to if (ids.size == 1) code else "$code-${index + 1}"
+        }
+      }
+      .toMap()
+}
 
 /** Displays inventory filters and separate, disabled shared/personal presentation controls. */
 @Composable
@@ -53,7 +72,7 @@ internal fun FridgeControls(
     selectedCategory: String?,
     selectedOwnerId: String?,
     categories: List<String>,
-    ownerIds: List<String>,
+    owners: List<OwnerOption>,
     onSortOrderChange: ((FridgeSortOrder) -> Unit)?,
     onCategoryFilterChange: ((String?) -> Unit)?,
     onOwnerFilterChange: ((String?) -> Unit)?,
@@ -101,7 +120,7 @@ internal fun FridgeControls(
       verticalAlignment = Alignment.CenterVertically) {
         SortControl(sortOrder, hasFunctionalFilters, onSortOrderChange)
         Box(Modifier.weight(1f)) {
-          OwnerControl(selectedOwnerId, ownerIds, hasFunctionalFilters, onOwnerFilterChange)
+          OwnerControl(selectedOwnerId, owners, hasFunctionalFilters, onOwnerFilterChange)
         }
         TextButton(
             onClick = { onAddItem?.invoke() },
@@ -196,18 +215,31 @@ private fun SortControl(
 @Composable
 private fun OwnerControl(
     selectedOwnerId: String?,
-    ownerIds: List<String>,
+    owners: List<OwnerOption>,
     enabled: Boolean,
     onSelected: ((String?) -> Unit)?,
 ) {
   var expanded by remember { mutableStateOf(false) }
+  val unknownOwner = stringResource(R.string.fridge_owner_unknown)
+  val fallbackCodes =
+      remember(owners, selectedOwnerId) {
+        ownerFallbackCodes(owners.map { it.id } + listOfNotNull(selectedOwnerId))
+      }
+  val fallbackLabels =
+      fallbackCodes.mapValues { (_, code) ->
+        stringResource(R.string.fridge_owner_unknown_with_code, unknownOwner, code)
+      }
   val label =
       if (selectedOwnerId == null) stringResource(R.string.fridge_owner_filter)
-      else stringResource(R.string.fridge_owner_filter_selected, selectedOwnerId)
+      else
+          stringResource(
+              R.string.fridge_owner_filter_selected,
+              owners.firstOrNull { it.id == selectedOwnerId }?.pseudo
+                  ?: fallbackLabels.getValue(selectedOwnerId))
   Box {
     TextButton(
         onClick = { expanded = true },
-        enabled = enabled && (ownerIds.isNotEmpty() || selectedOwnerId != null),
+        enabled = enabled && (owners.isNotEmpty() || selectedOwnerId != null),
         modifier =
             Modifier.semantics {
               selected = selectedOwnerId != null
@@ -215,7 +247,7 @@ private fun OwnerControl(
             }) {
           Text(
               label,
-              maxLines = 1,
+              maxLines = 3,
               overflow = TextOverflow.Ellipsis,
               style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
         }
@@ -227,12 +259,12 @@ private fun OwnerControl(
             onSelected?.invoke(null)
             expanded = false
           })
-      ownerIds.forEach { ownerId ->
+      owners.forEach { owner ->
         DropdownMenuItem(
-            text = { Text(ownerId) },
-            modifier = Modifier.testTag("fridge_filter_owner_$ownerId"),
+            text = { Text(owner.pseudo ?: fallbackLabels.getValue(owner.id)) },
+            modifier = Modifier.testTag("fridge_filter_owner_${owner.id}"),
             onClick = {
-              onSelected?.invoke(ownerId)
+              onSelected?.invoke(owner.id)
               expanded = false
             })
       }

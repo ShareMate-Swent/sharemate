@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 /**
@@ -22,17 +25,25 @@ class InMemoryUserProfileRepository : UserProfileRepository {
   /** When set, [savePublicProfile] throws it instead of saving. */
   var saveFailure: Exception? = null
 
+  /** When set, flows from [observeMembers] that start afterwards fail with it, like offline. */
+  var observeFailure: Exception? = null
+
   override suspend fun savePublicProfile(profile: UserProfile) {
     require(profile.uid.isNotBlank()) { "A profile needs a user id" }
     saved.add(profile)
     saveFailure?.let { throw it }
-    profiles.value += profile.uid to profile
+    profiles.value +=
+        profile.uid to profile.withExistingDisplayName(profiles.value[profile.uid]?.displayName)
   }
 
   override fun observeMembers(householdId: String): Flow<List<UserProfile>> {
     require(householdId.isNotBlank()) { "A household id is required" }
-    return memberIds.map { households ->
-      households[householdId].orEmpty().map { id -> profiles.value[id] ?: UserProfile(id) }
+    return flow {
+      observeFailure?.let { throw it }
+      emitAll(
+          memberIds.map { households ->
+            households[householdId].orEmpty().map { id -> profiles.value[id] ?: UserProfile(id) }
+          })
     }
   }
 }

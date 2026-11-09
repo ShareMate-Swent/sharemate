@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model
 
 /** Firestore collection names used by the application. */
@@ -8,6 +9,8 @@ object FirestoreCollections {
   const val USERS = "users"
   /** Public profiles that household members can read; see `UserProfileFields`. */
   const val PROFILES = "profiles"
+  /** Private, non-enumerable reservations for normalized public pseudos. */
+  const val PSEUDO_CLAIMS = "pseudoClaims"
   const val HOUSEHOLDS = "households"
   const val ITEMS = "items"
   const val RECEIPTS = "receipts"

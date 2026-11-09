@@ -108,12 +108,63 @@ class GoogleAuthViewModelTest {
     assertTrue(attempt.isCompleted)
     assertTrue(vm.state.value.isLoading)
     assertNull(vm.state.value.session)
-    repository.session.value = AuthSession("google-user", "student@example.org")
+    repository.session.value =
+        AuthSession("google-user", "student@example.org", displayName = "Student")
     advanceUntilIdle()
     attempt.join()
     assertFalse(vm.state.value.isLoading)
     assertEquals("", vm.state.value.password)
     assertNull(vm.state.value.error)
+  }
+
+  @Test
+  fun googleAccountWithoutDisplayNameMustChoosePseudoBeforeOpeningApp() = runTest {
+    advanceUntilIdle()
+    repository.sessionOnGoogleSignIn =
+        AuthSession("google-user", "student@example.org", provider = SignInProvider.GOOGLE)
+
+    vm.signInWithGoogle { "token" }
+    advanceUntilIdle()
+
+    assertEquals(AuthUiError.PSEUDO_REQUIRED, vm.state.value.error)
+    assertEquals(PendingProfileUpdate("google-user", ""), vm.state.value.pendingProfileUpdate)
+
+    vm.updatePseudo("Student")
+    vm.submit()
+    advanceUntilIdle()
+
+    assertNull(vm.state.value.pendingProfileUpdate)
+    assertNull(vm.state.value.error)
+    assertEquals("Student", vm.state.value.session?.displayName)
+    assertEquals(listOf("Student"), repository.displayNameUpdates)
+  }
+
+  @Test
+  fun duplicateGooglePseudoPromptsForAnotherNameAndRetriesOnlyProfileUpdate() = runTest {
+    advanceUntilIdle()
+    repository.sessionOnGoogleSignIn =
+        AuthSession(
+            "google-user",
+            "student@example.org",
+            displayName = "Taken",
+            provider = SignInProvider.GOOGLE)
+    repository.displayNameFailure = AuthException(AuthError.PSEUDO_TAKEN)
+    vm.signInWithGoogle { "token" }
+    advanceUntilIdle()
+
+    assertEquals(AuthUiError.PSEUDO_TAKEN, vm.state.value.error)
+    assertEquals("Taken", vm.state.value.pseudo)
+    assertEquals(PendingProfileUpdate("google-user", "Taken"), vm.state.value.pendingProfileUpdate)
+
+    repository.displayNameFailure = null
+    vm.updatePseudo("Available")
+    vm.submit()
+    advanceUntilIdle()
+
+    assertNull(vm.state.value.pendingProfileUpdate)
+    assertNull(vm.state.value.error)
+    assertEquals("Available", vm.state.value.session?.displayName)
+    assertEquals(listOf("Taken", "Available"), repository.displayNameUpdates)
   }
 
   @Test
@@ -149,18 +200,28 @@ class GoogleAuthViewModelTest {
   private class GoogleRepository : AuthRepository {
     override val session = MutableStateFlow<AuthSession?>(null)
     val tokens = mutableListOf<String>()
+    val displayNameUpdates = mutableListOf<String>()
+    var sessionOnGoogleSignIn: AuthSession? = null
+    var displayNameFailure: Exception? = null
     var failure: Exception? = null
     var signOutCalls = 0
 
     override suspend fun signInWithGoogle(idToken: String) {
       tokens += idToken
       failure?.let { throw it }
+      sessionOnGoogleSignIn?.let { session.value = it }
     }
 
     override suspend fun signIn(email: String, password: String) =
         error("Unexpected password login")
 
-    override suspend fun signUp(email: String, password: String) = error("Unexpected signup")
+    override suspend fun signUp(email: String, password: String, displayName: String) =
+        error("Unexpected signup")
+
+    override suspend fun updateCurrentUserDisplayName(expectedUid: String, displayName: String) {
+      displayNameUpdates += displayName
+      displayNameFailure?.let { throw it }
+    }
 
     override fun signOut() {
       signOutCalls++
