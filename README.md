@@ -15,12 +15,11 @@ Diagram is on excalidraw.com : [https://excalidraw.com/#json=k1bdsqRfMnIZkC6OTVK
 
 Use `PseudoRepository.setPseudo` when creating or changing a pseudo. Pseudo claims are normalized
 for case and outer whitespace, so new sign-ups cannot claim the same name with different casing.
-Existing duplicate names are grandfathered. Before releasing the app, deploy the Firestore rules
-and run the migration described in `docs/pseudo-claims-migration.md` to reserve names from both
-Firebase Auth and public profiles. The repository updates `profiles/{uid}.displayName`, preserving
-the other public profile fields. Firestore rules allow household members to read the public profile
-without exposing the private user document. Profiles without a published pseudo appear as
-"Unknown member" in the Fridge owner filter.
+Names already present in Firebase Auth or public profiles are not automatically reserved. The
+repository updates `profiles/{uid}.displayName`, preserving the other public profile fields.
+Firestore rules allow household members to read the public profile without exposing the private
+user document. Profiles without a published pseudo appear as "Unknown member" in the Fridge owner
+filter.
 
 ## Good Code review process :
 https://github.com/swent-epfl/public/blob/main/project/README.md#reviewing-code
