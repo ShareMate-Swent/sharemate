@@ -10,6 +10,23 @@ import org.junit.Test
 
 class FinanceModelsTest {
   @Test
+  fun snapshotSyncStatusParticipatesInEqualityHashingAndDiagnostics() = runBlocking {
+    val synced = HouseholdFinanceSnapshot("home", emptyList(), emptyList())
+    val cached = HouseholdFinanceSnapshot("home", emptyList(), emptyList(), isSynced = false)
+    val sameCache = HouseholdFinanceSnapshot("home", emptyList(), emptyList(), isSynced = false)
+    assertTrue(synced.isSynced)
+    assertFalse(cached.isSynced)
+    assertNotEquals(synced, cached)
+    assertEquals(cached, sameCache)
+    assertEquals(cached.hashCode(), sameCache.hashCode())
+    assertNotEquals(synced.hashCode(), cached.hashCode())
+    assertEquals(
+        listOf(cached, synced),
+        listOf(cached, sameCache, synced).asFlow().distinctUntilChanged().toList())
+    assertTrue(cached.toString().contains("isSynced=false"))
+  }
+
+  @Test
   fun explicitSharesConserveTotalAndMayExcludePayerOrIncludeZeroShares() {
     val shared = expense(shares = linkedMapOf("alice" to 0L, "bob" to 300L))
     assertEquals("expense", shared.id)
