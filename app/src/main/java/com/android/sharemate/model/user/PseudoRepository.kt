@@ -4,7 +4,7 @@ package com.android.sharemate.model.user
 import kotlinx.coroutines.flow.Flow
 
 /** Longest pseudo, in Unicode code points, that can be saved. */
-const val MAX_PSEUDO_LENGTH = 30
+const val MAX_PSEUDO_LENGTH = 40
 
 /** Reads and writes the `pseudo` shown to other members instead of a user's Firebase id. */
 interface PseudoRepository {

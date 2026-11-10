@@ -14,6 +14,8 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.model.user.trimPseudoPadding
+import com.android.sharemate.model.user.validatePseudo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,12 +82,11 @@ data class SettingsUiState(
   /** Whether the current pseudo can be saved. */
   val canSavePseudo: Boolean
     get() =
-        pseudo.length <= MAX_PSEUDO_LENGTH &&
+        validatePseudo(pseudo) == null &&
             !isLoadingPseudo &&
             pseudoError != SettingsPseudoError.LOAD_FAILED &&
             !isSavingPseudo &&
-            pseudo.trim().isNotEmpty() &&
-            pseudo.trim() != savedPseudo
+            pseudo.trimPseudoPadding() != savedPseudo
 }
 
 /**
@@ -127,21 +128,16 @@ class SettingsViewModel(
           .map { it.uid }
           .distinctUntilChanged()
           .collectLatest { userId ->
-            val isNewUser = currentUserId != userId
             currentUserId = userId
             mutableState.update {
-              if (isNewUser) {
-                it.copy(
-                    pseudo = "",
-                    savedPseudo = null,
-                    isLoadingPseudo = true,
-                    isSavingPseudo = false,
-                    pseudoError = null)
-              } else {
-                it
-              }
+              it.copy(
+                  pseudo = "",
+                  savedPseudo = null,
+                  isLoadingPseudo = true,
+                  isSavingPseudo = false,
+                  pseudoError = null)
             }
-            if (isNewUser) loadPseudo(userId)
+            loadPseudo(userId)
           }
     }
     refreshHousehold()
@@ -209,7 +205,7 @@ class SettingsViewModel(
   fun updatePseudo(pseudo: String) {
     mutableState.update {
       it.copy(
-          pseudo = pseudo.take(MAX_PSEUDO_LENGTH),
+          pseudo = pseudo.takeCodePoints(MAX_PSEUDO_LENGTH),
           pseudoError = it.pseudoError.takeIf { error -> error == SettingsPseudoError.LOAD_FAILED })
     }
   }
@@ -227,7 +223,7 @@ class SettingsViewModel(
   /** Saves the edited pseudo as the public profile name for the current signed-in user. */
   fun savePseudo() {
     val userId = currentUserId ?: return
-    val pseudo = state.value.pseudo.trim()
+    val pseudo = state.value.pseudo.trimPseudoPadding()
     if (!state.value.canSavePseudo) return
     mutableState.update { it.copy(isSavingPseudo = true, pseudoError = null) }
     viewModelScope.launch {
@@ -300,6 +296,11 @@ private fun SettingsUiState.withHousehold(household: Household) =
         inviteCode = household.inviteCode,
         fridgeType = household.type,
     )
+
+private fun String.takeCodePoints(maxCodePoints: Int): String {
+  val count = codePointCount(0, length)
+  return if (count <= maxCodePoints) this else substring(0, offsetByCodePoints(0, maxCodePoints))
+}
 
 private fun AuthError.toAccountError() =
     when (this) {

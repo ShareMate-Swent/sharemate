@@ -9,6 +9,7 @@ import com.android.sharemate.model.auth.PseudoRepository as PseudoClaimRepositor
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -60,7 +61,13 @@ class FirebasePseudoRepository(
     pseudoClaims.claim(userId, value)
     document(userId).set(mapOf(UserProfileFields.DISPLAY_NAME to value), SetOptions.merge()).await()
     if (previousPseudo != null) {
-      pseudoClaims.release(userId, previousPseudo)
+      try {
+        pseudoClaims.release(userId, previousPseudo)
+      } catch (cancellation: CancellationException) {
+        throw cancellation
+      } catch (error: Exception) {
+        Log.e("PseudoRepository", "Unable to release the previous pseudo claim", error)
+      }
     }
   }
 

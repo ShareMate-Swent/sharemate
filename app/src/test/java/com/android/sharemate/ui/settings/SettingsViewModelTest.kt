@@ -169,6 +169,21 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun capsTheEditedPseudoAtTheMaximumNumberOfUnicodeCodePoints() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val expected = "😀".repeat(MAX_PSEUDO_LENGTH)
+
+    viewModel.updatePseudo("😀".repeat(MAX_PSEUDO_LENGTH + 5))
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals(expected, viewModel.state.value.pseudo)
+    assertEquals(expected, viewModel.state.value.savedPseudo)
+    assertEquals(expected, pseudos.stored)
+  }
+
+  @Test
   fun doesNotSaveAPseudoLongerThanTheMaximumAfterTrimming() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
@@ -224,6 +239,20 @@ class SettingsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(0, pseudos.saveCount)
+  }
+
+  @Test
+  fun doesNotSavePseudoMadeOnlyOfInvisiblePadding() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.updatePseudo("\u200B")
+    assertFalse(viewModel.state.value.canSavePseudo)
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals(0, pseudos.saveCount)
+    assertNull(viewModel.state.value.pseudoError)
   }
 
   @Test

@@ -14,6 +14,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -121,6 +122,34 @@ class FirebasePseudoRepositoryTest {
     assertTrue(runCatching { repository.setPseudo("alice", "Alice") }.isFailure)
 
     verify(pseudoClaims, never()).release("alice", "Former Name")
+  }
+
+  @Test
+  fun releaseFailureDoesNotReportSuccessfulProfileWriteAsFailed() = runTest {
+    stored = "Former Name"
+    doAnswer { throw IllegalStateException("release failed") }
+        .`when`(pseudoClaims)
+        .release("alice", "Former Name")
+
+    repository.setPseudo("alice", "Alice")
+
+    assertEquals(
+        listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
+    verify(pseudoClaims).release("alice", "Former Name")
+  }
+
+  @Test
+  fun cancellationDuringReleaseStillPropagates() = runTest {
+    stored = "Former Name"
+    doAnswer { throw CancellationException("cancelled") }
+        .`when`(pseudoClaims)
+        .release("alice", "Former Name")
+
+    val failure = runCatching { repository.setPseudo("alice", "Alice") }.exceptionOrNull()
+
+    assertTrue(failure is CancellationException)
+    assertEquals(
+        listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
   }
 
   @Test

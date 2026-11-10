@@ -86,13 +86,9 @@ service cloud.firestore {
         return !(field in data) || data[field] == null || data[field] is string;
       }
 
-      function optionalShortString(data, field, max) {
-        return optionalString(data, field) && (!(field in data) || data[field] == null || data[field].size() <= max);
-      }
-
       // The email, when present, must be the signed-in account's own address.
       function isValidProfile(data) {
-        let maxPseudoLength = 30;
+        let maxPseudoLength = 40;
         return data.keys().hasOnly(['displayName', 'photoUrl', 'email'])
             && optionalString(data, 'displayName')
             // Regex counts Unicode code points; size() counts UTF-16 code units.
