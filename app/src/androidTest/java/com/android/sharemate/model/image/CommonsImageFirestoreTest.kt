@@ -17,6 +17,8 @@ import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.toItemOrNull
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.fridgeImageRequest
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
@@ -121,6 +123,9 @@ class CommonsImageFirestoreTest {
                   FoodImageSelector(gatedImages),
                   BarcodeScanner { BarcodeScanResult.NotFound },
                   testProductCatalogRepository(),
+                  expirationPreferences =
+                      ExpirationPreferencesProvider(
+                          FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
                   fridgeType = FridgeType.SHARED)
               .also { store.put("commons", it) }
         }

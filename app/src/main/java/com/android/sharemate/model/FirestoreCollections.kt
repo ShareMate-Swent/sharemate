@@ -8,6 +8,8 @@ object FirestoreCollections {
   const val USERS = "users"
   /** Public profiles that household members can read; see `UserProfileFields`. */
   const val PROFILES = "profiles"
+  /** Private, non-enumerable reservations for normalized public pseudos. */
+  const val PSEUDO_CLAIMS = "pseudoClaims"
   const val HOUSEHOLDS = "households"
   const val ITEMS = "items"
   const val RECEIPTS = "receipts"

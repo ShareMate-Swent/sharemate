@@ -64,7 +64,8 @@ class ExpirationDatesTest {
 
     Assert.assertEquals(ExpiryStatus.NORMAL, ExpirationDates.status(null, today))
     Assert.assertEquals(ExpiryStatus.EXPIRED, status(-1))
-    Assert.assertEquals(ExpiryStatus.SOON, status(0))
+    Assert.assertEquals(ExpiryStatus.EXPIRED, status(0))
+    Assert.assertEquals(ExpiryStatus.SOON, status(1))
     Assert.assertEquals(ExpiryStatus.SOON, status(ExpirationDates.SOON_THRESHOLD_DAYS))
     Assert.assertEquals(ExpiryStatus.NORMAL, status(ExpirationDates.SOON_THRESHOLD_DAYS + 1))
   }
@@ -78,6 +79,31 @@ class ExpirationDatesTest {
     Assert.assertEquals(ExpiryStatus.SOON, status(10))
     Assert.assertEquals(ExpiryStatus.NORMAL, status(11))
     Assert.assertEquals(ExpiryStatus.EXPIRED, status(-1))
+  }
+
+  @Test
+  fun expiryDayIsExpiredAndTheDayBeforeIsSoonWhateverTheWindow() {
+    listOf(1L, 3L, 60L).forEach { window ->
+      Assert.assertEquals(ExpiryStatus.EXPIRED, ExpirationDates.statusOfDaysLeft(0, window))
+      Assert.assertEquals(ExpiryStatus.EXPIRED, ExpirationDates.statusOfDaysLeft(-1, window))
+      Assert.assertEquals(ExpiryStatus.SOON, ExpirationDates.statusOfDaysLeft(1, window))
+      Assert.assertEquals(ExpiryStatus.SOON, ExpirationDates.statusOfDaysLeft(window, window))
+      Assert.assertEquals(ExpiryStatus.NORMAL, ExpirationDates.statusOfDaysLeft(window + 1, window))
+    }
+  }
+
+  @Test
+  fun noExpirationDateIsNeverFlagged() {
+    Assert.assertEquals(ExpiryStatus.NORMAL, ExpirationDates.statusOfDaysLeft(null, 3))
+  }
+
+  @Test
+  fun daysUntilCountsFromTodayAndIsNullWithoutADate() {
+    Assert.assertEquals(
+        2L, ExpirationDates.daysUntil(ExpirationDates.toDate(today.plusDays(2)), today))
+    Assert.assertEquals(
+        -1L, ExpirationDates.daysUntil(ExpirationDates.toDate(today.minusDays(1)), today))
+    Assert.assertNull(ExpirationDates.daysUntil(null, today))
   }
 
   /** Non-regression: the stored day must never shift with the device's time zone. */

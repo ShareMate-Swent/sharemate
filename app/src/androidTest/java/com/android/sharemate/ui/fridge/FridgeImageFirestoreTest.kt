@@ -17,6 +17,8 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.toItemOrNull
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CompletableDeferred
@@ -77,6 +79,9 @@ class FridgeImageFirestoreTest {
                   selector,
                   BarcodeScanner { BarcodeScanResult.NotFound },
                   testProductCatalogRepository(),
+                  expirationPreferences =
+                      ExpirationPreferencesProvider(
+                          FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
                   fridgeType = FridgeType.SHARED)
               .also { store.put("fridge", it) }
         }

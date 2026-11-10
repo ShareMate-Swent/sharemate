@@ -22,16 +22,19 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
 
   /**
    * Reads [uri] in the caller's lifecycle coroutine; failure/cancellation leaves prior items
-   * intact.
+   * intact. [beforePublish] durably retains a successful parsed list before it replaces saved
+   * state; failure in that callback also leaves prior items intact.
    */
-  suspend fun read(uri: String) {
+  suspend fun read(uri: String, beforePublish: suspend (List<StagedItem>) -> Unit = {}) {
     val products = reader.read(uri)
     require(products.isNotEmpty()) { "No priced products found" }
-    save(
+    val items =
         products.mapIndexed { index, item ->
           StagedItem(
               index.toString(), item.name, quantity = item.quantity, priceCents = item.priceCents)
-        })
+        }
+    beforePublish(items)
+    save(items)
     saved[REVIEWED] = false
     saved[PENDING] = true
   }

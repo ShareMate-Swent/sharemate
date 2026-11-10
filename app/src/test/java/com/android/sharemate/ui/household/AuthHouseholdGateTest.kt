@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
@@ -48,6 +49,7 @@ class AuthHouseholdGateTest {
     compose.setContent(content)
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -213,7 +215,8 @@ class AuthHouseholdGateTest {
       session.value = AuthSession("student", email)
     }
 
-    override suspend fun signUp(email: String, password: String) = signIn(email, password)
+    override suspend fun signUp(email: String, password: String, displayName: String) =
+        signIn(email, password)
 
     override suspend fun signInWithGoogle(idToken: String) =
         error("Google sign-in is not used by this fake")
