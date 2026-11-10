@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
 import androidx.lifecycle.SavedStateHandle
@@ -338,6 +339,8 @@ class SettlementViewModelTest {
     vm.settle(debt(vm), 600)
     advanceUntilIdle()
     ledger.value = snapshot(Settlement("concurrent", "home", "alice", "bob", 1400))
+    // Observe the reduced debt before the rejection; a later ledger update clears the banner.
+    advanceUntilIdle()
     answer.completeExceptionally(SettlementRejectedException())
     advanceUntilIdle()
     assertEquals(100L, remaining(vm))
@@ -350,6 +353,65 @@ class SettlementViewModelTest {
     advanceUntilIdle()
     assertNotEquals(requests.first().id, requests.last().id)
     assertEquals(0L, remaining(vm))
+  }
+
+  @Test
+  fun changedLedgerClearsDefinitiveRejectionEvenWhenDebtDisappears() = runTest {
+    val vm = create()
+    advanceUntilIdle()
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    answer.completeExceptionally(SettlementRejectedException())
+    advanceUntilIdle()
+    assertEquals(SettlementPhase.REJECTED, ready(vm).submission.phase)
+
+    ledger.value = snapshot(Settlement("other", "home", "alice", "bob", 1500))
+    advanceUntilIdle()
+    assertEquals(SettlementSubmission(), ready(vm).submission)
+    assertTrue(ready(vm).summary.debts.isEmpty())
+  }
+
+  @Test
+  fun namesOnlyChangePreservesDefinitiveRejection() = runTest {
+    val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
+    val names =
+        MutableStateFlow(listOf(com.android.sharemate.model.profile.UserProfile("bob", "Bob")))
+    `when`(profiles.observeMembers("home")).thenReturn(names)
+    val vm = create(profiles = profiles)
+    advanceUntilIdle()
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    answer.completeExceptionally(SettlementRejectedException())
+    advanceUntilIdle()
+    val rejection = ready(vm).submission
+    assertEquals(SettlementPhase.REJECTED, rejection.phase)
+
+    names.value = listOf(com.android.sharemate.model.profile.UserProfile("bob", "Robert"))
+    advanceUntilIdle()
+    assertEquals(mapOf("bob" to "Robert"), ready(vm).memberNames)
+    assertEquals(rejection, ready(vm).submission)
+    assertEquals(1500L, remaining(vm))
+  }
+
+  @Test
+  fun observationRestartClearsDefinitiveRejectionAndSavedOperation() = runTest {
+    val saved = SavedStateHandle()
+    val vm = create(saved)
+    advanceUntilIdle()
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    answer.completeExceptionally(SettlementRejectedException())
+    advanceUntilIdle()
+    assertEquals(SettlementPhase.REJECTED, ready(vm).submission.phase)
+
+    session.value = null
+    advanceUntilIdle()
+    session.value = AuthSession("alice", null)
+    advanceUntilIdle()
+    assertEquals(2, subscriptions)
+    assertEquals(SettlementSubmission(), ready(vm).submission)
+    assertNull(saved.get<ArrayList<String>>("settlement_home_alice"))
+    assertEquals(1500L, remaining(vm))
   }
 
   @Test

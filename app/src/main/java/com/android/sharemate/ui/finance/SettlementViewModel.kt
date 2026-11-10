@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
 import androidx.lifecycle.SavedStateHandle
@@ -130,8 +131,9 @@ class SettlementViewModel(
               if (ledger.value == null) availability.value = SettlementUiState.Offline
             }
             writeJob?.cancel()
-            if (submission.value.operation != null &&
-                submission.value.phase != SettlementPhase.REJECTED) {
+            if (submission.value.phase == SettlementPhase.REJECTED) {
+              submission.value = SettlementSubmission()
+            } else if (submission.value.operation != null) {
               submission.value =
                   submission.value.copy(phase = SettlementPhase.FAILED, optimistic = false)
             }
@@ -173,6 +175,10 @@ class SettlementViewModel(
                         check(recorded == pending) { "Settlement operation mismatch" }
                         writeJob?.cancel()
                         savedState.remove<ArrayList<String>>(savedKey)
+                        submission.value = SettlementSubmission()
+                      } else if (submission.value.phase == SettlementPhase.REJECTED &&
+                          snapshot != ledger.value?.snapshot) {
+                        // Profile-only updates must not dismiss the rejection.
                         submission.value = SettlementSubmission()
                       }
                       ledger.value = Ledger(snapshot, home.memberIds, labels)
