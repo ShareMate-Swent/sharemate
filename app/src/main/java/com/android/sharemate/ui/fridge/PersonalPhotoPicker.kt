@@ -65,7 +65,7 @@ internal fun PersonalPhotoPicker(
       title = R.string.personal_photo_add,
       previewDescription = R.string.personal_photo_preview,
       sourceDescription = R.string.personal_photo_sources,
-      onImageConfirmed = photos::selectAndWait)
+      onImageConfirmed = { uri -> photos.selectAndWait(uri, camera.state.value.fromCamera) })
 }
 
 @Composable

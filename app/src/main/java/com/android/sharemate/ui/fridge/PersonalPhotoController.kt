@@ -61,8 +61,10 @@ class PersonalPhotoController(
         }
   }
 
-  /** The camera retains its source until this copy finishes, including cancellation cleanup. */
-  suspend fun selectAndWait(uri: String) {
+  /** The photo flow retains its source until this copy finishes, including cancellation cleanup. */
+  suspend fun selectAndWait(uri: String) = selectAndWait(uri, fromCamera = false)
+
+  suspend fun selectAndWait(uri: String, fromCamera: Boolean) {
     check(!draft.value.importing)
     scope.coroutineContext.ensureActive()
     importing = currentCoroutineContext().job
@@ -71,7 +73,7 @@ class PersonalPhotoController(
     mutableDraft.value = pending
     var candidate: File? = null
     try {
-      candidate = files.copy(uri)
+      candidate = files.copy(uri, fromCamera)
       currentCoroutineContext().ensureActive()
       scope.coroutineContext.ensureActive()
       mutableDraft.value = PersonalPhotoDraft(candidate)

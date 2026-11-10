@@ -75,7 +75,7 @@ class FridgePersonalPhotoTest {
     selected = temporary.newFile()
     val files =
         object : PersonalPhotoFiles {
-          override suspend fun copy(uri: String) = copyPhoto(uri)
+          override suspend fun copy(uri: String, fromCamera: Boolean) = copyPhoto(uri)
 
           override suspend fun delete(file: File) {
             file.delete()
@@ -129,7 +129,9 @@ class FridgePersonalPhotoTest {
         replacement
       }
     }
-    val importing = launch { controller.selectAndWait("file:///camera/replacement") }
+    val importing = launch {
+      controller.selectAndWait("file:///camera/replacement", fromCamera = true)
+    }
     runCurrent()
     assertTrue(controller.draft.value.importing)
 
@@ -156,11 +158,12 @@ class FridgePersonalPhotoTest {
       requests += it
       copying.await()
     }
-    val importing = launch { controller.selectAndWait("file:///camera/first") }
+    val importing = launch { controller.selectAndWait("file:///camera/first", fromCamera = true) }
     runCurrent()
 
     val failure =
-        runCatching { controller.selectAndWait("file:///camera/second") }.exceptionOrNull()
+        runCatching { controller.selectAndWait("file:///camera/second", fromCamera = true) }
+            .exceptionOrNull()
     assertTrue(failure is IllegalStateException)
     assertEquals(listOf("file:///camera/first"), requests)
     assertEquals(selected, controller.draft.value.file)
@@ -202,7 +205,7 @@ class FridgePersonalPhotoTest {
     camera.open()
     camera.capture { assertEquals(uri, it) }
     runCurrent()
-    camera.confirm(controller::selectAndWait)
+    camera.confirm { controller.selectAndWait(it, camera.state.value.fromCamera) }
     runCurrent()
     viewModel.saveItem()
     assertTrue(controller.draft.value.importing)

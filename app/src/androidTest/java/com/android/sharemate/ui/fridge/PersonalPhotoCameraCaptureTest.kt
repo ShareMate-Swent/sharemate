@@ -64,7 +64,7 @@ class PersonalPhotoCameraCaptureTest {
             title = R.string.personal_photo_add,
             previewDescription = R.string.personal_photo_preview,
             sourceDescription = R.string.personal_photo_sources) { uri ->
-              val copy = photos.copy(uri)
+              val copy = photos.copy(uri, fromCamera = vm.state.value.fromCamera)
               try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(copy.path, bounds)
@@ -114,7 +114,10 @@ class PersonalPhotoCameraCaptureTest {
       compose.onNodeWithTag("barcode_photo_capture").performScrollTo().performClick()
       compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
       compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
-      compose.runOnIdle { assertNull(prepared) }
+      compose.runOnIdle {
+        assertNull(prepared)
+        assertTrue(vm.state.value.fromCamera)
+      }
       compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
       compose.runOnIdle { assertEquals(vm.state.value.uri, prepared) }

@@ -68,6 +68,7 @@ class FridgePersonalPhotoUiTest {
   private val second = reference("yogurt")
   private val denied = reference("bread")
   private var copyPhoto: suspend (String) -> File = { error("Unexpected import: $it") }
+  private val copyOrigins = mutableListOf<Boolean>()
   private var loadPhoto: suspend (PersonalPhotoReference) -> Result<ByteArray> = {
     error("Unexpected download: $it")
   }
@@ -85,7 +86,10 @@ class FridgePersonalPhotoUiTest {
             override suspend fun deleteAttached(itemId: String) = Result.success(Unit)
           },
           object : PersonalPhotoFiles {
-            override suspend fun copy(uri: String) = copyPhoto(uri)
+            override suspend fun copy(uri: String, fromCamera: Boolean): File {
+              copyOrigins += fromCamera
+              return copyPhoto(uri)
+            }
 
             override suspend fun delete(file: File) {
               file.delete()
@@ -157,7 +161,10 @@ class FridgePersonalPhotoUiTest {
     compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
     compose.waitUntil(10_000) { photos.draft.value.file == replacement && !source.exists() }
     compose.onNodeWithContentDescription("Selected personal photo").assertIsDisplayed()
-    compose.runOnIdle { assertFalse(previous.exists()) }
+    compose.runOnIdle {
+      assertFalse(previous.exists())
+      assertEquals(listOf(false, true), copyOrigins)
+    }
   }
 
   @Test
@@ -258,6 +265,7 @@ class FridgePersonalPhotoUiTest {
     preview.assertExists()
     compose.runOnIdle {
       assertEquals(listOf(sourceUri, Uri.fromFile(rejectedSource).toString()), imports)
+      assertEquals(listOf(false, false), copyOrigins)
       assertTrue(selected.exists())
     }
 

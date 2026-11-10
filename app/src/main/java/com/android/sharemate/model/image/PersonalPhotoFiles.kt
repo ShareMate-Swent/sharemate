@@ -13,7 +13,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 interface PersonalPhotoFiles {
-  suspend fun copy(uri: String): File
+  /** Preserve gallery bytes; only explicit camera captures are resized and encoded as JPEG. */
+  suspend fun copy(uri: String, fromCamera: Boolean = false): File
 
   suspend fun delete(file: File)
 }
@@ -24,7 +25,7 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
   private val directory = File(context.applicationContext.cacheDir, "personal-photo-drafts")
   private val captures = File(context.applicationContext.cacheDir, "barcode-photos")
 
-  override suspend fun copy(uri: String): File {
+  override suspend fun copy(uri: String, fromCamera: Boolean): File {
     var copy: File? = null
     try {
       return withContext(Dispatchers.IO) {
@@ -33,17 +34,24 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         check(directory.isDirectory || directory.mkdirs())
         val target = File.createTempFile("selection-", ".photo", directory)
         copy = target
-        if (source.scheme == "file") {
-          writeCapture(source, target)
+        val privateSource =
+            if (source.scheme == "file")
+                File(requireNotNull(source.path)).canonicalFile.also {
+                  require(it.parentFile == captures.canonicalFile)
+                }
+            else null
+        if (fromCamera) {
+          writeCapture(requireNotNull(privateSource), target)
           return@withContext target
         }
-        checkNotNull(resolver.openInputStream(source)).use { input ->
+        val input = privateSource?.inputStream() ?: checkNotNull(resolver.openInputStream(source))
+        input.use { stream ->
           target.outputStream().use { output ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             var remaining = PersonalPhotoRepository.MAX_BYTES
             while (true) {
               ensureActive()
-              val count = input.read(buffer, 0, minOf(buffer.size, remaining + 1))
+              val count = stream.read(buffer, 0, minOf(buffer.size, remaining + 1))
               if (count < 0) break
               require(count <= remaining)
               output.write(buffer, 0, count)
@@ -65,10 +73,7 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
     }
   }
 
-  /** Only our camera's private files are accepted; gallery imports keep their existing contract. */
-  private fun writeCapture(uri: Uri, target: File) {
-    val source = File(requireNotNull(uri.path)).canonicalFile
-    require(source.parentFile == captures.canonicalFile)
+  private fun writeCapture(source: File, target: File) {
     require(source.length() in 1..AndroidBarcodePhotoStore.MAX_BYTES)
     val bitmap =
         ImageDecoder.decodeBitmap(ImageDecoder.createSource(source)) { decoder, info, _ ->
