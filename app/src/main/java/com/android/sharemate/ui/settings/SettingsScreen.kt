@@ -223,12 +223,7 @@ private fun PseudoCard(
       }
       Button(
           onClick = onSavePseudo,
-          enabled =
-              !loadFailed &&
-                  !state.isLoadingPseudo &&
-                  !state.isSavingPseudo &&
-                  state.pseudo.trim().isNotEmpty() &&
-                  state.pseudo.trim() != state.savedPseudo,
+          enabled = state.canSavePseudo,
           modifier =
               Modifier.fillMaxWidth()
                   .height(Dimens.buttonHeight)
@@ -250,6 +245,7 @@ private fun PseudoCard(
 /** Photo, name and email. Without a name, the email takes its place and is not repeated. */
 @Composable
 private fun ProfileHeader(state: SettingsUiState) {
+  val profileName = state.savedPseudo?.takeIf { it.isNotBlank() } ?: state.displayName
   ProfileAvatar(
       photoUrl = state.photoUrl,
       size = SettingsLayout.avatarSize,
@@ -260,13 +256,13 @@ private fun ProfileHeader(state: SettingsUiState) {
   )
   Spacer(Modifier.height(Dimens.spacingM))
   Text(
-      text = state.displayName ?: state.email.orEmpty(),
+      text = profileName ?: state.email.orEmpty(),
       style = MaterialTheme.typography.headlineSmall,
       color = MaterialTheme.colorScheme.onSurface,
       textAlign = TextAlign.Center,
       modifier = Modifier.testTag(SettingsTestTags.PROFILE_NAME),
   )
-  if (state.displayName != null && state.email != null) {
+  if (profileName != null && state.email != null) {
     Spacer(Modifier.height(Dimens.spacingXxs))
     Text(
         text = state.email,

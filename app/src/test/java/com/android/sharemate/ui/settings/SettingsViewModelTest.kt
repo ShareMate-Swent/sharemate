@@ -172,6 +172,17 @@ class SettingsViewModelTest {
     advanceUntilIdle()
 
     assertNull(viewModel.state.value.pseudoError)
+    assertFalse(viewModel.state.value.isSavingPseudo)
+  }
+
+  @Test
+  fun cancellationDuringALoadDoesNotLeaveTheLoadingIndicatorActive() = runTest {
+    pseudos.getFailure = CancellationException("cancelled")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    assertFalse(viewModel.state.value.isLoadingPseudo)
+    assertNull(viewModel.state.value.pseudoError)
   }
 
   @Test
@@ -286,7 +297,7 @@ class SettingsViewModelTest {
   }
 
   @Test
-  fun ignoresThePreviousUsersPseudoWhenItsLoadFinishesAfterAnAccountSwitch() = runTest {
+  fun cancelsThePreviousUsersPseudoLoadAfterAnAccountSwitch() = runTest {
     val firstUserLoad = CompletableDeferred<Unit>()
     pseudos.pseudosByUser["user-1"] = "First user's pseudo"
     pseudos.pseudosByUser["user-2"] = "Second user's pseudo"
@@ -299,6 +310,7 @@ class SettingsViewModelTest {
     viewModel.switchGoogleAccount { "new-token" }
     advanceUntilIdle()
 
+    assertEquals(listOf("user-1"), pseudos.cancelledUserIds)
     assertEquals("Second user's pseudo", viewModel.state.value.pseudo)
     assertFalse(viewModel.state.value.isLoadingPseudo)
 
@@ -464,6 +476,7 @@ class SettingsViewModelTest {
     var getFailure: Exception? = null
     var setFailure: Exception? = null
     var saveCount = 0
+    val cancelledUserIds = mutableListOf<String>()
     val pseudosByUser = mutableMapOf<String, String?>()
     val getGates = mutableMapOf<String, CompletableDeferred<Unit>>()
     val requestedUserIds = mutableListOf<String>()
@@ -473,7 +486,12 @@ class SettingsViewModelTest {
 
     override suspend fun getPseudo(userId: String): String? {
       requestedUserIds += userId
-      getGates[userId]?.await()
+      try {
+        getGates[userId]?.await()
+      } catch (cancelled: CancellationException) {
+        cancelledUserIds += userId
+        throw cancelled
+      }
       getFailure?.let { throw it }
       return if (pseudosByUser.containsKey(userId)) pseudosByUser[userId] else stored
     }

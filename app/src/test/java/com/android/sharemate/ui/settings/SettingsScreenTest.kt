@@ -163,6 +163,16 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun savedPseudoReplacesTheAccountNameInTheProfileHeader() {
+    showSettings(settings = googleState.copy(savedPseudo = "Sam"))
+
+    composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_NAME).assertTextEquals("Sam")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PROFILE_EMAIL)
+        .assertTextEquals("alex.morgan@example.com")
+  }
+
+  @Test
   fun emailAccountWithoutNameShowsTheEmailOnceAndNoSwitchAction() {
     showSettings(
         settings =

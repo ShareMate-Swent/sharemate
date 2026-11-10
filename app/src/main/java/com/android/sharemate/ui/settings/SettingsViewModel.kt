@@ -19,7 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,7 @@ enum class SettingsPseudoError {
  * @property isLoadingPseudo Whether the public pseudo is being loaded.
  * @property isSavingPseudo Whether a pseudo update is in progress.
  * @property pseudoError The last pseudo load or save failure.
+ * @property canSavePseudo Whether the current pseudo can be saved.
  */
 data class SettingsUiState(
     val email: String? = null,
@@ -71,7 +74,17 @@ data class SettingsUiState(
     val isLoadingPseudo: Boolean = false,
     val isSavingPseudo: Boolean = false,
     val pseudoError: SettingsPseudoError? = null,
-)
+) {
+  /** Whether the current pseudo can be saved. */
+  val canSavePseudo: Boolean
+    get() =
+        pseudo.length <= MAX_PSEUDO_LENGTH &&
+            !isLoadingPseudo &&
+            pseudoError != SettingsPseudoError.LOAD_FAILED &&
+            !isSavingPseudo &&
+            pseudo.trim().isNotEmpty() &&
+            pseudo.trim() != savedPseudo
+}
 
 /**
  * Combines the current session, household and public pseudo into one [SettingsUiState].
@@ -102,24 +115,32 @@ class SettingsViewModel(
   init {
     // A signed-out session keeps the last profile until the auth gate leaves the screen.
     viewModelScope.launch {
-      authRepository.session.filterNotNull().collectLatest { session ->
-        val isNewUser = currentUserId != session.uid
-        currentUserId = session.uid
-        mutableState.update {
-          val updated = it.withSession(session)
-          if (isNewUser) {
-            updated.copy(
-                pseudo = "",
-                savedPseudo = null,
-                isLoadingPseudo = true,
-                isSavingPseudo = false,
-                pseudoError = null)
-          } else {
-            updated
-          }
-        }
-        if (isNewUser) launchPseudoLoad(session.uid)
+      authRepository.session.filterNotNull().collect { session ->
+        mutableState.update { it.withSession(session) }
       }
+    }
+    viewModelScope.launch {
+      authRepository.session
+          .filterNotNull()
+          .map { it.uid }
+          .distinctUntilChanged()
+          .collectLatest { userId ->
+            val isNewUser = currentUserId != userId
+            currentUserId = userId
+            mutableState.update {
+              if (isNewUser) {
+                it.copy(
+                    pseudo = "",
+                    savedPseudo = null,
+                    isLoadingPseudo = true,
+                    isSavingPseudo = false,
+                    pseudoError = null)
+              } else {
+                it
+              }
+            }
+            if (isNewUser) loadPseudo(userId)
+          }
     }
     refreshHousehold()
   }
@@ -199,10 +220,6 @@ class SettingsViewModel(
       return
     }
     mutableState.update { it.copy(isLoadingPseudo = true, pseudoError = null) }
-    launchPseudoLoad(userId)
-  }
-
-  private fun launchPseudoLoad(userId: String) {
     viewModelScope.launch { loadPseudo(userId) }
   }
 
@@ -210,31 +227,23 @@ class SettingsViewModel(
   fun savePseudo() {
     val userId = currentUserId ?: return
     val pseudo = state.value.pseudo.trim()
-    if (pseudo.length > MAX_PSEUDO_LENGTH ||
-        state.value.isLoadingPseudo ||
-        state.value.pseudoError == SettingsPseudoError.LOAD_FAILED ||
-        state.value.isSavingPseudo ||
-        pseudo.isEmpty() ||
-        pseudo == state.value.savedPseudo) {
-      return
-    }
+    if (!state.value.canSavePseudo) return
     mutableState.update { it.copy(isSavingPseudo = true, pseudoError = null) }
     viewModelScope.launch {
       try {
         pseudoRepository.setPseudo(userId, pseudo)
         if (currentUserId == userId) {
-          mutableState.update {
-            it.copy(
-                pseudo = pseudo, savedPseudo = pseudo, isSavingPseudo = false, pseudoError = null)
-          }
+          mutableState.update { it.copy(pseudo = pseudo, savedPseudo = pseudo, pseudoError = null) }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
         if (currentUserId == userId) {
-          mutableState.update {
-            it.copy(isSavingPseudo = false, pseudoError = SettingsPseudoError.SAVE_FAILED)
-          }
+          mutableState.update { it.copy(pseudoError = SettingsPseudoError.SAVE_FAILED) }
+        }
+      } finally {
+        if (currentUserId == userId) {
+          mutableState.update { it.copy(isSavingPseudo = false) }
         }
       }
     }
@@ -259,6 +268,10 @@ class SettingsViewModel(
         mutableState.update {
           it.copy(isLoadingPseudo = false, pseudoError = SettingsPseudoError.LOAD_FAILED)
         }
+      }
+    } finally {
+      if (currentUserId == userId) {
+        mutableState.update { it.copy(isLoadingPseudo = false) }
       }
     }
   }
