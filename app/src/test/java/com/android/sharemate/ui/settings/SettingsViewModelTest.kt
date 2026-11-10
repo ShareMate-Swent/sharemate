@@ -140,6 +140,23 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun takenPseudoShowsSpecificErrorAndEditingClearsIt() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    pseudos.setFailure = AuthException(AuthError.PSEUDO_TAKEN)
+    viewModel.updatePseudo("Taken")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals(SettingsPseudoError.PSEUDO_TAKEN, viewModel.state.value.pseudoError)
+    assertEquals("Inge", viewModel.state.value.savedPseudo)
+    assertFalse(viewModel.state.value.isSavingPseudo)
+
+    viewModel.updatePseudo("Available")
+    assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
   fun capsTheEditedPseudoAtTheMaximumLength() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()

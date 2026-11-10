@@ -2,6 +2,8 @@
 package com.android.sharemate.model.user
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.auth.AuthError
+import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.PseudoRepository as PseudoClaimRepository
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
@@ -21,7 +23,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mockito.Mockito.doAnswer
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -29,6 +33,7 @@ class FirebasePseudoRepositoryTest {
   private var stored: Any? = null
   private val listeners = mutableMapOf<String, EventListener<DocumentSnapshot>>()
   private var removed = 0
+  private var writeFailure: Exception? = null
   private val writes = mutableListOf<Triple<String, Any, Any>>()
   private val registration =
       mock(ListenerRegistration::class.java) {
@@ -52,7 +57,7 @@ class FirebasePseudoRepositoryTest {
           }
           "set" -> {
             writes += Triple(id, it.arguments[0], it.arguments[1])
-            Tasks.forResult<Void>(null)
+            writeFailure?.let { Tasks.forException<Void>(it) } ?: Tasks.forResult<Void>(null)
           }
           else -> null
         }
@@ -86,10 +91,36 @@ class FirebasePseudoRepositoryTest {
 
   @Test
   fun savesTrimmedPseudoInPublicProfileWithoutReplacingOtherFields() = runTest {
+    stored = "Former Name"
     repository.setPseudo("alice", " Alice ")
     verify(pseudoClaims).claim("alice", "Alice")
+    verify(pseudoClaims).release("alice", "Former Name")
     assertEquals(
         listOf(Triple("alice", mapOf("displayName" to "Alice"), SetOptions.merge())), writes)
+  }
+
+  @Test
+  fun doesNotReleaseOldPseudoIfNewPseudoIsTaken() = runTest {
+    stored = "Former Name"
+    doAnswer { throw AuthException(AuthError.PSEUDO_TAKEN) }
+        .`when`(pseudoClaims)
+        .claim("alice", "Taken")
+
+    val failure = runCatching { repository.setPseudo("alice", "Taken") }.exceptionOrNull()
+
+    assertEquals(AuthError.PSEUDO_TAKEN, (failure as AuthException).error)
+    assertTrue(writes.isEmpty())
+    verify(pseudoClaims, never()).release("alice", "Former Name")
+  }
+
+  @Test
+  fun doesNotReleaseOldPseudoIfProfileWriteFails() = runTest {
+    stored = "Former Name"
+    writeFailure = IllegalStateException("write failed")
+
+    assertTrue(runCatching { repository.setPseudo("alice", "Alice") }.isFailure)
+
+    verify(pseudoClaims, never()).release("alice", "Former Name")
   }
 
   @Test

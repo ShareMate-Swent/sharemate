@@ -242,6 +242,10 @@ class SettingsScreenTest {
       assertPseudoError(SettingsPseudoError.SAVE_FAILED, R.string.settings_pseudo_save_failed)
 
   @Test
+  fun takenPseudoShowsItsSpecificMessage() =
+      assertPseudoError(SettingsPseudoError.PSEUDO_TAKEN, R.string.auth_error_pseudo_taken)
+
+  @Test
   fun whileSavingThePseudoTheSaveButtonShowsProgressAndIsDisabled() {
     showSettings(settings = googleState.copy(pseudo = "Sam", isSavingPseudo = true))
 

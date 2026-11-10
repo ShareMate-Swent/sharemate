@@ -35,7 +35,9 @@ enum class SettingsAccountError {
 /** Why the pseudo could not be loaded or saved; a load failure blocks saving until retried. */
 enum class SettingsPseudoError {
   LOAD_FAILED,
-  SAVE_FAILED
+  SAVE_FAILED,
+  /** The pseudo is already claimed by another user. */
+  PSEUDO_TAKEN
 }
 
 /**
@@ -208,8 +210,7 @@ class SettingsViewModel(
     mutableState.update {
       it.copy(
           pseudo = pseudo.take(MAX_PSEUDO_LENGTH),
-          pseudoError =
-              it.pseudoError.takeUnless { error -> error == SettingsPseudoError.SAVE_FAILED })
+          pseudoError = it.pseudoError.takeIf { error -> error == SettingsPseudoError.LOAD_FAILED })
     }
   }
 
@@ -237,6 +238,13 @@ class SettingsViewModel(
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
+      } catch (failure: AuthException) {
+        if (currentUserId == userId) {
+          val error =
+              if (failure.error == AuthError.PSEUDO_TAKEN) SettingsPseudoError.PSEUDO_TAKEN
+              else SettingsPseudoError.SAVE_FAILED
+          mutableState.update { it.copy(pseudoError = error) }
+        }
       } catch (_: Exception) {
         if (currentUserId == userId) {
           mutableState.update { it.copy(pseudoError = SettingsPseudoError.SAVE_FAILED) }

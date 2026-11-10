@@ -207,6 +207,7 @@ private fun PseudoCard(
                     when (error) {
                       SettingsPseudoError.LOAD_FAILED -> R.string.settings_pseudo_load_failed
                       SettingsPseudoError.SAVE_FAILED -> R.string.settings_pseudo_save_failed
+                      SettingsPseudoError.PSEUDO_TAKEN -> R.string.auth_error_pseudo_taken
                     }),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.error,

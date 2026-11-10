@@ -56,8 +56,12 @@ class FirebasePseudoRepository(
     require(validatePseudo(value) == null) {
       "A pseudo must contain a visible character and at most $MAX_PSEUDO_LENGTH code points"
     }
+    val previousPseudo = getPseudo(userId)
     pseudoClaims.claim(userId, value)
     document(userId).set(mapOf(UserProfileFields.DISPLAY_NAME to value), SetOptions.merge()).await()
+    if (previousPseudo != null) {
+      pseudoClaims.release(userId, previousPseudo)
+    }
   }
 
   private fun DocumentSnapshot.toPseudo(): String? =
