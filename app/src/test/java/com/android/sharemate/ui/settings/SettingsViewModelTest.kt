@@ -11,6 +11,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -124,6 +125,29 @@ class SettingsViewModelTest {
     advanceUntilIdle()
     assertEquals("New pseudo", viewModel.state.value.savedPseudo)
     assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
+  fun capsTheEditedPseudoAtTheMaximumLength() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.updatePseudo("a".repeat(MAX_PSEUDO_LENGTH + 5))
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals("a".repeat(MAX_PSEUDO_LENGTH), viewModel.state.value.savedPseudo)
+    assertEquals("a".repeat(MAX_PSEUDO_LENGTH), pseudos.stored)
+  }
+
+  @Test
+  fun doesNotSaveAPseudoLongerThanTheMaximumAfterTrimming() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.updatePseudo("a".repeat(MAX_PSEUDO_LENGTH) + " ")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals("a".repeat(MAX_PSEUDO_LENGTH), pseudos.stored)
   }
 
   @Test

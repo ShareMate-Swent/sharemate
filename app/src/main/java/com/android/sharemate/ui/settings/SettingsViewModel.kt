@@ -12,6 +12,7 @@ import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -181,11 +182,11 @@ class SettingsViewModel(
         }
   }
 
-  /** Updates the pseudo being edited without saving it yet. */
+  /** Updates the pseudo being edited without saving it yet; input past the maximum is dropped. */
   fun updatePseudo(pseudo: String) {
     mutableState.update {
       it.copy(
-          pseudo = pseudo,
+          pseudo = pseudo.take(MAX_PSEUDO_LENGTH),
           pseudoError =
               it.pseudoError.takeUnless { error -> error == SettingsPseudoError.SAVE_FAILED })
     }
@@ -195,7 +196,8 @@ class SettingsViewModel(
   fun savePseudo() {
     val userId = currentUserId ?: return
     val pseudo = state.value.pseudo.trim()
-    if (state.value.isLoadingPseudo ||
+    if (pseudo.length > MAX_PSEUDO_LENGTH ||
+        state.value.isLoadingPseudo ||
         state.value.isSavingPseudo ||
         pseudo.isEmpty() ||
         pseudo == state.value.savedPseudo) {

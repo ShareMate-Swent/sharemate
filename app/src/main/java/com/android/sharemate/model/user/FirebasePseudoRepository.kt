@@ -49,6 +49,7 @@ class FirebasePseudoRepository(private val firestore: FirebaseFirestore) : Pseud
   override suspend fun setPseudo(userId: String, pseudo: String) {
     val value = pseudo.trim()
     require(value.isNotEmpty()) { "A pseudo must not be blank" }
+    require(value.length <= MAX_PSEUDO_LENGTH) { "A pseudo must not exceed $MAX_PSEUDO_LENGTH" }
     document(userId).set(mapOf(UserProfileFields.DISPLAY_NAME to value), SetOptions.merge()).await()
   }
 
