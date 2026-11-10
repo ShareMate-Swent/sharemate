@@ -50,6 +50,7 @@ class SettingsScreenTest {
   private var signOuts = 0
   private var switches = 0
   private var pseudoSaves = 0
+  private var pseudoRetries = 0
   private var editedPseudo = ""
   private var memberListOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
@@ -84,6 +85,7 @@ class SettingsScreenTest {
               current = current.copy(pseudo = it)
             },
             onSavePseudo = { pseudoSaves++ },
+            onRetryLoadPseudo = { pseudoRetries++ },
             onSignOut = { signOuts++ })
       }
     }
@@ -205,6 +207,23 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun pseudoLoadFailureOffersRetryAndBlocksEditing() {
+    showSettings(
+        settings = googleState.copy(pseudo = "Alex", pseudoError = SettingsPseudoError.LOAD_FAILED))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_FIELD)
+        .performScrollTo()
+        .assertIsNotEnabled()
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(SettingsTestTags.PSEUDO_RETRY).performScrollTo().performClick()
+    assertEquals(1, pseudoRetries)
+  }
+
+  @Test
   fun pseudoLoadFailureShowsItsMessage() =
       assertPseudoError(SettingsPseudoError.LOAD_FAILED, R.string.settings_pseudo_load_failed)
 
@@ -244,6 +263,7 @@ class SettingsScreenTest {
             onSwitchGoogleAccount = {},
             onPseudoChanged = {},
             onSavePseudo = {},
+            onRetryLoadPseudo = {},
             onSignOut = {})
       }
     }

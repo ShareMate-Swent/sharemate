@@ -119,7 +119,7 @@
     <string name="settings_pseudo_label">Pseudo</string>
     <string name="settings_pseudo_save">Save pseudo</string>
     <string name="settings_pseudo_loading">Loading pseudo…</string>
-    <string name="settings_pseudo_load_failed">Could not load your pseudo. You can still enter a new one and save it.</string>
+    <string name="settings_pseudo_load_failed">Could not load your pseudo. Try again before changing it.</string>
     <string name="settings_pseudo_save_failed">Could not save your pseudo. Check your connection and try again.</string>
     <string name="settings_household">Household</string>
     <string name="settings_invite_code">Invite code</string>

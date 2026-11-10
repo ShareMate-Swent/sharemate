@@ -71,6 +71,7 @@ object SettingsTestTags {
   const val PSEUDO_SAVE = "settings_pseudo_save"
   const val PSEUDO_LOADING = "settings_pseudo_loading"
   const val PSEUDO_ERROR = "settings_pseudo_error"
+  const val PSEUDO_RETRY = "settings_pseudo_retry"
   const val ACCOUNT_CARD = "settings_account_card"
   const val ACCOUNT_TITLE = "settings_account_title"
   const val ACCOUNT_STATUS = "settings_account_status"
@@ -107,6 +108,7 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * @param onSwitchGoogleAccount Opens the Google account picker; shown only for Google accounts.
  * @param onPseudoChanged Updates the pseudo being edited.
  * @param onSavePseudo Saves the edited pseudo as the public profile name.
+ * @param onRetryLoadPseudo Loads the saved pseudo again after a load failure.
  * @param onSignOut Signs out the current user.
  */
 @Composable
@@ -121,6 +123,7 @@ fun SettingsScreen(
     onSwitchGoogleAccount: () -> Unit,
     onPseudoChanged: (String) -> Unit,
     onSavePseudo: () -> Unit,
+    onRetryLoadPseudo: () -> Unit,
     onSignOut: () -> Unit,
 ) {
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
@@ -141,7 +144,7 @@ fun SettingsScreen(
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
     ProfileHeader(state)
     Spacer(Modifier.height(Dimens.spacingL))
-    PseudoCard(state, onPseudoChanged, onSavePseudo)
+    PseudoCard(state, onPseudoChanged, onSavePseudo, onRetryLoadPseudo)
     Spacer(Modifier.height(Dimens.spacingL))
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
     Spacer(Modifier.height(Dimens.spacingM))
@@ -163,7 +166,9 @@ private fun PseudoCard(
     state: SettingsUiState,
     onPseudoChanged: (String) -> Unit,
     onSavePseudo: () -> Unit,
+    onRetryLoadPseudo: () -> Unit,
 ) {
+  val loadFailed = state.pseudoError == SettingsPseudoError.LOAD_FAILED
   Card(
       shape = CardShape,
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -182,7 +187,7 @@ private fun PseudoCard(
       OutlinedTextField(
           value = state.pseudo,
           onValueChange = onPseudoChanged,
-          enabled = !state.isLoadingPseudo && !state.isSavingPseudo,
+          enabled = !state.isLoadingPseudo && !state.isSavingPseudo && !loadFailed,
           label = { Text(stringResource(R.string.settings_pseudo_label)) },
           singleLine = true,
           modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_FIELD),
@@ -208,10 +213,19 @@ private fun PseudoCard(
             modifier = Modifier.testTag(SettingsTestTags.PSEUDO_ERROR),
         )
       }
+      if (loadFailed) {
+        OutlinedButton(
+            onClick = onRetryLoadPseudo,
+            modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_RETRY),
+        ) {
+          Text(stringResource(R.string.household_retry))
+        }
+      }
       Button(
           onClick = onSavePseudo,
           enabled =
-              !state.isLoadingPseudo &&
+              !loadFailed &&
+                  !state.isLoadingPseudo &&
                   !state.isSavingPseudo &&
                   state.pseudo.trim().isNotEmpty() &&
                   state.pseudo.trim() != state.savedPseudo,

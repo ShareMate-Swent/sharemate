@@ -28,6 +28,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -112,7 +113,18 @@ class SettingsViewModelTest {
     assertEquals(SettingsPseudoError.LOAD_FAILED, viewModel.state.value.pseudoError)
     assertFalse(viewModel.state.value.isLoadingPseudo)
 
+    viewModel.updatePseudo("Blocked")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+    assertNotEquals("Blocked", pseudos.stored)
+
     pseudos.getFailure = null
+    pseudos.stored = "Existing"
+    viewModel.retryLoadPseudo()
+    advanceUntilIdle()
+    assertEquals("Existing", viewModel.state.value.pseudo)
+    assertNull(viewModel.state.value.pseudoError)
+
     pseudos.setFailure = IllegalStateException("offline")
     viewModel.updatePseudo("New pseudo")
     viewModel.savePseudo()

@@ -30,7 +30,7 @@ enum class SettingsAccountError {
   SWITCH_FAILED
 }
 
-/** Why the pseudo could not be loaded or saved. */
+/** Why the pseudo could not be loaded or saved; a load failure blocks saving until retried. */
 enum class SettingsPseudoError {
   LOAD_FAILED,
   SAVE_FAILED
@@ -118,7 +118,7 @@ class SettingsViewModel(
             updated
           }
         }
-        if (isNewUser) viewModelScope.launch { loadPseudo(session.uid) }
+        if (isNewUser) launchPseudoLoad(session.uid)
       }
     }
     refreshHousehold()
@@ -192,12 +192,27 @@ class SettingsViewModel(
     }
   }
 
+  /** Loads the saved pseudo again after a failure; saving stays blocked until it succeeds. */
+  fun retryLoadPseudo() {
+    val userId = currentUserId ?: return
+    if (state.value.isLoadingPseudo || state.value.pseudoError != SettingsPseudoError.LOAD_FAILED) {
+      return
+    }
+    mutableState.update { it.copy(isLoadingPseudo = true, pseudoError = null) }
+    launchPseudoLoad(userId)
+  }
+
+  private fun launchPseudoLoad(userId: String) {
+    viewModelScope.launch { loadPseudo(userId) }
+  }
+
   /** Saves the edited pseudo as the public profile name for the current signed-in user. */
   fun savePseudo() {
     val userId = currentUserId ?: return
     val pseudo = state.value.pseudo.trim()
     if (pseudo.length > MAX_PSEUDO_LENGTH ||
         state.value.isLoadingPseudo ||
+        state.value.pseudoError == SettingsPseudoError.LOAD_FAILED ||
         state.value.isSavingPseudo ||
         pseudo.isEmpty() ||
         pseudo == state.value.savedPseudo) {

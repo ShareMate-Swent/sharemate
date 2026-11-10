@@ -345,6 +345,7 @@ open class MainActivity : ComponentActivity() {
                             },
                             onPseudoChanged = settingsViewModel::updatePseudo,
                             onSavePseudo = settingsViewModel::savePseudo,
+                            onRetryLoadPseudo = settingsViewModel::retryLoadPseudo,
                             onSignOut = authViewModel::signOut)
                       }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
