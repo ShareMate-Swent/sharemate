@@ -13,7 +13,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -255,6 +257,35 @@ class NotificationSettingsViewModelTest {
     assertFalse(model.state.value.saveFailed)
   }
 
+  /**
+   * The case of the review: the last save is confirmed before the earlier ones. A confirmation
+   * never changes what is shown, so the last change stays, and the earlier value never comes back.
+   */
+  @Test
+  fun theLastChangeStaysShownWhenItsSaveIsConfirmedBeforeTheEarlierOnes() = runTest {
+    val store = LocalFirstRepository(initial = ExpirationPreferences(soonDays = 7))
+    val model = viewModel(store = store)
+    advanceUntilIdle()
+    listOf(8, 9, 8).forEach {
+      model.setSoonDays(it)
+      advanceUntilIdle()
+    }
+    val shownSinceTheLastChange = mutableListOf<Int>()
+    backgroundScope.launch(UnconfinedTestDispatcher(dispatcher.scheduler)) {
+      model.state.collect { shownSinceTheLastChange += it.preferences.soonDays }
+    }
+    advanceUntilIdle()
+
+    listOf(2, 0, 1).forEach {
+      store.answer(it)
+      advanceUntilIdle()
+      assertEquals(8, model.state.value.preferences.soonDays)
+    }
+
+    assertEquals(listOf(8), shownSinceTheLastChange.distinct())
+    assertFalse(model.state.value.saveFailed)
+  }
+
   @Test
   fun aRefusedChangeShowsThePreviousValueAgainAndReportsTheError() = runTest {
     val store = LocalFirstRepository(initial = ExpirationPreferences(soonDays = 7))
@@ -292,20 +323,23 @@ class NotificationSettingsViewModelTest {
 
   /**
    * Behaves like Firestore: a write is reported to the listener at once, then the server confirms
-   * it ([answerAll]) or refuses it ([refuseAll]), in which case the previous value is reported
-   * again.
+   * it ([answer], [answerAll]) or refuses it ([refuseAll]), in which case the previous value is
+   * reported again. Each write can be answered on its own, in any order.
    */
   private class LocalFirstRepository(initial: ExpirationPreferences = ExpirationPreferences()) :
       ExpirationPreferencesRepository {
     private val snapshots = MutableStateFlow(initial)
-    private val answer = CompletableDeferred<Boolean>()
+    private val answers = mutableListOf<CompletableDeferred<Boolean>>()
 
     /** The changes written so far, in order. */
     val written = mutableListOf<ExpirationChange>()
 
-    fun answerAll() = answer.complete(true)
+    /** Confirms the write number [index] (0 is the first one) and no other. */
+    fun answer(index: Int) = answers[index].complete(true)
 
-    fun refuseAll() = answer.complete(false)
+    fun answerAll() = answers.forEach { it.complete(true) }
+
+    fun refuseAll() = answers.forEach { it.complete(false) }
 
     override fun observe(userId: String): Flow<ExpirationPreferences> = snapshots
 
@@ -315,6 +349,8 @@ class NotificationSettingsViewModelTest {
 
     override suspend fun update(userId: String, change: ExpirationChange) {
       val before = snapshots.value
+      val answer = CompletableDeferred<Boolean>()
+      answers += answer
       written += change
       snapshots.value = change.applyTo(before)
       if (!answer.await()) {
