@@ -24,8 +24,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
+import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -33,6 +36,7 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -95,55 +99,138 @@ class FridgePersonalPhotoUiTest {
   }
 
   @Test
+  fun cameraPreviewCancellationPreservesDraftAndConfirmationReplacesIt() {
+    val previous = temporary.newFile().apply { writeBytes(png(16, 8)) }
+    val replacement = temporary.newFile().apply { writeBytes(png(8, 16)) }
+    val source = temporary.newFile()
+    val camera =
+        BarcodePhotoViewModel(
+            object : BarcodePhotoStore {
+              override suspend fun createCapture() = Uri.fromFile(source).toString()
+
+              override suspend fun importImage(uri: String): String = error("Unexpected gallery")
+
+              override suspend fun validate(uri: String) = Unit
+
+              override suspend fun delete(uri: String) {
+                source.delete()
+              }
+            },
+            SavedStateHandle())
+    copyPhoto = { if (it.startsWith("content:")) previous else replacement }
+    compose.setContent {
+      MaterialTheme {
+        Column { PersonalPhotoPicker(photos.draft.collectAsState().value, photos, true, camera) }
+      }
+    }
+    compose.runOnIdle { photos.select("content://gallery/previous") }
+    compose.onNodeWithText("Change personal photo").performClick()
+    compose.runOnIdle {
+      camera.capture { uri -> File(requireNotNull(Uri.parse(uri).path)).writeBytes(png(4, 4)) }
+    }
+    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.runOnIdle {
+      assertEquals(previous, photos.draft.value.file)
+      assertTrue(previous.exists())
+    }
+    compose.onNodeWithText("Change personal photo").performClick()
+    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.waitUntil(10_000) { photos.draft.value.file == replacement && !source.exists() }
+    compose.onNodeWithContentDescription("Selected personal photo").assertIsDisplayed()
+    compose.runOnIdle { assertFalse(previous.exists()) }
+  }
+
+  @Test
   fun galleryKeepsPreviewOnCancellationAndRejectionAndAllowsRemoval() {
     val selected = temporary.newFile().apply { writeBytes(png(16, 8)) }
+    val source = temporary.newFile().apply { writeBytes(png(16, 8)) }
+    val rejectedSource = temporary.newFile().apply { writeBytes(png(8, 16)) }
     val pendingCopy = CompletableDeferred<File>()
     val picker = GalleryResultRegistry()
     val enabled = mutableStateOf(true)
     val imports = mutableListOf<String>()
+    val sourceUri = Uri.fromFile(source).toString()
+    val camera =
+        BarcodePhotoViewModel(
+            object : BarcodePhotoStore {
+              override suspend fun createCapture(): String = error("Unexpected camera")
+
+              override suspend fun importImage(uri: String) =
+                  if (uri.endsWith("/valid")) sourceUri else Uri.fromFile(rejectedSource).toString()
+
+              override suspend fun validate(uri: String) = Unit
+
+              override suspend fun delete(uri: String) {
+                File(requireNotNull(Uri.parse(uri).path)).delete()
+              }
+            },
+            SavedStateHandle())
     copyPhoto = { uri ->
       imports += uri
-      if (uri.endsWith("/valid")) pendingCopy.await() else throw IOException("Unreadable")
+      if (uri == sourceUri) pendingCopy.await() else throw IOException("Unreadable")
     }
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
         MaterialTheme {
-          Column { PersonalPhotoPicker(photos.draft.collectAsState().value, photos, enabled.value) }
+          Column {
+            PersonalPhotoPicker(photos.draft.collectAsState().value, photos, enabled.value, camera)
+          }
         }
       }
     }
-    val choose = compose.onNodeWithText("Choose a personal photo")
+    val choose = compose.onNodeWithText("Add a personal photo")
     val change = compose.onNodeWithText("Change personal photo")
     val preview = compose.onNodeWithContentDescription("Selected personal photo")
     val remove = compose.onNodeWithText("Remove personal photo")
     val error = compose.onNodeWithText("Choose a readable JPEG or PNG photo of at most 5 MiB.")
 
-    choose.performClick()
+    compose.onNodeWithText("Choose a personal photo").assertDoesNotExist()
+    compose.onNodeWithText("Take a personal photo").assertDoesNotExist()
     compose.runOnIdle { enabled.value = false }
     choose.assertIsNotEnabled()
-    compose.runOnIdle { picker.deliver("content://gallery/ignored") }
-    compose.runOnIdle {
-      assertTrue(imports.isEmpty())
-      enabled.value = true
-    }
+    compose.runOnIdle { enabled.value = true }
 
     choose.performClick()
+    compose
+        .onNodeWithTag("barcode_photo_gallery")
+        .assertIsEnabled()
+        .performScrollTo()
+        .performClick()
+    compose.runOnIdle { picker.deliver(null) }
+    compose.runOnIdle {
+      assertTrue(imports.isEmpty())
+      assertFalse(camera.state.value.failed)
+    }
+    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/valid") }
-    choose.assertIsNotEnabled()
+    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.runOnIdle { assertTrue(imports.isEmpty()) }
+    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithTag("barcode_photo_confirm").assertIsNotEnabled()
     compose.runOnIdle { pendingCopy.complete(selected) }
     preview.assertIsDisplayed()
+    choose.assertDoesNotExist()
+    change.assertIsEnabled()
+    compose.runOnIdle { assertFalse(source.exists()) }
 
     change.performClick()
+    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
     compose.runOnIdle { picker.deliver(null) }
+    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
     error.assertDoesNotExist()
     preview.assertExists()
 
     change.performClick()
+    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/invalid") }
+    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
+    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
     error.assertIsDisplayed()
     preview.assertExists()
     compose.runOnIdle {
-      assertEquals(listOf("content://gallery/valid", "content://gallery/invalid"), imports)
+      assertEquals(listOf(sourceUri, Uri.fromFile(rejectedSource).toString()), imports)
       assertTrue(selected.exists())
     }
 

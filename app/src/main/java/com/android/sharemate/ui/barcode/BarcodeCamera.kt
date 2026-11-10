@@ -1,7 +1,9 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import android.content.Context
 import android.net.Uri
+import android.view.ViewOutlineProvider
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -14,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -40,7 +43,12 @@ internal fun BarcodeCamera(
   val context = LocalContext.current
   val owner = LocalLifecycleOwner.current
   val previewView = remember {
-    PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
+    PreviewView(context).apply {
+      implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+      // AndroidView does not clip the transformed camera texture to its Compose bounds.
+      outlineProvider = ViewOutlineProvider.BOUNDS
+      clipToOutline = true
+    }
   }
   val capture = remember { imageCaptureFactory() }
   val preview = remember { Preview.Builder().build() }
@@ -71,7 +79,13 @@ internal fun BarcodeCamera(
       provider?.unbind(preview, capture)
     }
   }
-  AndroidView(factory = { previewView }, modifier = Modifier.fillMaxWidth().height(300.dp))
+  AndroidView(
+      factory = { previewView },
+      modifier =
+          Modifier.fillMaxWidth()
+              .height(300.dp)
+              .clipToBounds()
+              .testTag(BarcodePhotoTestTags.VIEWFINDER))
   Button(
       onClick = {
         capture.targetRotation = previewView.display?.rotation ?: android.view.Surface.ROTATION_0
