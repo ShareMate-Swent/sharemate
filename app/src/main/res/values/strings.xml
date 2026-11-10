@@ -137,6 +137,7 @@
     <string name="cancel">Cancel</string>
     <string name="back">Back</string>
     <string name="staging_title">Review items</string>
+    <string name="staging_add_item">Add item</string>
     <string name="staging_description">Check the scanned items before saving them.</string>
     <string name="staging_empty">No items to review.</string>
     <string name="staging_quantity">Qty %1$d</string>
