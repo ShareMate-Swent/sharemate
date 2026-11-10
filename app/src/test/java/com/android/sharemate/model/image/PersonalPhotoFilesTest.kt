@@ -2,8 +2,10 @@
 package com.android.sharemate.model.image
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.File
+import kotlin.random.Random
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -20,6 +22,45 @@ class PersonalPhotoFilesTest {
   private val files = AndroidPersonalPhotoFiles(context)
   private val uri = Uri.parse("content://gallery/photo")
   private val privateDirectory = File(context.cacheDir, "personal-photo-drafts")
+
+  @Test
+  fun cameraPhotoLargerThanFiveMiBIsResizedToJpegWithoutChangingSource() = runTest {
+    val captures = File(context.cacheDir, "barcode-photos").apply { mkdirs() }
+    val source = File.createTempFile("capture-", ".png", captures)
+    val random = Random(0)
+    val bitmap = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
+    bitmap.setPixels(
+        IntArray(1600 * 1200) { random.nextInt() or (0xff shl 24) }, 0, 1600, 0, 0, 1600, 1200)
+    source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+    bitmap.recycle()
+    val size = source.length()
+    assertTrue(size > PersonalPhotoRepository.MAX_BYTES)
+
+    val copy = files.copy(Uri.fromFile(source).toString())
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(copy.path, bounds)
+    assertEquals("image/jpeg", bounds.outMimeType)
+    assertEquals(1280, bounds.outWidth)
+    assertEquals(960, bounds.outHeight)
+    assertTrue(copy.length() in 1..PersonalPhotoRepository.MAX_BYTES.toLong())
+    assertEquals(size, source.length())
+    files.delete(copy)
+    assertTrue(source.exists())
+    source.delete()
+  }
+
+  @Test
+  fun cameraImportRejectsFilesOutsideItsDirectoryAndUnreadableCaptures() = runTest {
+    val captures = File(context.cacheDir, "barcode-photos").apply { mkdirs() }
+    val invalid = File.createTempFile("capture-", ".jpg", captures).apply { writeText("broken") }
+    val outside = File(context.cacheDir, "outside.jpg").apply { writeText("private") }
+    for (source in listOf(invalid, outside)) {
+      assertTrue(runCatching { files.copy(Uri.fromFile(source).toString()) }.isFailure)
+      assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())
+      assertTrue(source.exists())
+      source.delete()
+    }
+  }
 
   @Test
   fun jpegAndPngCopiesPreserveTheOriginal() = runTest {

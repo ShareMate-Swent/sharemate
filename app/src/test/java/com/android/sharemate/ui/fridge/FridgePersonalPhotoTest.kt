@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
@@ -8,6 +9,7 @@ import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -105,6 +107,57 @@ class FridgePersonalPhotoTest {
     viewModel.updateName("Milk")
     controller.select("content://gallery/selected")
     runCurrent()
+  }
+
+  @Test
+  fun cameraConfirmationWaitsForCopyBeforeSourceCleanupAndItemSave() = runTest {
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    val source = temporary.newFile()
+    val uri = "file://${source.path}"
+    val copy = CompletableDeferred<File>()
+    copyPhoto = {
+      assertEquals(uri, it)
+      copy.await()
+    }
+    val camera =
+        BarcodePhotoViewModel(
+            object : BarcodePhotoStore {
+              override suspend fun createCapture() = uri
+
+              override suspend fun importImage(uri: String): String = error("Unexpected gallery")
+
+              override suspend fun validate(uri: String) {
+                assertTrue(source.exists())
+              }
+
+              override suspend fun delete(uri: String) {
+                source.delete()
+              }
+            },
+            SavedStateHandle())
+    models.put("camera", camera)
+    camera.open()
+    camera.capture { assertEquals(uri, it) }
+    runCurrent()
+    camera.confirm(controller::selectAndWait)
+    runCurrent()
+    viewModel.saveItem()
+    assertTrue(controller.draft.value.importing)
+    assertTrue(items.addedItems.isEmpty())
+    assertTrue(source.exists())
+    copy.complete(selected)
+    runCurrent()
+    assertTrue(camera.state.value.confirmed)
+    camera.reset()
+    runCurrent()
+    assertFalse(source.exists())
+    assertTrue(selected.exists())
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
   }
 
   @Test

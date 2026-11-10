@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,26 +48,45 @@ class PersonalPhotoController(
 
   fun select(uri: String?) {
     if (uri == null || draft.value.importing) return
-    val previous = draft.value.file
-    mutableDraft.value = PersonalPhotoDraft(previous, importing = true)
     importing =
-        scope.launch {
-          var candidate: File? = null
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
           try {
-            candidate = files.copy(uri)
-            ensureActive()
-            mutableDraft.value = PersonalPhotoDraft(candidate)
-            candidate = null
-            previous?.let { release(it) }
+            selectAndWait(uri)
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
-            ensureActive()
-            mutableDraft.value = PersonalPhotoDraft(previous, rejected = true)
-          } finally {
-            candidate?.let { release(it) }
+            // The rejected draft supplies the gallery error; the camera awaits and handles
+            // failures.
           }
         }
+  }
+
+  /** The camera retains its source until this copy finishes, including cancellation cleanup. */
+  suspend fun selectAndWait(uri: String) {
+    check(!draft.value.importing)
+    scope.coroutineContext.ensureActive()
+    importing = currentCoroutineContext().job
+    val previous = draft.value.file
+    val pending = PersonalPhotoDraft(previous, importing = true)
+    mutableDraft.value = pending
+    var candidate: File? = null
+    try {
+      candidate = files.copy(uri)
+      currentCoroutineContext().ensureActive()
+      scope.coroutineContext.ensureActive()
+      mutableDraft.value = PersonalPhotoDraft(candidate)
+      candidate = null
+      previous?.let { release(it) }
+    } catch (cancelled: CancellationException) {
+      if (draft.value === pending) mutableDraft.value = PersonalPhotoDraft(previous)
+      throw cancelled
+    } catch (failure: Exception) {
+      currentCoroutineContext().ensureActive()
+      mutableDraft.value = PersonalPhotoDraft(previous, rejected = true)
+      throw failure
+    } finally {
+      candidate?.let { release(it) }
+    }
   }
 
   /** Discards form ownership. It can also run after the session scope has been cancelled. */
