@@ -99,6 +99,25 @@ class FridgePersonalPhotoUiTest {
   }
 
   @Test
+  fun defaultPhotoEntryHonorsDisabledStateAndOpensTheSourceMenu() {
+    val enabled = mutableStateOf(false)
+    compose.setContent {
+      MaterialTheme {
+        Column { PersonalPhotoPicker(photos.draft.collectAsState().value, photos, enabled.value) }
+      }
+    }
+    val entry = compose.onNodeWithText("Add a personal photo")
+    entry.assertIsNotEnabled()
+    compose.runOnIdle { enabled.value = true }
+    entry.performClick()
+    compose.onNodeWithTag("barcode_photo_camera").assertIsEnabled()
+    compose.onNodeWithTag("barcode_photo_gallery").assertIsEnabled()
+    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    entry.assertIsEnabled()
+    compose.runOnIdle { assertEquals(PersonalPhotoDraft(), photos.draft.value) }
+  }
+
+  @Test
   fun cameraPreviewCancellationPreservesDraftAndConfirmationReplacesIt() {
     val previous = temporary.newFile().apply { writeBytes(png(16, 8)) }
     val replacement = temporary.newFile().apply { writeBytes(png(8, 16)) }
@@ -147,6 +166,7 @@ class FridgePersonalPhotoUiTest {
     val source = temporary.newFile().apply { writeBytes(png(16, 8)) }
     val rejectedSource = temporary.newFile().apply { writeBytes(png(8, 16)) }
     val pendingCopy = CompletableDeferred<File>()
+    val pendingGalleryImport = CompletableDeferred<String>()
     val picker = GalleryResultRegistry()
     val enabled = mutableStateOf(true)
     val imports = mutableListOf<String>()
@@ -157,7 +177,8 @@ class FridgePersonalPhotoUiTest {
               override suspend fun createCapture(): String = error("Unexpected camera")
 
               override suspend fun importImage(uri: String) =
-                  if (uri.endsWith("/valid")) sourceUri else Uri.fromFile(rejectedSource).toString()
+                  if (uri.endsWith("/valid")) pendingGalleryImport.await()
+                  else Uri.fromFile(rejectedSource).toString()
 
               override suspend fun validate(uri: String) = Unit
 
@@ -204,6 +225,12 @@ class FridgePersonalPhotoUiTest {
     }
     compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/valid") }
+    compose.onNodeWithTag("barcode_photo_gallery").assertIsNotEnabled()
+    compose.runOnIdle {
+      assertFalse(photos.draft.value.importing)
+      assertTrue(imports.isEmpty())
+      pendingGalleryImport.complete(sourceUri)
+    }
     compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
     compose.runOnIdle { assertTrue(imports.isEmpty()) }
     compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.File
+import java.io.RandomAccessFile
 import kotlin.random.Random
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -22,6 +23,54 @@ class PersonalPhotoFilesTest {
   private val files = AndroidPersonalPhotoFiles(context)
   private val uri = Uri.parse("content://gallery/photo")
   private val privateDirectory = File(context.cacheDir, "personal-photo-drafts")
+
+  @Test
+  fun emptyOversizedAndUnsupportedCameraFilesLeaveNoDraft() = runTest {
+    val captures = File(context.cacheDir, "barcode-photos").apply { mkdirs() }
+    val empty = File.createTempFile("empty-", ".jpg", captures)
+    val oversized =
+        File.createTempFile("oversized-", ".jpg", captures).apply {
+          RandomAccessFile(this, "rw").use { it.setLength(AndroidBarcodePhotoStore.MAX_BYTES + 1) }
+        }
+    val unsupported = File.createTempFile("unsupported-", ".webp", captures)
+    val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+    try {
+      unsupported.outputStream().use {
+        assertTrue(image.compress(Bitmap.CompressFormat.WEBP_LOSSLESS, 100, it))
+      }
+      for (source in listOf(empty, oversized, unsupported)) {
+        val failure = runCatching { files.copy(Uri.fromFile(source).toString()) }.exceptionOrNull()
+        assertTrue("Rejected capture: ${source.name}", failure is IllegalArgumentException)
+        assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())
+        assertTrue(source.exists())
+      }
+    } finally {
+      image.recycle()
+      listOf(empty, oversized, unsupported).forEach { it.delete() }
+    }
+  }
+
+  @Test
+  fun smallPortraitJpegIsNotUpscaledAndTheSourceIsPreserved() = runTest {
+    val captures = File(context.cacheDir, "barcode-photos").apply { mkdirs() }
+    val source = File.createTempFile("portrait-", ".jpg", captures)
+    val image = Bitmap.createBitmap(8, 16, Bitmap.Config.ARGB_8888)
+    source.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
+    image.recycle()
+    val original = source.readBytes()
+    val copy = files.copy(Uri.fromFile(source).toString())
+    try {
+      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      BitmapFactory.decodeFile(copy.path, bounds)
+      assertEquals("image/jpeg", bounds.outMimeType)
+      assertEquals(8, bounds.outWidth)
+      assertEquals(16, bounds.outHeight)
+      assertArrayEquals(original, source.readBytes())
+    } finally {
+      files.delete(copy)
+      source.delete()
+    }
+  }
 
   @Test
   fun cameraPhotoLargerThanFiveMiBIsResizedToJpegWithoutChangingSource() = runTest {
@@ -91,9 +140,10 @@ class PersonalPhotoFilesTest {
   }
 
   @Test
-  fun rejectsNonContentUrisAndMissingStreamsWithoutLeavingDrafts() = runTest {
+  fun rejectsUnsupportedUrisAndMissingStreamsWithoutLeavingDrafts() = runTest {
     shadowOf(context.contentResolver).registerInputStream(uri, null)
-    val invalidSources = listOf("file:///photo.png", uri.toString())
+    val invalidSources =
+        listOf("file:///photo.png", "file:opaque", "https://example.org/photo.png", uri.toString())
     for (source in invalidSources) {
       assertTrue(runCatching { files.copy(source) }.isFailure)
       assertTrue(privateDirectory.listFiles().orEmpty().isEmpty())

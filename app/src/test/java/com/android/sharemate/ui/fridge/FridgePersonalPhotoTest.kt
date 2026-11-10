@@ -18,8 +18,11 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.withContext
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.rules.TemporaryFolder
@@ -113,6 +116,59 @@ class FridgePersonalPhotoTest {
     viewModel.updateName("Milk")
     controller.select("content://gallery/selected")
     runCurrent()
+  }
+
+  @Test
+  fun cancellingCameraImportReleasesLateCopyAndKeepsPreviousPhotoUsable() = runTest {
+    selectPhoto()
+    val replacement = temporary.newFile()
+    val copying = CompletableDeferred<Unit>()
+    copyPhoto = {
+      withContext(NonCancellable) {
+        copying.await()
+        replacement
+      }
+    }
+    val importing = launch { controller.selectAndWait("file:///camera/replacement") }
+    runCurrent()
+    assertTrue(controller.draft.value.importing)
+
+    importing.cancel()
+    copying.complete(Unit)
+    importing.join()
+
+    assertEquals(PersonalPhotoDraft(selected), controller.draft.value)
+    assertTrue(selected.exists())
+    assertFalse(replacement.exists())
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertEquals(1, uploaded)
+  }
+
+  @Test
+  fun cameraConfirmationCannotStartASecondCopyWhileImporting() = runTest {
+    selectPhoto()
+    val replacement = temporary.newFile()
+    val copying = CompletableDeferred<File>()
+    val requests = mutableListOf<String>()
+    copyPhoto = {
+      requests += it
+      copying.await()
+    }
+    val importing = launch { controller.selectAndWait("file:///camera/first") }
+    runCurrent()
+
+    val failure =
+        runCatching { controller.selectAndWait("file:///camera/second") }.exceptionOrNull()
+    assertTrue(failure is IllegalStateException)
+    assertEquals(listOf("file:///camera/first"), requests)
+    assertEquals(selected, controller.draft.value.file)
+
+    copying.complete(replacement)
+    importing.join()
+    assertEquals(PersonalPhotoDraft(replacement), controller.draft.value)
+    assertFalse(selected.exists())
   }
 
   @Test
