@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.settings
 
 import androidx.compose.foundation.BorderStroke
@@ -34,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -64,6 +66,12 @@ object SettingsTestTags {
   const val PROFILE_PLACEHOLDER = "settings_profile_placeholder"
   const val PROFILE_NAME = "settings_profile_name"
   const val PROFILE_EMAIL = "settings_profile_email"
+  const val PSEUDO_CARD = "settings_pseudo_card"
+  const val PSEUDO_FIELD = "settings_pseudo_field"
+  const val PSEUDO_SAVE = "settings_pseudo_save"
+  const val PSEUDO_LOADING = "settings_pseudo_loading"
+  const val PSEUDO_ERROR = "settings_pseudo_error"
+  const val PSEUDO_RETRY = "settings_pseudo_retry"
   const val ACCOUNT_CARD = "settings_account_card"
   const val ACCOUNT_TITLE = "settings_account_title"
   const val ACCOUNT_STATUS = "settings_account_status"
@@ -92,9 +100,16 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  *
  * @param state Profile, account and household shown on the screen.
  * @param leaveState State of the leave confirmation.
- * @param onSwitchGoogleAccount Opens the Google account picker; shown only for Google accounts.
+ * @param onLeaveHousehold Requests to leave the current household.
+ * @param onCancelLeave Closes the leave confirmation.
+ * @param onConfirmLeave Confirms the requested household departure.
  * @param onLeft Called once after the user has left the household.
- * @param onShowMembers Opens the members list; called when the user taps the member count.
+ * @param onShowMembers Opens the household members list.
+ * @param onSwitchGoogleAccount Opens the Google account picker; shown only for Google accounts.
+ * @param onPseudoChanged Updates the pseudo being edited.
+ * @param onSavePseudo Saves the edited pseudo as the public profile name.
+ * @param onRetryLoadPseudo Loads the saved pseudo again after a load failure.
+ * @param onSignOut Signs out the current user.
  */
 @Composable
 fun SettingsScreen(
@@ -106,6 +121,9 @@ fun SettingsScreen(
     onLeft: () -> Unit,
     onShowMembers: () -> Unit,
     onSwitchGoogleAccount: () -> Unit,
+    onPseudoChanged: (String) -> Unit,
+    onSavePseudo: () -> Unit,
+    onRetryLoadPseudo: () -> Unit,
     onSignOut: () -> Unit,
 ) {
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
@@ -126,6 +144,8 @@ fun SettingsScreen(
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
     ProfileHeader(state)
     Spacer(Modifier.height(Dimens.spacingL))
+    PseudoCard(state, onPseudoChanged, onSavePseudo, onRetryLoadPseudo)
+    Spacer(Modifier.height(Dimens.spacingL))
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
     Spacer(Modifier.height(Dimens.spacingM))
     HouseholdCard(state, onShowMembers, onLeaveHousehold)
@@ -141,9 +161,92 @@ fun SettingsScreen(
   }
 }
 
+@Composable
+private fun PseudoCard(
+    state: SettingsUiState,
+    onPseudoChanged: (String) -> Unit,
+    onSavePseudo: () -> Unit,
+    onRetryLoadPseudo: () -> Unit,
+) {
+  val loadFailed = state.pseudoError == SettingsPseudoError.LOAD_FAILED
+  Card(
+      shape = CardShape,
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+      border = BorderStroke(Dimens.borderWidth, MaterialTheme.colorScheme.outlineVariant),
+      modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_CARD),
+  ) {
+    Column(
+        Modifier.padding(Dimens.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingS),
+    ) {
+      Text(
+          text = stringResource(R.string.settings_pseudo_title),
+          style = MaterialTheme.typography.titleMedium,
+          color = MaterialTheme.colorScheme.onSurface,
+      )
+      OutlinedTextField(
+          value = state.pseudo,
+          onValueChange = onPseudoChanged,
+          enabled = !state.isLoadingPseudo && !state.isSavingPseudo && !loadFailed,
+          label = { Text(stringResource(R.string.settings_pseudo_label)) },
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_FIELD),
+      )
+      if (state.isLoadingPseudo) {
+        Text(
+            text = stringResource(R.string.settings_pseudo_loading),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag(SettingsTestTags.PSEUDO_LOADING),
+        )
+      }
+      state.pseudoError?.let { error ->
+        Text(
+            text =
+                stringResource(
+                    when (error) {
+                      SettingsPseudoError.LOAD_FAILED -> R.string.settings_pseudo_load_failed
+                      SettingsPseudoError.SAVE_FAILED -> R.string.settings_pseudo_save_failed
+                      SettingsPseudoError.PSEUDO_TAKEN -> R.string.auth_error_pseudo_taken
+                    }),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.testTag(SettingsTestTags.PSEUDO_ERROR),
+        )
+      }
+      if (loadFailed) {
+        OutlinedButton(
+            onClick = onRetryLoadPseudo,
+            modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_RETRY),
+        ) {
+          Text(stringResource(R.string.household_retry))
+        }
+      }
+      Button(
+          onClick = onSavePseudo,
+          enabled = state.canSavePseudo,
+          modifier =
+              Modifier.fillMaxWidth()
+                  .height(Dimens.buttonHeight)
+                  .testTag(SettingsTestTags.PSEUDO_SAVE),
+      ) {
+        if (state.isSavingPseudo) {
+          CircularProgressIndicator(
+              modifier = Modifier.size(Dimens.progressSize),
+              strokeWidth = Dimens.progressStrokeWidth,
+          )
+        } else {
+          Text(stringResource(R.string.settings_pseudo_save))
+        }
+      }
+    }
+  }
+}
+
 /** Photo, name and email. Without a name, the email takes its place and is not repeated. */
 @Composable
 private fun ProfileHeader(state: SettingsUiState) {
+  val profileName = state.savedPseudo?.takeIf { it.isNotBlank() } ?: state.displayName
   ProfileAvatar(
       photoUrl = state.photoUrl,
       size = SettingsLayout.avatarSize,
@@ -154,13 +257,13 @@ private fun ProfileHeader(state: SettingsUiState) {
   )
   Spacer(Modifier.height(Dimens.spacingM))
   Text(
-      text = state.displayName ?: state.email.orEmpty(),
+      text = profileName ?: state.email.orEmpty(),
       style = MaterialTheme.typography.headlineSmall,
       color = MaterialTheme.colorScheme.onSurface,
       textAlign = TextAlign.Center,
       modifier = Modifier.testTag(SettingsTestTags.PROFILE_NAME),
   )
-  if (state.displayName != null && state.email != null) {
+  if (profileName != null && state.email != null) {
     Spacer(Modifier.height(Dimens.spacingXxs))
     Text(
         text = state.email,

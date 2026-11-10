@@ -3,6 +3,9 @@ package com.android.sharemate.model.user
 
 import kotlinx.coroutines.flow.Flow
 
+/** Longest pseudo, in Unicode code points, that can be saved. */
+const val MAX_PSEUDO_LENGTH = 40
+
 /** Reads and writes the `pseudo` shown to other members instead of a user's Firebase id. */
 interface PseudoRepository {
   /**
@@ -16,7 +19,7 @@ interface PseudoRepository {
 
   /**
    * Saves the [pseudo] after removing invisible padding, preserving the profile's other fields. The
-   * result must contain a visible character and at most 40 Unicode code points.
+   * result must contain a visible character and at most [MAX_PSEUDO_LENGTH] Unicode code points.
    *
    * @throws IllegalArgumentException if the pseudo is invalid.
    */

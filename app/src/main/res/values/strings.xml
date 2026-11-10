@@ -115,6 +115,12 @@
     <string name="settings_switch_unavailable">Google sign-in isn\'t available on this device right now.</string>
     <string name="settings_switch_network">Could not switch accounts. Check your connection and try again.</string>
     <string name="settings_switch_failed">Could not switch to that Google account. Please try again.</string>
+    <string name="settings_pseudo_title">Your pseudo</string>
+    <string name="settings_pseudo_label">Pseudo</string>
+    <string name="settings_pseudo_save">Save pseudo</string>
+    <string name="settings_pseudo_loading">Loading pseudo…</string>
+    <string name="settings_pseudo_load_failed">Could not load your pseudo. Try again before changing it.</string>
+    <string name="settings_pseudo_save_failed">Could not save your pseudo. Check your connection and try again.</string>
     <string name="settings_household">Household</string>
     <string name="settings_invite_code">Invite code</string>
     <string name="settings_show_members">See members</string>

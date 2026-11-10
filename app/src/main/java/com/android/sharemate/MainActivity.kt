@@ -348,7 +348,10 @@ open class MainActivity : ComponentActivity() {
                                     viewModelFactory {
                                       initializer {
                                         SettingsViewModel(
-                                            authRepository, householdRepository, household)
+                                            authRepository,
+                                            householdRepository,
+                                            pseudoRepository,
+                                            household)
                                       }
                                     })
                         val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
@@ -372,6 +375,9 @@ open class MainActivity : ComponentActivity() {
                                 }
                               }
                             },
+                            onPseudoChanged = settingsViewModel::updatePseudo,
+                            onSavePseudo = settingsViewModel::savePseudo,
+                            onRetryLoadPseudo = settingsViewModel::retryLoadPseudo,
                             onSignOut = authViewModel::signOut)
                       }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
