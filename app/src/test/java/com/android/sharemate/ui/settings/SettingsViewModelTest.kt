@@ -274,6 +274,30 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun ignoresThePreviousUsersPseudoWhenItsLoadFinishesAfterAnAccountSwitch() = runTest {
+    val firstUserLoad = CompletableDeferred<Unit>()
+    pseudos.pseudosByUser["user-1"] = "First user's pseudo"
+    pseudos.pseudosByUser["user-2"] = "Second user's pseudo"
+    pseudos.getGates["user-1"] = firstUserLoad
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    assertEquals(listOf("user-1"), pseudos.requestedUserIds)
+
+    viewModel.switchGoogleAccount { "new-token" }
+    advanceUntilIdle()
+
+    assertEquals("Second user's pseudo", viewModel.state.value.pseudo)
+    assertFalse(viewModel.state.value.isLoadingPseudo)
+
+    firstUserLoad.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals("Second user's pseudo", viewModel.state.value.pseudo)
+    assertEquals("Second user's pseudo", viewModel.state.value.savedPseudo)
+  }
+
+  @Test
   fun switchingSignsInWithTheChosenAccountWithoutSigningOutFirst() = runTest {
     val viewModel = createViewModel()
     advanceUntilIdle()
@@ -428,19 +452,25 @@ class SettingsViewModelTest {
     var getFailure: Exception? = null
     var setFailure: Exception? = null
     var saveCount = 0
+    val pseudosByUser = mutableMapOf<String, String?>()
+    val getGates = mutableMapOf<String, CompletableDeferred<Unit>>()
+    val requestedUserIds = mutableListOf<String>()
 
     override fun observePseudos(userIds: Set<String>): Flow<Map<String, String>> =
         flowOf(emptyMap())
 
     override suspend fun getPseudo(userId: String): String? {
+      requestedUserIds += userId
+      getGates[userId]?.await()
       getFailure?.let { throw it }
-      return stored
+      return if (pseudosByUser.containsKey(userId)) pseudosByUser[userId] else stored
     }
 
     override suspend fun setPseudo(userId: String, pseudo: String) {
       saveCount++
       setFailure?.let { throw it }
       stored = pseudo.trim()
+      pseudosByUser[userId] = stored
     }
   }
 }
