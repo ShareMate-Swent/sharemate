@@ -43,6 +43,7 @@ sealed interface SettlementUiState {
       val summary: BalanceSummary,
       val submission: SettlementSubmission,
       val memberNames: Map<String, String> = emptyMap(),
+      val isSynced: Boolean = true,
   ) : SettlementUiState
 }
 
@@ -93,7 +94,12 @@ class SettlementViewModel(
           .collectLatest { (records, payment, fallback) ->
             mutableState.value =
                 if (records == null) fallback
-                else {
+                else if (!records.snapshot.isSynced &&
+                    records.snapshot.expenses.isEmpty() &&
+                    records.snapshot.settlements.isEmpty()) {
+                  // An empty cache cannot establish that the household has no debt.
+                  SettlementUiState.Offline
+                } else {
                   val snapshot = records.snapshot
                   val pending = payment.operation?.takeIf { payment.optimistic }
                   val summary =
@@ -117,7 +123,8 @@ class SettlementViewModel(
                         return@collectLatest
                       }
                   renderedLedger = records
-                  SettlementUiState.Ready(userId, summary, payment, records.names)
+                  SettlementUiState.Ready(
+                      userId, summary, payment, records.names, snapshot.isSynced)
                 }
           }
     }
@@ -173,6 +180,8 @@ class SettlementViewModel(
                       val recorded = snapshot.settlements.firstOrNull { it.id == pending?.id }
                       if (recorded != null) {
                         check(recorded == pending) { "Settlement operation mismatch" }
+                      }
+                      if (recorded != null && snapshot.isSynced) {
                         writeJob?.cancel()
                         savedState.remove<ArrayList<String>>(savedKey)
                         submission.value = SettlementSubmission()

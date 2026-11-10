@@ -199,6 +199,7 @@
     <string name="settlement_invalid">Enter a positive amount up to the outstanding debt, with at most two decimal places.</string>
     <string name="settlement_confirm">Record payment</string>
     <string name="settlement_pending">Recording payment. Waiting for confirmation…</string>
+    <string name="settlement_cached_balances">Showing cached balances. Waiting for the server to confirm them.</string>
     <string name="settlement_uncertain">Payment could not be confirmed. Retry this payment before recording another.</string>
     <string name="settlement_rejected">Payment was declined. Check the updated debt and try again.</string>
     <string name="inventory_save_shared_only">Saving scanned items requires a shared household.</string>

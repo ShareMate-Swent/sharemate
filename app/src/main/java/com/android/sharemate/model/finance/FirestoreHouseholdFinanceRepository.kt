@@ -2,16 +2,21 @@
 package com.android.sharemate.model.finance
 
 import com.android.sharemate.model.FirestoreCollections
-import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.finance.FinanceFields.AMOUNT_CENTS
+import com.android.sharemate.model.finance.FinanceFields.HOUSEHOLD_ID
+import com.android.sharemate.model.finance.FinanceFields.ID
+import com.android.sharemate.model.finance.FinanceFields.PAYER_ID
+import com.android.sharemate.model.finance.FinanceFields.RECIPIENT_ID
 import com.google.firebase.firestore.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 
 /**
- * Publishes server-backed ledger snapshots only after all affected Firestore listeners have fired.
- * Expenses and settlements must remain read-only through this Firestore instance, including
- * deletions; callable settlement writes cannot introduce optimistic local query changes.
+ * Publishes ledger snapshots after all affected Firestore listeners have fired. Cached or pending
+ * data is provisional ([HouseholdFinanceSnapshot.isSynced] is false). Expenses and settlements must
+ * remain read-only through this Firestore instance, including deletions; callable writes cannot
+ * introduce optimistic local query changes.
  */
 class FirestoreHouseholdFinanceRepository(
     private val firestore: FirebaseFirestore,
@@ -20,60 +25,22 @@ class FirestoreHouseholdFinanceRepository(
   override fun observeHouseholdFinances(householdId: String): Flow<HouseholdFinanceSnapshot> {
     require(householdId.isNotBlank() && '/' !in householdId)
     return callbackFlow {
-          var parentReady = false
-          var expenses: QuerySnapshot? = null
-          var payments: QuerySnapshot? = null
+          val collector = FinanceSnapshotCollector(householdId, { trySend(it) }, { close(it) })
           val registrations = mutableListOf<ListenerRegistration>()
           val household =
               firestore.collection(FirestoreCollections.HOUSEHOLDS).document(householdId)
           try {
             registrations +=
-                household.addSnapshotListener(MetadataChanges.INCLUDE) { value, error ->
-                  parentReady = false
-                  if (error != null) close(error)
-                  else if (value == null) close(IllegalStateException("Missing household snapshot"))
-                  else if (value.metadata.committed()) {
-                    if (!value.exists() || value.get(TYPE) != FridgeType.SHARED.name) {
-                      close(
-                          FirebaseFirestoreException(
-                              "Shared household required",
-                              FirebaseFirestoreException.Code.PERMISSION_DENIED))
-                    } else parentReady = true
-                  }
-                }
+                household.addSnapshotListener(MetadataChanges.INCLUDE, collector::onParent)
             registrations +=
-                household.collection(FirestoreCollections.EXPENSES).addSnapshotListener(
-                    MetadataChanges.INCLUDE) { value, error ->
-                      expenses = value?.takeIf { it.metadata.committed() }
-                      if (error != null) close(error)
-                      else if (value == null)
-                          close(IllegalStateException("Missing expenses snapshot"))
-                    }
+                household
+                    .collection(FirestoreCollections.EXPENSES)
+                    .addSnapshotListener(MetadataChanges.INCLUDE, collector::onExpenses)
             registrations +=
-                household.collection(SETTLEMENTS).addSnapshotListener(MetadataChanges.INCLUDE) {
-                    value,
-                    error ->
-                  payments = value?.takeIf { it.metadata.committed() }
-                  if (error != null) close(error)
-                  else if (value == null)
-                      close(IllegalStateException("Missing settlements snapshot"))
-                }
-            registrations +=
-                firestore.addSnapshotsInSyncListener {
-                  val currentExpenses = expenses
-                  val currentPayments = payments
-                  if (parentReady && currentExpenses != null && currentPayments != null) {
-                    try {
-                      trySend(
-                          HouseholdFinanceSnapshot(
-                              householdId,
-                              currentExpenses.documents.map { it.toSharedExpense(householdId) },
-                              currentPayments.documents.map { it.toSettlement(householdId) }))
-                    } catch (error: Exception) {
-                      close(error)
-                    }
-                  }
-                }
+                household
+                    .collection(FirestoreCollections.SETTLEMENTS)
+                    .addSnapshotListener(MetadataChanges.INCLUDE, collector::onPayments)
+            registrations += firestore.addSnapshotsInSyncListener(collector::onSync)
             awaitClose {}
           } finally {
             registrations.forEach { it.remove() }
@@ -84,7 +51,58 @@ class FirestoreHouseholdFinanceRepository(
   }
 }
 
-private fun SnapshotMetadata.committed() = !isFromCache && !hasPendingWrites()
+/** Holds one subscription's latest sources; publication happens only at the SDK sync boundary. */
+private class FinanceSnapshotCollector(
+    private val householdId: String,
+    private val publish: (HouseholdFinanceSnapshot) -> Unit,
+    private val fail: (Throwable) -> Unit,
+) {
+  private var parent: DocumentSnapshot? = null
+  private var expenses: QuerySnapshot? = null
+  private var payments: QuerySnapshot? = null
+  private var failed = false
+
+  fun onParent(value: DocumentSnapshot?, error: FirebaseFirestoreException?) = receive {
+    if (error != null) throw error
+    parent =
+        checkNotNull(value) { "Missing household snapshot" }.also { it.requireSharedHousehold() }
+  }
+
+  fun onExpenses(value: QuerySnapshot?, error: FirebaseFirestoreException?) = receive {
+    if (error != null) throw error
+    expenses = checkNotNull(value) { "Missing expenses snapshot" }
+  }
+
+  fun onPayments(value: QuerySnapshot?, error: FirebaseFirestoreException?) = receive {
+    if (error != null) throw error
+    payments = checkNotNull(value) { "Missing settlements snapshot" }
+  }
+
+  fun onSync() = receive {
+    val currentParent = parent ?: return@receive
+    val currentExpenses = expenses ?: return@receive
+    val currentPayments = payments ?: return@receive
+    publish(
+        HouseholdFinanceSnapshot(
+            householdId,
+            currentExpenses.documents.map { it.toSharedExpense(householdId) },
+            currentPayments.documents.map { it.toSettlement(householdId) },
+            isSynced =
+                currentParent.metadata.isServerConfirmed() &&
+                    currentExpenses.metadata.isServerConfirmed() &&
+                    currentPayments.metadata.isServerConfirmed()))
+  }
+
+  private inline fun receive(action: () -> Unit) {
+    if (failed) return
+    try {
+      action()
+    } catch (error: Exception) {
+      failed = true
+      fail(error)
+    }
+  }
+}
 
 /** Rejects malformed, extra-field and path-mismatched records instead of understating debt. */
 internal fun DocumentSnapshot.toSettlement(householdId: String): Settlement {
@@ -98,11 +116,3 @@ internal fun DocumentSnapshot.toSettlement(householdId: String): Settlement {
       requireNotNull(fields[RECIPIENT_ID] as? String),
       requireNotNull(fields[AMOUNT_CENTS] as? Long))
 }
-
-private const val SETTLEMENTS = "settlements"
-private const val TYPE = "type"
-private const val ID = "id"
-private const val HOUSEHOLD_ID = "householdId"
-private const val PAYER_ID = "payerId"
-private const val RECIPIENT_ID = "recipientId"
-private const val AMOUNT_CENTS = "amountCents"

@@ -129,6 +129,18 @@ class SettlementDialogTest {
     compose.onNodeWithText("Settle up").performClick()
     compose.onNodeWithTag("settlement_confirm").performClick()
     compose.onNodeWithTag("settlement_confirm").assertDoesNotExist()
+    compose.runOnIdle {
+      state.value = (state.value as SettlementUiState.Ready).copy(isSynced = false)
+    }
+    compose
+        .onNodeWithText("Showing cached balances. Waiting for the server to confirm them.")
+        .assertIsDisplayed()
+    compose.runOnIdle {
+      state.value = (state.value as SettlementUiState.Ready).copy(isSynced = true)
+    }
+    compose
+        .onNodeWithText("Showing cached balances. Waiting for the server to confirm them.")
+        .assertDoesNotExist()
     for (unavailable in
         listOf(
             SettlementUiState.Loading,

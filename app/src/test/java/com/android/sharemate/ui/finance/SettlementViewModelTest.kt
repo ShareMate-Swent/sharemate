@@ -82,6 +82,74 @@ class SettlementViewModelTest {
       ready(vm).summary.netBalancesCents.getValue("bob")
 
   @Test
+  fun emptyCacheIsUnknownUntilServerConfirmsAnEmptyLedger() = runTest {
+    ledger.value = HouseholdFinanceSnapshot("home", emptyList(), emptyList(), isSynced = false)
+    val vm = create()
+    advanceUntilIdle()
+    assertEquals(SettlementUiState.Offline, vm.state.value)
+    assertFalse(vm.settle(Debt("alice", "bob", 1500), 600))
+    ledger.value = HouseholdFinanceSnapshot("home", emptyList(), emptyList())
+    advanceUntilIdle()
+    assertTrue(ready(vm).summary.debts.isEmpty())
+    assertTrue(ready(vm).isSynced)
+    ledger.value = HouseholdFinanceSnapshot("home", emptyList(), emptyList(), isSynced = false)
+    advanceUntilIdle()
+    assertEquals(SettlementUiState.Offline, vm.state.value)
+  }
+
+  @Test
+  fun cachedBalancesRemainProvisionalAndUncertainRetryKeepsItsIdentity() = runTest {
+    ledger.value = HouseholdFinanceSnapshot("home", listOf(expense), emptyList(), isSynced = false)
+    val vm = create()
+    advanceUntilIdle()
+    assertEquals(1500L, remaining(vm))
+    assertFalse(ready(vm).isSynced)
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    val payment = requests.single()
+    answer.completeExceptionally(java.io.IOException("offline"))
+    advanceUntilIdle()
+    assertEquals(1500L, remaining(vm))
+    assertEquals(SettlementPhase.FAILED, ready(vm).submission.phase)
+    answer = CompletableDeferred()
+    vm.retrySettlement()
+    advanceUntilIdle()
+    assertEquals(listOf(payment, payment), requests)
+    assertEquals(900L, remaining(vm))
+    assertFalse(ready(vm).isSynced)
+    ledger.value = snapshot(payment)
+    advanceUntilIdle()
+    assertEquals(SettlementSubmission(), ready(vm).submission)
+    assertTrue(ready(vm).isSynced)
+  }
+
+  @Test
+  fun cachedPaymentDoesNotClearSavedOperationOrConfirmUntilSynced() = runTest {
+    val saved = SavedStateHandle()
+    val vm = create(saved)
+    advanceUntilIdle()
+    assertTrue(vm.settle(debt(vm), 600))
+    advanceUntilIdle()
+    val payment = requests.single()
+    ledger.value =
+        HouseholdFinanceSnapshot("home", listOf(expense), listOf(payment), isSynced = false)
+    advanceUntilIdle()
+    assertEquals(900L, remaining(vm))
+    assertFalse(ready(vm).isSynced)
+    assertEquals(SettlementPhase.SUBMITTING, ready(vm).submission.phase)
+    assertNotNull(saved.get<ArrayList<String>>("settlement_home_alice"))
+    answer.complete(payment)
+    advanceUntilIdle()
+    assertEquals(SettlementPhase.AWAITING_CONFIRMATION, ready(vm).submission.phase)
+    ledger.value = snapshot(payment)
+    advanceUntilIdle()
+    assertEquals(SettlementSubmission(), ready(vm).submission)
+    assertTrue(ready(vm).isSynced)
+    assertNull(saved.get<ArrayList<String>>("settlement_home_alice"))
+    assertEquals(900L, remaining(vm))
+  }
+
+  @Test
   fun silentLedgerTimesOutAndRetryRecoversWithSafeNamesAndInvalidDataClearsAmounts() = runTest {
     val profiles = mock(com.android.sharemate.model.profile.UserProfileRepository::class.java)
     `when`(profiles.observeMembers("home"))

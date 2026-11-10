@@ -38,6 +38,9 @@ internal fun SettlementBalances(
             BalancesUiState.Ready(state.currentUserId, state.summary, state.memberNames)
       }
   Column {
+    if (ready != null && !ready.isSynced) {
+      Text(stringResource(R.string.settlement_cached_balances))
+    }
     when (phase) {
       SettlementPhase.FAILED -> {
         Text(stringResource(R.string.settlement_uncertain))

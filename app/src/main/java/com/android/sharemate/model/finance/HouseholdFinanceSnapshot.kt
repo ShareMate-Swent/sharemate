@@ -12,6 +12,8 @@ class HouseholdFinanceSnapshot(
     val householdId: String,
     expenses: List<SharedExpense>,
     settlements: List<Settlement>,
+    /** False for cached/pending data, including an empty cache whose server ledger is unknown. */
+    val isSynced: Boolean = true,
 ) {
   val expenses: List<SharedExpense> = Collections.unmodifiableList(ArrayList(expenses))
   val settlements: List<Settlement> = Collections.unmodifiableList(ArrayList(settlements))
@@ -34,11 +36,13 @@ class HouseholdFinanceSnapshot(
       other is HouseholdFinanceSnapshot &&
           householdId == other.householdId &&
           expenses == other.expenses &&
-          settlements == other.settlements
+          settlements == other.settlements &&
+          isSynced == other.isSynced
 
   override fun hashCode(): Int =
-      31 * (31 * householdId.hashCode() + expenses.hashCode()) + settlements.hashCode()
+      31 * (31 * (31 * householdId.hashCode() + expenses.hashCode()) + settlements.hashCode()) +
+          isSynced.hashCode()
 
   override fun toString(): String =
-      "HouseholdFinanceSnapshot(householdId=$householdId, expenses=$expenses, settlements=$settlements)"
+      "HouseholdFinanceSnapshot(householdId=$householdId, expenses=$expenses, settlements=$settlements, isSynced=$isSynced)"
 }

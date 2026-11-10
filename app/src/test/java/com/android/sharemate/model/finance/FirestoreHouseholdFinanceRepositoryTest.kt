@@ -46,7 +46,22 @@ class FirestoreHouseholdFinanceRepositoryTest {
   }
 
   @Test
-  fun publishesOnlySynchronizedCommittedSnapshotsAndDelegatesWrites() = runTest {
+  fun cachedLedgerIsPublishedWithoutWaitingForServer() = runTest {
+    val received = mutableListOf<HouseholdFinanceSnapshot>()
+    val job = launch { repository.observeHouseholdFinances("home").collect { received += it } }
+    runCurrent()
+    membership.onEvent(parentSnapshot(cache = true), null)
+    queries.getValue("expenses").onEvent(snapshot(cache = true), null)
+    queries.getValue("settlements").onEvent(snapshot(listOf(document()), cache = true), null)
+    sync.run()
+    runCurrent()
+    assertEquals(listOf(payment), received.single().settlements)
+    assertFalse(received.single().isSynced)
+    job.cancelAndJoin()
+  }
+
+  @Test
+  fun publishesOnlyAtSyncBoundaryAndDelegatesWrites() = runTest {
     val received = mutableListOf<HouseholdFinanceSnapshot>()
     val job = launch { repository.observeHouseholdFinances("home").collect { received += it } }
     runCurrent()
@@ -55,34 +70,17 @@ class FirestoreHouseholdFinanceRepositoryTest {
     sync.run()
     runCurrent()
     assertTrue(received.isEmpty())
-    queries.getValue("settlements").onEvent(snapshot(cache = true), null)
-    sync.run()
-    runCurrent()
-    assertTrue(received.isEmpty())
-    queries.getValue("settlements").onEvent(snapshot(), null)
-    sync.run()
-    runCurrent()
-    assertEquals(1, received.size)
     queries.getValue("settlements").onEvent(snapshot(listOf(document())), null)
     runCurrent()
-    assertTrue(received.last().settlements.isEmpty())
-    membership.onEvent(parentSnapshot(cache = true), null)
+    assertTrue(received.isEmpty())
+    sync.run()
+    runCurrent()
+    assertEquals(listOf(payment), received.single().settlements)
+    assertTrue(received.single().isSynced)
     sync.run()
     runCurrent()
     assertEquals(1, received.size)
-    membership.onEvent(parentSnapshot(), null)
-    queries.getValue("expenses").onEvent(snapshot(pending = true), null)
-    sync.run()
-    runCurrent()
-    assertEquals(1, received.size)
-    queries.getValue("expenses").onEvent(snapshot(), null)
-    sync.run()
-    runCurrent()
-    assertEquals(listOf(payment), received.last().settlements)
-    sync.run()
-    runCurrent()
-    assertEquals(2, received.size)
-    val expense = document(mapOf("id" to "s"))
+    val expense = document()
     `when`(expense.data)
         .thenReturn(
             mapOf(
@@ -103,11 +101,92 @@ class FirestoreHouseholdFinanceRepositoryTest {
   }
 
   @Test
+  fun emptyCacheAndUnconfirmedParentDoNotClaimAnEmptyServerLedgerOrDenyAccess() = runTest {
+    for (parent in
+        listOf(
+            parentSnapshot(cache = true, exists = false),
+            parentSnapshot(type = "PRIVATE", cache = true),
+            parentSnapshot(pending = true))) {
+      val received = mutableListOf<HouseholdFinanceSnapshot>()
+      val job = launch { repository.observeHouseholdFinances("home").collect { received += it } }
+      runCurrent()
+      membership.onEvent(parent, null)
+      queries.getValue("expenses").onEvent(snapshot(cache = true), null)
+      queries.getValue("settlements").onEvent(snapshot(cache = true), null)
+      sync.run()
+      runCurrent()
+      assertFalse(received.single().isSynced)
+      assertTrue(received.single().expenses.isEmpty())
+      assertTrue(received.single().settlements.isEmpty())
+      assertTrue(job.isActive)
+      job.cancelAndJoin()
+    }
+  }
+
+  @Test
+  fun cacheThenServerThenConnectionLossRetainsRecordsAndEmitsMetadataChanges() = runTest {
+    val received = mutableListOf<HouseholdFinanceSnapshot>()
+    val job = launch { repository.observeHouseholdFinances("home").collect { received += it } }
+    runCurrent()
+    membership.onEvent(parentSnapshot(cache = true), null)
+    queries.getValue("expenses").onEvent(snapshot(cache = true), null)
+    queries.getValue("settlements").onEvent(snapshot(listOf(document()), cache = true), null)
+    sync.run()
+    runCurrent()
+    assertFalse(received.single().isSynced)
+    membership.onEvent(parentSnapshot(), null)
+    queries.getValue("expenses").onEvent(snapshot(), null)
+    sync.run()
+    runCurrent()
+    assertEquals(1, received.size)
+    queries.getValue("settlements").onEvent(snapshot(listOf(document())), null)
+    sync.run()
+    runCurrent()
+    assertTrue(received.last().isSynced)
+    queries.getValue("settlements").onEvent(snapshot(listOf(document()), cache = true), null)
+    sync.run()
+    runCurrent()
+    assertEquals(listOf(false, true, false), received.map { it.isSynced })
+    assertTrue(received.all { it.settlements == listOf(payment) })
+    assertTrue(job.isActive)
+    job.cancelAndJoin()
+  }
+
+  @Test
+  fun eachCachedOrPendingSourceMakesTheLedgerProvisionalUntilAcknowledged() = runTest {
+    for (source in listOf("parent", "expenses", "settlements")) {
+      for (pending in listOf(false, true)) {
+        val received = mutableListOf<HouseholdFinanceSnapshot>()
+        val job = launch { repository.observeHouseholdFinances("home").collect { received += it } }
+        runCurrent()
+        membership.onEvent(parentSnapshot(), null)
+        queries.getValue("expenses").onEvent(snapshot(), null)
+        queries.getValue("settlements").onEvent(snapshot(), null)
+        sync.run()
+        runCurrent()
+        if (source == "parent")
+            membership.onEvent(parentSnapshot(cache = !pending, pending = pending), null)
+        else queries.getValue(source).onEvent(snapshot(cache = !pending, pending = pending), null)
+        sync.run()
+        runCurrent()
+        assertFalse(received.last().isSynced)
+        if (source == "parent") membership.onEvent(parentSnapshot(), null)
+        else queries.getValue(source).onEvent(snapshot(), null)
+        sync.run()
+        runCurrent()
+        assertEquals(listOf(true, false, true), received.map { it.isSynced })
+        job.cancelAndJoin()
+      }
+    }
+  }
+
+  @Test
   fun errorsMalformedRecordsAndRegistrationFailureReleaseListeners() = runTest {
     for (source in
         listOf(
             "parent",
             "parentError",
+            "parentMissing",
             "parentNull",
             "expenses",
             "settlements",
@@ -134,6 +213,7 @@ class FirestoreHouseholdFinanceRepositoryTest {
           FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
       when (source) {
         "parent" -> membership.onEvent(parentSnapshot(type = "PRIVATE"), null)
+        "parentMissing" -> membership.onEvent(parentSnapshot(exists = false), null)
         "parentError" -> membership.onEvent(null, denied)
         "parentNull" -> membership.onEvent(null, null)
         "expenses",
@@ -180,11 +260,16 @@ class FirestoreHouseholdFinanceRepositoryTest {
         `when`(it.hasPendingWrites()).thenReturn(pending)
       }
 
-  private fun parentSnapshot(type: String = "SHARED", cache: Boolean = false): DocumentSnapshot {
-    val metadata = metadata(cache)
+  private fun parentSnapshot(
+      type: String = "SHARED",
+      cache: Boolean = false,
+      pending: Boolean = false,
+      exists: Boolean = true
+  ): DocumentSnapshot {
+    val metadata = metadata(cache, pending)
     return mock(DocumentSnapshot::class.java).also {
       `when`(it.metadata).thenReturn(metadata)
-      `when`(it.exists()).thenReturn(true)
+      `when`(it.exists()).thenReturn(exists)
       `when`(it.get("type")).thenReturn(type)
     }
   }
