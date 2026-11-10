@@ -49,10 +49,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.finance.FirestoreHouseholdExpenseRepository
+import com.android.sharemate.model.finance.HouseholdExpenseRepository
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
@@ -65,6 +68,7 @@ import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
@@ -76,6 +80,9 @@ import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
 import com.android.sharemate.ui.chat.ChatScreen
 import com.android.sharemate.ui.chat.ChatViewModel
+import com.android.sharemate.ui.finance.BALANCES_ROUTE
+import com.android.sharemate.ui.finance.BalancesRoute
+import com.android.sharemate.ui.finance.canViewBalances
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
@@ -98,7 +105,8 @@ open class MainActivity : ComponentActivity() {
   private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
 
   private val authRepository: AuthRepository by lazy {
-    FirebaseAuthRepository(FirebaseAuth.getInstance())
+    FirebaseAuthRepository(
+        FirebaseAuth.getInstance(), FirestorePseudoRepository(FirebaseFirestore.getInstance()))
   }
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
@@ -121,8 +129,16 @@ open class MainActivity : ComponentActivity() {
   private val expirationPreferencesRepository: ExpirationPreferencesRepository by lazy {
     FirebaseExpirationPreferencesRepository(FirebaseFirestore.getInstance())
   }
+  private val expirationPreferencesProvider: ExpirationPreferencesProvider by lazy {
+    ExpirationPreferencesProvider(expirationPreferencesRepository)
+  }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
+
+  protected open fun createHouseholdExpenseRepository(): HouseholdExpenseRepository =
+      FirestoreHouseholdExpenseRepository(FirebaseFirestore.getInstance())
+
+  private val expenseRepository by lazy { createHouseholdExpenseRepository() }
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -253,8 +269,7 @@ open class MainActivity : ComponentActivity() {
                                             photoStorage = FirebasePersonalPhotoRepository.create(),
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
-                                            expirationPreferencesRepository =
-                                                expirationPreferencesRepository,
+                                            expirationPreferences = expirationPreferencesProvider,
                                             pseudoRepository = pseudoRepository)
                                       }
                                     })
@@ -273,9 +288,26 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.RECEIPTS.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECEIPTS)) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          ReceiptsScreen()
+                          ReceiptsScreen(
+                              itemRepository,
+                              session.uid,
+                              household.id,
+                              household.type ==
+                                  com.android.sharemate.model.household.FridgeType.SHARED,
+                              showBalances = household.canViewBalances(session.uid),
+                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) })
                         }
                       }
+                  composable(BALANCES_ROUTE) {
+                    BalancesRoute(
+                        expenseRepository,
+                        householdRepository,
+                        authRepository,
+                        household,
+                        session.uid,
+                        profileRepository,
+                        onBack = { navController.popBackStack() })
+                  }
                   composable(
                       TopLevelDestination.CHAT.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {

@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.auth
 
 import android.net.Uri
@@ -11,30 +12,63 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserInfo
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.*
 
 class FirebaseAuthRepositoryUnitTest {
   private val auth = mock(FirebaseAuth::class.java)
-  private val repository = FirebaseAuthRepository(auth)
+  private val pseudoRepository = mock(PseudoRepository::class.java)
+  private val repository = FirebaseAuthRepository(auth, pseudoRepository)
 
   @Test
   fun forwardsCredentialsForLoginAndSignup() =
       runBlocking<Unit> {
         val result = Tasks.forResult(mock(AuthResult::class.java))
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
         `when`(auth.signInWithEmailAndPassword("student@example.org", " secret "))
             .thenReturn(result)
         `when`(auth.createUserWithEmailAndPassword("new@example.org", "new-secret"))
-            .thenReturn(result)
+            .thenReturn(Tasks.forResult(signupResult))
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
         repository.signIn("student@example.org", " secret ")
-        repository.signUp("new@example.org", "new-secret")
+        repository.signUp("new@example.org", "new-secret", "Student")
+        verify(pseudoRepository).claim("uid", "Student")
         verify(auth).signInWithEmailAndPassword("student@example.org", " secret ")
         verify(auth).createUserWithEmailAndPassword("new@example.org", "new-secret")
+        val request = ArgumentCaptor.forClass(UserProfileChangeRequest::class.java)
+        verify(user).updateProfile(request.capture())
+        assertEquals("Student", request.value.displayName)
+      }
+
+  @Test
+  fun duplicatePseudoStopsSignupBeforeUpdatingFirebaseProfile() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(signupResult))
+        doAnswer { throw AuthException(AuthError.PSEUDO_TAKEN) }
+            .`when`(pseudoRepository)
+            .claim("uid", "Student")
+
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("A duplicate pseudo must be rejected")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.PSEUDO_TAKEN, failure.error)
+        }
+        verify(user, never()).updateProfile(any(UserProfileChangeRequest::class.java))
       }
 
   @Test
@@ -67,11 +101,159 @@ class FirebaseAuthRepositoryUnitTest {
         `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
             .thenReturn(Tasks.forCanceled())
         try {
-          repository.signUp("new@example.org", "secret")
+          repository.signUp("new@example.org", "secret", "Student")
           fail("Cancellation must propagate")
         } catch (expected: CancellationException) {
           assertEquals(CancellationException::class.java, expected.javaClass)
         }
+      }
+
+  @Test
+  fun signupRequiresFirebaseUserAndMapsProfileUpdateFailures() =
+      runBlocking<Unit> {
+        val resultWithoutUser = mock(AuthResult::class.java)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(resultWithoutUser))
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("Signup without a Firebase user must fail")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+          assertNull(failure.cause)
+        }
+
+        val user = user(providers = listOf("firebase", "password"))
+        val signupResult = mock(AuthResult::class.java)
+        `when`(signupResult.user).thenReturn(user)
+        `when`(auth.createUserWithEmailAndPassword("new@example.org", "secret"))
+            .thenReturn(Tasks.forResult(signupResult))
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.signUp("new@example.org", "secret", "Student")
+          fail("A failed profile update must fail signup")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+          assertNull(failure.cause)
+        }
+      }
+
+  @Test
+  fun retryingProfileUpdateChangesExistingUserWithoutCreatingAnotherAccount() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "Student")
+
+        val request = ArgumentCaptor.forClass(UserProfileChangeRequest::class.java)
+        verify(user).updateProfile(request.capture())
+        assertEquals("Student", request.value.displayName)
+        verify(auth, never()).createUserWithEmailAndPassword(anyString(), anyString())
+      }
+
+  @Test
+  fun changingPseudoReleasesPreviousClaimAfterProfileUpdate() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Old Name")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "New Name")
+
+        val order = inOrder(pseudoRepository, user)
+        order.verify(pseudoRepository).claim("uid", "New Name")
+        order.verify(user).updateProfile(any(UserProfileChangeRequest::class.java))
+        order.verify(pseudoRepository).release("uid", "Old Name")
+      }
+
+  @Test
+  fun changingOnlyPseudoCaseKeepsExistingClaim() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Student")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forResult<Void>(null))
+
+        repository.updateCurrentUserDisplayName("uid", "student")
+
+        verify(pseudoRepository).claim("uid", "student")
+        verify(pseudoRepository, never()).release(anyString(), anyString())
+      }
+
+  @Test
+  fun failedProfileUpdateKeepsPreviousPseudoClaim() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("password"), name = "Old Name")
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.updateCurrentUserDisplayName("uid", "New Name")
+          fail("A failed profile update must not release the previous claim")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+        }
+        verify(pseudoRepository).claim("uid", "New Name")
+        verify(pseudoRepository, never()).release(anyString(), anyString())
+      }
+
+  @Test
+  fun retryingProfileUpdateMapsFailuresAndRequiresSignedInUser() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+        `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
+            .thenReturn(Tasks.forException(FirebaseNetworkException("private response")))
+
+        try {
+          repository.updateCurrentUserDisplayName("uid", "Student")
+          fail("A failed profile update must remain retryable")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.NETWORK, failure.error)
+          assertNull(failure.cause)
+        }
+        verify(auth, never()).createUserWithEmailAndPassword(anyString(), anyString())
+
+        `when`(auth.currentUser).thenReturn(null)
+        try {
+          repository.updateCurrentUserDisplayName("uid", "Student")
+          fail("A profile update requires an existing signed-in user")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+        }
+      }
+
+  @Test
+  fun retryingProfileUpdateRejectsAChangedSignedInUser() =
+      runBlocking<Unit> {
+        val user = user(providers = listOf("firebase", "password"))
+        `when`(auth.currentUser).thenReturn(user)
+
+        try {
+          repository.updateCurrentUserDisplayName("different-user", "Student")
+          fail("A profile update must not target a different signed-in user")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.UNKNOWN, failure.error)
+        }
+        verify(user, never()).updateProfile(any(UserProfileChangeRequest::class.java))
+      }
+
+  @Test
+  fun blankGoogleTokenIsRejectedWithoutCallingFirebase() =
+      runBlocking<Unit> {
+        try {
+          repository.signInWithGoogle("  ")
+          fail("A blank Google token must be rejected")
+        } catch (failure: AuthException) {
+          assertEquals(AuthError.INVALID_CREDENTIALS, failure.error)
+        }
+        verifyNoInteractions(auth)
       }
 
   @Test

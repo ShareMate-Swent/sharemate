@@ -437,7 +437,7 @@ class SettingsViewModelTest {
 
     override suspend fun signIn(email: String, password: String) = Unit
 
-    override suspend fun signUp(email: String, password: String) = Unit
+    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
 
     val googleTokens = mutableListOf<String>()
     var googleFailure: Exception? = null

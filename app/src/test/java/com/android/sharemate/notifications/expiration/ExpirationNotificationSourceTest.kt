@@ -7,6 +7,7 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.notifications.AppNotificationChannel
 import com.android.sharemate.notifications.NotificationRecipient
@@ -28,7 +29,7 @@ class ExpirationNotificationSourceTest {
       ExpirationNotificationSource(
           itemRepository = repository,
           recipientProvider = { recipient },
-          preferencesRepository = preferences,
+          preferencesProvider = ExpirationPreferencesProvider(preferences),
           formatter = { summary ->
             formattedSummaries += summary
             NotificationText("title", "${summary.expired.size}/${summary.expiringSoon.size}")

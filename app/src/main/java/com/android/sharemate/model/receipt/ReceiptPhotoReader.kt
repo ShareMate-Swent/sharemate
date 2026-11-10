@@ -17,7 +17,7 @@ class ReceiptPhotoReader(
 ) : ReceiptReader {
   private val appContext = context.applicationContext
 
-  /** An empty list means that no priced products could be read. */
+  /** An empty list means that no reviewable products could be read. */
   override suspend fun read(uri: String): List<ReceiptItem> =
       withContext(dispatcher) {
         val image = InputImage.fromFilePath(appContext, Uri.parse(uri))

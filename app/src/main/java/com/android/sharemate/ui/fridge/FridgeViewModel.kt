@@ -15,6 +15,8 @@ import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
+import com.android.sharemate.model.item.ExpiryStatus
+import com.android.sharemate.model.item.ExpiryStatuses
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -27,8 +29,10 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
-import com.android.sharemate.model.user.ExpirationPreferencesRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
@@ -37,6 +41,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +52,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -68,9 +74,10 @@ class FridgeViewModel(
     private val productCatalogRepository: ProductCatalogRepository,
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
-    private val expirationPreferencesRepository: ExpirationPreferencesRepository? = null,
+    private val expirationPreferences: ExpirationPreferencesProvider,
     private val pseudoRepository: PseudoRepository? = null,
     private val fridgeType: FridgeType,
+    private val today: () -> LocalDate = { LocalDate.now() },
 ) : ViewModel() {
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
@@ -82,14 +89,27 @@ class FridgeViewModel(
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
-  val soonThresholdDays: StateFlow<Long> =
-      (expirationPreferencesRepository?.observe(userId)?.map { it.soonDays.toLong() }
-              ?: flowOf(ExpirationDates.SOON_THRESHOLD_DAYS))
-          .catch { emit(ExpirationDates.SOON_THRESHOLD_DAYS) }
+  private val soonThresholdDays: Flow<Long> =
+      expirationPreferences
+          .observe(userId)
+          .map { it.soonDays.toLong() }
+          .onStart { emit(ExpirationDates.SOON_THRESHOLD_DAYS) }
+          .distinctUntilChanged()
+
+  /**
+   * How close each loaded item, by id, is to its expiration date, according to the user's window.
+   * The screen only displays it. It is worked out when the items or the window change, so it is not
+   * refreshed by the day changing while the screen stays open.
+   */
+  val expiryStatuses: StateFlow<Map<String, ExpiryStatus>> =
+      combine(mutableUiState.map { it.items }.distinctUntilChanged(), soonThresholdDays) {
+              items,
+              soonDays ->
+            ExpiryStatuses.of(items, today(), soonDays)
+          }
           .stateIn(
-              viewModelScope,
-              SharingStarted.WhileSubscribed(5_000),
-              ExpirationDates.SOON_THRESHOLD_DAYS)
+              viewModelScope, SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS), emptyMap())
+
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
@@ -123,7 +143,10 @@ class FridgeViewModel(
                           .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
             }
           }
-          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+          .stateIn(
+              viewModelScope,
+              SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
+              emptyList())
 
   val visibleItems: StateFlow<List<Item>> =
       combine(
@@ -150,7 +173,7 @@ class FridgeViewModel(
           }
           .stateIn(
               scope = viewModelScope,
-              started = SharingStarted.WhileSubscribed(5_000),
+              started = SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
               initialValue = emptyList(),
           )
 

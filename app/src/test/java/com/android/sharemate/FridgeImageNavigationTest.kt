@@ -24,6 +24,8 @@ import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FakeItemRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.ui.navigation.TopLevelDestination
@@ -152,15 +154,17 @@ class FridgeImageNavigationTest {
                                 selector,
                                 BarcodeScanner { BarcodeScanResult.NotFound },
                                 testProductCatalogRepository(),
+                                expirationPreferences =
+                                    ExpirationPreferencesProvider(
+                                        FakeExpirationPreferencesRepository()),
                                 fridgeType = FridgeType.SHARED)
                           }
                         })
             Text("Fridge")
           }
-          composable(TopLevelDestination.RECIPES.route) { Text("Recipes") }
-          composable(TopLevelDestination.RECEIPTS.route) { Text("Receipts") }
-          composable(TopLevelDestination.CHAT.route) { Text("Chat") }
-          composable(TopLevelDestination.SETTINGS.route) { Text("Settings") }
+          TopLevelDestination.entries
+              .filterNot { it == TopLevelDestination.FRIDGE }
+              .forEach { destination -> composable(destination.route) { Text(destination.textId) } }
         }
       } else Text("Signed out")
     }

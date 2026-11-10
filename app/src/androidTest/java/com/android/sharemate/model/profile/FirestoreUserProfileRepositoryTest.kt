@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import androidx.test.core.app.ApplicationProvider
@@ -8,6 +9,7 @@ import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.user.FirebasePseudoRepository
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -225,6 +227,20 @@ class FirestoreUserProfileRepositoryTest {
     assertDenied(profileReference(userId).set(mapOf("email" to "someone@example.com")))
     assertDenied(profileReference(userId).set(mapOf("displayName" to 42)))
     assertDenied(profileReference(userId).delete())
+  }
+
+  @Test
+  fun profileDisplayNameLengthIsLimitedOnCreateAndUpdate() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val profile = profileReference(userId)
+    val maxName = "😀".repeat(MAX_PSEUDO_LENGTH)
+    val tooLong = "x".repeat(MAX_PSEUDO_LENGTH + 1)
+
+    assertDenied(profile.set(mapOf("displayName" to tooLong)))
+    Tasks.await(profile.set(mapOf("displayName" to maxName)))
+    assertDenied(profile.update("displayName", tooLong))
+    assertDenied(profile.update("displayName", "😀".repeat(MAX_PSEUDO_LENGTH + 1)))
+    Tasks.await(profile.update("displayName", "x"))
   }
 
   /** Creates a household whose creator saved a profile, leaving the creator signed in. */

@@ -14,5 +14,9 @@ class MainUserFlowTestActivity : MainActivity() {
       FoodImageSelector(
           object : FoodImageRepository {
             override suspend fun searchByTitle(title: String) = imageLookup(title)
+
+            /** Uses the configured fixture lookup; [candidateLimit] does not change its result. */
+            override suspend fun searchByTitle(title: String, candidateLimit: Int) =
+                imageLookup(title)
           })
 }

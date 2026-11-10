@@ -139,9 +139,9 @@ class FirebaseExpirationPreferencesRepositoryTest {
   }
 
   @Test
-  fun saveWritesASanitizedMapIntoTheUserDocumentWithoutErasingOtherFields() = runTest {
+  fun saveWritesTheValuesIntoTheUserDocumentWithoutErasingOtherFields() = runTest {
     repository.save(
-        USER, ExpirationPreferences(soonDays = 90, soonRepeatDays = null, expiredRepeatDays = 0))
+        USER, ExpirationPreferences(soonDays = 60, soonRepeatDays = null, expiredRepeatDays = 30))
 
     val (data, options) = writes.single()
     assertEquals(SetOptions.merge(), options)
@@ -152,7 +152,7 @@ class FirebaseExpirationPreferencesRepositoryTest {
                     UserExpirationFields.SOON_DAYS to ExpirationPreferences.SOON_DAYS_RANGE.last,
                     UserExpirationFields.SOON_REPEAT_DAYS to UserExpirationFields.NEVER,
                     UserExpirationFields.EXPIRED_REPEAT_DAYS to
-                        ExpirationPreferences.REPEAT_DAYS_RANGE.first)),
+                        ExpirationPreferences.REPEAT_DAYS_RANGE.last)),
         data)
   }
 
