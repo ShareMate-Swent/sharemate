@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
 import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
 import com.android.sharemate.model.household.Household
@@ -70,7 +71,7 @@ class SettlementFlowEmulatorTest {
         BalancesRoute(
             finances,
             HouseholdRepositoryFirestore(firestore),
-            FirebaseAuthRepository(FirebaseEmulator.auth),
+            FirebaseAuthRepository(FirebaseEmulator.auth, FirestorePseudoRepository(firestore)),
             home,
             payer,
             profiles,
