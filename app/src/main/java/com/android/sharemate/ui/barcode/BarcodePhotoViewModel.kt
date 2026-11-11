@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import androidx.lifecycle.SavedStateHandle
@@ -29,6 +30,7 @@ data class BarcodePhotoState(
     val failed: Boolean = false,
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
+    val fromCamera: Boolean = false,
 )
 
 class BarcodePhotoViewModel(
@@ -39,6 +41,7 @@ class BarcodePhotoViewModel(
       MutableStateFlow(
           BarcodePhotoState(
               uri = savedState[IMAGE_KEY],
+              fromCamera = savedState[CAMERA_KEY] ?: false,
               confirmed = savedState[CONFIRMED_KEY] ?: false,
               visible = savedState[VISIBLE_KEY] ?: false,
               page =
@@ -90,7 +93,8 @@ class BarcodePhotoViewModel(
   }
 
   fun select(uri: String?) {
-    if (uri != null && state.value.visible) runOperation { replace(store.importImage(uri)) }
+    if (uri != null && state.value.visible)
+        runOperation { replace(store.importImage(uri), fromCamera = false) }
   }
 
   fun capture(takePicture: suspend (String) -> Unit) {
@@ -100,7 +104,7 @@ class BarcodePhotoViewModel(
       try {
         takePicture(uri)
         store.validate(uri)
-        replace(uri)
+        replace(uri, fromCamera = true)
       } catch (failure: Throwable) {
         withContext(NonCancellable) { store.delete(uri) }
         throw failure
@@ -136,6 +140,7 @@ class BarcodePhotoViewModel(
     if (state.value.busy) return
     val uri = state.value.uri
     savedState[IMAGE_KEY] = null
+    savedState[CAMERA_KEY] = null
     savedState[CONFIRMED_KEY] = false
     savedState[VISIBLE_KEY] = false
     mutableState.value = BarcodePhotoState()
@@ -155,11 +160,14 @@ class BarcodePhotoViewModel(
     }
   }
 
-  private suspend fun replace(uri: String) {
+  private suspend fun replace(uri: String, fromCamera: Boolean) {
     val previous = state.value.uri
     savedState[IMAGE_KEY] = uri
+    savedState[CAMERA_KEY] = fromCamera
     savedState[CONFIRMED_KEY] = false
-    mutableState.update { it.copy(uri = uri, page = PhotoPage.PREVIEW, confirmed = false) }
+    mutableState.update {
+      it.copy(uri = uri, page = PhotoPage.PREVIEW, confirmed = false, fromCamera = fromCamera)
+    }
     if (previous != null && previous != uri) withContext(NonCancellable) { store.delete(previous) }
   }
 
@@ -192,6 +200,7 @@ class BarcodePhotoViewModel(
 
   companion object {
     const val IMAGE_KEY = "barcodePhotoUri"
+    const val CAMERA_KEY = "barcodePhotoFromCamera"
     const val CONFIRMED_KEY = "barcodePhotoConfirmed"
     const val VISIBLE_KEY = "barcodePhotoVisible"
   }

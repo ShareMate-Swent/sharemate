@@ -81,27 +81,28 @@ fun CreateHouseholdScreen(
     onBack: () -> Unit,
 ) {
   val state = viewModel.state.collectAsState().value
-  Column(
-      modifier =
-          Modifier.fillMaxSize()
-              .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(
-                  horizontal = Dimens.screenHorizontalPadding,
-                  vertical = Dimens.screenVerticalPadding),
-  ) {
-    if (state.inviteCode == null) {
-      BoxWithConstraints(Modifier.fillMaxSize()) {
-        Column(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .heightIn(min = maxHeight),
-        ) {
-          CreateHouseholdForm(state, viewModel, onBack)
+  Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Column(
+        modifier =
+            Modifier.fillMaxSize()
+                .padding(
+                    horizontal = Dimens.screenHorizontalPadding,
+                    vertical = Dimens.screenVerticalPadding),
+    ) {
+      if (state.inviteCode == null) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+          Column(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .verticalScroll(rememberScrollState())
+                      .heightIn(min = maxHeight),
+          ) {
+            CreateHouseholdForm(state, viewModel, onBack)
+          }
         }
+      } else {
+        HouseholdReady(state.inviteCode, state.type, onContinue)
       }
-    } else {
-      HouseholdReady(state.inviteCode, state.type, onContinue)
     }
   }
 }
