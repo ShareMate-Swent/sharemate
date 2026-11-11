@@ -144,7 +144,7 @@ class FridgePersonalPhotoTest {
   }
 
   @Test
-  fun cancellingPersonalSelectionDiscardsPhotoAndRestoresSharedDraft() = runTest {
+  fun cancellingSelectionDiscardsPhotoAndRestoresPersonalDraft() = runTest {
     selectPhoto()
     viewModel.updateSharing(ItemSharing.PERSONAL)
     viewModel.dismissAddItemDialog()
@@ -154,7 +154,7 @@ class FridgePersonalPhotoTest {
     assertTrue(items.addedItems.isEmpty())
     assertEquals(0, uploaded)
     viewModel.openAddItemDialog()
-    assertEquals(ItemSharing.SHARED, viewModel.uiState.value.itemSharing)
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
   }
 
   @Test
