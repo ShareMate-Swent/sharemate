@@ -1,4 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -20,9 +22,12 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -30,12 +35,17 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -157,7 +167,7 @@ class FridgeScreenTest {
         .assertTextEquals("No items match the selected filters.")
     item("banana").assertDoesNotExist()
 
-    filterChip("Owner: alice").assertIsDisplayed().performClick()
+    filterChip("Owner: Alice").assertIsDisplayed().performClick()
     compose.onNodeWithTag("fridge_filter_owner_all").performClick()
     item("carrot").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
@@ -198,7 +208,20 @@ class FridgeScreenTest {
               "household",
               FoodImageSelector(imageRepository),
               testBarcodeScanner(),
-              testProductCatalogRepository())
+              testProductCatalogRepository(),
+              pseudoRepository =
+                  object : PseudoRepository {
+                    override fun observePseudos(userIds: Set<String>) =
+                        flowOf(userIds.associateWith { it.replaceFirstChar(Char::uppercase) })
+
+                    override suspend fun getPseudo(userId: String): String? = null
+
+                    override suspend fun setPseudo(userId: String, pseudo: String) = Unit
+                  },
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
+              fridgeType = FridgeType.SHARED)
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {
@@ -227,11 +250,16 @@ class FridgeScreenTest {
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        inventory.map { items -> items.filter { it.ownerId == userId && it.householdId == null } }
+    override fun addItems(submission: InventorySubmission): ItemWrite =
+        error("Batch saves are not used in this test")
+
+    override fun observeSubmission(
+        submission: InventorySubmission
+    ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+        error("Submission observation is not used in this test")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

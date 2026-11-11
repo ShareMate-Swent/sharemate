@@ -1,5 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,9 @@ import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -36,6 +41,9 @@ import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.resources.C
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -61,12 +69,16 @@ class FridgeScreenTest {
 
   @Test
   fun phoneGridHasThreeSquareTilesPerRowAndRealMetadata() {
-    val items = (1..4).map { Item(id = "$it", name = "Food $it", quantity = it) }
+    val items =
+        (1..4).map {
+          Item(id = "$it", name = "Food $it", quantity = it, householdId = "household-1")
+        }
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(360.dp),
-            uiState = FridgeUiState(items = items))
+            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
+            expiryStatuses = emptyMap())
       }
     }
     val squares =
@@ -95,13 +107,13 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun typeLabelFollowsExplicitTypeAndDisappearsWhenUnknown() {
-    val type = mutableStateOf<FridgeType?>(null)
+  fun typeLabelFollowsTheFridgeType() {
+    val type = mutableStateOf(FridgeType.PRIVATE)
     composeRule.setContent {
-      MaterialTheme { FridgeScreen(uiState = FridgeUiState(), fridgeType = type.value) }
+      MaterialTheme {
+        FridgeScreen(uiState = FridgeUiState(fridgeType = type.value), expiryStatuses = emptyMap())
+      }
     }
-    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
-    composeRule.runOnIdle { type.value = FridgeType.PRIVATE }
     composeRule
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
@@ -111,8 +123,6 @@ class FridgeScreenTest {
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Shared")
-    composeRule.runOnIdle { type.value = null }
-    composeRule.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
   }
 
   @Test
@@ -121,9 +131,10 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeItem(
-            item = Item(id = "milk", name = "Milk"),
+            item = Item(id = "milk", name = "Milk", householdId = "household-1"),
             statusEnabled = true,
-            onStatusChange = { changes += it })
+            onStatusChange = { changes += it },
+            expiryStatus = ExpiryStatus.NORMAL)
       }
     }
     openActions("milk")
@@ -138,7 +149,7 @@ class FridgeScreenTest {
 
   @Test
   fun activeScreenHidesHistoryAndDisablesActionsDuringLocalSubmission() {
-    val item = Item(id = "milk", name = "Milk")
+    val item = Item(id = "milk", name = "Milk", householdId = "household-1")
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
@@ -149,9 +160,11 @@ class FridgeScreenTest {
                             item,
                             item.copy(id = "eaten", status = ItemStatus.EATEN),
                             item.copy(id = "discarded", status = ItemStatus.DISCARDED)),
-                    pendingStatusIds = setOf(item.id)),
+                    pendingStatusIds = setOf(item.id),
+                    fridgeType = FridgeType.SHARED),
             onStatusChange = { _, _ -> },
-            onEditItem = {})
+            onEditItem = {},
+            expiryStatuses = emptyMap())
       }
     }
     openActions(item.id)
@@ -168,7 +181,7 @@ class FridgeScreenTest {
   fun deleteConfirmationCancelsAndQueuesCorrectItemOfflineWithoutAffectingOtherActions() {
     Dispatchers.setMain(UnconfinedTestDispatcher())
     val repository = com.android.sharemate.model.item.FakeItemRepository()
-    val milk = Item(id = "milk", name = "Milk", householdId = HOUSEHOLD_ID)
+    val milk = Item(id = "milk", name = "Milk", ownerId = USER_ID, householdId = HOUSEHOLD_ID)
     val bread = milk.copy(id = "bread", name = "Bread")
     repository.emitItems(listOf(milk, bread))
     val confirmation = CompletableDeferred<Result<Unit>>()
@@ -184,7 +197,10 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -224,12 +240,18 @@ class FridgeScreenTest {
     val state =
         mutableStateOf(
             FridgeUiState(
-                removalSyncError = error, pendingRemovalItem = Item(id = "bread", name = "Bread")))
+                removalSyncError = error,
+                pendingRemovalItem =
+                    Item(id = "bread", name = "Bread", householdId = "household-1"),
+                fridgeType = FridgeType.SHARED))
     val dismissed = mutableListOf<FridgeRemovalSyncError>()
     composeRule.mainClock.autoAdvance = false
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = state.value, onDismissRemovalSyncError = { dismissed += it })
+        FridgeScreen(
+            uiState = state.value,
+            onDismissRemovalSyncError = { dismissed += it },
+            expiryStatuses = emptyMap())
       }
     }
     composeRule.mainClock.advanceTimeBy(9_000)
@@ -251,10 +273,16 @@ class FridgeScreenTest {
   @Test
   fun eachItemExposesAnAccessibleRemoveActionForItsOwnId() {
     val requests = mutableListOf<String>()
-    val items = listOf(Item(id = "milk", name = "Milk"), Item(id = "bread", name = "Bread"))
+    val items =
+        listOf(
+            Item(id = "milk", name = "Milk", householdId = "household-1"),
+            Item(id = "bread", name = "Bread", householdId = "household-1"))
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(items = items), onRemoveItem = { requests += it })
+        FridgeScreen(
+            uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
+            onRemoveItem = { requests += it },
+            expiryStatuses = emptyMap())
       }
     }
 
@@ -280,7 +308,12 @@ class FridgeScreenTest {
   fun removeActionIsDisabledWithoutRuntimeWiring() {
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(items = listOf(Item(id = "milk", name = "Milk"))))
+        FridgeScreen(
+            uiState =
+                FridgeUiState(
+                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
+                    fridgeType = FridgeType.SHARED),
+            expiryStatuses = emptyMap())
       }
     }
     openActions("milk")
@@ -293,8 +326,12 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeScreen(
             uiState =
-                FridgeUiState(items = listOf(Item(id = "milk", name = "Milk")), isDeleting = true),
-            onRemoveItem = {})
+                FridgeUiState(
+                    items = listOf(Item(id = "milk", name = "Milk", householdId = "household-1")),
+                    isDeleting = true,
+                    fridgeType = FridgeType.SHARED),
+            onRemoveItem = {},
+            expiryStatuses = emptyMap())
       }
     }
     openActions("milk")
@@ -304,7 +341,12 @@ class FridgeScreenTest {
 
   @Test
   fun defaultScreenShowsInventoryAndDisabledCategoryControls() {
-    composeRule.setContent { MaterialTheme { FridgeScreen() } }
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
+      }
+    }
 
     composeRule.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
     composeRule.onNodeWithTag(C.Tag.fridge_empty).assertIsDisplayed()
@@ -332,8 +374,18 @@ class FridgeScreenTest {
     val repository =
         FakeItemRepository(
             listOf(
-                Item(id = "milk", name = "Milk", category = "Dairy", ownerId = "owner-1"),
-                Item(id = "bread", name = "Bread", category = "Bakery", ownerId = "owner-2")))
+                Item(
+                    id = "milk",
+                    name = "Milk",
+                    category = "Dairy",
+                    ownerId = "owner-1",
+                    householdId = "household-1"),
+                Item(
+                    id = "bread",
+                    name = "Bread",
+                    category = "Bakery",
+                    ownerId = "owner-2",
+                    householdId = "household-1")))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -345,7 +397,11 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")),
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -360,9 +416,12 @@ class FridgeScreenTest {
     assertEquals("Dairy", viewModel.selectedCategory.value)
 
     composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithText("Alice").assertExists()
+    composeRule.onNodeWithText("Unknown member (15321b2a)").assertExists()
+    composeRule.onNodeWithText("owner-1").assertDoesNotExist()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
-    composeRule.onNodeWithText("Owner: owner-1").performClick()
+    composeRule.onNodeWithText("Owner: Alice").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_all").performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals("Dairy", viewModel.selectedCategory.value)
@@ -374,13 +433,14 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun categoryChipRemainsUniqueWhenItemLabelsMatch() {
+  fun unknownOwnersWithCollidingCodesRemainDistinctAndFilterById() {
+    val first = "unknown-100013"
+    val second = "unknown-20928"
     val repository =
         FakeItemRepository(
             listOf(
-                Item(id = "apple", name = "Apple", category = "Fruits"),
-                Item(id = "banana", name = "Banana", category = "Fruits"),
-                Item(id = "carrot", name = "Carrot", category = "Vegetables")))
+                Item(id = "milk", name = "Milk", ownerId = first, householdId = HOUSEHOLD_ID),
+                Item(id = "bread", name = "Bread", ownerId = second, householdId = HOUSEHOLD_ID)))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -392,7 +452,75 @@ class FridgeScreenTest {
             HOUSEHOLD_ID,
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
+    composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
+    composeRule.waitForIdle()
+
+    composeRule.onNodeWithText("Owner").performClick()
+    composeRule.onNodeWithText("Unknown member (97dcd513-1)").assertExists()
+    composeRule.onNodeWithText("Unknown member (97dcd513-2)").assertExists()
+    composeRule.onNodeWithText(first).assertDoesNotExist()
+    composeRule.onNodeWithText(second).assertDoesNotExist()
+    composeRule.onNodeWithTag("fridge_filter_owner_$first").performClick()
+    assertEquals(first, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Milk").assertExists()
+    composeRule.onNodeWithText("Bread").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-1)").assertExists().performClick()
+    composeRule.onNodeWithTag("fridge_filter_owner_$second").performClick()
+    assertEquals(second, viewModel.selectedOwnerId.value)
+    composeRule.onNodeWithText("Bread").assertExists()
+    composeRule.onNodeWithText("Milk").assertDoesNotExist()
+    composeRule.onNodeWithText("Owner: Unknown member (97dcd513-2)").assertExists()
+  }
+
+  @Test
+  fun ownerFallbackCodesAreDistinctAndStableForShortAndCollidingIds() {
+    val ids = listOf("a", "b", "unknown-20928", "unknown-100013")
+    val codes = ownerFallbackCodes(ids)
+
+    assertEquals(ids.size, codes.values.toSet().size)
+    assertEquals(codes, ownerFallbackCodes(ids.reversed()))
+    assertEquals("ca978112", codes["a"])
+    assertEquals("3e23e816", codes["b"])
+    assertEquals("97dcd513-1", codes["unknown-100013"])
+    assertEquals("97dcd513-2", codes["unknown-20928"])
+  }
+
+  @Test
+  fun categoryChipRemainsUniqueWhenItemLabelsMatch() {
+    val repository =
+        FakeItemRepository(
+            listOf(
+                Item(
+                    id = "apple", name = "Apple", category = "Fruits", householdId = "household-1"),
+                Item(
+                    id = "banana",
+                    name = "Banana",
+                    category = "Fruits",
+                    householdId = "household-1"),
+                Item(
+                    id = "carrot",
+                    name = "Carrot",
+                    category = "Vegetables",
+                    householdId = "household-1")))
+    val imageRepository =
+        object : FoodImageRepository {
+          override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
+        }
+    val viewModel =
+        FridgeViewModel(
+            repository,
+            USER_ID,
+            HOUSEHOLD_ID,
+            FoodImageSelector(imageRepository),
+            testBarcodeScanner(),
+            testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {
@@ -414,12 +542,14 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
             sortOrder = FridgeSortOrder.NAME,
             categories = categories,
             selectedCategory = selectedCategory.value,
             onSortOrderChange = {},
             onCategoryFilterChange = { selectedCategory.value = it },
-            onOwnerFilterChange = {})
+            onOwnerFilterChange = {},
+            expiryStatuses = emptyMap())
       }
     }
     composeRule.onNodeWithTag("fridge_filter_category_all").assertIsSelected()
@@ -443,7 +573,10 @@ class FridgeScreenTest {
     var requests = 0
     composeRule.setContent {
       MaterialTheme {
-        FridgeScreen(uiState = FridgeUiState(isSaving = isSaving.value), onAddItem = { requests++ })
+        FridgeScreen(
+            uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = FridgeType.SHARED),
+            onAddItem = { requests++ },
+            expiryStatuses = emptyMap())
       }
     }
     composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
@@ -461,10 +594,13 @@ class FridgeScreenTest {
       MaterialTheme {
         Column {
           FridgeItem(
-              item = itemExpiringIn(-1), modifier = androidx.compose.ui.Modifier.width(100.dp))
+              item = itemExpiringIn(-1),
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              expiryStatus = ExpiryStatus.EXPIRED)
           FridgeItem(
               item = itemExpiringIn(3).copy(id = "soon"),
-              modifier = androidx.compose.ui.Modifier.width(100.dp))
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              expiryStatus = ExpiryStatus.SOON)
         }
       }
     }
@@ -474,10 +610,13 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun doesNotMarkItemsExpiringAfterThreeDaysAsSoon() {
+  fun doesNotHighlightAnItemWhoseStatusIsNormal() {
     composeRule.setContent {
       MaterialTheme {
-        FridgeItem(item = itemExpiringIn(4), modifier = androidx.compose.ui.Modifier.width(100.dp))
+        FridgeItem(
+            item = itemExpiringIn(4),
+            modifier = androidx.compose.ui.Modifier.width(100.dp),
+            expiryStatus = ExpiryStatus.NORMAL)
       }
     }
 
@@ -494,8 +633,14 @@ class FridgeScreenTest {
       composeRule.setContent {
         MaterialTheme {
           FridgeItem(
-              item = Item(id = "utc-item", name = "Milk", expirationDate = expiration),
-              modifier = androidx.compose.ui.Modifier.width(100.dp))
+              item =
+                  Item(
+                      id = "utc-item",
+                      name = "Milk",
+                      expirationDate = expiration,
+                      householdId = "household-1"),
+              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              expiryStatus = ExpiryStatus.NORMAL)
         }
       }
       composeRule
@@ -518,14 +663,21 @@ class FridgeScreenTest {
       Item(
           id = "milk",
           name = "Milk",
-          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
+          expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)),
+          householdId = "household-1")
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> = MutableStateFlow(emptyList())
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = sharedItems
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> = sharedItems
+    override fun addItems(submission: InventorySubmission): ItemWrite =
+        error("Batch saves are not used in this test")
+
+    override fun observeSubmission(
+        submission: InventorySubmission
+    ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+        error("Submission observation is not used in this test")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

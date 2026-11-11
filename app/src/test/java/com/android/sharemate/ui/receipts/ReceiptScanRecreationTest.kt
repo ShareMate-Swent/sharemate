@@ -73,7 +73,7 @@ class ReceiptScanRecreationTest {
                     viewModelFactory {
                       initializer { BarcodePhotoViewModel(store, SavedStateHandle()) }
                     })
-        MaterialTheme { ReceiptScanFlow(photo, reader) }
+        MaterialTheme { ReceiptScanFlow(photo, reader = reader) }
       }
       compose.setContent(content)
       compose.onNodeWithText(firstActivity.getString(R.string.scan_receipt)).performClick()

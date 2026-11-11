@@ -1,29 +1,42 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Interface définissant les opérations possibles sur les Items. Conformément à l'architecture,
- * cette interface abstrait la source de données (Firestore).
+ * Operations available on items. In line with the architecture, this interface abstracts the data
+ * source (Firestore).
  */
 interface ItemRepository {
 
   /**
-   * Récupère un flux (Flow) réactif de tous les items privés de l'utilisateur. Le Flow
-   * s'actualisera automatiquement si les données changent en local ou sur le serveur.
+   * Reactive stream of the items of a household fridge that [userId] may see: every SHARED item of
+   * the household plus the PERSONAL items owned by [userId]. The personal items of other members
+   * are never returned. Blank arguments give an empty stream.
+   *
+   * The server only accepts this query from a current member of the household: it fails with a
+   * permission error for a user who left it or never belonged to it.
    */
-  fun getPrivateItems(userId: String): Flow<List<Item>>
-
-  /** Récupère un flux (Flow) réactif des items du foyer, SHARED comme PERSONAL. */
-  fun getSharedItems(householdId: String): Flow<List<Item>>
+  fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
 
   /**
-   * Ajoute un nouvel item (privé ou partagé selon si householdId est défini).
+   * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to
+   * its owner or shared with the household.
    *
-   * @return L'ID généré de l'item, ou null en cas d'erreur.
+   * @return The generated item ID, or null on error.
    */
   suspend fun addItem(item: Item): String?
+
+  /**
+   * Atomically creates the reviewed inventory rows and a private immutable submission marker.
+   * Returns after SDK submission, including offline. Await Queued.confirmation for server success.
+   * Reusing an acknowledged identity is rejected atomically instead of overwriting inventory.
+   */
+  fun addItems(submission: InventorySubmission): ItemWrite
+
+  /** Observes a private marker across process restart without replaying any writes. */
+  fun observeSubmission(submission: InventorySubmission): Flow<InventorySubmissionStatus>
 
   /**
    * Attaches a lookup result only if the item still exists, its persisted name exactly matches
@@ -40,7 +53,7 @@ interface ItemRepository {
       image: ItemImage
   ): ItemImageUpdateResult
 
-  /** Supprime un item spécifique. */
+  /** Deletes a specific item. */
   suspend fun deleteItem(itemId: String): Boolean
 
   /**

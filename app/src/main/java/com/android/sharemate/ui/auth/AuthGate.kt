@@ -8,6 +8,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,6 +20,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.model.auth.AuthSession
 import kotlinx.coroutines.launch
+
+/** Test tag for the progress indicator shown while an authenticated operation is finishing. */
+internal const val AUTH_GATE_LOADING_TEST_TAG = "auth_gate_loading"
 
 /** Keeps application content hidden until Firebase has restored or established a session. */
 @Composable
@@ -39,6 +43,16 @@ fun AuthGate(
             }
           }
         }
+    session != null && state.isLoading ->
+        AuthTheme(updateSystemBars = true) {
+          Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+              CircularProgressIndicator(Modifier.testTag(AUTH_GATE_LOADING_TEST_TAG))
+            }
+          }
+        }
+    session != null && state.pendingProfileUpdate != null ->
+        AuthEntryFlow(viewModel, state, modifier, googleTokenProvider)
     session != null -> content(session)
     else -> AuthEntryFlow(viewModel, state, modifier, googleTokenProvider)
   }
@@ -52,25 +66,29 @@ private fun AuthEntryFlow(
     googleTokenProvider: suspend () -> String?,
 ) {
   val scope = rememberCoroutineScope()
-  var showForm by rememberSaveable { mutableStateOf(false) }
+  var showForm by rememberSaveable { mutableStateOf(state.pendingProfileUpdate != null) }
   val goBack = {
-    if (!state.isLoading) {
+    if (!state.isLoading && state.pendingProfileUpdate == null) {
       viewModel.resetForm()
       showForm = false
     }
   }
-  BackHandler(enabled = showForm, onBack = goBack)
+  LaunchedEffect(state.pendingProfileUpdate) {
+    if (state.pendingProfileUpdate != null) showForm = true
+  }
+  BackHandler(enabled = showForm && state.pendingProfileUpdate == null, onBack = goBack)
   AuthTheme(updateSystemBars = true) {
     if (showForm) {
       AuthScreen(
           state = state,
           onEmailChange = viewModel::updateEmail,
+          onPseudoChange = viewModel::updatePseudo,
           onPasswordChange = viewModel::updatePassword,
           onConfirmPasswordChange = viewModel::updateConfirmPassword,
           onSubmit = viewModel::submit,
           onSwitchMode = viewModel::switchMode,
           modifier = modifier,
-          onBack = goBack)
+          onBack = goBack.takeIf { state.pendingProfileUpdate == null })
     } else {
       AuthWelcomeScreen(
           onLogIn = {

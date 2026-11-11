@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.expiration
 
 import androidx.test.core.app.ApplicationProvider
@@ -14,7 +15,8 @@ class ResourceExpirationNotificationFormatterTest {
       ResourceExpirationNotificationFormatter(
           ApplicationProvider.getApplicationContext<android.content.Context>().resources)
 
-  private fun items(count: Int) = List(count) { Item(id = "$it", name = "item $it") }
+  private fun items(count: Int) =
+      List(count) { Item(id = "$it", name = "item $it", householdId = "household-1") }
 
   @Test
   fun describesExpiredItems() {

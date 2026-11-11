@@ -1,11 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
@@ -22,31 +25,26 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   private val items
     get() = firestore.collection(FirestoreCollections.ITEMS)
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> =
-      if (userId.isBlank()) {
+  override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+      if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(items.whereEqualTo("ownerId", userId).whereEqualTo("householdId", null)) {
-          it.filter { item -> item.householdId == null }
-        }
-      }
-
-  override fun getSharedItems(householdId: String): Flow<List<Item>> =
-      if (householdId.isBlank()) {
-        flowOf(emptyList())
-      } else {
-        observe(items.whereEqualTo("householdId", householdId))
+        // The security rules only accept a query whose every result the caller may read, so it
+        // must name both the household and either the shared items or the caller's own items.
+        observe(
+            items.where(
+                Filter.and(
+                    Filter.equalTo("householdId", householdId),
+                    Filter.or(
+                        Filter.equalTo("sharing", ItemSharing.SHARED.name),
+                        Filter.equalTo("ownerId", userId)))))
       }
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null
     return try {
       val document = items.document()
-      val savedItem =
-          item.copy(
-              id = document.id,
-              name = item.name.trim(),
-              householdId = item.householdId?.takeIf { it.isNotBlank() })
+      val savedItem = item.copy(id = document.id, name = item.name.trim())
       document.set(savedItem).await()
       document.id
     } catch (cancelled: CancellationException) {
@@ -55,6 +53,74 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       null
     }
   }
+
+  override fun addItems(submission: InventorySubmission): ItemWrite =
+      submit(submission.id) {
+        require(!submission.draft) { "A retained draft must be validated before submission" }
+        val batch = firestore.batch()
+        submission.items.forEachIndexed { index, row ->
+          val item =
+              Item(
+                  id = submission.itemId(index),
+                  name = row.name,
+                  quantity = row.quantity,
+                  ownerId = submission.ownerId,
+                  householdId = submission.householdId,
+                  sharing = ItemSharing.SHARED,
+                  status = ItemStatus.ACTIVE)
+          batch.set(items.document(item.id), item)
+        }
+        batch.set(submissionDocument(submission.ownerId, submission.id), submission.markerData())
+        batch.commit()
+      }
+
+  private fun InventorySubmission.markerData() =
+      mapOf(
+          InventorySubmissionFields.ID to id,
+          InventorySubmissionFields.OWNER to ownerId,
+          InventorySubmissionFields.HOUSEHOLD to householdId,
+          InventorySubmissionFields.ROWS to
+              items.map { row ->
+                mapOf(
+                    InventorySubmissionFields.ID to row.id,
+                    InventorySubmissionFields.NAME to row.name,
+                    InventorySubmissionFields.QUANTITY to row.quantity.toLong(),
+                    InventorySubmissionFields.PRICE to row.priceCents)
+              })
+
+  override fun observeSubmission(submission: InventorySubmission): Flow<InventorySubmissionStatus> =
+      callbackFlow {
+            val listener =
+                submissionDocument(submission.ownerId, submission.id).addSnapshotListener(
+                    MetadataChanges.INCLUDE) { snapshot, error ->
+                      if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                      }
+                      if (snapshot == null) return@addSnapshotListener
+                      trySend(
+                          when {
+                            snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites() ->
+                                InventorySubmissionStatus.PENDING
+                            snapshot.exists() && snapshot.data == submission.markerData() ->
+                                InventorySubmissionStatus.CONFIRMED
+                            snapshot.exists() -> {
+                              close(IllegalStateException("Submission data does not match"))
+                              return@addSnapshotListener
+                            }
+                            else -> InventorySubmissionStatus.MISSING
+                          })
+                    }
+            awaitClose { listener.remove() }
+          }
+          .distinctUntilChanged()
+
+  private fun submissionDocument(ownerId: String, submissionId: String) =
+      firestore
+          .collection(FirestoreCollections.USERS)
+          .document(ownerId)
+          .collection(InventorySubmissionFields.COLLECTION)
+          .document(submissionId)
 
   override suspend fun updateItemImageIfAbsent(
       itemId: String,
@@ -111,7 +177,11 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   }
 
   override fun setItemSharing(itemId: String, sharing: ItemSharing): ItemWrite =
-      submit(itemId) { items.document(itemId).update("sharing", sharing.name) }
+      submit(itemId) {
+        items
+            .document(itemId)
+            .update(mapOf("sharing" to sharing.name, "shared" to FieldValue.delete()))
+      }
 
   override fun setItemStatus(itemId: String, status: ItemStatus): ItemWrite =
       submit(itemId) { items.document(itemId).update("status", status.name) }
@@ -181,7 +251,14 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
       val status = ItemStatus.values().firstOrNull { it.name == get("status") }
       val householdId = getString("householdId")?.takeIf { it.isNotBlank() }
       val sharing = ItemSharing.values().firstOrNull { it.name == get("sharing") }
-      if (name == null || ownerId == null || quantity == null || status == null || sharing == null)
+      // Items without a household predate the rule that every item belongs to one; they are
+      // skipped rather than guessed at.
+      if (name == null ||
+          ownerId == null ||
+          householdId == null ||
+          quantity == null ||
+          status == null ||
+          sharing == null)
           null
       else
           Item(

@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -8,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -21,20 +24,27 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -371,12 +381,52 @@ class ManualItemCreationTest {
     }
   }
 
+  @Test
+  fun newItemIsPersonalUnlessSharedExplicitlyInASharedFridge() {
+    val repository = TestItemRepository()
+    val viewModel = showManualEntryScreen(repository, fridgeType = FridgeType.SHARED)
+    for ((name, share) in listOf("Private milk" to false, "Shared bread" to true)) {
+      composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).assertIsDisplayed().assertIsOff()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(name)
+      Espresso.closeSoftKeyboard()
+      if (share) {
+        composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).performClick()
+        composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).assertIsOn()
+      }
+      composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+      composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isAddItemDialogOpen }
+    }
+    composeTestRule.runOnIdle {
+      assertEquals(
+          listOf(ItemSharing.PERSONAL, ItemSharing.SHARED),
+          repository.submissions.map { it.sharing })
+    }
+  }
+
+  @Test
+  fun privateFridgeDoesNotOfferToShareAnItem() {
+    val repository = TestItemRepository()
+    val viewModel = showManualEntryScreen(repository, fridgeType = FridgeType.PRIVATE)
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
+    Espresso.closeSoftKeyboard()
+    composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isAddItemDialogOpen }
+    composeTestRule.runOnIdle {
+      assertEquals(ItemSharing.PERSONAL, repository.submissions.single().sharing)
+    }
+  }
+
   private fun showManualEntryScreen(
       repository: TestItemRepository,
       imageRepository: FoodImageRepository =
           object : FoodImageRepository {
             override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
-          }
+          },
+      fridgeType: FridgeType = FridgeType.SHARED,
   ): FridgeViewModel {
     val viewModel =
         FridgeViewModel(
@@ -385,7 +435,11 @@ class ManualItemCreationTest {
             "test-household",
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(
+                    FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
+            fridgeType = fridgeType)
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
@@ -401,11 +455,21 @@ class ManualItemCreationTest {
     var returnNullOnAdd = false
     var addGate: CompletableDeferred<Unit>? = null
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+        items.map { current ->
+          current.filter {
+            it.householdId == householdId &&
+                (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+          }
+        }
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.householdId == householdId } }
+    override fun addItems(submission: InventorySubmission): ItemWrite =
+        error("Batch saves are not used in this test")
+
+    override fun observeSubmission(
+        submission: InventorySubmission
+    ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+        error("Submission observation is not used in this test")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

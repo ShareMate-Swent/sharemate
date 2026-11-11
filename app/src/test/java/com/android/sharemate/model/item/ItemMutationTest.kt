@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -64,6 +65,18 @@ class ItemMutationTest {
       val denied = IllegalStateException("Permission denied")
       pending.setException(denied)
       assertSame(denied, write.confirmation.await().exceptionOrNull())
+      verify(document).update(fields)
+    }
+    verifyNoMoreInteractions(document)
+  }
+
+  @Test
+  fun sharingOnlyUpdateAlsoRemovesLegacyBoolean() = runBlocking {
+    for (sharing in ItemSharing.values()) {
+      val fields = mapOf("sharing" to sharing.name, "shared" to FieldValue.delete())
+      `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
+      val result = repository.setItemSharing("item", sharing) as ItemWrite.Queued
+      assertTrue(result.confirmation.await().isSuccess)
       verify(document).update(fields)
     }
     verifyNoMoreInteractions(document)
@@ -185,27 +198,28 @@ class ItemMutationTest {
   }
 
   @Test
-  fun fakeEditsTransitionsAndDeletesPreservePrivateSharedSeparation() = runBlocking {
+  fun fakeEditsTransitionsAndDeletesLeaveOtherItemsOfTheHouseholdUntouched() = runBlocking {
     val fake = FakeItemRepository()
-    val privateItem = Item("private", "Milk", "owner", category = "Dairy")
-    val sharedItem = Item("shared", "Bread", "owner", "home")
-    fake.emitItems(listOf(privateItem, sharedItem))
-    assertTrue(fake.updateItem("private", ItemEdit(" Milk ", 4, null, null)) is ItemWrite.Queued)
+    val personalItem =
+        Item(
+            "personal", "Milk", "owner", "home", category = "Dairy", sharing = ItemSharing.PERSONAL)
+    val sharedItem = Item("shared", "Bread", "owner", "home", sharing = ItemSharing.SHARED)
+    fake.emitItems(listOf(personalItem, sharedItem))
+    assertTrue(fake.updateItem("personal", ItemEdit(" Milk ", 4, null, null)) is ItemWrite.Queued)
     for (status in ItemStatus.values()) {
-      assertTrue(fake.setItemStatus("private", status) is ItemWrite.Queued)
+      assertTrue(fake.setItemStatus("personal", status) is ItemWrite.Queued)
       assertEquals(
-          privateItem.copy(quantity = 4, category = null, status = status),
-          fake.getPrivateItems("owner").first().single())
-      assertEquals(listOf(sharedItem), fake.getSharedItems("home").first())
+          listOf(personalItem.copy(quantity = 4, category = null, status = status), sharedItem),
+          fake.getFridgeItems("home", "owner").first())
     }
     assertTrue(fake.updateItem("missing", ItemEdit("Milk", 1, null, null)) is ItemWrite.Rejected)
     assertTrue(fake.setItemStatus("missing", ItemStatus.EATEN) is ItemWrite.Rejected)
-    assertTrue(fake.updateItem("private", ItemEdit("Milk", 0, null, null)) is ItemWrite.Rejected)
-    assertNull(fake.addItem(privateItem.copy(quantity = -1)))
-    assertTrue(fake.deleteItemQueued("private") is ItemWrite.Queued)
-    assertTrue(fake.getPrivateItems("owner").first().isEmpty())
-    assertTrue(fake.deleteItemQueued("private") is ItemWrite.Queued)
-    assertEquals(listOf(sharedItem), fake.getSharedItems("home").first())
+    assertTrue(fake.updateItem("personal", ItemEdit("Milk", 0, null, null)) is ItemWrite.Rejected)
+    assertNull(fake.addItem(personalItem.copy(quantity = -1)))
+    assertTrue(fake.deleteItemQueued("personal") is ItemWrite.Queued)
+    assertEquals(listOf(sharedItem), fake.getFridgeItems("home", "owner").first())
+    assertTrue(fake.deleteItemQueued("personal") is ItemWrite.Queued)
+    assertEquals(listOf(sharedItem), fake.getFridgeItems("home", "owner").first())
   }
 
   private fun validDocument(): DocumentSnapshot =
@@ -213,6 +227,7 @@ class ItemMutationTest {
         `when`(it.id).thenReturn("item")
         `when`(it.getString("name")).thenReturn("Milk")
         `when`(it.getString("ownerId")).thenReturn("owner")
+        `when`(it.getString("householdId")).thenReturn("home")
         it.stubRequiredItemFields()
       }
 }

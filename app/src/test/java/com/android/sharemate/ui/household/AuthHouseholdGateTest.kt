@@ -1,4 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
@@ -19,6 +21,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CancellationException
@@ -37,6 +40,7 @@ class AuthHouseholdGateTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val auth = SessionRepository()
   private val households = MembershipRepository()
+  private val profiles = InMemoryUserProfileRepository()
 
   @Test
   fun newSignupRequiresHouseholdAndConfirmedCreationSurvivesActivityRecreation() {
@@ -45,6 +49,7 @@ class AuthHouseholdGateTest {
     compose.setContent(content)
     compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
+    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
     compose.onNodeWithTag("auth_password").performTextInput("secret")
     compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
@@ -182,22 +187,23 @@ class AuthHouseholdGateTest {
   private fun GateContent() {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
     SampleAppTheme(dynamicColor = false) {
-      AuthHouseholdGate(authViewModel, auth, households, googleTokenProvider = { null }) {
-          session,
-          household,
-          onMembershipChanged ->
-        Text("Private application", Modifier.testTag("private_app"))
-        Text(household.id, Modifier.testTag("private_app_household"))
-        Text(session.uid, Modifier.testTag("private_app_user"))
-        TextButton(
-            onClick = {
-              households.memberships.remove("student")
-              onMembershipChanged()
-            },
-            modifier = Modifier.testTag("private_app_leave")) {
-              Text("Leave")
-            }
-      }
+      AuthHouseholdGate(
+          authViewModel, auth, households, profiles, googleTokenProvider = { null }) {
+              session,
+              household,
+              onMembershipChanged ->
+            Text("Private application", Modifier.testTag("private_app"))
+            Text(household.id, Modifier.testTag("private_app_household"))
+            Text(session.uid, Modifier.testTag("private_app_user"))
+            TextButton(
+                onClick = {
+                  households.memberships.remove("student")
+                  onMembershipChanged()
+                },
+                modifier = Modifier.testTag("private_app_leave")) {
+                  Text("Leave")
+                }
+          }
     }
   }
 
@@ -209,7 +215,8 @@ class AuthHouseholdGateTest {
       session.value = AuthSession("student", email)
     }
 
-    override suspend fun signUp(email: String, password: String) = signIn(email, password)
+    override suspend fun signUp(email: String, password: String, displayName: String) =
+        signIn(email, password)
 
     override suspend fun signInWithGoogle(idToken: String) =
         error("Google sign-in is not used by this fake")

@@ -4,8 +4,10 @@ package com.android.sharemate.notifications
 import android.content.Context
 import com.android.sharemate.MainActivity
 import com.android.sharemate.model.auth.FirebaseAuthRepository
+import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.notifications.expiration.ExpirationNotificationSource
 import com.android.sharemate.notifications.expiration.ResourceExpirationNotificationFormatter
@@ -21,14 +23,17 @@ object NotificationDispatcherFactory {
     val firestore = FirebaseFirestore.getInstance()
     val recipientProvider =
         SessionRecipientProvider(
-            FirebaseAuthRepository(FirebaseAuth.getInstance()),
+            FirebaseAuthRepository(
+                FirebaseAuth.getInstance(), FirestorePseudoRepository(firestore)),
             HouseholdRepositoryFirestore(firestore))
     val sources =
         listOf<NotificationSource>(
             ExpirationNotificationSource(
                 itemRepository = FirebaseItemRepository(firestore),
                 recipientProvider = recipientProvider,
-                preferencesRepository = FirebaseExpirationPreferencesRepository(firestore),
+                preferencesProvider =
+                    ExpirationPreferencesProvider(
+                        FirebaseExpirationPreferencesRepository(firestore)),
                 formatter = ResourceExpirationNotificationFormatter(context.resources)),
         )
     return NotificationDispatcher(

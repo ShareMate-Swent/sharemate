@@ -1,10 +1,13 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.expiration
 
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.notifications.AppNotificationChannel
 import com.android.sharemate.notifications.NotificationRecipient
@@ -26,20 +29,27 @@ class ExpirationNotificationSourceTest {
       ExpirationNotificationSource(
           itemRepository = repository,
           recipientProvider = { recipient },
-          preferencesRepository = preferences,
+          preferencesProvider = ExpirationPreferencesProvider(preferences),
           formatter = { summary ->
             formattedSummaries += summary
             NotificationText("title", "${summary.expired.size}/${summary.expiringSoon.size}")
           },
           today = { today })
 
-  private fun sharedItem(name: String, offsetDays: Long, householdId: String = "home") =
+  private fun sharedItem(
+      name: String,
+      offsetDays: Long,
+      householdId: String = "home",
+      ownerId: String = "alice",
+      sharing: ItemSharing = ItemSharing.PERSONAL,
+  ) =
       Item(
           id = name,
           name = name,
-          ownerId = "alice",
+          ownerId = ownerId,
           householdId = householdId,
-          expirationDate = ExpirationDates.toDate(today.plusDays(offsetDays)))
+          expirationDate = ExpirationDates.toDate(today.plusDays(offsetDays)),
+          sharing = sharing)
 
   @Test
   fun buildsOneNotificationOpeningTheFridge() = runTest {
@@ -74,13 +84,28 @@ class ExpirationNotificationSourceTest {
   }
 
   @Test
-  fun readsTheHouseholdsSharedItems() = runTest {
+  fun readsTheFridgeOfTheRecipient() = runTest {
     repository.emitItems(listOf(sharedItem("other", -1, householdId = "elsewhere")))
 
     val notifications = source.dueNotifications()
 
     assertEquals(listOf("home"), repository.requestedHouseholdIds)
+    assertEquals(listOf("alice"), repository.requestedUserIds)
     assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun neverMentionsThePersonalItemsOfOtherMembers() = runTest {
+    repository.emitItems(listOf(sharedItem("theirs", -1, ownerId = "bob")))
+    assertTrue(source.dueNotifications().isEmpty())
+
+    repository.emitItems(
+        listOf(
+            sharedItem("theirs", -1, ownerId = "bob"),
+            sharedItem("shared", -1, ownerId = "bob", sharing = ItemSharing.SHARED),
+            sharedItem("mine", 2, ownerId = "alice")))
+
+    assertEquals("1/1", source.dueNotifications().single().text)
   }
 
   @Test

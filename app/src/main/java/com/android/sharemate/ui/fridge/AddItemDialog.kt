@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Arrangement
@@ -10,12 +11,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.resources.C
@@ -51,8 +55,8 @@ fun AddItemDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
     onQuantityChange: (String) -> Unit = {},
-    onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     onSharingChange: (ItemSharing) -> Unit = {},
+    onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val context = LocalContext.current.applicationContext
@@ -153,7 +157,28 @@ fun AddItemDialog(
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
-              if (uiState.showSharingSelector) {
+              if (uiState.fridgeType == FridgeType.SHARED && uiState.editingItemId == null) {
+                // The whole row is the toggle, so assistive technologies announce the label with
+                // it.
+                val shared = uiState.itemSharing == ItemSharing.SHARED
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .testTag(C.Tag.fridge_share_switch)
+                            .toggleable(
+                                value = shared,
+                                enabled = inputEnabled,
+                                role = Role.Switch,
+                                onValueChange = {
+                                  onSharingChange(
+                                      if (it) ItemSharing.SHARED else ItemSharing.PERSONAL)
+                                })) {
+                      Text(stringResource(R.string.fridge_item_share_with_household))
+                      Switch(checked = shared, onCheckedChange = null, enabled = inputEnabled)
+                    }
+              } else if (uiState.showSharingSelector && uiState.editingItemId != null) {
                 Column(Modifier.selectableGroup().testTag(C.Tag.fridge_sharing_selector)) {
                   Text(stringResource(R.string.fridge_item_sharing))
                   for (sharing in ItemSharing.values()) {
@@ -179,7 +204,7 @@ fun AddItemDialog(
                                   else R.string.fridge_item_personal))
                         }
                   }
-                  if (!uiState.canChangeSharing && uiState.editingItemId != null) {
+                  if (!uiState.canChangeSharing) {
                     Text(
                         stringResource(R.string.fridge_sharing_owner_only),
                         style = MaterialTheme.typography.bodySmall)

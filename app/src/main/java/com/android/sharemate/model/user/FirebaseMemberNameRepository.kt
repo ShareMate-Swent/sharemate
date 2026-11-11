@@ -4,6 +4,10 @@ package com.android.sharemate.model.user
 import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
+import java.util.concurrent.Executor
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -15,7 +19,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.tasks.await
 
-/** One membership listener and one cached query per ten members, independent of card count. */
+/** Server-confirmed names, using one query per ten members rather than per card. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
     MemberNameRepository {
@@ -28,7 +32,9 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
     val members =
         callbackFlow<List<String>> {
               val registration =
-                  household(householdId).addSnapshotListener { snapshot, error ->
+                  household(householdId).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
                     if (error != null) close(error)
                     else {
                       val ids =
@@ -37,8 +43,11 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                               .orEmpty()
                       val privateFridge = snapshot?.getString("type") == "PRIVATE"
                       trySend(
-                          if (viewerId in ids &&
-                              (!privateFridge || snapshot?.getString("createdBy") == viewerId))
+                          if (snapshot != null &&
+                              !snapshot.metadata.isFromCache &&
+                              !snapshot.metadata.hasPendingWrites() &&
+                              viewerId in ids &&
+                              (!privateFridge || snapshot.getString("createdBy") == viewerId))
                               ids.filter { it.isNotBlank() && '/' !in it }.distinct().sorted()
                           else emptyList())
                     }
@@ -58,6 +67,7 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                   .onStart { emit(emptyMap()) }
         }
         .distinctUntilChanged()
+        .onStart { emit(emptyMap()) }
   }
 
   private fun observeBatch(householdId: String, ids: List<String>): Flow<Map<String, String>> =
@@ -66,12 +76,15 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
             household(householdId)
                 .collection(FirestoreCollections.MEMBER_NAMES)
                 .whereIn(FieldPath.documentId(), ids)
-                .addSnapshotListener { snapshot, error ->
+                .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                   if (error != null) close(error)
-                  else
+                  else if (snapshot == null ||
+                      snapshot.metadata.isFromCache ||
+                      snapshot.metadata.hasPendingWrites()) {
+                    trySend(emptyMap())
+                  } else
                       trySend(
-                          snapshot
-                              ?.documents
+                          snapshot.documents
                               .orEmpty()
                               .mapNotNull { document ->
                                 ownerDisplayName(document.get("displayName") as? String)?.let {
@@ -84,6 +97,14 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
       }
 
   override suspend fun publishOwnName(householdId: String, userId: String, authName: String?) {
+    queueOwnName(householdId, userId, authName)
+  }
+
+  override suspend fun queueOwnName(
+      householdId: String,
+      userId: String,
+      authName: String?
+  ): Deferred<Result<Unit>> {
     require(householdId.isNotBlank() && '/' !in householdId)
     require(userId.isNotBlank() && '/' !in userId)
     val name =
@@ -97,7 +118,15 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                     .get("displayName") as? String)
     val reference =
         household(householdId).collection(FirestoreCollections.MEMBER_NAMES).document(userId)
-    if (name == null) reference.delete().await()
-    else reference.set(mapOf("displayName" to name)).await()
+    val task = if (name == null) reference.delete() else reference.set(mapOf("displayName" to name))
+    if (task.isComplete && !task.isSuccessful)
+        throw task.exception ?: IllegalStateException("Write cancelled")
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    task.addOnCompleteListener(Executor { it.run() }) { completed ->
+      confirmation.complete(
+          if (completed.isSuccessful) Result.success(Unit)
+          else Result.failure(completed.exception ?: IllegalStateException("Write cancelled")))
+    }
+    return confirmation
   }
 }

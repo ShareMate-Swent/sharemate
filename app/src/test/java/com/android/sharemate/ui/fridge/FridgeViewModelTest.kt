@@ -1,12 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -16,12 +18,14 @@ import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTE
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
@@ -30,8 +34,11 @@ import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakePseudoRepository
+import com.android.sharemate.model.user.PseudoRepository
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -92,8 +99,15 @@ class FridgeViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private val milk = Item(id = "milk", name = "Milk", householdId = "test-household")
-  private val bread = Item(id = "bread", name = "Bread", householdId = "test-household")
+  // Shared, so they stay visible whoever owns them, as the repository returns them to any member.
+  private val milk =
+      Item(id = "milk", name = "Milk", householdId = "test-household", sharing = ItemSharing.SHARED)
+  private val bread =
+      Item(
+          id = "bread",
+          name = "Bread",
+          householdId = "test-household",
+          sharing = ItemSharing.SHARED)
 
   @Test
   fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
@@ -327,7 +341,7 @@ class FridgeViewModelTest {
         listOf(
             milk,
             bread.copy(status = ItemStatus.EATEN),
-            milk.copy(id = "private", ownerId = "test-user", householdId = null),
+            milk.copy(id = "private", ownerId = "test-user", householdId = "other-household"),
             milk.copy(id = "foreign", householdId = "other-household")))
     val vm = viewModel()
     runCurrent()
@@ -385,6 +399,34 @@ class FridgeViewModelTest {
     vm.openEditItemDialog(milk.id)
     assertEquals("Milk", vm.uiState.value.itemName)
     assertEquals("3", vm.uiState.value.itemQuantity)
+  }
+
+  @Test
+  fun editReflectsTheSharingOfTheItemWithoutChangingIt() = runTest {
+    val personal = milk.copy(ownerId = "test-user", sharing = ItemSharing.PERSONAL)
+    val shared = bread.copy(sharing = ItemSharing.SHARED)
+    repository.emitItems(listOf(personal, shared))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.openEditItemDialog(shared.id)
+    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
+    vm.dismissAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+
+    vm.openEditItemDialog(personal.id)
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    vm.dismissAddItemDialog()
+
+    vm.openEditItemDialog(shared.id)
+    vm.updateName("Sourdough")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf(personal, shared.copy(name = "Sourdough")), vm.uiState.value.items)
+    // Editing a shared item must not leak its sharing into the next creation.
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    vm.openAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
   }
 
   @Test
@@ -557,7 +599,7 @@ class FridgeViewModelTest {
         listOf(
             milk,
             bread.copy(status = ItemStatus.EATEN),
-            milk.copy(id = "private", householdId = null)))
+            milk.copy(id = "private", householdId = "other-household")))
     val vm = viewModel()
     runCurrent()
     listOf("", "unknown", bread.id, "private").forEach(vm::openEditItemDialog)
@@ -1228,8 +1270,10 @@ class FridgeViewModelTest {
   }
 
   private fun viewModel(
-      householdId: String? = "test-household",
-      preferences: ExpirationPreferencesRepository? = null,
+      householdId: String = "test-household",
+      fridgeType: FridgeType = FridgeType.SHARED,
+      pseudos: PseudoRepository? = null,
+      preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1238,69 +1282,158 @@ class FridgeViewModelTest {
               imageSelector,
               barcodeScanner,
               productCatalogRepository,
-              expirationPreferencesRepository = preferences)
+              expirationPreferences = ExpirationPreferencesProvider(preferences),
+              pseudoRepository = pseudos,
+              fridgeType = fridgeType,
+              today = { STATUS_TODAY })
           .also { viewModelStore.put("fridge", it) }
 
-  private fun TestScope.observedThreshold(vm: FridgeViewModel): Long {
-    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-      vm.soonThresholdDays.collect {}
-    }
+  private fun TestScope.observedStatuses(vm: FridgeViewModel): Map<String, ExpiryStatus> {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.expiryStatuses.collect {} }
     runCurrent()
-    return vm.soonThresholdDays.value
+    return vm.expiryStatuses.value
+  }
+
+  private fun expiringIn(id: String, days: Long) =
+      item(id).copy(expirationDate = ExpirationDates.toDate(STATUS_TODAY.plusDays(days)))
+
+  private val statusItems =
+      listOf(
+          expiringIn("old", -1),
+          expiringIn("today", 0),
+          expiringIn("next", 1),
+          expiringIn("edge", 3),
+          expiringIn("far", 4))
+
+  @Test
+  fun expiryStatusesUseTheDefaultWindowWhenNothingWasSaved() = runTest {
+    repository.emitItems(statusItems)
+
+    assertEquals(
+        mapOf(
+            "old" to ExpiryStatus.EXPIRED,
+            "today" to ExpiryStatus.EXPIRED,
+            "next" to ExpiryStatus.SOON,
+            "edge" to ExpiryStatus.SOON,
+            "far" to ExpiryStatus.NORMAL),
+        observedStatuses(viewModel()))
   }
 
   @Test
-  fun soonThresholdIsTheDefaultWithoutPreferences() = runTest {
-    assertEquals(ExpirationDates.SOON_THRESHOLD_DAYS, observedThreshold(viewModel()))
-  }
-
-  @Test
-  fun soonThresholdFollowsTheUsersSavedWindow() = runTest {
+  fun expiryStatusesFollowTheUsersSavedWindow() = runTest {
     val preferences =
         FakeExpirationPreferencesRepository(
-            mapOf("test-user" to ExpirationPreferences(soonDays = 21)))
+            mapOf("test-user" to ExpirationPreferences(soonDays = 4)))
+    repository.emitItems(statusItems)
 
-    assertEquals(21L, observedThreshold(viewModel(preferences = preferences)))
+    assertEquals(ExpiryStatus.SOON, observedStatuses(viewModel(preferences = preferences))["far"])
   }
 
   @Test
-  fun soonThresholdIgnoresAnotherUsersWindow() = runTest {
+  fun expiryStatusesIgnoreAnotherUsersWindow() = runTest {
     val preferences =
         FakeExpirationPreferencesRepository(
             mapOf("someone-else" to ExpirationPreferences(soonDays = 40)))
+    repository.emitItems(statusItems)
 
-    assertEquals(
-        ExpirationPreferences.DEFAULT_SOON_DAYS.toLong(),
-        observedThreshold(viewModel(preferences = preferences)))
+    assertEquals(ExpiryStatus.NORMAL, observedStatuses(viewModel(preferences = preferences))["far"])
   }
 
   @Test
-  fun soonThresholdUpdatesWhenThePreferenceChanges() = runTest {
+  fun expiryStatusesUpdateWhenThePreferenceChanges() = runTest {
     val preferences = FakeExpirationPreferencesRepository()
     val vm = viewModel(preferences = preferences)
-    observedThreshold(vm)
+    repository.emitItems(statusItems)
+    observedStatuses(vm)
 
-    preferences.save("test-user", ExpirationPreferences(soonDays = 45))
+    preferences.save("test-user", ExpirationPreferences(soonDays = 4))
     runCurrent()
 
-    assertEquals(45L, vm.soonThresholdDays.value)
+    assertEquals(ExpiryStatus.SOON, vm.expiryStatuses.value["far"])
   }
 
   @Test
-  fun soonThresholdFallsBackToTheDefaultWhenPreferencesCannotBeRead() = runTest {
-    val failing =
-        object : ExpirationPreferencesRepository {
-          override fun observe(userId: String): Flow<ExpirationPreferences> = flow {
-            throw IllegalStateException("offline")
-          }
+  fun expiryStatusesUpdateWhenTheItemsChange() = runTest {
+    val vm = viewModel()
+    repository.emitItems(listOf(expiringIn("milk", 10)))
+    observedStatuses(vm)
 
-          override suspend fun get(userId: String) = ExpirationPreferences()
+    repository.emitItems(listOf(expiringIn("milk", 0)))
+    runCurrent()
 
-          override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
-        }
+    assertEquals(mapOf("milk" to ExpiryStatus.EXPIRED), vm.expiryStatuses.value)
+  }
+
+  @Test
+  fun expiryStatusesFallBackToTheDefaultWindowWhenPreferencesCannotBeRead() = runTest {
+    val preferences = FakeExpirationPreferencesRepository()
+    preferences.readFailure = IOException("offline")
+    repository.emitItems(statusItems)
+
+    val statuses = observedStatuses(viewModel(preferences = preferences))
+
+    assertEquals(ExpiryStatus.SOON, statuses["edge"])
+    assertEquals(ExpiryStatus.NORMAL, statuses["far"])
+  }
+
+  @Test
+  fun expiryStatusesAreEmptyWithoutItems() = runTest {
+    assertEquals(emptyMap<String, ExpiryStatus>(), observedStatuses(viewModel()))
+  }
+
+  private fun TestScope.observedOwners(vm: FridgeViewModel): List<OwnerOption> {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ownerOptions.collect {} }
+    runCurrent()
+    return vm.ownerOptions.value
+  }
+
+  @Test
+  fun ownerOptionsShowPseudosSortedWithoutLeakingMissingOnesFirst() = runTest {
+    val vm =
+        viewModel(
+            pseudos = FakePseudoRepository(mapOf("u1" to "zoe", "u2" to "Alice", "u3" to "  ")))
+    repository.emitItems(
+        listOf(
+            item("a", ownerId = "u1"),
+            item("b", ownerId = "u2"),
+            item("c", ownerId = "u3"),
+            item("d", ownerId = "u1"),
+            item("e", ownerId = "")))
 
     assertEquals(
-        ExpirationDates.SOON_THRESHOLD_DAYS, observedThreshold(viewModel(preferences = failing)))
+        listOf(OwnerOption("u2", "Alice"), OwnerOption("u1", "zoe"), OwnerOption("u3", null)),
+        observedOwners(vm))
+  }
+
+  @Test
+  fun ownerOptionsFollowPseudoChanges() = runTest {
+    val pseudos = FakePseudoRepository(mapOf("u1" to "Old"))
+    val vm = viewModel(pseudos = pseudos)
+    repository.emitItems(listOf(item("a", ownerId = "u1")))
+    observedOwners(vm)
+
+    pseudos.setPseudo("u1", "New")
+    runCurrent()
+
+    assertEquals(listOf(OwnerOption("u1", "New")), vm.ownerOptions.value)
+  }
+
+  @Test
+  fun ownerOptionsHaveNoPseudoWithoutARepositoryOrWhenItFails() = runTest {
+    repository.emitItems(listOf(item("a", ownerId = "u1")))
+    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel()))
+
+    val failing =
+        object : PseudoRepository {
+          override fun observePseudos(userIds: Set<String>): Flow<Map<String, String>> = flow {
+            throw IllegalStateException("denied")
+          }
+
+          override suspend fun getPseudo(userId: String): String? = null
+
+          override suspend fun setPseudo(userId: String, pseudo: String) = Unit
+        }
+    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel(pseudos = failing)))
   }
 
   @Test
@@ -1312,51 +1445,79 @@ class FridgeViewModelTest {
           "test-household",
           imageSelector,
           barcodeScanner,
-          productCatalogRepository)
+          productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+          fridgeType = FridgeType.SHARED)
     }
     assertThrows(IllegalArgumentException::class.java) {
       FridgeViewModel(
-          repository, "test-user", "", imageSelector, barcodeScanner, productCatalogRepository)
+          repository,
+          "test-user",
+          "",
+          imageSelector,
+          barcodeScanner,
+          productCatalogRepository,
+          expirationPreferences =
+              ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+          fridgeType = FridgeType.SHARED)
     }
 
     assertTrue(repository.requestedHouseholdIds.isEmpty())
-    assertTrue(repository.requestedUserIds.isEmpty())
   }
 
   @Test
-  fun observesOnlyTheRequestedSharedHousehold() = runTest {
-    val shared = Item(id = "shared", name = "Milk", householdId = "test-household")
+  fun observesTheFridgeOfTheUserInTheRequestedHousehold() = runTest {
+    val shared =
+        Item(
+            id = "shared",
+            name = "Milk",
+            householdId = "test-household",
+            sharing = ItemSharing.SHARED)
+    val mine = Item(id = "mine", ownerId = "test-user", householdId = "test-household")
     repository.emitItems(
-        listOf(shared, Item(id = "other", householdId = "other-household"), Item(id = "private")))
+        listOf(
+            shared,
+            mine,
+            // Never shown: another member's personal item, and items of another household.
+            Item(id = "theirs", ownerId = "other-member", householdId = "test-household"),
+            Item(id = "other", householdId = "other-household", sharing = ItemSharing.SHARED),
+            Item(id = "other-personal", ownerId = "test-user", householdId = "other-household")))
     val viewModel = viewModel()
     runCurrent()
 
     assertEquals(listOf("test-household"), repository.requestedHouseholdIds)
-    assertTrue(repository.requestedUserIds.isEmpty())
-    assertEquals(listOf(shared), viewModel.uiState.value.items)
-    assertFalse(viewModel.uiState.value.isLoading)
-  }
-
-  @Test
-  fun withoutHouseholdObservesOnlyCurrentUsersPrivateItems() = runTest {
-    val privateItem = Item(id = "private", name = "Milk", ownerId = "test-user")
-    repository.emitItems(
-        listOf(
-            privateItem,
-            Item(id = "other-user", ownerId = "other-user"),
-            Item(id = "shared", ownerId = "test-user", householdId = "test-household")))
-    val viewModel = viewModel(householdId = null)
-    runCurrent()
-
     assertEquals(listOf("test-user"), repository.requestedUserIds)
-    assertTrue(repository.requestedHouseholdIds.isEmpty())
-    assertEquals(listOf(privateItem), viewModel.uiState.value.items)
+    assertEquals(listOf(shared, mine), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun withoutHouseholdSavesPrivateItemAndSearchesForImage() = runTest {
-    val viewModel = viewModel(householdId = null)
+  fun anotherMembersPersonalItemAppearsOnlyOnceTheyShareIt() = runTest {
+    val theirs =
+        Item(
+            id = "theirs",
+            name = "Cheese",
+            ownerId = "other-member",
+            householdId = "test-household")
+    repository.emitItems(listOf(theirs))
+    val viewModel = viewModel()
+    runCurrent()
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+
+    val shared = theirs.copy(sharing = ItemSharing.SHARED)
+    repository.emitItems(listOf(shared))
+    runCurrent()
+    assertEquals(listOf(shared), viewModel.uiState.value.items)
+
+    repository.emitItems(listOf(theirs))
+    runCurrent()
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+  }
+
+  @Test
+  fun newItemsArePersonalAndSearchForAnImage() = runTest {
+    val viewModel = viewModel()
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
@@ -1365,12 +1526,68 @@ class FridgeViewModelTest {
 
     val saved = repository.addedItems.single()
     assertEquals("test-user", saved.ownerId)
-    assertNull(saved.householdId)
+    assertEquals("test-household", saved.householdId)
+    assertEquals(ItemSharing.PERSONAL, saved.sharing)
     assertFalse(saved.isShared)
     assertEquals(listOf("Milk"), imageRepository.titles)
     assertEquals(listOf(saved.copy(id = "item-1")), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
     assertNull(viewModel.uiState.value.formError)
+  }
+
+  @Test
+  fun uiStateExposesTheFridgeTypeFromTheStart() = runTest {
+    for (type in FridgeType.values()) {
+      val viewModel = viewModel(fridgeType = type)
+      assertEquals(type, viewModel.uiState.value.fridgeType)
+    }
+  }
+
+  @Test
+  fun sharedFridgeLetsTheUserShareANewItem() = runTest {
+    val viewModel = viewModel(fridgeType = FridgeType.SHARED)
+    runCurrent()
+    assertEquals(FridgeType.SHARED, viewModel.uiState.value.fridgeType)
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.updateSharing(ItemSharing.SHARED)
+    assertEquals(ItemSharing.SHARED, viewModel.uiState.value.itemSharing)
+    viewModel.saveItem()
+    runCurrent()
+
+    val saved = repository.addedItems.single()
+    assertEquals(ItemSharing.SHARED, saved.sharing)
+    assertTrue(saved.isShared)
+    // The choice does not leak into the next item.
+    viewModel.openAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
+  }
+
+  @Test
+  fun sharingChoiceIsResetWhenTheDialogIsDismissed() = runTest {
+    val viewModel = viewModel()
+    runCurrent()
+    viewModel.openAddItemDialog()
+    viewModel.updateSharing(ItemSharing.SHARED)
+    viewModel.dismissAddItemDialog()
+    viewModel.openAddItemDialog()
+
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
+  }
+
+  @Test
+  fun privateFridgeNeverSharesItems() = runTest {
+    val viewModel = viewModel(fridgeType = FridgeType.PRIVATE)
+    runCurrent()
+    assertEquals(FridgeType.PRIVATE, viewModel.uiState.value.fridgeType)
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    viewModel.updateSharing(ItemSharing.SHARED)
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
+    viewModel.saveItem()
+    runCurrent()
+
+    assertEquals(ItemSharing.PERSONAL, repository.addedItems.single().sharing)
   }
 
   @Test
@@ -1627,7 +1844,8 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
-    val incoming = Item(id = "incoming", name = "Bread", householdId = "test-household")
+    val incoming =
+        Item(id = "incoming", name = "Bread", ownerId = "test-user", householdId = "test-household")
     repository.emitItems(listOf(incoming))
     runCurrent()
 
@@ -1767,7 +1985,10 @@ class FridgeViewModelTest {
     assertNull(viewModel.uiState.value.formError)
   }
 
-  @Test fun noImageResultStillSavesTheItemWithoutAnImage() = runTest { assertSavesWithoutImage() }
+  @Test
+  fun noImageResultStillSavesTheItemWithoutAnImage() = runTest {
+    assertSavesWithoutImage(expectedAttempts = IMAGE_LOOKUP_MAX_ATTEMPTS)
+  }
 
   @Test
   fun networkFailureResultStillSavesTheItemWithoutAnImage() = runTest {
@@ -2033,7 +2254,10 @@ class FridgeViewModelTest {
             "test-household",
             imageSelector,
             barcodeScanner,
-            productCatalogRepository)
+            productCatalogRepository,
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
     viewModelStore.put("fridge", vm)
     vm.openAddItemDialog()
     vm.updateName("Milk")
@@ -2220,6 +2444,11 @@ class FridgeViewModelTest {
       closed = true
     }
   }
+
+  private companion object {
+    /** The day the expiry statuses are worked out on, so that the day limits are exact. */
+    val STATUS_TODAY: LocalDate = LocalDate.of(2026, 10, 15)
+  }
 }
 
 private fun item(
@@ -2236,4 +2465,5 @@ private fun item(
         householdId = "test-household",
         expirationDate = expirationDate,
         category = category,
+        sharing = ItemSharing.SHARED,
     )

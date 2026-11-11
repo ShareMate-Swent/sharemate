@@ -3,6 +3,7 @@ package com.android.sharemate.ui.fridge
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -10,6 +11,8 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -55,7 +58,10 @@ class BarcodeFormIntegrationTest {
                 lookedUp += barcode
                 return lookup()
               }
-            })
+            },
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+            fridgeType = FridgeType.SHARED)
     owner.put("fridge", vm)
     vm.openAddItemDialog()
     vm.updateName("Manual food")

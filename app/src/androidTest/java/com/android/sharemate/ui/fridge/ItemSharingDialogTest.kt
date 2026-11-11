@@ -17,10 +17,14 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -51,6 +55,7 @@ class ItemSharingDialogTest {
     val state =
         mutableStateOf(
             FridgeUiState(
+                fridgeType = FridgeType.SHARED,
                 isAddItemDialogOpen = true,
                 editingItemId = "milk",
                 itemName = "Milk",
@@ -100,7 +105,8 @@ class ItemSharingDialogTest {
     compose.setContent {
       SampleAppTheme(dynamicColor = false) {
         AddItemDialog(
-            FridgeUiState(isAddItemDialogOpen = true, itemName = "Milk"),
+            FridgeUiState(
+                fridgeType = FridgeType.PRIVATE, isAddItemDialogOpen = true, itemName = "Milk"),
             {},
             {},
             {},
@@ -136,18 +142,25 @@ class ItemSharingDialogTest {
               FoodImageSelector(images),
               BarcodeScanner { BarcodeScanResult.NotFound },
               testProductCatalogRepository(),
+              expirationPreferences =
+                  ExpirationPreferencesProvider(
+                      object : ExpirationPreferencesRepository {
+                        override fun observe(userId: String) = flowOf(ExpirationPreferences())
+
+                        override suspend fun get(userId: String) = ExpirationPreferences()
+
+                        override suspend fun save(
+                            userId: String,
+                            preferences: ExpirationPreferences
+                        ) {}
+                      }),
               fridgeType = FridgeType.SHARED)
       store.put("sharing-dialog", vm)
     }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
-    compose.onNodeWithTag(C.Tag.fridge_sharing_shared).performScrollTo().assertIsSelected()
-    compose
-        .onNodeWithTag(C.Tag.fridge_sharing_personal)
-        .performScrollTo()
-        .performClick()
-        .assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().assertIsOff()
     assertTrue(
         runBlocking {
           FirebaseEmulator.firestore
@@ -236,7 +249,7 @@ class ItemSharingDialogTest {
         })
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Bread")
-    compose.onNodeWithTag(C.Tag.fridge_sharing_shared).performScrollTo().assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().assertIsOff().performClick()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     compose.waitUntil(5_000) {
       !vm.uiState.value.isAddItemDialogOpen && vm.uiState.value.items.size == 2

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.content.Context
@@ -14,6 +15,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
@@ -35,6 +37,7 @@ class FirebaseAuthTestRule(
   private lateinit var database: FirebaseFirestore
   private val initialLookup = TaskCompletionSource<QuerySnapshot>()
   val observedHouseholds = mutableListOf<String>()
+  val observedUsers = mutableListOf<String>()
   val removedListeners = mutableListOf<String>()
   private val inventory = mutableMapOf<String, List<Item>>()
   private val callbacks = mutableMapOf<String, MutableList<EventListener<QuerySnapshot>>>()
@@ -106,6 +109,27 @@ class FirebaseAuthTestRule(
     return snapshot
   }
 
+  /**
+   * Reads the household and the user out of the fridge query: household == X and (sharing == SHARED
+   * or ownerId == user). The SDK's filter classes are internal, hence the reflection.
+   */
+  private fun fridgeQueryOf(filter: Filter): Pair<String, String> {
+    fun children(composite: Any): List<Any> {
+      val getFilters = composite.javaClass.getMethod("getFilters").apply { isAccessible = true }
+      return (getFilters.invoke(composite) as List<*>).filterNotNull()
+    }
+    fun valueOf(unary: Any, field: String): Any? {
+      val getField = unary.javaClass.getMethod("getField").apply { isAccessible = true }
+      val getValue = unary.javaClass.getMethod("getValue").apply { isAccessible = true }
+      return if (getField.invoke(unary).toString() == field) getValue.invoke(unary) else null
+    }
+    val (household, sharedOrOwn) = children(filter)
+    val (shared, own) = children(sharedOrOwn)
+    check(valueOf(shared, "sharing") == "SHARED") { "Expected the SHARED branch" }
+    return checkNotNull(valueOf(household, "householdId") as String) to
+        checkNotNull(valueOf(own, "ownerId") as String)
+  }
+
   override fun before() {
     // Robolectric does not run the content provider that normally initializes WorkManager.
     WorkManagerTestInitHelper.initializeTestWorkManager(
@@ -115,13 +139,13 @@ class FirebaseAuthTestRule(
     firestore = mockStatic(FirebaseFirestore::class.java)
     database = mock(FirebaseFirestore::class.java, RETURNS_DEEP_STUBS)
     firestore.`when`<FirebaseFirestore> { FirebaseFirestore.getInstance() }.thenReturn(database)
-    `when`(database.collection("items").whereEqualTo(eq("householdId"), anyString())).thenAnswer {
-        invocation ->
-      val householdId = invocation.getArgument<String>(1)
+    `when`(database.collection("items").where(any<Filter>())).thenAnswer { invocation ->
+      val (householdId, userId) = fridgeQueryOf(invocation.getArgument<Filter>(0))
       val query = mock(Query::class.java)
       `when`(query.addSnapshotListener(any<EventListener<QuerySnapshot>>())).thenAnswer {
         val callback = it.getArgument<EventListener<QuerySnapshot>>(0)
         observedHouseholds += householdId
+        observedUsers += userId
         callbacks.getOrPut(householdId) { mutableListOf() }.add(callback)
         callback.onEvent(itemSnapshot(inventory[householdId].orEmpty()), null)
         mock(ListenerRegistration::class.java).also { registration ->

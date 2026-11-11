@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -16,18 +17,25 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.utils.FirebaseEmulator
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -197,7 +205,11 @@ class ItemRemovalTest {
             "test-household",
             FoodImageSelector(imageRepository),
             testBarcodeScanner(),
-            testProductCatalogRepository())
+            testProductCatalogRepository(),
+            expirationPreferences =
+                ExpirationPreferencesProvider(
+                    FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
+            fridgeType = FridgeType.SHARED)
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }
@@ -210,7 +222,8 @@ class ItemRemovalTest {
             onStatusChange = viewModel::setItemStatus,
             onRemoveItem = viewModel::requestRemoval,
             onCancelRemoval = viewModel::cancelRemoval,
-            onConfirmRemoval = viewModel::confirmRemoval)
+            onConfirmRemoval = viewModel::confirmRemoval,
+            expiryStatuses = emptyMap())
       }
     }
     composeTestRule.waitUntil(timeoutMillis = 5_000) { !viewModel.uiState.value.isLoading }
@@ -225,11 +238,21 @@ class ItemRemovalTest {
     var returnFalseOnDelete = false
     var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
-    override fun getSharedItems(householdId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.householdId == householdId } }
+    override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+        items.map { current ->
+          current.filter {
+            it.householdId == householdId &&
+                (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+          }
+        }
 
-    override fun getPrivateItems(userId: String): Flow<List<Item>> =
-        items.map { current -> current.filter { it.ownerId == userId && it.householdId == null } }
+    override fun addItems(submission: InventorySubmission): ItemWrite =
+        error("Batch saves are not used in this test")
+
+    override fun observeSubmission(
+        submission: InventorySubmission
+    ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+        error("Submission observation is not used in this test")
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

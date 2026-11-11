@@ -135,9 +135,11 @@ class HouseholdRepositoryFirestore(
     firestore
         .batch()
         .update(householdReference, MEMBER_IDS_FIELD, FieldValue.arrayUnion(userId))
+        // The rules only accept a join that carries the household's invite code, so knowing a
+        // household ID is not enough to become a member.
         .set(
             firestore.collection(FirestoreCollections.USERS).document(userId),
-            mapOf(HOUSEHOLD_ID_FIELD to householdId),
+            mapOf(HOUSEHOLD_ID_FIELD to householdId, JOIN_CODE_FIELD to normalizedCode),
             SetOptions.merge())
         .commit()
         .await()
@@ -169,7 +171,11 @@ class HouseholdRepositoryFirestore(
       batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
     }
     batch
-        .set(userReference, mapOf(HOUSEHOLD_ID_FIELD to FieldValue.delete()), SetOptions.merge())
+        .set(
+            userReference,
+            mapOf(
+                HOUSEHOLD_ID_FIELD to FieldValue.delete(), JOIN_CODE_FIELD to FieldValue.delete()),
+            SetOptions.merge())
         .commit()
         .await()
   }
@@ -194,6 +200,7 @@ class HouseholdRepositoryFirestore(
   private companion object {
     const val HOUSEHOLD_ID_FIELD = "householdId"
     const val INVITE_CODE_FIELD = "inviteCode"
+    const val JOIN_CODE_FIELD = "joinCode"
     const val MEMBER_IDS_FIELD = "memberIds"
     const val TYPE_FIELD = "type"
     const val MAX_INVITE_CODE_ATTEMPTS = 10

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.content.ActivityNotFoundException
@@ -30,6 +31,7 @@ import coil.intercept.Interceptor
 import coil.request.ErrorResult
 import coil.request.SuccessResult
 import coil.size.Size
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
@@ -55,7 +57,7 @@ class FridgeItemTest {
   private val pending = CopyOnWriteArrayList<PendingImage>()
   private val loaders = mutableListOf<ImageLoader>()
   private val files = mutableListOf<File>()
-  private val item = mutableStateOf(Item(id = "milk", name = "Milk"))
+  private val item = mutableStateOf(Item(id = "milk", name = "Milk", householdId = "household-1"))
 
   @After
   fun tearDown() {
@@ -109,7 +111,11 @@ class FridgeItemTest {
                 }
               }) {
             SampleAppTheme(dynamicColor = false) {
-              FridgeItem(item = item.value, imageLoader = loader, modifier = Modifier.width(120.dp))
+              FridgeItem(
+                  item = item.value,
+                  imageLoader = loader,
+                  modifier = Modifier.width(120.dp),
+                  expiryStatus = ExpiryStatus.NORMAL)
             }
           }
     }
@@ -226,7 +232,9 @@ class FridgeItemTest {
     waitFor(C.Tag.fridge_image)
     compose.onNodeWithContentDescription("Photo of Bread").assertIsDisplayed()
 
-    compose.runOnIdle { item.value = Item(id = "other", name = "Rice") }
+    compose.runOnIdle {
+      item.value = Item(id = "other", name = "Rice", householdId = "household-1")
+    }
     waitFor(C.Tag.fridge_image_placeholder)
     compose.onNodeWithTag(C.Tag.fridge_image).assertDoesNotExist()
   }
@@ -238,7 +246,11 @@ class FridgeItemTest {
     waitForRequest()
     compose.runOnIdle {
       item.value =
-          Item(id = "bread", name = "Bread", image = remote("https://images.example.org/bread.jpg"))
+          Item(
+              id = "bread",
+              name = "Bread",
+              image = remote("https://images.example.org/bread.jpg"),
+              householdId = "household-1")
     }
     waitForRequest(2)
     pending[1].succeeds.complete(false)

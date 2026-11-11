@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.CompletableDeferred
@@ -38,19 +39,26 @@ class FakeItemRepository : ItemRepository {
   var imageUpdateFailure: Exception? = null
   val imageUpdates = mutableListOf<Triple<String, String, ItemImage>>()
 
-  override fun getPrivateItems(userId: String): Flow<List<Item>> {
-    requestedUserIds += userId
-    return items.map { current ->
-      current.filter { it.ownerId == userId && it.householdId == null }
-    }
-  }
+  override fun addItems(submission: InventorySubmission): ItemWrite =
+      error("Batch saves are not used in this test")
 
-  override fun getSharedItems(householdId: String): Flow<List<Item>> {
+  override fun observeSubmission(
+      submission: InventorySubmission
+  ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
+      error("Submission observation is not used in this test")
+
+  /** Like the real repository: the household's SHARED items plus the user's own PERSONAL ones. */
+  override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> {
     requestedHouseholdIds += householdId
+    requestedUserIds += userId
     readFailure?.let { failure ->
       return flow { throw failure }
     }
-    return items.map { current -> current.filter { it.householdId == householdId } }
+    return items.map { current ->
+      current.filter {
+        it.householdId == householdId && (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+      }
+    }
   }
 
   override suspend fun addItem(item: Item): String? {
