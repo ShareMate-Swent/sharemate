@@ -15,7 +15,8 @@ googleServices.text = groovy.json.JsonOutput.toJson([
             mobilesdk_app_id: '1:123456789012:android:0123456789abcdef012345',
             android_client_info: [package_name: 'com.android.sharemate']
         ],
-        api_key: [[current_key: 'AIzaSyDemoOnlyKeyForLocalEmulator12345678']],
+        // Firebase Installations (used by Functions) validates the key format even in emulators.
+        api_key: [[current_key: 'AIza00000000000000000000000000000000000']],
         oauth_client: [[client_id: 'demo-only.apps.googleusercontent.com', client_type: 3]]
     ]],
     configuration_version: '1'
