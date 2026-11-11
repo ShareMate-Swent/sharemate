@@ -53,6 +53,7 @@ class SettingsScreenTest {
   private var pseudoRetries = 0
   private var editedPseudo = ""
   private var memberListOpens = 0
+  private var notificationSettingsOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -86,6 +87,7 @@ class SettingsScreenTest {
             },
             onSavePseudo = { pseudoSaves++ },
             onRetryLoadPseudo = { pseudoRetries++ },
+            onOpenNotificationSettings = { notificationSettingsOpens++ },
             onSignOut = { signOuts++ })
       }
     }
@@ -125,6 +127,21 @@ class SettingsScreenTest {
 
     assertEquals(1, memberListOpens)
     assertEquals(0, leaveRequests)
+  }
+
+  @Test
+  fun notificationSettingsEntryIsReachableAndInvokesItsCallback() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(NotificationSettingsTestTags.OPEN_ENTRY)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+
+    assertEquals(1, notificationSettingsOpens)
+    assertEquals(0, leaveRequests)
+    assertEquals(0, signOuts)
   }
 
   @Test

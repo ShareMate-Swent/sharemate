@@ -48,5 +48,8 @@ class TopLevelDestinationTest {
     assertEquals(
         listOf(TopLevelDestination.SETTINGS),
         TopLevelDestination.entries.filter { it.isSelected(ChildRoutes.HOUSEHOLD_MEMBERS) })
+    assertTrue(settings.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
+    assertTrue(settings.isParentOf(ChildRoutes.NOTIFICATION_SETTINGS))
+    assertFalse(TopLevelDestination.FRIDGE.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
   }
 }

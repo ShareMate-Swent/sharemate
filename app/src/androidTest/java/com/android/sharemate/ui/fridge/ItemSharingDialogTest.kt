@@ -17,6 +17,7 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.user.ExpirationChange
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
@@ -153,6 +154,10 @@ class ItemSharingDialogTest {
                             userId: String,
                             preferences: ExpirationPreferences
                         ) {}
+
+                        override suspend fun update(userId: String, change: ExpirationChange) {
+                          error("Preference updates are not used by this dialog test")
+                        }
                       }),
               fridgeType = FridgeType.SHARED)
       store.put("sharing-dialog", vm)

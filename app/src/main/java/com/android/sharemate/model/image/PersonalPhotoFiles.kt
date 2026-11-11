@@ -23,7 +23,7 @@ interface PersonalPhotoFiles {
 class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
   private val resolver = context.applicationContext.contentResolver
   private val directory = File(context.applicationContext.cacheDir, "personal-photo-drafts")
-  private val captures = File(context.applicationContext.cacheDir, "barcode-photos")
+  private val captures = barcodePhotoDirectory(context)
 
   override suspend fun copy(uri: String, fromCamera: Boolean): File {
     var copy: File? = null
@@ -35,11 +35,7 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         val target = File.createTempFile("selection-", ".photo", directory)
         copy = target
         val privateSource =
-            if (source.scheme == "file")
-                File(requireNotNull(source.path)).canonicalFile.also {
-                  require(it.parentFile == captures.canonicalFile)
-                }
-            else null
+            if (source.scheme == "file") requireOwnedPhotoFile(source, captures) else null
         if (fromCamera) {
           writeCapture(requireNotNull(privateSource), target)
           return@withContext target
@@ -47,16 +43,12 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         val input = privateSource?.inputStream() ?: checkNotNull(resolver.openInputStream(source))
         input.use { stream ->
           target.outputStream().use { output ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var remaining = PersonalPhotoRepository.MAX_BYTES
-            while (true) {
-              ensureActive()
-              val count = stream.read(buffer, 0, minOf(buffer.size, remaining + 1))
-              if (count < 0) break
-              require(count <= remaining)
-              output.write(buffer, 0, count)
-              remaining -= count
-            }
+            stream.copyPhotoTo(
+                output,
+                PersonalPhotoRepository.MAX_BYTES.toLong(),
+                checkActive = { ensureActive() }) {
+                  IllegalArgumentException("Failed requirement.")
+                }
           }
         }
         // Verify that the image can be decoded without allocating its full size.

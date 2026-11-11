@@ -59,6 +59,20 @@ class FirebaseExpirationPreferencesRepository(private val firestore: FirebaseFir
     document(userId).set(data, SetOptions.merge()).await()
   }
 
+  override suspend fun update(userId: String, change: ExpirationChange) {
+    val (field, value) =
+        when (change) {
+          is ExpirationChange.SoonDays ->
+              SOON_DAYS to change.days.coerceIn(ExpirationPreferences.SOON_DAYS_RANGE)
+          is ExpirationChange.SoonRepeatDays -> SOON_REPEAT_DAYS to storedRepeat(change.days)
+          is ExpirationChange.ExpiredRepeatDays -> EXPIRED_REPEAT_DAYS to storedRepeat(change.days)
+        }
+    document(userId).set(mapOf(PREFERENCES to mapOf(field to value)), SetOptions.merge()).await()
+  }
+
+  private fun storedRepeat(days: Int?) =
+      days?.coerceIn(ExpirationPreferences.REPEAT_DAYS_RANGE) ?: NEVER
+
   /** Stored values cannot be trusted, so each one is read on its own and brought into range. */
   private fun DocumentSnapshot.toPreferences(): ExpirationPreferences {
     val map = get(PREFERENCES) as? Map<*, *> ?: return ExpirationPreferences()

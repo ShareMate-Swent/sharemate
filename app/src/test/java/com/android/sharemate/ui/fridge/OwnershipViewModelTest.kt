@@ -240,4 +240,35 @@ class OwnershipViewModelTest {
     runCurrent()
     assertEquals("Renamed Alice", publishedNames.last())
   }
+
+  @Test
+  fun formResetsPreserveOwnerNamesIdentityAndOwnerFilter() = runTest {
+    val item = Item("mine", "Milk", "alice", "home", sharing = ItemSharing.PERSONAL)
+    items.emitItems(listOf(item))
+    val vm = vm(name = "Alice")
+    runCurrent()
+    val ownerNames = vm.uiState.value.ownerNames
+    vm.setOwnerFilter("bob")
+    vm.openEditItemDialog(item.id)
+    vm.updateSharing(ItemSharing.SHARED)
+    vm.dismissAddItemDialog()
+    assertEquals(ownerNames, vm.uiState.value.ownerNames)
+    assertEquals("alice", vm.uiState.value.currentUserId)
+    assertEquals("bob", vm.selectedOwnerId.value)
+    assertNull(vm.uiState.value.originalItemSharing)
+    assertFalse(vm.uiState.value.canChangeSharing)
+    assertTrue(items.edits.isEmpty())
+    vm.openEditItemDialog(item.id)
+    vm.updateSharing(ItemSharing.SHARED)
+    vm.saveItem()
+    runCurrent()
+    assertEquals(ItemSharing.SHARED, vm.uiState.value.items.single().sharing)
+    assertEquals(ownerNames, vm.uiState.value.ownerNames)
+    assertEquals(
+        ItemOwnership(ItemSharing.SHARED, "Alice", true),
+        vm.uiState.value.ownershipFor(item.copy(sharing = ItemSharing.SHARED)))
+    assertEquals("bob", vm.selectedOwnerId.value)
+    assertNull(vm.uiState.value.originalItemSharing)
+    assertFalse(vm.uiState.value.canChangeSharing)
+  }
 }

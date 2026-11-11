@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
@@ -37,10 +38,15 @@ class FridgeWiringTest {
   }
 
   @Test
-  fun chatTabShowsChatScreen() {
+  fun chatTabIsDisabledWhileOtherTabsRemainAvailable() {
     resolve()
-    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
-    compose.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsDisplayed().assertIsNotEnabled()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsEnabled().performClick()
+    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsNotEnabled()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
   }
 
   @Test
