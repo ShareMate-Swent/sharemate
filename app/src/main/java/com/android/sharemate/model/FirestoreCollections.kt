@@ -20,6 +20,7 @@ object FirestoreCollections {
   const val SETTLEMENTS = "settlements"
   /** Sub-collection of a household document. */
   const val MESSAGES = "messages"
+  const val MEMBER_NAMES = "memberNames"
 }
 
 /** Fields of a user document holding the expiry notification preferences. */
