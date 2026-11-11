@@ -95,8 +95,12 @@ import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
+import com.android.sharemate.ui.settings.NotificationSettingsScreen
+import com.android.sharemate.ui.settings.NotificationSettingsViewModel
 import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
+import com.android.sharemate.ui.settings.openSystemNotificationSettings
+import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -384,7 +388,10 @@ open class MainActivity : ComponentActivity() {
                             onPseudoChanged = settingsViewModel::updatePseudo,
                             onSavePseudo = settingsViewModel::savePseudo,
                             onRetryLoadPseudo = settingsViewModel::retryLoadPseudo,
-                            onSignOut = authViewModel::signOut)
+                            onSignOut = authViewModel::signOut,
+                            onOpenNotificationSettings = {
+                              navController.navigate(ChildRoutes.NOTIFICATION_SETTINGS)
+                            })
                       }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
                     // Scoped to this screen, so the members listener stops when it is closed.
@@ -406,6 +413,31 @@ open class MainActivity : ComponentActivity() {
                           navController.popBackStack(
                               ChildRoutes.HOUSEHOLD_MEMBERS, inclusive = true)
                         })
+                  }
+                  composable(ChildRoutes.NOTIFICATION_SETTINGS) {
+                    val notificationViewModel: NotificationSettingsViewModel =
+                        viewModel(
+                            key = ChildRoutes.notificationSettingsViewModelKey(session.uid),
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    NotificationSettingsViewModel(
+                                        expirationPreferencesRepository, session.uid)
+                                  }
+                                })
+                    val notificationState by
+                        notificationViewModel.state.collectAsStateWithLifecycle()
+                    NotificationSettingsScreen(
+                        state = notificationState,
+                        isSystemAllowed = rememberSystemNotificationsAllowed(),
+                        onBack = { navController.popBackStack() },
+                        onOpenSystemSettings = {
+                          openSystemNotificationSettings(this@MainActivity)
+                        },
+                        onSoonDaysChange = notificationViewModel::setSoonDays,
+                        onSoonRepeatChange = notificationViewModel::setSoonRepeatDays,
+                        onExpiredRepeatChange = notificationViewModel::setExpiredRepeatDays,
+                        onRetryLoad = notificationViewModel::retryLoad)
                   }
                 }
               }
