@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import androidx.lifecycle.SavedStateHandle
@@ -31,6 +32,41 @@ class BarcodePhotoViewModelTest {
   }
 
   @After fun tearDown() = Dispatchers.resetMain()
+
+  @Test
+  fun photoOriginSurvivesRestorationAndOnlyChangesAfterSuccessfulReplacement() = runTest {
+    vm.capture {}
+    advanceUntilIdle()
+    assertTrue(vm.state.value.fromCamera)
+    assertEquals(true, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+
+    val restored = BarcodePhotoViewModel(store, saved)
+    advanceUntilIdle()
+    assertTrue(restored.state.value.fromCamera)
+    restored.open()
+    restored.select(null)
+    store.importFailure = IOException("Gallery unavailable")
+    restored.select("content://gallery/broken")
+    advanceUntilIdle()
+    assertTrue(restored.state.value.fromCamera)
+    assertEquals(true, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+
+    store.importFailure = null
+    restored.select("content://gallery/replacement")
+    advanceUntilIdle()
+    assertFalse(restored.state.value.fromCamera)
+    assertEquals(false, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+    val galleryRestored = BarcodePhotoViewModel(store, saved)
+    advanceUntilIdle()
+    assertFalse(galleryRestored.state.value.fromCamera)
+    galleryRestored.capture { throw IOException("Camera unavailable") }
+    advanceUntilIdle()
+    assertFalse(galleryRestored.state.value.fromCamera)
+    galleryRestored.reset()
+    advanceUntilIdle()
+    assertNull(saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+    assertFalse(galleryRestored.state.value.fromCamera)
+  }
 
   @Test
   fun cancellingPickerPreservesPreviousImageWithoutFailure() = runTest {

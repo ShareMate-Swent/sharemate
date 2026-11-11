@@ -49,67 +49,66 @@ fun HouseholdChoiceScreen(
     onCreateHousehold: () -> Unit,
     onJoinHousehold: () -> Unit,
 ) {
-  Column(
-      modifier =
-          Modifier.fillMaxSize()
-              .background(MaterialTheme.colorScheme.surfaceContainerLow)
-              .padding(Dimens.spacingL),
-      horizontalAlignment = Alignment.CenterHorizontally,
-  ) {
-    Spacer(Modifier.height(HouseholdLayout.headerTopSpacing))
-    Box(
-        modifier =
-            Modifier.size(HouseholdLayout.logoSize)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-        contentAlignment = Alignment.Center,
+  Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(Dimens.spacingL),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      Icon(
-          imageVector = Icons.Outlined.Kitchen,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(HouseholdLayout.logoIconSize),
+      Spacer(Modifier.height(HouseholdLayout.headerTopSpacing))
+      Box(
+          modifier =
+              Modifier.size(HouseholdLayout.logoSize)
+                  .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+          contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+            imageVector = Icons.Outlined.Kitchen,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(HouseholdLayout.logoIconSize),
+        )
+      }
+      Spacer(Modifier.height(Dimens.spacingM))
+      Text(
+          text = stringResource(R.string.household_choice_title),
+          style = MaterialTheme.typography.headlineMedium,
+          fontWeight = FontWeight.Bold,
+          textAlign = TextAlign.Center,
+      )
+      Spacer(Modifier.height(Dimens.spacingXs))
+      Text(
+          text = stringResource(R.string.household_choice_description),
+          style = MaterialTheme.typography.bodyLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.padding(horizontal = Dimens.spacingXl),
+      )
+      Spacer(Modifier.weight(1f))
+      ChoiceCard(
+          icon = Icons.Outlined.Home,
+          title = stringResource(R.string.create_a_household),
+          description = stringResource(R.string.create_a_household_description),
+          emphasized = true,
+          onClick = onCreateHousehold,
+          modifier = Modifier.testTag(HouseholdChoiceTestTags.CREATE),
+      )
+      Spacer(Modifier.height(Dimens.spacingM))
+      ChoiceCard(
+          icon = Icons.Outlined.Key,
+          title = stringResource(R.string.join_a_household),
+          description = stringResource(R.string.join_a_household_description),
+          emphasized = false,
+          onClick = onJoinHousehold,
+          modifier = Modifier.testTag(HouseholdChoiceTestTags.JOIN),
+      )
+      Spacer(Modifier.weight(1f))
+      Text(
+          text = stringResource(R.string.household_privacy_note),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          textAlign = TextAlign.Center,
       )
     }
-    Spacer(Modifier.height(Dimens.spacingM))
-    Text(
-        text = stringResource(R.string.household_choice_title),
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(Dimens.spacingXs))
-    Text(
-        text = stringResource(R.string.household_choice_description),
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.padding(horizontal = Dimens.spacingXl),
-    )
-    Spacer(Modifier.weight(1f))
-    ChoiceCard(
-        icon = Icons.Outlined.Home,
-        title = stringResource(R.string.create_a_household),
-        description = stringResource(R.string.create_a_household_description),
-        emphasized = true,
-        onClick = onCreateHousehold,
-        modifier = Modifier.testTag(HouseholdChoiceTestTags.CREATE),
-    )
-    Spacer(Modifier.height(Dimens.spacingM))
-    ChoiceCard(
-        icon = Icons.Outlined.Key,
-        title = stringResource(R.string.join_a_household),
-        description = stringResource(R.string.join_a_household_description),
-        emphasized = false,
-        onClick = onJoinHousehold,
-        modifier = Modifier.testTag(HouseholdChoiceTestTags.JOIN),
-    )
-    Spacer(Modifier.weight(1f))
-    Text(
-        text = stringResource(R.string.household_privacy_note),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
   }
 }
 
