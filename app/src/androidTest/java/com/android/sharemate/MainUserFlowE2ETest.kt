@@ -137,7 +137,7 @@ class MainUserFlowE2ETest {
         .assertTextEquals("Your fridge is empty")
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
+    compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
 
     waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
@@ -197,7 +197,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performClick()
+    compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
     waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
     }

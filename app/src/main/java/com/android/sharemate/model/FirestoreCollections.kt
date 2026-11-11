@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
@@ -16,6 +17,7 @@ object FirestoreCollections {
   const val INVITE_CODES = "inviteCodes"
   /** Read-only shared expenses beneath a household document. */
   const val EXPENSES = "expenses"
+  const val SETTLEMENTS = "settlements"
   /** Sub-collection of a household document. */
   const val MESSAGES = "messages"
 }

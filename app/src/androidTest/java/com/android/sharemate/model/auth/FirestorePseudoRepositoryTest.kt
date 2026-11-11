@@ -4,6 +4,7 @@ package com.android.sharemate.model.auth
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.async
@@ -83,6 +84,23 @@ class FirestorePseudoRepositoryTest {
 
     val secondUid = FirebaseEmulator.signInAs("second")
     repository.claim(secondUid, "Former Name")
+  }
+
+  @Test
+  fun renamingPublicPseudoLetsAnotherUserClaimThePreviousName() = runBlocking {
+    val uid = FirebaseEmulator.signInAs("first")
+    val publicPseudos = FirebasePseudoRepository(firestore)
+    publicPseudos.setPseudo(uid, "Former Name")
+    publicPseudos.setPseudo(uid, "New Name")
+
+    val secondUid = FirebaseEmulator.signInAs("second")
+    repository.claim(secondUid, "former name")
+    try {
+      repository.claim(secondUid, "new name")
+      fail("The new pseudo must remain reserved")
+    } catch (failure: AuthException) {
+      assertEquals(AuthError.PSEUDO_TAKEN, failure.error)
+    }
   }
 
   @Test

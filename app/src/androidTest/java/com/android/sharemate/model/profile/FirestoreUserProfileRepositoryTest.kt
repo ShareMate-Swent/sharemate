@@ -9,6 +9,7 @@ import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.user.FirebasePseudoRepository
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -232,13 +233,13 @@ class FirestoreUserProfileRepositoryTest {
   fun profileDisplayNameLengthIsLimitedOnCreateAndUpdate() {
     val userId = FirebaseEmulator.signInAs("creator")
     val profile = profileReference(userId)
-    val maxName = "😀".repeat(MAX_DISPLAY_NAME_LENGTH)
-    val tooLong = "x".repeat(MAX_DISPLAY_NAME_LENGTH + 1)
+    val maxName = "😀".repeat(MAX_PSEUDO_LENGTH)
+    val tooLong = "x".repeat(MAX_PSEUDO_LENGTH + 1)
 
     assertDenied(profile.set(mapOf("displayName" to tooLong)))
     Tasks.await(profile.set(mapOf("displayName" to maxName)))
     assertDenied(profile.update("displayName", tooLong))
-    assertDenied(profile.update("displayName", "😀".repeat(MAX_DISPLAY_NAME_LENGTH + 1)))
+    assertDenied(profile.update("displayName", "😀".repeat(MAX_PSEUDO_LENGTH + 1)))
     Tasks.await(profile.update("displayName", "x"))
   }
 
@@ -283,7 +284,6 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   private companion object {
-    const val MAX_DISPLAY_NAME_LENGTH = 40
     const val TIMEOUT = 10_000L
   }
 }

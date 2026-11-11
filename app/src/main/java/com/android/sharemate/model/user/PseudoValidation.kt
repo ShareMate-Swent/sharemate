@@ -1,8 +1,6 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.user
 
-internal const val MAX_PSEUDO_LENGTH = 40
-
 internal enum class PseudoValidationError {
   REQUIRED,
   TOO_LONG,
