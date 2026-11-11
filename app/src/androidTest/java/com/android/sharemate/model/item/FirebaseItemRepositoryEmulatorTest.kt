@@ -466,6 +466,7 @@ class FirebaseItemRepositoryEmulatorTest {
       assertFalse(created.contains("shared"))
       assertEquals(original.copy(id = id), created.toItemOrNull())
       for (next in listOf(ItemSharing.PERSONAL, ItemSharing.SHARED)) {
+        await(doc.update("shared", true))
         confirm(repository.setItemSharing(id, next))
         val transitioned = await(doc.get(Source.SERVER))
         assertFalse(transitioned.contains("shared"))
@@ -616,6 +617,88 @@ class FirebaseItemRepositoryEmulatorTest {
         elsewhere.id, await(otherHouseholdItem.get(Source.SERVER)).getString("householdId"))
     FirebaseEmulator.signInAs("sharing-item-member")
     assertDenied(otherHouseholdItem.get(Source.SERVER))
+  }
+
+  @Test
+  fun atomicEditTransitionsPreserveAssociationsAndImages() = runBlocking {
+    val home = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
+    for (sharing in ItemSharing.values()) {
+      val original =
+          Item(
+              name = "Milk",
+              ownerId = owner,
+              householdId = home.id,
+              image = ItemImage(reference = "content://photos/milk"),
+              sharing = sharing)
+      val id = checkNotNull(repository.addItem(original))
+      await(document(id).update("shared", sharing == ItemSharing.SHARED))
+      val next = if (sharing == ItemSharing.SHARED) ItemSharing.PERSONAL else ItemSharing.SHARED
+      confirm(repository.updateItem(id, ItemEdit("Oat milk", 3, "Dairy", null, next)))
+      val stored = await(document(id).get(Source.SERVER))
+      assertEquals(
+          original.copy(
+              id = id, name = "Oat milk", quantity = 3, category = "Dairy", sharing = next),
+          stored.toItemOrNull())
+      assertFalse(stored.contains("shared"))
+    }
+  }
+
+  @Test
+  fun nonOwnerCombinedSharingEditCannotPartiallyApplyOrdinaryFields() = runBlocking {
+    val households = HouseholdRepositoryFirestore(firestore)
+    val home = households.createHousehold("Home", owner)
+    val original =
+        Item(
+            name = "Milk",
+            ownerId = owner,
+            householdId = home.id,
+            sharing = ItemSharing.SHARED,
+            image = ItemImage(reference = "content://photos/milk"))
+    val id = checkNotNull(repository.addItem(original))
+    await(document(id).update("shared", true))
+    val member = FirebaseEmulator.signInAs("atomic-edit-member")
+    households.joinHousehold(home.inviteCode, member)
+    assertWriteDenied(
+        repository.updateItem(id, ItemEdit("Rejected", 9, null, null, ItemSharing.PERSONAL)))
+    val rejected = await(document(id).get(Source.SERVER))
+    assertEquals(original.copy(id = id), rejected.toItemOrNull())
+    assertEquals(true, rejected.getBoolean("shared"))
+    confirm(repository.updateItem(id, ItemEdit("Member edit", 2, null, null)))
+    assertEquals(
+        original.copy(id = id, name = "Member edit", quantity = 2),
+        await(document(id).get(Source.SERVER)).toItemOrNull())
+  }
+
+  @Test
+  fun offlineCombinedEditQueuesThenSynchronizesWithoutLosingMetadata() = runBlocking {
+    val home = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
+    val original =
+        Item(
+            name = "Milk",
+            ownerId = owner,
+            householdId = home.id,
+            image = ItemImage(reference = "content://photos/milk"),
+            sharing = ItemSharing.SHARED)
+    val id = checkNotNull(repository.addItem(original))
+    await(document(id).get(Source.SERVER))
+    await(firestore.disableNetwork())
+    try {
+      val write =
+          repository.updateItem(id, ItemEdit("Offline milk", 4, null, null, ItemSharing.PERSONAL))
+              as ItemWrite.Queued
+      val cached = await(document(id).get(Source.CACHE))
+      assertEquals(
+          original.copy(
+              id = id, name = "Offline milk", quantity = 4, sharing = ItemSharing.PERSONAL),
+          cached.toItemOrNull())
+      assertTrue(cached.metadata.hasPendingWrites())
+      assertFalse(write.confirmation.isCompleted)
+      await(firestore.enableNetwork())
+      confirm(write)
+      assertEquals(cached.toItemOrNull(), await(document(id).get(Source.SERVER)).toItemOrNull())
+    } finally {
+      await(firestore.enableNetwork())
+    }
   }
 
   private fun document(id: String): DocumentReference =

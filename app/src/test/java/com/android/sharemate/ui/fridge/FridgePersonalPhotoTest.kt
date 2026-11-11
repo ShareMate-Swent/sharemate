@@ -9,6 +9,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
@@ -252,6 +253,20 @@ class FridgePersonalPhotoTest {
     assertEquals(1, items.addedItems.size)
     assertEquals(0, automaticLookups)
     assertFalse(selected.exists())
+  }
+
+  @Test
+  fun cancellingSelectionDiscardsPhotoAndRestoresPersonalDraft() = runTest {
+    selectPhoto()
+    viewModel.updateSharing(ItemSharing.PERSONAL)
+    viewModel.dismissAddItemDialog()
+    runCurrent()
+    assertFalse(selected.exists())
+    assertNull(controller.draft.value.file)
+    assertTrue(items.addedItems.isEmpty())
+    assertEquals(0, uploaded)
+    viewModel.openAddItemDialog()
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
   }
 
   @Test

@@ -8,6 +8,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.util.CustomClassMapper
 import kotlinx.coroutines.flow.first
@@ -144,12 +145,13 @@ class ItemSharingTest {
   fun sharingUpdatesReuseServerConfirmation() = runBlocking {
     for (sharing in ItemSharing.values()) {
       val pending = TaskCompletionSource<Void>()
-      `when`(document.update("sharing", sharing.name)).thenReturn(pending.task)
+      `when`(document.update(mapOf("sharing" to sharing.name, "shared" to FieldValue.delete())))
+          .thenReturn(pending.task)
       val write = repository.setItemSharing("item", sharing) as ItemWrite.Queued
       assertFalse(write.confirmation.isCompleted)
       pending.setResult(null)
       assertTrue(write.confirmation.await().isSuccess)
-      verify(document).update("sharing", sharing.name)
+      verify(document).update(mapOf("sharing" to sharing.name, "shared" to FieldValue.delete()))
     }
     verifyNoMoreInteractions(document)
   }
@@ -157,7 +159,10 @@ class ItemSharingTest {
   @Test
   fun unauthorizedServerConfirmationIsReported() = runBlocking {
     val pending = TaskCompletionSource<Void>()
-    `when`(document.update("sharing", ItemSharing.PERSONAL.name)).thenReturn(pending.task)
+    `when`(
+            document.update(
+                mapOf("sharing" to ItemSharing.PERSONAL.name, "shared" to FieldValue.delete())))
+        .thenReturn(pending.task)
     val write = repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Queued
     val denied = IllegalStateException("Permission denied")
     pending.setException(denied)
@@ -171,12 +176,17 @@ class ItemSharingTest {
     }
     verifyNoInteractions(document)
     val denied = IllegalStateException("Permission denied")
-    `when`(document.update("sharing", ItemSharing.PERSONAL.name))
+    `when`(
+            document.update(
+                mapOf("sharing" to ItemSharing.PERSONAL.name, "shared" to FieldValue.delete())))
         .thenReturn(Tasks.forException(denied))
     assertSame(
         denied,
         (repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Rejected).cause)
-    `when`(document.update("sharing", ItemSharing.PERSONAL.name)).thenThrow(denied)
+    `when`(
+            document.update(
+                mapOf("sharing" to ItemSharing.PERSONAL.name, "shared" to FieldValue.delete())))
+        .thenThrow(denied)
     assertSame(
         denied,
         (repository.setItemSharing("item", ItemSharing.PERSONAL) as ItemWrite.Rejected).cause)

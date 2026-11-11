@@ -84,8 +84,11 @@ class FridgeViewModel(
           PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
       else null
 
+  private val supportsSharing = fridgeType == FridgeType.SHARED
   private val mutableUiState =
-      MutableStateFlow(FridgeUiState(fridgeType = fridgeType, isLoading = true))
+      MutableStateFlow(
+          FridgeUiState(
+              fridgeType = fridgeType, isLoading = true, showSharingSelector = supportsSharing))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
@@ -373,6 +376,7 @@ class FridgeViewModel(
       it.resetItemFields()
           .copy(
               isAddItemDialogOpen = true,
+              canChangeSharing = supportsSharing,
               editingItemId = null,
               isScanningBarcode = false,
               barcodeValue = null,
@@ -579,10 +583,12 @@ class FridgeViewModel(
       it.copy(
           isAddItemDialogOpen = true,
           editingItemId = item.id,
+          itemSharing = item.sharing,
+          originalItemSharing = item.sharing,
+          canChangeSharing = supportsSharing && item.ownerId == userId,
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
           itemCategory = item.category.orEmpty(),
-          itemSharing = item.sharing,
           expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
@@ -598,13 +604,16 @@ class FridgeViewModel(
     it.copy(itemCategory = category, formError = null)
   }
 
-  /** The only way to set the sharing of a new item: a private fridge never leaves PERSONAL. */
-  fun updateSharing(sharing: ItemSharing) = updateDraft {
-    it.copy(itemSharing = if (fridgeType == FridgeType.SHARED) sharing else ItemSharing.PERSONAL)
-  }
-
   fun updateExpirationDate(date: String) = updateDraft {
     it.copy(expirationDateInput = date, formError = null)
+  }
+
+  fun updateSharing(sharing: ItemSharing) {
+    val state = uiState.value
+    if (!supportsSharing || !state.canChangeSharing) return
+    val itemId = state.editingItemId
+    if (itemId != null && activeItem(state.items, itemId)?.ownerId != userId) return
+    updateDraft { it.copy(itemSharing = sharing, formError = null) }
   }
 
   private fun updateDraft(update: (FridgeUiState) -> FridgeUiState) {
@@ -639,7 +648,14 @@ class FridgeViewModel(
       saveEdit(
           state.editingItemId,
           ItemEdit(
-              name, quantity, state.itemCategory.trim().takeIf(String::isNotEmpty), expirationDate))
+              name,
+              quantity,
+              state.itemCategory.trim().takeIf(String::isNotEmpty),
+              expirationDate,
+              // Compare to the opened draft, not live snapshots: untouched sharing must not
+              // overwrite a change made by another client while this dialog was open.
+              sharing =
+                  state.itemSharing.takeIf { supportsSharing && it != state.originalItemSharing }))
       return
     }
     val draftItem =
@@ -647,10 +663,10 @@ class FridgeViewModel(
             name = name,
             ownerId = userId,
             householdId = householdId,
-            sharing = state.itemSharing,
             quantity = quantity,
             expirationDate = expirationDate,
-            category = state.itemCategory.trim().takeIf { it.isNotEmpty() })
+            category = state.itemCategory.trim().takeIf { it.isNotEmpty() },
+            sharing = if (supportsSharing) state.itemSharing else ItemSharing.PERSONAL)
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
@@ -710,13 +726,22 @@ class FridgeViewModel(
 
   private fun saveEdit(itemId: String, edit: ItemEdit) {
     val state = uiState.value
-    if (itemId in state.pendingDeletionIds || activeItem(state.items, itemId) == null) {
+    val item = activeItem(state.items, itemId)
+    if (itemId in state.pendingDeletionIds ||
+        item == null ||
+        (edit.sharing != null && (!supportsSharing || item.ownerId != userId))) {
       mutableUiState.update { it.copy(formError = FridgeFormError.SAVE_FAILED) }
       return
     }
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {
       try {
+        if (edit.sharing != null && activeItem(uiState.value.items, itemId)?.ownerId != userId) {
+          mutableUiState.update {
+            it.copy(isSaving = false, formError = FridgeFormError.SAVE_FAILED)
+          }
+          return@launch
+        }
         when (val write = itemRepository.updateItem(itemId, edit)) {
           is ItemWrite.Rejected -> {
             if (write.cause is CancellationException) throw write.cause

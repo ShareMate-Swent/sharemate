@@ -191,6 +191,10 @@
     <string name="fridge_removing">Deleting…</string>
     <string name="fridge_remove_failed">Could not delete the item. Please try again.</string>
     <string name="fridge_remove_sync_failed">Deletion of %1$s could not sync. The item may reappear.</string>
+    <string name="fridge_item_sharing">Item sharing</string>
+    <string name="fridge_item_shared">Shared</string>
+    <string name="fridge_item_personal">Personal</string>
+    <string name="fridge_sharing_owner_only">Only the owner can change sharing.</string>
     <string name="balances_title">Balances</string>
     <string name="balances_your_balance">Your balance</string>
     <string name="balances_debts">Who owes whom</string>

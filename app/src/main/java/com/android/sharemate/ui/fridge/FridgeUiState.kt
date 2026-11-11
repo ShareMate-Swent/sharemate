@@ -37,6 +37,9 @@ data class FridgeUiState(
     val pendingDeletionIds: Set<String> = emptySet(),
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
+    val originalItemSharing: ItemSharing? = null,
+    val showSharingSelector: Boolean = false,
+    val canChangeSharing: Boolean = false,
 )
 
 internal fun FridgeUiState.resetItemFields(): FridgeUiState =
@@ -45,6 +48,8 @@ internal fun FridgeUiState.resetItemFields(): FridgeUiState =
         itemName = "",
         itemCategory = "",
         itemSharing = ItemSharing.PERSONAL,
+        originalItemSharing = null,
+        canChangeSharing = false,
         expirationDateInput = "")
 
 enum class BarcodeLookupError {
