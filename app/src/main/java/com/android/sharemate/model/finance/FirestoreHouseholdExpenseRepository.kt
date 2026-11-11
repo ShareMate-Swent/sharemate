@@ -2,7 +2,11 @@
 package com.android.sharemate.model.finance
 
 import com.android.sharemate.model.FirestoreCollections
-import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.finance.FinanceFields.HOUSEHOLD_ID
+import com.android.sharemate.model.finance.FinanceFields.ID
+import com.android.sharemate.model.finance.FinanceFields.PAID_BY
+import com.android.sharemate.model.finance.FinanceFields.SHARES
+import com.android.sharemate.model.finance.FinanceFields.TOTAL_AMOUNT_CENTS
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -43,13 +47,12 @@ class FirestoreHouseholdExpenseRepository(private val firestore: FirebaseFiresto
                   close(failure)
                 } else if (snapshot == null) {
                   close(IllegalStateException("Missing household snapshot"))
-                } else if (!snapshot.metadata.isFromCache &&
-                    !snapshot.metadata.hasPendingWrites() &&
-                    (!snapshot.exists() || snapshot.get(TYPE) != FridgeType.SHARED.name)) {
-                  close(
-                      FirebaseFirestoreException(
-                          "A shared household is required",
-                          FirebaseFirestoreException.Code.PERMISSION_DENIED))
+                } else {
+                  try {
+                    snapshot.requireSharedHousehold()
+                  } catch (error: FirebaseFirestoreException) {
+                    close(error)
+                  }
                 }
               }
           try {
@@ -64,7 +67,7 @@ class FirestoreHouseholdExpenseRepository(private val firestore: FirebaseFiresto
                         close(IllegalStateException("Missing expense query snapshot"))
                         return@addSnapshotListener
                       }
-                      if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
+                      if (!snapshot.metadata.isServerConfirmed()) {
                         return@addSnapshotListener
                       }
                       try {
@@ -103,10 +106,3 @@ internal fun DocumentSnapshot.toSharedExpense(householdId: String): SharedExpens
       }
   return SharedExpense(id, householdId, paidBy, total, shares)
 }
-
-private const val ID = "id"
-private const val HOUSEHOLD_ID = "householdId"
-private const val PAID_BY = "paidBy"
-private const val TOTAL_AMOUNT_CENTS = "totalAmountCents"
-private const val SHARES = "shares"
-private const val TYPE = "type"

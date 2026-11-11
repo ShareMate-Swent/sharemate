@@ -3,6 +3,7 @@ package com.android.sharemate.model.finance
 
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.HttpsCallableReference
 import com.google.firebase.functions.HttpsCallableResult
 import java.io.IOException
@@ -69,5 +70,28 @@ class FirebaseSettlementRepositoryTest {
     // Firebase exposes data as a final field and keeps the constructor internal in Kotlin.
     val response = HttpsCallableResult::class.java.getConstructor(Any::class.java).newInstance(data)
     `when`(callable.call(payload)).thenReturn(Tasks.forResult(response))
+  }
+
+  @Test
+  fun distinguishesDefinitiveRejectionsFromAmbiguousCallableFailures() {
+    val rejected =
+        setOf(
+            "INVALID_ARGUMENT",
+            "PERMISSION_DENIED",
+            "UNAUTHENTICATED",
+            "FAILED_PRECONDITION",
+            "ALREADY_EXISTS")
+    for (code in FirebaseFunctionsException.Code.values()) {
+      val error = mock(FirebaseFunctionsException::class.java)
+      `when`(error.code).thenReturn(code)
+      `when`(callable.call(payload)).thenReturn(Tasks.forException(error))
+      val failure =
+          assertThrows(Exception::class.java) {
+            runTest { repository.recordSettlement(settlement) }
+          }
+      if (code.name in rejected)
+          assertEquals(SettlementRejectedException::class.java, failure.javaClass)
+      else assertSame(error, failure)
+    }
   }
 }

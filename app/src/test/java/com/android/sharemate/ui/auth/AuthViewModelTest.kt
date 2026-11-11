@@ -5,6 +5,7 @@ import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -151,19 +152,19 @@ class AuthViewModelTest {
       assertTrue(repository.calls.isEmpty())
     }
 
-    viewModel.updatePseudo("😀".repeat(41))
+    viewModel.updatePseudo("😀".repeat(MAX_PSEUDO_LENGTH + 1))
     viewModel.submit()
     assertEquals(AuthUiError.PSEUDO_TOO_LONG, viewModel.state.value.error)
     assertTrue(repository.calls.isEmpty())
 
-    viewModel.updatePseudo("😀".repeat(40))
+    viewModel.updatePseudo("😀".repeat(MAX_PSEUDO_LENGTH))
     viewModel.submit()
     advanceUntilIdle()
     assertTrue(viewModel.state.value.isLoading)
     repository.sessions.emit(AuthSession("new-user", "student@example.org"))
     advanceUntilIdle()
     assertNull(viewModel.state.value.error)
-    assertEquals("😀".repeat(40), repository.calls.single().pseudo)
+    assertEquals("😀".repeat(MAX_PSEUDO_LENGTH), repository.calls.single().pseudo)
   }
 
   @Test
