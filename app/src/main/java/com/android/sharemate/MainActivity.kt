@@ -214,6 +214,7 @@ open class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
                             selected = destination.isSelected(currentRoute),
+                            enabled = destination != TopLevelDestination.CHAT,
                             onClick = {
                               if (destination.isParentOf(currentRoute)) {
                                 // Tapping the tab of the open screen goes back to the tab itself.
