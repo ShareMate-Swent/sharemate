@@ -371,7 +371,8 @@ class PersonalPhotoStorageEmulatorTest {
     val models = ViewModelStore()
     val files =
         object : PersonalPhotoFiles {
-          override suspend fun copy(uri: String) = temporary.newFile().apply { writeBytes(png) }
+          override suspend fun copy(uri: String, fromCamera: Boolean) =
+              temporary.newFile().apply { writeBytes(png) }
 
           override suspend fun delete(file: java.io.File) {
             file.delete()

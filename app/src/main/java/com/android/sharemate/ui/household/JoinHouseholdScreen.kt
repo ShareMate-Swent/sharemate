@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,126 +68,128 @@ fun JoinHouseholdScreen(
   val inviteCodeDescription = stringResource(R.string.household_invite_code)
   LaunchedEffect(state.joined) { if (state.joined) onJoined() }
   val colors = MaterialTheme.colorScheme
-  Column(
-      modifier =
-          Modifier.fillMaxSize()
-              .background(colors.surfaceContainerLow)
-              .padding(
-                  horizontal = Dimens.screenHorizontalPadding,
-                  vertical = Dimens.screenVerticalPadding),
-  ) {
-    HouseholdTopBar(
-        title = stringResource(R.string.join_household_title),
-        onBack = onBack,
-        backTestTag = JoinHouseholdTestTags.BACK,
-    )
-    Spacer(Modifier.height(Dimens.spacingM))
-    Text(
-        text = stringResource(R.string.join_household_description),
-        style = MaterialTheme.typography.bodyLarge,
-        color = colors.onSurfaceVariant,
-    )
-    Spacer(Modifier.weight(1f))
-    BasicTextField(
-        value = state.inviteCode,
-        onValueChange = viewModel::updateInviteCode,
+  Surface(color = colors.surfaceContainerLow) {
+    Column(
         modifier =
-            Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.CODE_INPUT).semantics {
-              contentDescription = inviteCodeDescription
-            },
-        enabled = !state.isLoading,
-        singleLine = true,
-        cursorBrush = SolidColor(Color.Transparent),
-        keyboardOptions =
-            KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                keyboardType = KeyboardType.Ascii,
-            ),
-        decorationBox = {
-          Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement =
-                  Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
-          ) {
-            repeat(JoinHouseholdViewModel.MAX_CODE_LENGTH) { index ->
-              val isNext = index == state.inviteCode.length
-              Box(
-                  modifier =
-                      Modifier.weight(1f, fill = false)
-                          .size(
-                              width = HouseholdLayout.codeCellWidth,
-                              height = HouseholdLayout.codeCellHeight)
-                          .testTag(
-                              when (index) {
-                                0 -> JoinHouseholdTestTags.CODE_BOX_1
-                                1 -> JoinHouseholdTestTags.CODE_BOX_2
-                                2 -> JoinHouseholdTestTags.CODE_BOX_3
-                                3 -> JoinHouseholdTestTags.CODE_BOX_4
-                                4 -> JoinHouseholdTestTags.CODE_BOX_5
-                                else -> JoinHouseholdTestTags.CODE_BOX_6
-                              })
-                          .background(
-                              colors.surfaceContainerLowest,
-                              RoundedCornerShape(HouseholdLayout.codeCellCornerRadius))
-                          .border(
-                              width = if (isNext) Dimens.focusedBorderWidth else Dimens.borderWidth,
-                              color = if (isNext) colors.primary else colors.outlineVariant,
-                              shape = RoundedCornerShape(HouseholdLayout.codeCellCornerRadius)),
-                  contentAlignment = Alignment.Center,
-              ) {
-                Text(
-                    text = state.inviteCode.getOrNull(index)?.toString() ?: "",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.onSurface,
-                )
+            Modifier.fillMaxSize()
+                .padding(
+                    horizontal = Dimens.screenHorizontalPadding,
+                    vertical = Dimens.screenVerticalPadding),
+    ) {
+      HouseholdTopBar(
+          title = stringResource(R.string.join_household_title),
+          onBack = onBack,
+          backTestTag = JoinHouseholdTestTags.BACK,
+      )
+      Spacer(Modifier.height(Dimens.spacingM))
+      Text(
+          text = stringResource(R.string.join_household_description),
+          style = MaterialTheme.typography.bodyLarge,
+          color = colors.onSurfaceVariant,
+      )
+      Spacer(Modifier.weight(1f))
+      BasicTextField(
+          value = state.inviteCode,
+          onValueChange = viewModel::updateInviteCode,
+          modifier =
+              Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.CODE_INPUT).semantics {
+                contentDescription = inviteCodeDescription
+              },
+          enabled = !state.isLoading,
+          singleLine = true,
+          cursorBrush = SolidColor(Color.Transparent),
+          keyboardOptions =
+              KeyboardOptions(
+                  capitalization = KeyboardCapitalization.Characters,
+                  keyboardType = KeyboardType.Ascii,
+              ),
+          decorationBox = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
+            ) {
+              repeat(JoinHouseholdViewModel.MAX_CODE_LENGTH) { index ->
+                val isNext = index == state.inviteCode.length
+                Box(
+                    modifier =
+                        Modifier.weight(1f, fill = false)
+                            .size(
+                                width = HouseholdLayout.codeCellWidth,
+                                height = HouseholdLayout.codeCellHeight)
+                            .testTag(
+                                when (index) {
+                                  0 -> JoinHouseholdTestTags.CODE_BOX_1
+                                  1 -> JoinHouseholdTestTags.CODE_BOX_2
+                                  2 -> JoinHouseholdTestTags.CODE_BOX_3
+                                  3 -> JoinHouseholdTestTags.CODE_BOX_4
+                                  4 -> JoinHouseholdTestTags.CODE_BOX_5
+                                  else -> JoinHouseholdTestTags.CODE_BOX_6
+                                })
+                            .background(
+                                colors.surfaceContainerLowest,
+                                RoundedCornerShape(HouseholdLayout.codeCellCornerRadius))
+                            .border(
+                                width =
+                                    if (isNext) Dimens.focusedBorderWidth else Dimens.borderWidth,
+                                color = if (isNext) colors.primary else colors.outlineVariant,
+                                shape = RoundedCornerShape(HouseholdLayout.codeCellCornerRadius)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                  Text(
+                      text = state.inviteCode.getOrNull(index)?.toString() ?: "",
+                      style = MaterialTheme.typography.titleLarge,
+                      fontWeight = FontWeight.Bold,
+                      color = colors.onSurface,
+                  )
+                }
               }
             }
-          }
-        },
-    )
-    state.error?.let { error ->
-      Spacer(Modifier.height(Dimens.spacingS))
-      Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement =
-              Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Icon(
-            imageVector = Icons.Filled.Error,
-            contentDescription = null,
-            tint = colors.error,
-            modifier = Modifier.size(Dimens.iconSmall),
-        )
-        Text(
-            text =
-                stringResource(
-                    when (error) {
-                      JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
-                      else -> R.string.household_generic_error
-                    }),
-            style = MaterialTheme.typography.labelLarge,
-            color = colors.error,
-            modifier = Modifier.testTag(JoinHouseholdTestTags.ERROR),
-        )
+          },
+      )
+      state.error?.let { error ->
+        Spacer(Modifier.height(Dimens.spacingS))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Icon(
+              imageVector = Icons.Filled.Error,
+              contentDescription = null,
+              tint = colors.error,
+              modifier = Modifier.size(Dimens.iconSmall),
+          )
+          Text(
+              text =
+                  stringResource(
+                      when (error) {
+                        JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
+                        else -> R.string.household_generic_error
+                      }),
+              style = MaterialTheme.typography.labelLarge,
+              color = colors.error,
+              modifier = Modifier.testTag(JoinHouseholdTestTags.ERROR),
+          )
+        }
       }
-    }
-    Spacer(Modifier.weight(1f))
-    Button(
-        onClick = viewModel::joinHousehold,
-        enabled =
-            state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH && !state.isLoading,
-        modifier = Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.JOIN),
-    ) {
-      if (state.isLoading) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(Dimens.progressSize).testTag(JoinHouseholdTestTags.LOADING),
-            color = colors.onPrimary,
-            strokeWidth = Dimens.progressStrokeWidth,
-        )
-      } else {
-        Text(stringResource(R.string.join_household))
+      Spacer(Modifier.weight(1f))
+      Button(
+          onClick = viewModel::joinHousehold,
+          enabled =
+              state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH && !state.isLoading,
+          modifier = Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.JOIN),
+      ) {
+        if (state.isLoading) {
+          CircularProgressIndicator(
+              modifier = Modifier.size(Dimens.progressSize).testTag(JoinHouseholdTestTags.LOADING),
+              color = colors.onPrimary,
+              strokeWidth = Dimens.progressStrokeWidth,
+          )
+        } else {
+          Text(stringResource(R.string.join_household))
+        }
       }
     }
   }

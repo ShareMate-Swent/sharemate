@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
@@ -12,13 +13,17 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.withContext
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.rules.TemporaryFolder
@@ -71,7 +76,7 @@ class FridgePersonalPhotoTest {
     selected = temporary.newFile()
     val files =
         object : PersonalPhotoFiles {
-          override suspend fun copy(uri: String) = copyPhoto(uri)
+          override suspend fun copy(uri: String, fromCamera: Boolean) = copyPhoto(uri)
 
           override suspend fun delete(file: File) {
             file.delete()
@@ -112,6 +117,113 @@ class FridgePersonalPhotoTest {
     viewModel.updateName("Milk")
     controller.select("content://gallery/selected")
     runCurrent()
+  }
+
+  @Test
+  fun cancellingCameraImportReleasesLateCopyAndKeepsPreviousPhotoUsable() = runTest {
+    selectPhoto()
+    val replacement = temporary.newFile()
+    val copying = CompletableDeferred<Unit>()
+    copyPhoto = {
+      withContext(NonCancellable) {
+        copying.await()
+        replacement
+      }
+    }
+    val importing = launch {
+      controller.selectAndWait("file:///camera/replacement", fromCamera = true)
+    }
+    runCurrent()
+    assertTrue(controller.draft.value.importing)
+
+    importing.cancel()
+    copying.complete(Unit)
+    importing.join()
+
+    assertEquals(PersonalPhotoDraft(selected), controller.draft.value)
+    assertTrue(selected.exists())
+    assertFalse(replacement.exists())
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertEquals(1, uploaded)
+  }
+
+  @Test
+  fun cameraConfirmationCannotStartASecondCopyWhileImporting() = runTest {
+    selectPhoto()
+    val replacement = temporary.newFile()
+    val copying = CompletableDeferred<File>()
+    val requests = mutableListOf<String>()
+    copyPhoto = {
+      requests += it
+      copying.await()
+    }
+    val importing = launch { controller.selectAndWait("file:///camera/first", fromCamera = true) }
+    runCurrent()
+
+    val failure =
+        runCatching { controller.selectAndWait("file:///camera/second", fromCamera = true) }
+            .exceptionOrNull()
+    assertTrue(failure is IllegalStateException)
+    assertEquals(listOf("file:///camera/first"), requests)
+    assertEquals(selected, controller.draft.value.file)
+
+    copying.complete(replacement)
+    importing.join()
+    assertEquals(PersonalPhotoDraft(replacement), controller.draft.value)
+    assertFalse(selected.exists())
+  }
+
+  @Test
+  fun cameraConfirmationWaitsForCopyBeforeSourceCleanupAndItemSave() = runTest {
+    viewModel.openAddItemDialog()
+    viewModel.updateName("Milk")
+    val source = temporary.newFile()
+    val uri = "file://${source.path}"
+    val copy = CompletableDeferred<File>()
+    copyPhoto = {
+      assertEquals(uri, it)
+      copy.await()
+    }
+    val camera =
+        BarcodePhotoViewModel(
+            object : BarcodePhotoStore {
+              override suspend fun createCapture() = uri
+
+              override suspend fun importImage(uri: String): String = error("Unexpected gallery")
+
+              override suspend fun validate(uri: String) {
+                assertTrue(source.exists())
+              }
+
+              override suspend fun delete(uri: String) {
+                source.delete()
+              }
+            },
+            SavedStateHandle())
+    models.put("camera", camera)
+    camera.open()
+    camera.capture { assertEquals(uri, it) }
+    runCurrent()
+    camera.confirm { controller.selectAndWait(it, camera.state.value.fromCamera) }
+    runCurrent()
+    viewModel.saveItem()
+    assertTrue(controller.draft.value.importing)
+    assertTrue(items.addedItems.isEmpty())
+    assertTrue(source.exists())
+    copy.complete(selected)
+    runCurrent()
+    assertTrue(camera.state.value.confirmed)
+    camera.reset()
+    runCurrent()
+    assertFalse(source.exists())
+    assertTrue(selected.exists())
+    viewModel.saveItem()
+    runCurrent()
+    assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
   }
 
   @Test
