@@ -370,19 +370,15 @@ class FridgeViewModel(
     barcodeDialogGeneration++
     cancelBarcodeScan()
     mutableUiState.update {
-      it.copy(
-          isAddItemDialogOpen = true,
-          editingItemId = null,
-          itemQuantity = "1",
-          itemName = "",
-          itemCategory = "",
-          itemSharing = ItemSharing.PERSONAL,
-          expirationDateInput = "",
-          isScanningBarcode = false,
-          barcodeValue = null,
-          barcodeScanFailed = false,
-          barcodeLookupError = null,
-          formError = null)
+      it.resetItemFields()
+          .copy(
+              isAddItemDialogOpen = true,
+              editingItemId = null,
+              isScanningBarcode = false,
+              barcodeValue = null,
+              barcodeScanFailed = false,
+              barcodeLookupError = null,
+              formError = null)
     }
   }
 
@@ -392,19 +388,15 @@ class FridgeViewModel(
     barcodeDialogGeneration++
     cancelBarcodeScan()
     mutableUiState.update {
-      it.copy(
-          isAddItemDialogOpen = false,
-          editingItemId = null,
-          itemQuantity = "1",
-          itemName = "",
-          itemCategory = "",
-          itemSharing = ItemSharing.PERSONAL,
-          expirationDateInput = "",
-          isScanningBarcode = false,
-          barcodeValue = null,
-          barcodeScanFailed = false,
-          barcodeLookupError = null,
-          formError = null)
+      it.resetItemFields()
+          .copy(
+              isAddItemDialogOpen = false,
+              editingItemId = null,
+              isScanningBarcode = false,
+              barcodeValue = null,
+              barcodeScanFailed = false,
+              barcodeLookupError = null,
+              formError = null)
     }
   }
 
@@ -670,17 +662,13 @@ class FridgeViewModel(
           }
         } else {
           mutableUiState.update {
-            it.copy(
-                isSaving = false,
-                isAddItemDialogOpen = false,
-                itemQuantity = "1",
-                itemName = "",
-                itemCategory = "",
-                itemSharing = ItemSharing.PERSONAL,
-                expirationDateInput = "",
-                barcodeValue = null,
-                barcodeScanFailed = false,
-                formError = null)
+            it.resetItemFields()
+                .copy(
+                    isSaving = false,
+                    isAddItemDialogOpen = false,
+                    barcodeValue = null,
+                    barcodeScanFailed = false,
+                    formError = null)
           }
           val photos = personalPhotos
           val photo = photos?.takeDraft()
@@ -739,15 +727,8 @@ class FridgeViewModel(
           is ItemWrite.Queued -> {
             // Snapshots own local application and rollback; submission is not server approval.
             mutableUiState.update {
-              it.copy(
-                  isSaving = false,
-                  isAddItemDialogOpen = false,
-                  editingItemId = null,
-                  itemName = "",
-                  itemQuantity = "1",
-                  itemCategory = "",
-                  itemSharing = ItemSharing.PERSONAL,
-                  expirationDateInput = "")
+              it.resetItemFields()
+                  .copy(isSaving = false, isAddItemDialogOpen = false, editingItemId = null)
             }
             trackConfirmation(write) { reportEditSyncError(edit.name) }
           }

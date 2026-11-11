@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
 import android.content.Context
@@ -27,7 +28,7 @@ interface BarcodePhotoStore {
 
 class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
   private val resolver = context.applicationContext.contentResolver
-  private val directory = File(context.applicationContext.cacheDir, "barcode-photos")
+  private val directory = barcodePhotoDirectory(context)
 
   override suspend fun createCapture(): String {
     var created: File? = null
@@ -53,15 +54,8 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
         imported = target
         resolver.openInputStream(Uri.parse(uri))?.use { input ->
           ownedFile(target).outputStream().use { output ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var total = 0L
-            while (true) {
-              ensureActive()
-              val count = input.read(buffer)
-              if (count < 0) break
-              total += count
-              if (total > MAX_BYTES) throw IOException("Image exceeds size limit")
-              output.write(buffer, 0, count)
+            input.copyPhotoTo(output, MAX_BYTES, checkActive = { ensureActive() }) {
+              IOException("Image exceeds size limit")
             }
           }
         } ?: throw IOException("Image is unavailable")
@@ -95,13 +89,7 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
         Unit
       }
 
-  private fun ownedFile(uri: String): File {
-    val parsed = Uri.parse(uri)
-    require(parsed.scheme == "file")
-    val file = File(requireNotNull(parsed.path)).canonicalFile
-    require(file.parentFile == directory.canonicalFile)
-    return file
-  }
+  private fun ownedFile(uri: String): File = requireOwnedPhotoFile(Uri.parse(uri), directory)
 
   companion object {
     const val MAX_BYTES = 20L * 1024 * 1024
@@ -109,4 +97,14 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
     // Consumers must still downsample to their required resolution before allocating a bitmap.
     const val MAX_PIXELS = 50_000_000L
   }
+}
+
+internal fun barcodePhotoDirectory(context: Context): File =
+    File(context.applicationContext.cacheDir, "barcode-photos")
+
+internal fun requireOwnedPhotoFile(uri: Uri, directory: File): File {
+  require(uri.scheme == "file")
+  val file = File(requireNotNull(uri.path)).canonicalFile
+  require(file.parentFile == directory.canonicalFile)
+  return file
 }
