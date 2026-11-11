@@ -1,9 +1,13 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import java.util.Date
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ItemTest {
@@ -25,13 +29,13 @@ class ItemTest {
 
   @Test
   fun imageDefaultsToNull() {
-    assertNull(Item().image)
+    assertNull(Item(householdId = "household").image)
   }
 
   @Test
   fun categoryIsOptionalAndCanBeProvided() {
-    assertNull(Item().category)
-    assertEquals("Dairy", Item(category = "Dairy").category)
+    assertNull(Item(householdId = "household").category)
+    assertEquals("Dairy", Item(householdId = "household", category = "Dairy").category)
   }
 
   @Test
@@ -44,6 +48,25 @@ class ItemTest {
       assertEquals(original.id, edited.id)
       assertEquals(original.ownerId, edited.ownerId)
       assertEquals(original.householdId, edited.householdId)
+    }
+  }
+
+  @Test
+  fun itemsArePersonalUnlessSharedExplicitly() {
+    val item = Item(householdId = "household")
+
+    assertEquals(ItemSharing.PERSONAL, item.sharing)
+    assertFalse(item.isShared)
+    assertTrue(item.copy(sharing = ItemSharing.SHARED).isShared)
+  }
+
+  @Test
+  fun itemMustBelongToAHousehold() {
+    for (blank in listOf("", " ", "\t")) {
+      assertThrows(IllegalArgumentException::class.java) { Item(householdId = blank) }
+      assertThrows(IllegalArgumentException::class.java) {
+        Item(householdId = "household").copy(householdId = blank)
+      }
     }
   }
 }

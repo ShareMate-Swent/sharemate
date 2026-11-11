@@ -3,6 +3,8 @@ package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -24,6 +26,30 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class ReceiptScanFlowTest {
   @get:Rule val compose = createComposeRule()
+
+  @Test
+  fun balancesEntryTracksPrivateAndSharedHouseholdPolicy() {
+    val store =
+        object : BarcodePhotoStore {
+          override suspend fun createCapture(): String = error("unused")
+
+          override suspend fun importImage(uri: String): String = error("unused")
+
+          override suspend fun validate(uri: String) = Unit
+
+          override suspend fun delete(uri: String) = Unit
+        }
+    val photo = BarcodePhotoViewModel(store, SavedStateHandle())
+    var shared by androidx.compose.runtime.mutableStateOf(false)
+    var opened = 0
+    compose.setContent { ReceiptScanFlow(photo, shared, { opened++ }) { emptyList() } }
+    compose.onNodeWithTag("receipts_balances").assertDoesNotExist()
+    compose.runOnIdle { shared = true }
+    compose.onNodeWithTag("receipts_balances").performClick()
+    assertEquals(1, opened)
+    compose.runOnIdle { shared = false }
+    compose.onNodeWithTag("receipts_balances").assertDoesNotExist()
+  }
 
   @Test
   fun unreadablePhotoCanBeReplacedAndNewItemsReachReviewExactlyOnce() {

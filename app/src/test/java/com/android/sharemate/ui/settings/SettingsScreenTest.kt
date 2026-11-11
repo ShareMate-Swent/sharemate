@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.settings
 
 import android.content.ClipboardManager
@@ -8,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,12 +17,15 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
@@ -44,6 +49,10 @@ class SettingsScreenTest {
   private var leftCalls = 0
   private var signOuts = 0
   private var switches = 0
+  private var pseudoSaves = 0
+  private var pseudoRetries = 0
+  private var editedPseudo = ""
+  private var memberListOpens = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -60,18 +69,62 @@ class SettingsScreenTest {
   ) {
     leaveState = state
     composeTestRule.setContent {
+      var current by remember { mutableStateOf(settings) }
       MaterialTheme {
         SettingsScreen(
-            state = settings,
+            state = current,
             leaveState = leaveState,
             onLeaveHousehold = { leaveRequests++ },
             onCancelLeave = { cancels++ },
             onConfirmLeave = { confirms++ },
             onLeft = { leftCalls++ },
+            onShowMembers = { memberListOpens++ },
             onSwitchGoogleAccount = { switches++ },
+            onPseudoChanged = {
+              editedPseudo = it
+              current = current.copy(pseudo = it)
+            },
+            onSavePseudo = { pseudoSaves++ },
+            onRetryLoadPseudo = { pseudoRetries++ },
             onSignOut = { signOuts++ })
       }
     }
+  }
+
+  @Test
+  fun pseudoCanBeEditedAndSaved() {
+    showSettings(settings = googleState.copy(pseudo = "Alex", savedPseudo = "Alex"))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_FIELD)
+        .performScrollTo()
+        .assert(hasText("Alex"))
+        .performTextClearance()
+    composeTestRule.onNodeWithTag(SettingsTestTags.PSEUDO_FIELD).performTextInput("Sam")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+
+    assertEquals("Sam", editedPseudo)
+    assertEquals(1, pseudoSaves)
+  }
+
+  @Test
+  fun tappingTheMemberCountOpensTheMembersList() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.SHOW_MEMBERS)
+        .performScrollTo()
+        .assert(hasClickAction())
+        // The row is read as one button, e.g. "Rue de Lausanne flat, 3 members".
+        .assertTextEquals("Rue de Lausanne flat", "3 members")
+        .performClick()
+
+    assertEquals(1, memberListOpens)
+    assertEquals(0, leaveRequests)
   }
 
   @Test
@@ -110,6 +163,16 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun savedPseudoReplacesTheAccountNameInTheProfileHeader() {
+    showSettings(settings = googleState.copy(savedPseudo = "Sam"))
+
+    composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_NAME).assertTextEquals("Sam")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PROFILE_EMAIL)
+        .assertTextEquals("alex.morgan@example.com")
+  }
+
+  @Test
   fun emailAccountWithoutNameShowsTheEmailOnceAndNoSwitchAction() {
     showSettings(
         settings =
@@ -145,6 +208,54 @@ class SettingsScreenTest {
     composeTestRule.onNodeWithTag(SettingsTestTags.SIGN_OUT).assertIsNotEnabled()
   }
 
+  private fun assertPseudoError(error: SettingsPseudoError, message: Int) {
+    showSettings(settings = googleState.copy(pseudoError = error))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_ERROR)
+        .performScrollTo()
+        .assertTextEquals(composeTestRule.activity.getString(message))
+  }
+
+  @Test
+  fun pseudoLoadFailureOffersRetryAndBlocksEditing() {
+    showSettings(
+        settings = googleState.copy(pseudo = "Alex", pseudoError = SettingsPseudoError.LOAD_FAILED))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_FIELD)
+        .performScrollTo()
+        .assertIsNotEnabled()
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(SettingsTestTags.PSEUDO_RETRY).performScrollTo().performClick()
+    assertEquals(1, pseudoRetries)
+  }
+
+  @Test
+  fun pseudoLoadFailureShowsItsMessage() =
+      assertPseudoError(SettingsPseudoError.LOAD_FAILED, R.string.settings_pseudo_load_failed)
+
+  @Test
+  fun pseudoSaveFailureShowsItsMessage() =
+      assertPseudoError(SettingsPseudoError.SAVE_FAILED, R.string.settings_pseudo_save_failed)
+
+  @Test
+  fun takenPseudoShowsItsSpecificMessage() =
+      assertPseudoError(SettingsPseudoError.PSEUDO_TAKEN, R.string.auth_error_pseudo_taken)
+
+  @Test
+  fun whileSavingThePseudoTheSaveButtonShowsProgressAndIsDisabled() {
+    showSettings(settings = googleState.copy(pseudo = "Sam", isSavingPseudo = true))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PSEUDO_SAVE)
+        .performScrollTo()
+        .assertIsNotEnabled()
+        .assert(hasText(composeTestRule.activity.getString(R.string.settings_pseudo_save)).not())
+  }
+
   @Test
   fun eachSwitchFailureShowsItsMessage() {
     val messages =
@@ -162,7 +273,11 @@ class SettingsScreenTest {
             onCancelLeave = {},
             onConfirmLeave = {},
             onLeft = {},
+            onShowMembers = {},
             onSwitchGoogleAccount = {},
+            onPseudoChanged = {},
+            onSavePseudo = {},
+            onRetryLoadPseudo = {},
             onSignOut = {})
       }
     }
@@ -180,10 +295,12 @@ class SettingsScreenTest {
     showSettings()
 
     composeTestRule
-        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME, useUnmergedTree = true)
         .performScrollTo()
         .assertTextEquals("Rue de Lausanne flat")
-    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("3 members")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS, useUnmergedTree = true)
+        .assertTextEquals("3 members")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertTextEquals("K7XM4P")
   }
 
@@ -192,7 +309,7 @@ class SettingsScreenTest {
     showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
 
     composeTestRule
-        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME)
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_NAME, useUnmergedTree = true)
         .performScrollTo()
         .assertTextEquals("Rue de Lausanne flat")
     composeTestRule.onNodeWithTag(SettingsTestTags.INVITE_CODE).assertDoesNotExist()
@@ -239,7 +356,9 @@ class SettingsScreenTest {
   fun aSingleMemberIsNotPluralized() {
     showSettings(settings = googleState.copy(memberCount = 1))
 
-    composeTestRule.onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS).assertTextEquals("1 member")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.HOUSEHOLD_MEMBERS, useUnmergedTree = true)
+        .assertTextEquals("1 member")
   }
 
   @Test

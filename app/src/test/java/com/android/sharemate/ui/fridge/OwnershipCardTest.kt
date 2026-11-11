@@ -30,8 +30,10 @@ class OwnershipCardTest {
     compose.setContent {
       SampleAppTheme(dynamicColor = false) {
         FridgeScreen(
+            expiryStatuses = emptyMap(),
             uiState =
                 FridgeUiState(
+                    fridgeType = FridgeType.SHARED,
                     items =
                         listOf(
                             mine, other, other.copy(id = "shared", sharing = ItemSharing.SHARED)),
@@ -52,8 +54,13 @@ class OwnershipCardTest {
 
   @Test
   fun namesRecomposeAfterInventoryLoadsWithoutChangingCardIdentity() {
-    val state = mutableStateOf(FridgeUiState(isLoading = true, currentUserId = "alice"))
-    compose.setContent { SampleAppTheme { FridgeScreen(uiState = state.value) } }
+    val state =
+        mutableStateOf(
+            FridgeUiState(
+                fridgeType = FridgeType.SHARED, isLoading = true, currentUserId = "alice"))
+    compose.setContent {
+      SampleAppTheme { FridgeScreen(uiState = state.value, expiryStatuses = emptyMap()) }
+    }
     compose.runOnIdle { state.value = state.value.copy(isLoading = false, items = listOf(other)) }
     owner("other").assertTextEquals("Owner: Unknown owner")
     compose.runOnIdle { state.value = state.value.copy(ownerNames = mapOf("bob" to "Bob")) }
@@ -68,16 +75,19 @@ class OwnershipCardTest {
     compose.setContent {
       SampleAppTheme {
         FridgeScreen(
-            fridgeType = FridgeType.PRIVATE,
+            expiryStatuses = emptyMap(),
             uiState =
                 FridgeUiState(
+                    fridgeType = FridgeType.PRIVATE,
                     currentUserId = "alice",
                     ownerNames = mapOf("bob" to "email@example.com"),
                     items =
                         listOf(
                             mine,
                             other.copy(
-                                id = "legacy", householdId = null, sharing = ItemSharing.SHARED))))
+                                id = "legacy",
+                                householdId = "home",
+                                sharing = ItemSharing.SHARED))))
       }
     }
     badge("mine").assertTextEquals("Personal")

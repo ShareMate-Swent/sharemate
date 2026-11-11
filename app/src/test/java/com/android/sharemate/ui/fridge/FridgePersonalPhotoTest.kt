@@ -10,6 +10,8 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -93,6 +95,8 @@ class FridgePersonalPhotoTest {
             mock(ProductCatalogRepository::class.java),
             storage,
             files,
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = FridgeType.SHARED,
             currentUserDisplayName = "Owner")
     models.put("fridge", viewModel)
@@ -166,7 +170,7 @@ class FridgePersonalPhotoTest {
   }
 
   @Test
-  fun cancellingPersonalSelectionDiscardsPhotoAndRestoresSharedDraft() = runTest {
+  fun cancellingSelectionDiscardsPhotoAndRestoresPersonalDraft() = runTest {
     selectPhoto()
     viewModel.updateSharing(ItemSharing.PERSONAL)
     viewModel.dismissAddItemDialog()
@@ -176,7 +180,7 @@ class FridgePersonalPhotoTest {
     assertTrue(items.addedItems.isEmpty())
     assertEquals(0, uploaded)
     viewModel.openAddItemDialog()
-    assertEquals(ItemSharing.SHARED, viewModel.uiState.value.itemSharing)
+    assertEquals(ItemSharing.PERSONAL, viewModel.uiState.value.itemSharing)
   }
 
   @Test

@@ -10,12 +10,16 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Reason
 import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CALL_TIMEOUT_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_CONNECT_TIMEOUT_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.HTTP_READ_TIMEOUT_MS
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_INITIAL_CANDIDATES
+import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import java.io.IOException
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -27,14 +31,21 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * Anonymous Commons search with CC0, CC BY and CC BY-SA attribution. Searches file titles in a food
- * context to reduce unrelated matches (for example English "pain"). Relevance is not guaranteed.
+ * Anonymous Commons search for English ingredient names, with CC0, CC BY and CC BY-SA attribution.
+ * Searches the supplied literal phrase and ranks usable images by title similarity.
  */
-class CommonsFoodImageRepository internal constructor(private val callFactory: Call.Factory) :
-    FoodImageRepository {
+class CommonsFoodImageRepository
+internal constructor(
+    private val callFactory: Call.Factory,
+    private val lookupTimeoutMs: Long = IMAGE_LOOKUP_TIMEOUT_MS
+) : FoodImageRepository {
   constructor() : this(client)
 
-  override suspend fun searchByTitle(title: String): FoodImageSearchResult {
+  override suspend fun searchByTitle(title: String): FoodImageSearchResult =
+      searchByTitle(title, IMAGE_LOOKUP_INITIAL_CANDIDATES)
+
+  override suspend fun searchByTitle(title: String, candidateLimit: Int): FoodImageSearchResult {
+    require(candidateLimit > 0) { "Candidate limit must be positive" }
     currentCoroutineContext().ensureActive()
     // Keep user input inside a quoted literal, rather than accepting CirrusSearch operators.
     val query = title.replace(Regex("[\"\\\\\\s]+"), " ").trim()
@@ -47,9 +58,9 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
             .addQueryParameter("format", "json")
             .addQueryParameter("formatversion", "2")
             .addQueryParameter("generator", "search")
-            .addQueryParameter("gsrsearch", "intitle:\"$query\" $FOOD_CONTEXT filetype:bitmap")
+            .addQueryParameter("gsrsearch", "\"$query\" filetype:bitmap")
             .addQueryParameter("gsrnamespace", "6")
-            .addQueryParameter("gsrlimit", "10")
+            .addQueryParameter("gsrlimit", candidateLimit.toString())
             .addQueryParameter("prop", "imageinfo")
             .addQueryParameter("iiprop", "url|mime|thumbmime|extmetadata")
             .addQueryParameter("iiurlwidth", "640")
@@ -62,17 +73,19 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
             .header("Accept", "application/json")
             .header("User-Agent", FoodImageHttp.USER_AGENT)
             .build()
-    return try {
-      awaitResult(callFactory.newCall(request))
-    } catch (exception: IOException) {
-      currentCoroutineContext().ensureActive()
-      Failure(Reason.NETWORK)
-    } catch (exception: JSONException) {
-      Failure(Reason.INVALID_RESPONSE)
-    }
+    return withTimeoutOrNull(lookupTimeoutMs) {
+      try {
+        awaitResult(callFactory.newCall(request), query)
+      } catch (exception: IOException) {
+        currentCoroutineContext().ensureActive()
+        Failure(Reason.NETWORK)
+      } catch (exception: JSONException) {
+        Failure(Reason.INVALID_RESPONSE)
+      }
+    } ?: NotFound
   }
 
-  private suspend fun awaitResult(call: Call): FoodImageSearchResult =
+  private suspend fun awaitResult(call: Call, query: String): FoodImageSearchResult =
       suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(
@@ -86,7 +99,7 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
                   response.use {
                     continuation.context.ensureActive()
                     if (!it.isSuccessful) Failure(Reason.HTTP, it.code)
-                    else parseResponse(it.body?.string().orEmpty())
+                    else parseResponse(it.body?.string().orEmpty(), query)
                   }
                 }
                 continuation.resumeWith(result)
@@ -94,13 +107,16 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
             })
       }
 
-  private fun parseResponse(body: String): FoodImageSearchResult {
+  private fun parseResponse(body: String, query: String): FoodImageSearchResult {
     val root = JSONObject(body)
     // MediaWiki can report errors (including overload) inside an HTTP 200 response.
     if (root.has("error")) return Failure(Reason.INVALID_RESPONSE)
     if (!root.has("query") && root.optBoolean("batchcomplete")) return NotFound
     val pages = root.getJSONObject("query").getJSONArray("pages")
-    // The array order is not the relevance order; the generator supplies a separate index.
+    val queryWords = titleWords(query)
+    var bestImage: FoodImage? = null
+    var bestScore = 0.0
+    // Keep Commons relevance as the tie-breaker, independently of JSON array order.
     val ranked =
         (0 until pages.length()).mapNotNull(pages::optJSONObject).sortedBy {
           it.optInt("index", Int.MAX_VALUE)
@@ -130,7 +146,10 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
               .value("ObjectName")
               ?.let { HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim() }
               ?.takeIf(String::isNotBlank) ?: page.string("title")?.removePrefix("File:")
-      return Found(
+      val score = titleRelevance(imageTitle, queryWords)
+      if (score <= bestScore) continue
+      bestScore = score
+      bestImage =
           FoodImage(
               url = thumbnail,
               author = author,
@@ -140,10 +159,28 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
               license = license.id,
               licenseUrl = license.url,
               licenseVersion = license.version,
-              authorUrl = authorUrl))
+              authorUrl = authorUrl)
     }
-    return NotFound
+    return bestImage?.let(::Found) ?: NotFound
   }
+
+  private fun titleRelevance(title: String?, queryWords: List<String>): Double {
+    val words = titleWords(title.orEmpty())
+    if (queryWords.isEmpty() || !words.windowed(queryWords.size).contains(queryWords)) return 0.0
+    val extraWords = words.filterNot(queryWords::contains)
+    // A containing dish is unsuitable unless the user explicitly requested that dish.
+    if (extraWords.any(PREPARED_DISH_WORDS::contains)) return 0.0
+    if (queryWords.size.toDouble() / words.size < MIN_TITLE_COVERAGE) return 0.0
+    val extraWordCost = extraWords.sumOf { if (it in INGREDIENT_WORDS) 0.25 else 1.0 }
+    return queryWords.size / (queryWords.size + extraWordCost)
+  }
+
+  private fun titleWords(title: String): List<String> =
+      title
+          .lowercase(Locale.ROOT)
+          .replace(Regex("\\.(jpe?g|png|webp|tiff?)$"), "")
+          .split(Regex("[^\\p{L}\\p{N}]+"))
+          .filter(String::isNotBlank)
 
   private data class License(val id: String, val version: String, val url: String)
 
@@ -176,8 +213,9 @@ class CommonsFoodImageRepository internal constructor(private val callFactory: C
   }
 
   private companion object {
-    const val FOOD_CONTEXT =
-        "(food OR dish OR fruit OR vegetable OR bread OR rice OR soup OR cuisine)"
+    const val MIN_TITLE_COVERAGE = 1.0 / 3
+    val INGREDIENT_WORDS = setOf("raw", "fresh", "meat")
+    val PREPARED_DISH_WORDS = setOf("soup", "salad", "pizza", "sandwich", "curry", "stew", "recipe")
     val client =
         OkHttpClient.Builder()
             .connectTimeout(HTTP_CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)

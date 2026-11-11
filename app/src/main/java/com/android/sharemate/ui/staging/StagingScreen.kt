@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -48,6 +49,7 @@ object StagingTestTags {
   const val LIST = "staging_list"
   const val EMPTY = "staging_empty"
   const val CONFIRM = "staging_confirm"
+  const val ADD = "staging_add"
 
   fun item(id: String) = "staging_item_$id"
 
@@ -63,25 +65,32 @@ fun StagingScreen(
     viewModel: StagingViewModel,
     onConfirm: (List<StagedItem>) -> Unit,
     onBack: () -> Unit,
+    actionsEnabled: Boolean = true,
+    statusContent: @Composable () -> Unit = {},
 ) {
   val state = viewModel.state.collectAsState().value
   StagingContent(
       state = state,
-      onItemClick = viewModel::startEditing,
-      onDeleteItem = viewModel::deleteItem,
-      onConfirm = { viewModel.confirmedItems()?.let(onConfirm) },
+      onItemClick = { if (actionsEnabled) viewModel.startEditing(it) },
+      onDeleteItem = { if (actionsEnabled) viewModel.deleteItem(it) },
+      onConfirm = { if (actionsEnabled) viewModel.confirmedItems()?.let(onConfirm) },
       onBack = onBack,
+      actionsEnabled = actionsEnabled,
+      statusContent = statusContent,
+      onAddItem = viewModel::startAdding,
   )
-  state.draft?.let { draft ->
-    StagedItemEditDialog(
-        draft = draft,
-        onNameChange = viewModel::updateDraftName,
-        onQuantityChange = viewModel::updateDraftQuantity,
-        onPriceChange = viewModel::updateDraftPrice,
-        onSave = viewModel::saveDraft,
-        onCancel = viewModel::cancelEditing,
-    )
-  }
+  state.draft
+      ?.takeIf { actionsEnabled }
+      ?.let { draft ->
+        StagedItemEditDialog(
+            draft = draft,
+            onNameChange = viewModel::updateDraftName,
+            onQuantityChange = viewModel::updateDraftQuantity,
+            onPriceChange = viewModel::updateDraftPrice,
+            onSave = viewModel::saveDraft,
+            onCancel = viewModel::cancelEditing,
+        )
+      }
 }
 
 /** Stateless content of [StagingScreen], so it can be tested and previewed with any state. */
@@ -92,6 +101,9 @@ fun StagingContent(
     onDeleteItem: (String) -> Unit,
     onConfirm: () -> Unit,
     onBack: () -> Unit,
+    actionsEnabled: Boolean = true,
+    statusContent: @Composable () -> Unit = {},
+    onAddItem: (() -> Unit)? = null,
 ) {
   Column(
       modifier =
@@ -105,40 +117,65 @@ fun StagingContent(
         title = stringResource(R.string.staging_title),
         onBack = onBack,
         backTestTag = StagingTestTags.BACK,
+        actions = {
+          if (onAddItem != null) {
+            TextButton(
+                onClick = onAddItem,
+                enabled = actionsEnabled,
+                modifier = Modifier.testTag(StagingTestTags.ADD),
+            ) {
+              Text(stringResource(R.string.staging_add_item))
+            }
+          }
+        },
     )
-    Text(
-        text = stringResource(R.string.staging_description),
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Spacer(Modifier.height(Dimens.spacingM))
     Box(Modifier.weight(1f).fillMaxWidth()) {
-      if (state.items.isEmpty()) {
-        Text(
-            text = stringResource(R.string.staging_empty),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.Center).testTag(StagingTestTags.EMPTY),
-        )
-      } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().testTag(StagingTestTags.LIST),
-            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-        ) {
+      LazyColumn(
+          modifier =
+              Modifier.fillMaxSize()
+                  .then(
+                      if (state.items.isEmpty()) Modifier
+                      else Modifier.testTag(StagingTestTags.LIST)),
+          verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+      ) {
+        item(key = DESCRIPTION_KEY) {
+          Text(
+              text = stringResource(R.string.staging_description),
+              style = MaterialTheme.typography.bodyLarge,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          Spacer(Modifier.height(Dimens.spacingM))
+        }
+        if (state.items.isEmpty()) {
+          item(key = EMPTY_KEY) {
+            Box(
+                Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
+                contentAlignment = Alignment.Center) {
+                  Text(
+                      text = stringResource(R.string.staging_empty),
+                      style = MaterialTheme.typography.bodyLarge,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      modifier = Modifier.testTag(StagingTestTags.EMPTY),
+                  )
+                }
+          }
+        } else {
           items(state.items, key = { it.id }) { item ->
             StagedItemRow(
                 item,
                 onClick = { onItemClick(item.id) },
                 onDelete = { onDeleteItem(item.id) },
+                enabled = actionsEnabled,
             )
           }
         }
+        item(key = STATUS_KEY) { statusContent() }
       }
     }
     Spacer(Modifier.height(Dimens.spacingM))
     Button(
         onClick = onConfirm,
-        enabled = state.canConfirm,
+        enabled = state.canConfirm && actionsEnabled,
         modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
     ) {
       Text(stringResource(R.string.staging_confirm))
@@ -146,24 +183,36 @@ fun StagingContent(
   }
 }
 
+// Section keys are integers, distinct from the String identifiers of reviewed rows.
+private const val DESCRIPTION_KEY = 0
+private const val EMPTY_KEY = 1
+private const val STATUS_KEY = 2
+
 /** A staged item: tap to edit it, swipe it to the left or tap its delete button to remove it. */
 @OptIn(ExperimentalMaterial3Api::class) // SwipeToDismissBox is still experimental in Material 3.
 @Composable
-private fun StagedItemRow(item: StagedItem, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun StagedItemRow(
+    item: StagedItem,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    enabled: Boolean
+) {
   val currentOnDelete by rememberUpdatedState(onDelete)
+  val currentEnabled by rememberUpdatedState(enabled)
   val dismissState =
       rememberSwipeToDismissBoxState(
           confirmValueChange = { value ->
-            val dismissed = value == SwipeToDismissBoxValue.EndToStart
+            val dismissed = currentEnabled && value == SwipeToDismissBoxValue.EndToStart
             if (dismissed) currentOnDelete()
             dismissed
           })
   SwipeToDismissBox(
       state = dismissState,
       enableDismissFromStartToEnd = false,
+      enableDismissFromEndToStart = enabled,
       backgroundContent = { DeleteBackground() },
   ) {
-    StagedItemCard(item, onClick, onDelete)
+    StagedItemCard(item, onClick, onDelete, enabled)
   }
 }
 
@@ -186,9 +235,15 @@ private fun DeleteBackground() {
 }
 
 @Composable
-private fun StagedItemCard(item: StagedItem, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun StagedItemCard(
+    item: StagedItem,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    enabled: Boolean
+) {
   Card(
       onClick = onClick,
+      enabled = enabled,
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
@@ -220,13 +275,16 @@ private fun StagedItemCard(item: StagedItem, onClick: () -> Unit, onDelete: () -
               if (item.priceCents == null) MaterialTheme.colorScheme.onSurfaceVariant
               else MaterialTheme.colorScheme.onSurface,
       )
-      IconButton(onClick = onDelete, modifier = Modifier.testTag(StagingTestTags.delete(item.id))) {
-        Icon(
-            imageVector = Icons.Outlined.Delete,
-            contentDescription = stringResource(R.string.staging_delete_item, item.name),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
+      IconButton(
+          onClick = onDelete,
+          enabled = enabled,
+          modifier = Modifier.testTag(StagingTestTags.delete(item.id))) {
+            Icon(
+                imageVector = Icons.Outlined.Delete,
+                contentDescription = stringResource(R.string.staging_delete_item, item.name),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
     }
   }
 }

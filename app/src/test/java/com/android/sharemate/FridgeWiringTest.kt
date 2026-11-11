@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
@@ -31,6 +32,8 @@ class FridgeWiringTest {
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
+    // The fridge is read for the signed-in user, so other members' personal items stay hidden.
+    assertEquals(listOf("trusted-student-id"), firebase.observedUsers)
   }
 
   @Test

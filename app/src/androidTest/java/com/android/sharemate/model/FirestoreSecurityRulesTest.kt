@@ -1,11 +1,18 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.user.ExpirationPreferences
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
@@ -13,12 +20,14 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -61,6 +70,137 @@ class FirestoreSecurityRulesTest {
     assertDenied(userReference(household.createdBy).get())
     assertDenied(userReference(household.createdBy).set(mapOf("householdId" to "stolen")))
     assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+  }
+
+  @Test
+  fun userCanSaveExpiryPreferencesOnTheBoundariesOfTheRanges() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val repository = FirebaseExpirationPreferencesRepository(firestore)
+    val soon = ExpirationPreferences.SOON_DAYS_RANGE
+    val repeat = ExpirationPreferences.REPEAT_DAYS_RANGE
+    val accepted =
+        listOf(
+            ExpirationPreferences(soon.first, repeat.first, repeat.first),
+            ExpirationPreferences(soon.last, repeat.last, repeat.last),
+            ExpirationPreferences(soon.first, soonRepeatDays = null, expiredRepeatDays = null))
+
+    accepted.forEach {
+      repository.save(userId, it)
+
+      assertEquals(it, repository.get(userId))
+    }
+  }
+
+  @Test
+  fun userCanSaveOneExpiryPreferenceAtATime() {
+    val userId = FirebaseEmulator.signInAs("alice")
+
+    Tasks.await(expiryPreferencesWrite(userId, mapOf(UserExpirationFields.SOON_DAYS to 7)))
+    Tasks.await(
+        expiryPreferencesWrite(userId, mapOf(UserExpirationFields.EXPIRED_REPEAT_DAYS to 0)))
+
+    val saved = Tasks.await(userReference(userId).get(Source.SERVER))
+    assertEquals(
+        mapOf(UserExpirationFields.SOON_DAYS to 7L, UserExpirationFields.EXPIRED_REPEAT_DAYS to 0L),
+        saved.get(UserExpirationFields.PREFERENCES))
+  }
+
+  @Test
+  fun userCannotSaveExpiryPreferencesOutsideTheAllowedRanges() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val soon = ExpirationPreferences.SOON_DAYS_RANGE
+    val repeat = ExpirationPreferences.REPEAT_DAYS_RANGE
+    val refused =
+        listOf(
+            mapOf(UserExpirationFields.SOON_DAYS to soon.first - 1),
+            mapOf(UserExpirationFields.SOON_DAYS to soon.last + 1),
+            mapOf(UserExpirationFields.SOON_REPEAT_DAYS to -1),
+            mapOf(UserExpirationFields.SOON_REPEAT_DAYS to repeat.last + 1),
+            mapOf(UserExpirationFields.EXPIRED_REPEAT_DAYS to repeat.last + 1),
+            mapOf(UserExpirationFields.SOON_DAYS to "3"),
+            mapOf(UserExpirationFields.SOON_DAYS to 2.5),
+            mapOf(UserExpirationFields.SOON_DAYS to 3, "unknownField" to 1))
+
+    refused.forEach { assertDenied(expiryPreferencesWrite(userId, it)) }
+    assertDenied(expiryPreferencesWrite(userId, "not a map"))
+  }
+
+  @Test
+  fun refusedExpiryPreferencesLeaveTheSavedOnesUntouched() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val repository = FirebaseExpirationPreferencesRepository(firestore)
+    val saved = ExpirationPreferences(soonDays = 10, soonRepeatDays = 2, expiredRepeatDays = 5)
+    repository.save(userId, saved)
+
+    assertDenied(expiryPreferencesWrite(userId, mapOf(UserExpirationFields.SOON_DAYS to 1000)))
+
+    assertEquals(saved, repository.get(userId))
+  }
+
+  @Test
+  fun userCanStillUpdateOtherProfileFieldsAlongsideSavedExpiryPreferences() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    FirebaseExpirationPreferencesRepository(firestore).save(userId, ExpirationPreferences())
+
+    Tasks.await(userReference(userId).set(mapOf("householdId" to "home"), SetOptions.merge()))
+
+    assertEquals(
+        "home", Tasks.await(userReference(userId).get(Source.SERVER)).getString("householdId"))
+  }
+
+  @Test
+  fun userCannotSaveExpiryPreferencesIntoAnotherUsersDocument() {
+    val otherId = FirebaseEmulator.signInAs("other")
+    FirebaseEmulator.signInAs("alice")
+
+    assertDenied(expiryPreferencesWrite(otherId, mapOf(UserExpirationFields.SOON_DAYS to 7)))
+  }
+
+  @Test
+  fun householdMemberCanReadPublicNameButNotPrivateUser() {
+    val household = createHouseholdAs("creator")
+    val pseudoRepository = FirebasePseudoRepository(firestore)
+    runBlocking { pseudoRepository.setPseudo(household.createdBy, "Alice") }
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(
+        "Alice",
+        Tasks.await(
+                firestore
+                    .collection(FirestoreCollections.PROFILES)
+                    .document(household.createdBy)
+                    .get())
+            .getString("displayName"))
+    assertDenied(userReference(household.createdBy).get())
+    assertDenied(userReference(household.createdBy).set(mapOf("pseudo" to "hijacked")))
+    assertDenied(firestore.collection(FirestoreCollections.USERS).get())
+    assertDenied(firestore.collection(FirestoreCollections.PROFILES).get())
+    assertDenied(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(household.createdBy)
+            .set(mapOf("displayName" to "hijacked")))
+
+    FirebaseEmulator.signInAs("outsider")
+    assertDenied(
+        firestore.collection(FirestoreCollections.PROFILES).document(household.createdBy).get())
+  }
+
+  @Test
+  fun pseudoWritesPreserveOtherPublicFieldsAndRejectExtraFields() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val pseudo = firestore.collection(FirestoreCollections.PROFILES).document(userId)
+    Tasks.await(pseudo.set(mapOf("email" to "creator@example.com", "photoUrl" to "photo")))
+    runBlocking { FirebasePseudoRepository(firestore).setPseudo(userId, "Alice") }
+
+    val profile = Tasks.await(pseudo.get())
+    assertEquals("Alice", profile.getString("displayName"))
+    assertEquals("creator@example.com", profile.getString("email"))
+    assertEquals("photo", profile.getString("photoUrl"))
+    assertFalse(Tasks.await(userReference(userId).get()).contains("pseudo"))
+    assertDenied(pseudo.set(mapOf("displayName" to "Alice", "private" to "secret")))
+    assertDenied(firestore.collection("userPseudos").document(userId).get())
   }
 
   @Test
@@ -276,6 +416,48 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun joiningWithoutTheHouseholdsInviteCodeIsDenied() {
+    val household = createHouseholdAs("creator")
+    val otherCode = runBlocking {
+      val otherCreator = FirebaseEmulator.signInAs("other-creator")
+      repository.createHousehold("Elsewhere", otherCreator).inviteCode
+    }
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+
+    // An outsider who knows the household ID forges the app's join batch with no code, a wrong
+    // code, or another household's valid code.
+    for (profile in
+        listOf(
+            mapOf("householdId" to household.id),
+            mapOf("householdId" to household.id, "joinCode" to "WRONG1"),
+            mapOf("householdId" to household.id, "joinCode" to otherCode))) {
+      assertDenied(
+          firestore
+              .batch()
+              .update(
+                  householdReference(household.id), "memberIds", FieldValue.arrayUnion(outsiderId))
+              .set(userReference(outsiderId), profile, SetOptions.merge())
+              .commit())
+    }
+
+    assertDenied(householdReference(household.id).get(Source.SERVER))
+    FirebaseEmulator.signInAs("creator")
+    assertEquals(
+        listOf(household.createdBy),
+        Tasks.await(householdReference(household.id).get()).get("memberIds"))
+  }
+
+  @Test
+  fun joiningWithTheInviteCodeIsAllowed() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+
+    val joined = runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+
+    assertEquals(listOf(household.createdBy, memberId), joined.memberIds)
+  }
+
+  @Test
   fun memberCannotChangeOtherHouseholdFieldsOrDeleteHousehold() {
     val household = createHouseholdAs("creator")
 
@@ -286,119 +468,174 @@ class FirestoreSecurityRulesTest {
   }
 
   // ---------------------------------------------------------------------------
-  // FIXED: use the uid returned by signInAs instead of the literal "owner".
+  // Items: every item belongs to a household and is PERSONAL (owner only) or SHARED (every
+  // current member). Access follows the household's current memberIds, even for the owner.
   // ---------------------------------------------------------------------------
+
   @Test
-  fun userCannotReadOrWriteAnotherUsersPrivateItem() {
-    val ownerId = FirebaseEmulator.signInAs("owner")
-    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(
-        itemRef.set(
-            mapOf(
-                "ownerId" to ownerId,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "PERSONAL")))
+  fun memberCannotReadOrChangeAnotherMembersPersonalItem() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(itemData(creatorId, household.id, "PERSONAL")))
+    assertEquals("Apple", Tasks.await(itemRef.get()).getString("name"))
+
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    assertDenied(itemRef.get())
+    assertDenied(itemRef.update("name", "Banana"))
+    assertDenied(itemRef.update("sharing", "SHARED"))
+    assertDenied(itemRef.delete())
+    // A query that could return personal items of others is rejected as a whole.
+    assertDenied(itemsOf(household.id).get())
+    assertDenied(itemsOf(household.id).whereEqualTo("ownerId", creatorId).get())
 
     FirebaseEmulator.signInAs("outsider")
     assertDenied(itemRef.get())
     assertDenied(itemRef.update("name", "Banana"))
     assertDenied(itemRef.delete())
+    assertDenied(itemsOf(household.id).whereEqualTo("sharing", "SHARED").get())
   }
 
-  // ---------------------------------------------------------------------------
-  // REPLACES userCannotChangeOwnerOrHouseholdOfItem
-  // ---------------------------------------------------------------------------
+  @Test
+  fun membersSeeSharedItemsAndOwnItemsThroughScopedQueries() {
+    val household = createHouseholdAs("creator")
+    val creatorId = FirebaseEmulator.auth.uid!!
+    Tasks.await(itemReference("personal").set(itemData(creatorId, household.id, "PERSONAL")))
+    Tasks.await(itemReference("shared").set(itemData(creatorId, household.id, "SHARED")))
+
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    Tasks.await(itemReference("mine").set(itemData(memberId, household.id, "PERSONAL")))
+    assertEquals("Apple", Tasks.await(itemReference("shared").get()).getString("name"))
+    assertEquals(
+        listOf("shared"),
+        Tasks.await(itemsOf(household.id).whereEqualTo("sharing", "SHARED").get()).documents.map {
+          it.id
+        })
+    assertEquals(
+        listOf("mine"),
+        Tasks.await(itemsOf(household.id).whereEqualTo("ownerId", memberId).get()).documents.map {
+          it.id
+        })
+    // Members edit and delete shared items, never the personal items of others.
+    Tasks.await(itemReference("shared").update("status", "EATEN"))
+    assertDenied(itemReference("personal").update("status", "EATEN"))
+    Tasks.await(itemReference("shared").delete())
+    assertDenied(itemReference("personal").delete())
+  }
+
   @Test
   fun userCannotChangeOwnerOfItem() {
     val household = createHouseholdAs("creator")
     val creatorId = FirebaseEmulator.auth.uid!!
-    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(
-        itemRef.set(
-            mapOf(
-                "ownerId" to creatorId,
-                "householdId" to household.id,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "SHARED")))
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(itemData(creatorId, household.id, "SHARED")))
 
     assertDenied(itemRef.update("ownerId", "someone-else"))
   }
 
   @Test
-  fun memberCannotChangeOwnerOrHouseholdOfSomeoneElsesItem() {
+  fun memberCannotChangeOwnerSharingOrHouseholdOfSomeoneElsesSharedItem() {
     val household = createHouseholdAs("creator")
     val creatorId = FirebaseEmulator.auth.uid!!
     val memberId = FirebaseEmulator.signInAs("member")
     runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
 
     FirebaseEmulator.signInAs("creator")
-    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(
-        itemRef.set(
-            mapOf(
-                "ownerId" to creatorId,
-                "householdId" to household.id,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "SHARED")))
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(itemData(creatorId, household.id, "SHARED")))
 
     FirebaseEmulator.signInAs("member")
-    // A member can edit the item's content, but cannot unshare it nor take it over.
+    // A member can edit the item's content, but cannot unshare it, move it nor take it over.
     Tasks.await(itemRef.update("name", "Banana"))
+    assertDenied(itemRef.update("sharing", "PERSONAL"))
     assertDenied(itemRef.update("householdId", null))
     assertDenied(itemRef.update("ownerId", memberId))
   }
 
   @Test
-  fun ownerCanShareAndUnshareOwnItem() {
+  fun ownerCanShareAndUnshareOwnItemButNeverMoveIt() {
     val household = createHouseholdAs("creator")
     val creatorId = FirebaseEmulator.auth.uid!!
-    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
-    Tasks.await(
-        itemRef.set(
-            mapOf(
-                "ownerId" to creatorId,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "PERSONAL")))
+    val otherHousehold = createHouseholdAs("creator")
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(itemData(creatorId, household.id, "PERSONAL")))
 
-    Tasks.await(itemRef.update("householdId", household.id))
-    Tasks.await(itemRef.update("householdId", null))
+    Tasks.await(itemRef.update("sharing", "SHARED"))
+    Tasks.await(itemRef.update("sharing", "PERSONAL"))
+    assertDenied(itemRef.update("sharing", "SOMETHING_ELSE"))
+    assertDenied(itemRef.update("householdId", null))
+    assertDenied(itemRef.update("householdId", ""))
+    assertDenied(itemRef.update("householdId", otherHousehold.id))
   }
 
   @Test
-  fun userCannotShareItemWithHouseholdTheyAreNotIn() {
+  fun userCannotAddItemsToAHouseholdTheyAreNotIn() {
     val otherHousehold = createHouseholdAs("other")
     val ownerId = FirebaseEmulator.signInAs("owner")
-    val itemRef = firestore.collection(FirestoreCollections.ITEMS).document("item1")
+    val ownHousehold = runBlocking { repository.createHousehold("Mine", ownerId) }
+    val itemRef = itemReference("item1")
 
-    // Creating directly in a foreign household is denied...
-    assertDenied(
-        itemRef.set(
-            mapOf(
-                "ownerId" to ownerId,
-                "householdId" to otherHousehold.id,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "SHARED")))
-
-    // ...and so is moving an existing private item into it.
-    Tasks.await(
-        itemRef.set(
-            mapOf(
-                "ownerId" to ownerId,
-                "name" to "Apple",
-                "quantity" to 1,
-                "status" to "ACTIVE",
-                "sharing" to "PERSONAL")))
+    // Creating directly in a foreign household is denied, whoever the owner is...
+    for (sharing in listOf("PERSONAL", "SHARED")) {
+      assertDenied(itemRef.set(itemData(ownerId, otherHousehold.id, sharing)))
+    }
+    assertDenied(itemRef.set(itemData(otherHousehold.createdBy, otherHousehold.id, "SHARED")))
+    // ...and so is moving an existing item into it.
+    Tasks.await(itemRef.set(itemData(ownerId, ownHousehold.id, "PERSONAL")))
     assertDenied(itemRef.update("householdId", otherHousehold.id))
+  }
+
+  @Test
+  fun itemsMustBelongToAnExistingHousehold() {
+    val ownerId = FirebaseEmulator.signInAs("owner")
+    runBlocking { repository.createHousehold("Mine", ownerId) }
+    val itemRef = itemReference("item1")
+
+    assertDenied(itemRef.set(itemData(ownerId, null, "PERSONAL")))
+    assertDenied(itemRef.set(itemData(ownerId, "", "PERSONAL")))
+    assertDenied(itemRef.set(itemData(ownerId, "no-such-household", "PERSONAL")))
+  }
+
+  @Test
+  fun leavingAHouseholdRevokesAccessToItsItemsWhichStayInPlace() {
+    val household = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    Tasks.await(itemReference("personal").set(itemData(memberId, household.id, "PERSONAL")))
+    Tasks.await(itemReference("shared").set(itemData(memberId, household.id, "SHARED")))
+
+    runBlocking { repository.leaveHousehold(memberId) }
+
+    // Not even their own items: no read, query, write or delete, nor a new item.
+    for (id in listOf("personal", "shared")) {
+      assertDenied(itemReference(id).get())
+      assertDenied(itemReference(id).update("name", "Banana"))
+      assertDenied(itemReference(id).set(itemData(memberId, household.id, "SHARED")))
+      assertDenied(itemReference(id).delete())
+    }
+    assertDenied(itemsOf(household.id).whereEqualTo("ownerId", memberId).get())
+    assertDenied(itemsOf(household.id).whereEqualTo("sharing", "SHARED").get())
+    assertDenied(itemReference("new").set(itemData(memberId, household.id, "PERSONAL")))
+    // A stale profile pointing at the household grants nothing: memberIds is the source of truth.
+    Tasks.await(userReference(memberId).set(mapOf("householdId" to household.id)))
+    assertDenied(itemReference("personal").get())
+    assertDenied(itemsOf(household.id).whereEqualTo("ownerId", memberId).get())
+
+    // The remaining member still sees the shared item, but not the leaver's personal one.
+    FirebaseEmulator.signInAs("creator")
+    assertEquals(
+        listOf("shared"),
+        Tasks.await(itemsOf(household.id).whereEqualTo("sharing", "SHARED").get()).documents.map {
+          it.id
+        })
+    assertDenied(itemReference("personal").get())
+
+    // Nothing was deleted: joining again gives the leaver their items back.
+    FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(household.inviteCode, memberId) }
+    assertEquals("Apple", Tasks.await(itemReference("personal").get()).getString("name"))
   }
 
   // ---------------------------------------------------------------------------
@@ -474,12 +711,64 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun chatRepositoryWritesTextAndActivitiesUnderRules() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val chat = FirebaseChatRepository(firestore)
+
+    val textId = chat.sendMessage(household.id, senderId, "Sender", " hello ")
+    assertNotNull(textId)
+    assertEquals(
+        "hello", Tasks.await(messageReference(household.id, textId!!).get()).getString("text"))
+
+    for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
+      val activityId =
+          chat.sendActivity(
+              household.id, senderId, "Sender", type, " Milk ", "https://example.com/image")
+      assertNotNull(activityId)
+      val stored = Tasks.await(messageReference(household.id, activityId!!).get())
+      assertEquals(type.name, stored.getString("type"))
+      assertEquals("Milk", stored.getString("itemName"))
+    }
+
+    assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+  }
+
+  @Test
+  fun invalidTypedMessagesAreDenied() {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val base = messageData("bad", senderId)
+    val ref = messageReference(household.id, "bad")
+
+    assertDenied(ref.set(base + ("type" to "UNKNOWN")))
+    assertDenied(
+        ref.set(
+            messageData("bad", "someone-else", text = "") +
+                mapOf("type" to "THROWN", "itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "TEXT") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + ("type" to "EATEN") + ("itemName" to "Milk")))
+    assertDenied(ref.set(base + mapOf("type" to "EATEN", "text" to "", "itemName" to " ")))
+    assertDenied(ref.set(base + mapOf("type" to "THROWN", "text" to "", "itemName" to 123)))
+    assertDenied(
+        ref.set(
+            base +
+                mapOf(
+                    "type" to "EATEN", "text" to "", "itemName" to "Milk", "itemImageUrl" to 123)))
+    assertDenied(ref.set(base + mapOf("type" to "TEXT", "text" to "")))
+  }
+
+  @Test
   fun nonMemberCannotReadOrPostMessages() {
     val household = createHouseholdAs("creator")
     val outsiderId = FirebaseEmulator.signInAs("outsider")
     val messageRef = messageReference(household.id, "m1")
 
     assertDenied(messageRef.set(messageData("m1", outsiderId)))
+    assertDenied(
+        messageRef.set(
+            messageData("m1", outsiderId, text = "") +
+                mapOf("type" to "EATEN", "itemName" to "Milk")))
     assertDenied(messageReference(household.id, "m1").get())
   }
 
@@ -553,6 +842,28 @@ class FirestoreSecurityRulesTest {
             SetOptions.merge())
         .commit()
   }
+
+  /** An item document that satisfies hasValidItemData; householdId may be missing or invalid. */
+  private fun itemData(ownerId: String, householdId: String?, sharing: String): Map<String, Any?> =
+      buildMap {
+        put("ownerId", ownerId)
+        put("name", "Apple")
+        put("quantity", 1)
+        put("status", "ACTIVE")
+        put("sharing", sharing)
+        if (householdId != null) put("householdId", householdId)
+      }
+
+  private fun itemReference(itemId: String): DocumentReference =
+      firestore.collection(FirestoreCollections.ITEMS).document(itemId)
+
+  private fun itemsOf(householdId: String) =
+      firestore.collection(FirestoreCollections.ITEMS).whereEqualTo("householdId", householdId)
+
+  /** Merges [preferences], whatever its shape, into the expiry preferences of [userId]. */
+  private fun expiryPreferencesWrite(userId: String, preferences: Any): Task<Void> =
+      userReference(userId)
+          .set(mapOf(UserExpirationFields.PREFERENCES to preferences), SetOptions.merge())
 
   private fun userReference(userId: String): DocumentReference =
       firestore.collection(FirestoreCollections.USERS).document(userId)

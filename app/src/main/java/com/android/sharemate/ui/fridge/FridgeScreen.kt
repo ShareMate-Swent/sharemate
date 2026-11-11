@@ -1,5 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.background
@@ -17,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,8 +29,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -37,11 +40,17 @@ import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
 import kotlinx.coroutines.delay
 
-/** Displays the fridge inventory with caller-provided state and actions. */
+/**
+ * Displays the fridge inventory with caller-provided state and actions.
+ *
+ * @param expiryStatuses how close each item, by id, is to its expiration date, already worked out;
+ *   an item missing from it is shown as [ExpiryStatus.NORMAL].
+ */
 @Composable
 fun FridgeScreen(
+    uiState: FridgeUiState,
+    expiryStatuses: Map<String, ExpiryStatus>,
     modifier: Modifier = Modifier,
-    uiState: FridgeUiState = FridgeUiState(),
     onAddItem: (() -> Unit)? = null,
     onDismissAddItem: () -> Unit = {},
     onNameChange: (String) -> Unit = {},
@@ -52,7 +61,7 @@ fun FridgeScreen(
     selectedCategory: String? = null,
     selectedOwnerId: String? = null,
     categories: List<String> = emptyList(),
-    ownerIds: List<String> = emptyList(),
+    owners: List<OwnerOption> = emptyList(),
     onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
     onCategoryFilterChange: ((String?) -> Unit)? = null,
     onOwnerFilterChange: ((String?) -> Unit)? = null,
@@ -61,13 +70,12 @@ fun FridgeScreen(
     onConfirmRemoval: () -> Unit = {},
     onEditItem: ((String) -> Unit)? = null,
     onQuantityChange: (String) -> Unit = {},
+    onSharingChange: (ItemSharing) -> Unit = {},
     onDismissEditSyncError: (FridgeEditSyncError) -> Unit = {},
     onStatusChange: ((String, ItemStatus) -> Unit)? = null,
     onDismissStatusError: (FridgeStatusError) -> Unit = {},
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
-    fridgeType: FridgeType? = null,
-    onSharingChange: (ItemSharing) -> Unit = {},
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
@@ -85,33 +93,27 @@ fun FridgeScreen(
                 .testTag(C.Tag.fridge_title),
         style = MaterialTheme.typography.headlineSmall)
 
-    fridgeType?.let { type ->
-      Text(
-          text =
-              stringResource(
-                  R.string.fridge_type_label,
-                  stringResource(
-                      if (type == FridgeType.PRIVATE) R.string.fridge_type_private
-                      else R.string.fridge_type_shared)),
-          modifier =
-              Modifier.align(Alignment.CenterHorizontally)
-                  .padding(bottom = 8.dp)
-                  .testTag(C.Tag.fridge_type),
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
+    Text(
+        text =
+            stringResource(
+                R.string.fridge_type_label,
+                stringResource(
+                    if (uiState.fridgeType == FridgeType.PRIVATE) R.string.fridge_type_private
+                    else R.string.fridge_type_shared)),
+        modifier =
+            Modifier.align(Alignment.CenterHorizontally)
+                .padding(bottom = 8.dp)
+                .testTag(C.Tag.fridge_type),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     FridgeControls(
         sortOrder = sortOrder,
         selectedCategory = selectedCategory,
         selectedOwnerId = selectedOwnerId,
         categories = categories,
-        ownerIds = ownerIds,
-        ownerLabels =
-            ownerIds.associateWith {
-              ownerLabel(uiState.ownerNameFor(it), it == uiState.currentUserId)
-            },
+        owners = owners,
         onSortOrderChange = onSortOrderChange,
         onCategoryFilterChange = onCategoryFilterChange,
         onOwnerFilterChange = onOwnerFilterChange,
@@ -189,6 +191,7 @@ fun FridgeScreen(
                     FridgeItem(
                         item = item,
                         ownership = uiState.ownershipFor(item),
+                        expiryStatus = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL,
                         personalPhotos = personalPhotos,
                         editEnabled =
                             onEditItem != null &&
@@ -243,8 +246,8 @@ fun FridgeScreen(
         onExpirationDateChange = onExpirationDateChange,
         onSave = onSaveItem,
         onQuantityChange = onQuantityChange,
-        onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         onSharingChange = onSharingChange,
+        onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         personalPhotos = personalPhotos,
         onDismiss = onDismissAddItem)
   }
@@ -291,14 +294,12 @@ fun FridgeScreen(
 fun FridgeScreen(
     viewModel: FridgeViewModel,
     modifier: Modifier = Modifier,
-    fridgeType: FridgeType? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
   val sortOrder by viewModel.sortOrder.collectAsState()
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
-  val soonThresholdDays by viewModel.soonThresholdDays.collectAsState()
   val categories =
       remember(uiState.items) {
         uiState.items
@@ -308,48 +309,47 @@ fun FridgeScreen(
             .distinct()
             .sorted()
       }
-  val ownerIds =
-      remember(uiState.items) {
-        uiState.items.map(Item::ownerId).filter(String::isNotBlank).distinct().sorted()
-      }
+  val owners by viewModel.ownerOptions.collectAsState()
+  val expiryStatuses by viewModel.expiryStatuses.collectAsStateWithLifecycle()
 
-  CompositionLocalProvider(LocalSoonThresholdDays provides soonThresholdDays) {
-    FridgeScreen(
-        modifier = modifier,
-        uiState = uiState.copy(items = visibleItems),
-        onAddItem = viewModel::openAddItemDialog,
-        onDismissAddItem = viewModel::dismissAddItemDialog,
-        onNameChange = viewModel::updateName,
-        onCategoryChange = viewModel::updateCategory,
-        onExpirationDateChange = viewModel::updateExpirationDate,
-        onSaveItem = viewModel::saveItem,
-        onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
-        onEditItem = viewModel::openEditItemDialog,
-        onQuantityChange = viewModel::updateQuantity,
-        onSharingChange = viewModel::updateSharing,
-        onDismissEditSyncError = viewModel::dismissEditSyncError,
-        onStatusChange = viewModel::setItemStatus,
-        onDismissStatusError = viewModel::dismissStatusError,
-        onDismissRemovalSyncError = viewModel::dismissRemovalSyncError,
-        sortOrder = sortOrder,
-        selectedCategory = selectedCategory,
-        selectedOwnerId = selectedOwnerId,
-        categories = categories,
-        ownerIds = ownerIds,
-        onSortOrderChange = viewModel::setSortOrder,
-        onCategoryFilterChange = viewModel::setCategoryFilter,
-        onOwnerFilterChange = viewModel::setOwnerFilter,
-        onRemoveItem = viewModel::requestRemoval,
-        onCancelRemoval = viewModel::cancelRemoval,
-        onConfirmRemoval = viewModel::confirmRemoval,
-        fridgeType = fridgeType,
-        personalPhotos = viewModel.personalPhotos,
-    )
-  }
+  FridgeScreen(
+      modifier = modifier,
+      uiState = uiState.copy(items = visibleItems),
+      expiryStatuses = expiryStatuses,
+      onAddItem = viewModel::openAddItemDialog,
+      onDismissAddItem = viewModel::dismissAddItemDialog,
+      onNameChange = viewModel::updateName,
+      onCategoryChange = viewModel::updateCategory,
+      onExpirationDateChange = viewModel::updateExpirationDate,
+      onSaveItem = viewModel::saveItem,
+      onBarcodeImageConfirmed = viewModel::confirmBarcodeImage,
+      onEditItem = viewModel::openEditItemDialog,
+      onQuantityChange = viewModel::updateQuantity,
+      onSharingChange = viewModel::updateSharing,
+      onDismissEditSyncError = viewModel::dismissEditSyncError,
+      onStatusChange = viewModel::setItemStatus,
+      onDismissStatusError = viewModel::dismissStatusError,
+      onDismissRemovalSyncError = viewModel::dismissRemovalSyncError,
+      sortOrder = sortOrder,
+      selectedCategory = selectedCategory,
+      selectedOwnerId = selectedOwnerId,
+      categories = categories,
+      owners = owners,
+      onSortOrderChange = viewModel::setSortOrder,
+      onCategoryFilterChange = viewModel::setCategoryFilter,
+      onOwnerFilterChange = viewModel::setOwnerFilter,
+      onRemoveItem = viewModel::requestRemoval,
+      onCancelRemoval = viewModel::cancelRemoval,
+      onConfirmRemoval = viewModel::confirmRemoval,
+      personalPhotos = viewModel.personalPhotos,
+  )
 }
 
 @Preview(showBackground = true)
 @Composable
 private fun FridgeScreenPreview() {
-  SampleAppTheme(dynamicColor = false) { FridgeScreen() }
+  SampleAppTheme(dynamicColor = false) {
+    FridgeScreen(
+        uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
+  }
 }

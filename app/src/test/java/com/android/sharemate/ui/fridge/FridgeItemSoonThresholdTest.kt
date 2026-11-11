@@ -2,11 +2,11 @@
 // Co-authored-by: Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import com.android.sharemate.model.item.ExpirationDates
+import com.android.sharemate.model.item.ExpiryStatuses
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
 import java.time.LocalDate
@@ -27,15 +27,19 @@ class FridgeItemSoonThresholdTest {
       Item(
           id = "milk",
           name = "Milk",
+          householdId = "home",
           expirationDate = ExpirationDates.toDate(LocalDate.now().plusDays(days)))
 
   private fun show(item: Item, thresholdDays: Long?) {
     compose.setContent {
-      if (thresholdDays == null) FridgeItem(item)
-      else
-          CompositionLocalProvider(LocalSoonThresholdDays provides thresholdDays) {
-            FridgeItem(item)
-          }
+      FridgeItem(
+          item,
+          expiryStatus =
+              ExpiryStatuses.of(
+                      listOf(item),
+                      LocalDate.now(),
+                      thresholdDays ?: ExpirationDates.SOON_THRESHOLD_DAYS)
+                  .getValue(item.id))
     }
   }
 

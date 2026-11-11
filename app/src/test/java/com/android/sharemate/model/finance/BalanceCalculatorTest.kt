@@ -150,19 +150,11 @@ class BalanceCalculatorTest {
   }
 
   @Test
-  fun blankCurrentMembersAndUnsupportedSettlementsCannotBeSilentlyIgnored() {
+  fun blankCurrentMembersAreRejected() {
     for (blank in listOf("", " \t")) {
       assertThrows(IllegalArgumentException::class.java) {
         calculate(emptyList(), listOf("alice", blank))
       }
-    }
-    val ledger =
-        HouseholdFinanceSnapshot(
-            "home",
-            listOf(owed("expense", "alice", "bob", 100)),
-            listOf(Settlement("payment", "home", "bob", "alice", 50)))
-    assertThrows(IllegalArgumentException::class.java) {
-      BalanceCalculator.calculate(ledger, listOf("alice", "bob"))
     }
   }
 

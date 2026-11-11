@@ -1,3 +1,4 @@
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.user
 
 import org.junit.Assert.assertEquals

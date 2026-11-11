@@ -124,7 +124,7 @@ class JoinHouseholdViewModelTest {
 
     override suspend fun signIn(email: String, password: String) = Unit
 
-    override suspend fun signUp(email: String, password: String) = Unit
+    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
 
     override suspend fun signInWithGoogle(idToken: String) =
         error("Google sign-in is not used by this fake")

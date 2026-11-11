@@ -26,6 +26,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -36,6 +37,7 @@ import org.junit.runner.RunWith
 class CommonsFoodImageRepositoryTest {
   private lateinit var server: MockWebServer
   private lateinit var client: OkHttpClient
+  private lateinit var factory: Call.Factory
   private lateinit var repository: CommonsFoodImageRepository
   private val requests = mutableListOf<Request>()
   private val calls = mutableListOf<Call>()
@@ -50,19 +52,14 @@ class CommonsFoodImageRepositoryTest {
             .followSslRedirects(false)
             .callTimeout(5, TimeUnit.SECONDS)
             .build()
-    repository =
-        CommonsFoodImageRepository(
-            Call.Factory { request ->
-              requests += request
-              val local =
-                  request.url
-                      .newBuilder()
-                      .scheme("http")
-                      .host("127.0.0.1")
-                      .port(server.port)
-                      .build()
-              client.newCall(request.newBuilder().url(local).build()).also { calls += it }
-            })
+    factory =
+        Call.Factory { request ->
+          requests += request
+          val local =
+              request.url.newBuilder().scheme("http").host("127.0.0.1").port(server.port).build()
+          client.newCall(request.newBuilder().url(local).build()).also { calls += it }
+        }
+    repository = CommonsFoodImageRepository(factory)
   }
 
   @After
@@ -71,6 +68,50 @@ class CommonsFoodImageRepositoryTest {
     server.shutdown()
     client.connectionPool.evictAll()
     client.dispatcher.executorService.shutdownNow()
+  }
+
+  @Test
+  fun lookupDeadlineCancelsTheCallAndReturnsNoImage() = runBlocking {
+    server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+    val shortBudget = CommonsFoodImageRepository(factory, lookupTimeoutMs = 500)
+
+    assertSame(NotFound, shortBudget.searchByTitle("milk"))
+    assertEquals(1, requests.size)
+    assertTrue(calls.single().isCanceled())
+  }
+
+  @Test
+  fun automaticLookupExpandsTheActualHttpRequestsToTenTwentyAndThirtyCandidates() = runBlocking {
+    server.enqueue(MockResponse().setBody(response()))
+    server.enqueue(MockResponse().setBody(response(page(title = "Chicken soup"))))
+    server.enqueue(MockResponse().setBody(response(page(title = "Raw chicken"))))
+
+    val selected =
+        FoodImageSelector(repository).selectAutomatic("chicken") as FoodImageSelection.RemoteImage
+
+    assertEquals("Raw chicken", selected.image.title)
+    assertEquals(listOf("10", "20", "30"), requests.map { it.url.queryParameter("gsrlimit") })
+  }
+
+  @Test
+  fun concurrentLookupsKeepTheirOwnCandidateLimits() = runBlocking {
+    repeat(2) { server.enqueue(MockResponse().setBody(response(page()))) }
+    val first = async { repository.searchByTitle("tacos", 20) }
+    val second = async { repository.searchByTitle("tacos", 30) }
+
+    assertTrue(first.await() is Found)
+    assertTrue(second.await() is Found)
+    assertEquals(setOf("20", "30"), requests.map { it.url.queryParameter("gsrlimit") }.toSet())
+  }
+
+  @Test
+  fun nonPositiveCandidateLimitsAreRejectedWithoutNetworkCalls() {
+    for (limit in listOf(0, -1)) {
+      assertThrows(IllegalArgumentException::class.java) {
+        runBlocking { repository.searchByTitle("milk", limit) }
+      }
+    }
+    assertTrue(requests.isEmpty())
   }
 
   @Test
@@ -100,9 +141,7 @@ class CommonsFoodImageRepositoryTest {
     assertEquals("6", request.url.queryParameter("gsrnamespace"))
     assertEquals("10", request.url.queryParameter("gsrlimit"))
     assertEquals("640", request.url.queryParameter("iiurlwidth"))
-    assertEquals(
-        "intitle:\"tacos\" ${CommonsContext} filetype:bitmap",
-        request.url.queryParameter("gsrsearch"))
+    assertEquals("\"tacos\" filetype:bitmap", request.url.queryParameter("gsrsearch"))
     assertEquals("application/json", request.header("Accept"))
     assertTrue(request.header("User-Agent")!!.contains("ShareMate-Swent/sharemate"))
     assertNull(request.header("Authorization"))
@@ -111,10 +150,10 @@ class CommonsFoodImageRepositoryTest {
   @Test
   fun titleIsEncodedAsALiteralAndCannotAddSearchOperators() = runBlocking {
     server.enqueue(MockResponse().setBody("""{"batchcomplete":true}"""))
-    repository.searchByTitle("  soupe à l'oignon & pain \" OR \\  ")
+    repository.searchByTitle("  onion soup & bread \" OR \\  ")
 
     assertEquals(
-        "intitle:\"soupe à l'oignon & pain OR\" $CommonsContext filetype:bitmap",
+        "\"onion soup & bread OR\" filetype:bitmap",
         requests.single().url.queryParameter("gsrsearch"))
   }
 
@@ -131,9 +170,92 @@ class CommonsFoodImageRepositoryTest {
   fun usesGeneratorRankingInsteadOfJsonArrayOrder() = runBlocking {
     server.enqueue(
         MockResponse()
-            .setBody(response(page(index = 5, title = "Later"), page(index = 1, title = "First"))))
+            .setBody(
+                response(
+                    page(index = 5, title = "Tacos later"),
+                    page(index = 1, title = "Tacos first"))))
 
-    assertEquals("First", (repository.searchByTitle("tacos") as Found).image.title)
+    assertEquals("Tacos first", (repository.searchByTitle("tacos") as Found).image.title)
+  }
+
+  @Test
+  fun prefersTheIngredientButKeepsAnExplicitlyRequestedDish() = runBlocking {
+    for ((query, expected) in
+        listOf("chicken" to "Raw chicken", "chicken soup" to "Chicken soup")) {
+      server.enqueue(
+          MockResponse()
+              .setBody(
+                  response(
+                      page(index = 1, title = "Chicken soup"),
+                      page(index = 2, title = "Grilled chicken"),
+                      page(index = 3, title = "Raw chicken"))))
+
+      assertEquals(expected, (repository.searchByTitle(query) as Found).image.title)
+    }
+  }
+
+  @Test
+  fun prefersTheExactTitleOverAdditionalIngredientDescriptions() = runBlocking {
+    server.enqueue(
+        MockResponse()
+            .setBody(
+                response(
+                    page(index = 1, title = "Fresh chicken meat"),
+                    page(index = 2, title = "Chicken meat"),
+                    page(index = 3, title = "Chicken"))))
+
+    assertEquals("Chicken", (repository.searchByTitle("chicken") as Found).image.title)
+  }
+
+  @Test
+  fun normalizesCaseAndPunctuationWithoutChangingTheAttribution() = runBlocking {
+    server.enqueue(
+        MockResponse()
+            .setBody(
+                response(
+                    page(index = 1, title = "Chicken meat salad"),
+                    page(index = 2, title = "Chicken—MEAT"))))
+
+    assertEquals("Chicken—MEAT", (repository.searchByTitle(" CHICKEN meat ") as Found).image.title)
+
+    val fallback = page().put("title", "File:CHICKEN_MEAT.JPG")
+    metadata(fallback).remove("ObjectName")
+    server.enqueue(MockResponse().setBody(response(fallback)))
+
+    assertEquals(
+        "CHICKEN_MEAT.JPG", (repository.searchByTitle("chicken meat") as Found).image.title)
+  }
+
+  @Test
+  fun unrequestedDishesPartialWordsAndWeakMatchesKeepTheGenericImage() = runBlocking {
+    server.enqueue(
+        MockResponse()
+            .setBody(
+                response(
+                    page(title = "Chicken soup"),
+                    page(title = "Chicken salad"),
+                    page(title = "Chickens"),
+                    page(title = "Chicken served with rice and vegetables"),
+                    page(title = "Rice"))))
+
+    assertSame(NotFound, repository.searchByTitle("chicken"))
+  }
+
+  @Test
+  fun theWholeRequestedPhraseMustMatch() = runBlocking {
+    server.enqueue(MockResponse().setBody(response(page(title = "Raw chicken"))))
+
+    assertSame(NotFound, repository.searchByTitle("chicken soup"))
+  }
+
+  @Test
+  fun aCloserTitleWithAnInvalidLicenseDoesNotHideAUsableImage() = runBlocking {
+    val invalid = page(index = 1, title = "Chicken")
+    metadata(invalid).put("LicenseShortName", value("GFDL"))
+    server.enqueue(
+        MockResponse().setBody(response(invalid, page(index = 2, title = "Chicken meat"))))
+
+    assertEquals("Chicken meat", (repository.searchByTitle("chicken") as Found).image.title)
   }
 
   @Test
@@ -193,9 +315,9 @@ class CommonsFoodImageRepositoryTest {
                     uncredited,
                     cleartext,
                     invalidSource,
-                    page(title = "Usable"))))
+                    page(title = "Usable tacos"))))
 
-    assertEquals("Usable", (repository.searchByTitle("tacos") as Found).image.title)
+    assertEquals("Usable tacos", (repository.searchByTitle("tacos") as Found).image.title)
   }
 
   @Test
@@ -339,9 +461,4 @@ class CommonsFoodImageRepositoryTest {
           .put("batchcomplete", true)
           .put("query", JSONObject().put("pages", JSONArray(pages.toList())))
           .toString()
-
-  private companion object {
-    const val CommonsContext =
-        "(food OR dish OR fruit OR vegetable OR bread OR rice OR soup OR cuisine)"
-  }
 }

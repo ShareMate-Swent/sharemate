@@ -75,6 +75,76 @@ class StagingViewModelTest {
   }
 
   @Test
+  fun addingAnItemWithTheSameNameAppendsAnIndependentRow() {
+    val viewModel = viewModel(milk)
+    viewModel.startAdding()
+    viewModel.updateDraftName(" Milk ")
+    viewModel.updateDraftQuantity("3")
+    viewModel.updateDraftPrice("2,40")
+    assertNull(viewModel.confirmedItems())
+
+    viewModel.saveDraft()
+
+    val (original, added) = requireNotNull(viewModel.confirmedItems())
+    assertEquals(milk, original)
+    assertTrue(added.id != original.id)
+    assertEquals(StagedItem(added.id, "Milk", 3, 240), added)
+
+    viewModel.startEditing(added.id)
+    viewModel.updateDraftQuantity("4")
+    viewModel.saveDraft()
+    assertEquals(listOf(milk, added.copy(quantity = 4)), viewModel.confirmedItems())
+    viewModel.deleteItem(added.id)
+    assertEquals(listOf(milk), viewModel.confirmedItems())
+  }
+
+  @Test
+  fun addingWithInvalidValuesLeavesTheListUnchangedUntilCorrected() {
+    val viewModel = viewModel(milk)
+    viewModel.startAdding()
+    viewModel.saveDraft()
+    assertEquals(StagedItemError.NAME_REQUIRED, viewModel.state.value.draft?.error)
+    assertEquals(listOf(milk), viewModel.state.value.items)
+
+    viewModel.updateDraftName("Bread")
+    viewModel.updateDraftQuantity("0")
+    viewModel.saveDraft()
+    assertEquals(StagedItemError.INVALID_QUANTITY, viewModel.state.value.draft?.error)
+    assertEquals(listOf(milk), viewModel.state.value.items)
+
+    viewModel.updateDraftQuantity("2")
+    viewModel.updateDraftPrice("-1")
+    viewModel.saveDraft()
+    assertEquals(StagedItemError.INVALID_PRICE, viewModel.state.value.draft?.error)
+    assertEquals(listOf(milk), viewModel.state.value.items)
+    assertNull(viewModel.confirmedItems())
+
+    viewModel.updateDraftPrice("")
+    viewModel.saveDraft()
+    val added = requireNotNull(viewModel.confirmedItems()).last()
+    assertEquals(StagedItem(added.id, "Bread", 2), added)
+  }
+
+  @Test
+  fun cancellingAnAdditionDoesNotChangeAnEmptyListAndItCanBeRepopulated() {
+    val viewModel = viewModel()
+    viewModel.startAdding()
+    viewModel.updateDraftName("Discard me")
+    viewModel.updateDraftQuantity("3")
+    viewModel.updateDraftPrice("1.25")
+    viewModel.cancelEditing()
+    assertNull(viewModel.state.value.draft)
+    assertNull(viewModel.confirmedItems())
+
+    viewModel.startAdding()
+    viewModel.updateDraftName("Bread")
+    viewModel.saveDraft()
+
+    val added = requireNotNull(viewModel.confirmedItems()).single()
+    assertEquals(StagedItem(added.id, "Bread", 1), added)
+  }
+
+  @Test
   fun invalidValuesKeepTheDraftOpenWithAnError() {
     val cases =
         listOf(

@@ -6,9 +6,12 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.SampleAppTheme
@@ -70,7 +73,13 @@ class OwnershipDisplayEmulatorTest {
                   sharing = ItemSharing.PERSONAL)))
     }
     val sharedId = runBlocking {
-      checkNotNull(items.addItem(Item(name = "Bread", ownerId = bob, householdId = home.id)))
+      checkNotNull(
+          items.addItem(
+              Item(
+                  name = "Bread",
+                  ownerId = bob,
+                  householdId = home.id,
+                  sharing = ItemSharing.SHARED)))
     }
     FirebaseEmulator.signInAs("card-alice")
     val aliceId = runBlocking {
@@ -96,12 +105,15 @@ class OwnershipDisplayEmulatorTest {
                   }),
               testBarcodeScanner(),
               testProductCatalogRepository(),
+              expirationPreferences =
+                  ExpirationPreferencesProvider(FirebaseExpirationPreferencesRepository(firestore)),
+              fridgeType = FridgeType.SHARED,
               memberNameRepository = directory)
       store.put("ownership", vm)
     }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     compose.waitUntil(10_000) {
-      vm.uiState.value.items.size == 3 &&
+      vm.uiState.value.items.size == 2 &&
           vm.uiState.value.ownerNames[alice] == "Alice" &&
           vm.uiState.value.ownerNames[bob] == "Bob"
     }
@@ -109,7 +121,10 @@ class OwnershipDisplayEmulatorTest {
     compose
         .onNodeWithTag(C.Tag.fridge_owner_name_prefix + aliceId)
         .assertTextEquals("Owner: Alice (you)")
-    compose.onNodeWithTag(C.Tag.fridge_owner_name_prefix + bobId).assertTextEquals("Owner: Bob")
+    compose.onNodeWithTag(C.Tag.fridge_item_prefix + bobId).assertDoesNotExist()
+    compose
+        .onNodeWithTag(C.Tag.fridge_item_prefix + sharedId)
+        .assertContentDescriptionContains("Owner: Bob", substring = true)
     compose.onNodeWithTag(C.Tag.fridge_sharing_badge_prefix + sharedId).assertTextEquals("Shared")
     val before = vm.uiState.value.items
     runBlocking {

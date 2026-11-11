@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
 /** Recherche d'images indépendante du modèle. */
@@ -10,4 +11,10 @@ interface FoodImageRepository {
    * résultat ; l'annulation de la coroutine est propagée.
    */
   suspend fun searchByTitle(title: String): FoodImageSearchResult
+
+  /**
+   * Searches with a positive candidate limit. Providers without this capability keep their lookup.
+   */
+  suspend fun searchByTitle(title: String, candidateLimit: Int): FoodImageSearchResult =
+      searchByTitle(title)
 }

@@ -12,6 +12,8 @@ import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,7 +41,8 @@ class ItemSharingFormTest {
           licenseUrl = "https://example.com/license",
           licenseVersion = "4.0",
           authorUrl = "https://example.com/author")
-  private val original = Item("milk", "Milk", "owner", "home", image = image)
+  private val original =
+      Item("milk", "Milk", "owner", "home", image = image, sharing = ItemSharing.SHARED)
 
   @Before
   fun setUp() {
@@ -53,8 +56,8 @@ class ItemSharingFormTest {
   }
 
   private fun TestScope.vm(
-      type: FridgeType? = FridgeType.SHARED,
-      household: String? = "home",
+      type: FridgeType = FridgeType.SHARED,
+      household: String = "home",
       catalog: ProductCatalogRepository = testProductCatalogRepository(),
   ): FridgeViewModel {
     val images =
@@ -68,6 +71,8 @@ class ItemSharingFormTest {
             FoodImageSelector(images),
             BarcodeScanner { barcodeResult },
             catalog,
+            expirationPreferences =
+                ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
             fridgeType = type)
         .also {
           store.put("vm-${nextVm++}", it)
@@ -76,18 +81,18 @@ class ItemSharingFormTest {
   }
 
   @Test
-  fun addSelectionIsDraftAndCancelRestoresSharedDefault() = runTest {
+  fun addSelectionIsDraftAndCancelRestoresPersonalDefault() = runTest {
     val vm = vm()
     vm.openAddItemDialog()
     assertTrue(vm.uiState.value.showSharingSelector)
     assertTrue(vm.uiState.value.canChangeSharing)
-    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
-    vm.updateSharing(ItemSharing.PERSONAL)
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    vm.updateSharing(ItemSharing.SHARED)
     assertTrue(repository.addedItems.isEmpty())
     assertTrue(repository.edits.isEmpty())
     vm.dismissAddItemDialog()
     vm.openAddItemDialog()
-    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
   }
 
   @Test
@@ -154,13 +159,13 @@ class ItemSharingFormTest {
 
   @Test
   fun nonOwnerCannotChangeSharingButCanStillEditOrdinaryFields() = runTest {
-    val other = original.copy(ownerId = "another-member", sharing = ItemSharing.PERSONAL)
+    val other = original.copy(ownerId = "another-member", sharing = ItemSharing.SHARED)
     repository.emitItems(listOf(other))
     val vm = vm()
     vm.openEditItemDialog(other.id)
-    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
+    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
     assertFalse(vm.uiState.value.canChangeSharing)
-    vm.updateSharing(ItemSharing.SHARED)
+    vm.updateSharing(ItemSharing.PERSONAL)
     vm.updateName("Member edit")
     vm.saveItem()
     runCurrent()
@@ -169,13 +174,8 @@ class ItemSharingFormTest {
   }
 
   @Test
-  fun privateStandaloneAndUnknownTypesKeepExistingBehavior() = runTest {
-    for ((type, household) in
-        listOf(
-            FridgeType.PRIVATE to "home",
-            null to "home",
-            null to null,
-            FridgeType.SHARED to null)) {
+  fun privateFridgesKeepPersonalItemsAndHideSharing() = runTest {
+    for ((type, household) in listOf(FridgeType.PRIVATE to "home")) {
       repository.emitItems(
           listOf(original.copy(householdId = household, sharing = ItemSharing.PERSONAL)))
       val vm = vm(type, household)
@@ -192,9 +192,7 @@ class ItemSharingFormTest {
       vm.updateSharing(ItemSharing.PERSONAL)
       vm.saveItem()
       runCurrent()
-      assertEquals(
-          if (household == null) ItemSharing.PERSONAL else ItemSharing.SHARED,
-          repository.addedItems.last().sharing)
+      assertEquals(ItemSharing.PERSONAL, repository.addedItems.last().sharing)
     }
   }
 
@@ -281,8 +279,8 @@ class ItemSharingFormTest {
   @Test
   fun savingBlocksSelectionDismissalAndDuplicateSubmission() = runTest {
     val vm = vm()
-    vm.updateSharing(ItemSharing.PERSONAL)
-    assertEquals(ItemSharing.SHARED, vm.uiState.value.itemSharing)
+    vm.updateSharing(ItemSharing.SHARED)
+    assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
     vm.openAddItemDialog()
     vm.updateName("Milk")
     vm.updateSharing(ItemSharing.PERSONAL)

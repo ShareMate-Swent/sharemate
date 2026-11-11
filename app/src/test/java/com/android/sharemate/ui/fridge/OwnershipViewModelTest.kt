@@ -2,9 +2,13 @@
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.MemberNameRepository
+import com.android.sharemate.model.user.PseudoRepository
 import java.util.Date
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -21,6 +25,7 @@ class OwnershipViewModelTest {
   private val names = MutableStateFlow(mapOf("alice" to "Alice", "bob" to "Bob"))
   private var subscriptions = 0
   private var publications = 0
+  private val publishedNames = mutableListOf<String?>()
   private var failNames = false
   private var failPublish = false
   private var closed = false
@@ -44,6 +49,7 @@ class OwnershipViewModelTest {
             authName: String?
         ) {
           publications++
+          publishedNames += authName
           assertEquals("home", householdId)
           assertEquals("alice", userId)
           if (failPublish) error("Unavailable")
@@ -61,7 +67,12 @@ class OwnershipViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private fun vm(household: String? = "home", name: String? = null): FridgeViewModel =
+  private fun vm(
+      household: String = "home",
+      name: String? = null,
+      type: FridgeType = FridgeType.SHARED,
+      pseudos: PseudoRepository? = null
+  ): FridgeViewModel =
       FridgeViewModel(
               items,
               "alice",
@@ -73,14 +84,17 @@ class OwnershipViewModelTest {
                   }),
               testBarcodeScanner(),
               testProductCatalogRepository(),
+              expirationPreferences =
+                  ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
+              fridgeType = type,
+              pseudoRepository = pseudos,
               memberNameRepository = directory,
               currentUserDisplayName = name)
           .also { store.put("fridge", it) }
 
   @Test
   fun memberNamesUpdateWithoutReloadingInventoryOrSubscribingPerItem() = runTest {
-    val inventory =
-        (0..19).map { Item("$it", "Milk", "bob", "home", sharing = ItemSharing.PERSONAL) }
+    val inventory = (0..19).map { Item("$it", "Milk", "bob", "home", sharing = ItemSharing.SHARED) }
     items.emitItems(inventory)
     val vm = vm()
     runCurrent()
@@ -129,10 +143,10 @@ class OwnershipViewModelTest {
   }
 
   @Test
-  fun standaloneUsesOnlyOwnAuthNameAndNeverQueriesHouseholds() = runTest {
-    val item = Item("milk", "Milk", "alice")
+  fun privateFridgeUsesOnlyOwnAuthNameWithoutDirectoryQueries() = runTest {
+    val item = Item("milk", "Milk", "alice", "home")
     items.emitItems(listOf(item))
-    val vm = vm(household = null, name = "Alice")
+    val vm = vm(name = "Alice", type = FridgeType.PRIVATE)
     runCurrent()
     assertEquals(0, subscriptions)
     assertEquals(0, publications)
@@ -143,22 +157,38 @@ class OwnershipViewModelTest {
 
   @Test
   fun legacyDefaultsAndExplicitSharingAreIndependentOfHouseholdAndOwner() {
-    val state = FridgeUiState(currentUserId = "alice")
-    assertEquals(ItemSharing.SHARED, state.ownershipFor(Item(householdId = "home")).sharing)
-    assertEquals(ItemSharing.PERSONAL, state.ownershipFor(Item()).sharing)
+    val state = FridgeUiState(fridgeType = FridgeType.SHARED, currentUserId = "alice")
+    assertEquals(ItemSharing.PERSONAL, state.ownershipFor(Item(householdId = "home")).sharing)
+    assertEquals(ItemSharing.PERSONAL, state.ownershipFor(Item(householdId = "home")).sharing)
     assertEquals(
         ItemSharing.PERSONAL,
         state.ownershipFor(Item(householdId = "home", sharing = ItemSharing.PERSONAL)).sharing)
-    assertEquals(ItemSharing.SHARED, state.ownershipFor(Item(sharing = ItemSharing.SHARED)).sharing)
+    assertEquals(
+        ItemSharing.SHARED,
+        state.ownershipFor(Item(householdId = "home", sharing = ItemSharing.SHARED)).sharing)
   }
 
   @Test
   fun nameChangesPreserveCategoryOwnerFiltersAndSortOrder() = runTest {
     items.emitItems(
         listOf(
-            Item("z", "Zucchini", "bob", "home", category = "Veg", expirationDate = Date(1)),
+            Item(
+                "z",
+                "Zucchini",
+                "bob",
+                "home",
+                category = "Veg",
+                expirationDate = Date(1),
+                sharing = ItemSharing.SHARED),
             Item("a", "Apple", "alice", "home", category = "Fruit", expirationDate = Date(2)),
-            Item("b", "Banana", "bob", "home", category = "Fruit", expirationDate = Date(3))))
+            Item(
+                "b",
+                "Banana",
+                "bob",
+                "home",
+                category = "Fruit",
+                expirationDate = Date(3),
+                sharing = ItemSharing.SHARED)))
     val vm = vm()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
     runCurrent()
@@ -174,5 +204,40 @@ class OwnershipViewModelTest {
     assertEquals("bob", vm.selectedOwnerId.value)
     assertEquals("Fruit", vm.selectedCategory.value)
     assertEquals(FridgeSortOrder.NAME, vm.sortOrder.value)
+  }
+
+  @Test
+  fun ownPseudoUpdatesPublishWithoutReadingOtherProfilesAndFiltersUseDirectory() = runTest {
+    val ownProfile = MutableStateFlow(mapOf("alice" to "New Alice"))
+    val requested = mutableListOf<Set<String>>()
+    val pseudos =
+        object : PseudoRepository {
+          override fun observePseudos(userIds: Set<String>): Flow<Map<String, String>> {
+            requested += userIds
+            return ownProfile
+          }
+
+          override suspend fun getPseudo(userId: String): String? = error("unused")
+
+          override suspend fun setPseudo(userId: String, pseudo: String) = error("unused")
+        }
+    items.emitItems(listOf(Item("b", "Bread", "bob", "home", sharing = ItemSharing.SHARED)))
+    val vm = vm(name = "Old provider name", pseudos = pseudos)
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.ownerOptions.collect() }
+    runCurrent()
+    assertEquals(listOf(setOf("alice")), requested)
+    assertEquals("New Alice", vm.uiState.value.ownerNames["alice"])
+    assertEquals("Bob", vm.ownerOptions.value.single().pseudo)
+    ownProfile.value = mapOf("alice" to "Renamed Alice")
+    runCurrent()
+    assertEquals("Renamed Alice", publishedNames.last())
+    assertEquals("Renamed Alice", vm.uiState.value.ownerNames["alice"])
+    names.value = emptyMap()
+    runCurrent()
+    assertNull(vm.ownerOptions.value.single().pseudo)
+    store.clear()
+    ownProfile.value = mapOf("alice" to "After cancellation")
+    runCurrent()
+    assertEquals("Renamed Alice", publishedNames.last())
   }
 }
