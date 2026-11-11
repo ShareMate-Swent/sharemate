@@ -11,7 +11,9 @@ import com.android.sharemate.utils.FirebaseEmulator
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.net.HttpURLConnection
@@ -555,7 +557,26 @@ class FirebaseItemRepositoryEmulatorTest {
     assertDenied(document(id).get(Source.SERVER))
     assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
     FirebaseEmulator.signOut()
-    assertWriteDenied(repository.setItemSharing(id, ItemSharing.PERSONAL))
+    assertNull(FirebaseEmulator.auth.currentUser)
+    // A write during sign-out can still enter the previous user's mutation queue. Use an
+    // initially signed-out client so this assertion tests rules, not credential-change timing.
+    val signedOutApp =
+        FirebaseApp.initializeApp(
+            FirebaseApp.getInstance().applicationContext,
+            FirebaseApp.getInstance().options,
+            "signed-out-sharing-${UUID.randomUUID()}")
+    val signedOutAuth = FirebaseAuth.getInstance(signedOutApp)
+    signedOutAuth.useEmulator(FirebaseEmulator.HOST, FirebaseEmulator.AUTH_PORT)
+    val signedOutFirestore = FirebaseFirestore.getInstance(signedOutApp)
+    signedOutFirestore.useEmulator(FirebaseEmulator.HOST, FirebaseEmulator.FIRESTORE_PORT)
+    try {
+      assertNull(signedOutAuth.currentUser)
+      assertWriteDenied(
+          FirebaseItemRepository(signedOutFirestore).setItemSharing(id, ItemSharing.PERSONAL))
+    } finally {
+      await(signedOutFirestore.terminate())
+      signedOutApp.delete()
+    }
   }
 
   @Test
