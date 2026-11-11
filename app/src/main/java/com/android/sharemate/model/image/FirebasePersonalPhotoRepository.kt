@@ -58,7 +58,7 @@ private constructor(
                 .setContentType(contentType)
                 .setCustomMetadata("itemOwnerId", ownerId)
                 .build()
-        val reference = PersonalPhotoReference("itemPhotos/$itemId/${UUID.randomUUID()}")
+        val reference = PersonalPhotoReference.forItem(itemId, UUID.randomUUID())
         currentCoroutineContext().ensureActive()
         storage.reference.child(reference.path).putBytes(bytes, metadata).awaitPhotoTransfer()
         reference
@@ -90,7 +90,7 @@ private constructor(
         firestore.collection(FirestoreCollections.ITEMS).document(itemId).get(Source.SERVER).await()
     if (item.getString("image.origin") == ItemImageOrigin.PERSONAL_PHOTO.name) {
       val path = item.getString("image.reference")
-      if (path?.startsWith("itemPhotos/$itemId/") == true) {
+      if (path != null && PersonalPhotoReference.hasItemPrefix(path, itemId)) {
         val error = delete(PersonalPhotoReference(path)).exceptionOrNull()
         // A previous attempt may have deleted the blob before the item deletion failed.
         if (error != null &&
@@ -115,15 +115,8 @@ private constructor(
 
   private fun readBounded(stream: InputStream, checkActive: () -> Unit): ByteArray {
     val output = ByteArrayOutputStream()
-    val buffer = ByteArray(8192)
-    while (true) {
-      checkActive()
-      val count =
-          stream.read(
-              buffer, 0, minOf(buffer.size, PersonalPhotoRepository.MAX_BYTES + 1 - output.size()))
-      if (count == -1) break
-      require(output.size() + count <= PersonalPhotoRepository.MAX_BYTES) { "Photo exceeds 5 MiB" }
-      output.write(buffer, 0, count)
+    stream.copyPhotoTo(output, PersonalPhotoRepository.MAX_BYTES.toLong(), checkActive) {
+      IllegalArgumentException("Photo exceeds 5 MiB")
     }
     return output.toByteArray()
   }

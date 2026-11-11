@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
 import android.content.Context
@@ -35,6 +36,7 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.android.sharemate.R
 import com.android.sharemate.model.image.FoodImageHttp
+import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
@@ -59,15 +61,17 @@ internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): 
 internal fun FridgeItemImage(
     item: Item,
     imageLoader: ImageLoader,
-    modifier: Modifier = Modifier.size(ThumbnailSize),
+    modifier: Modifier = Modifier,
     personalPhotos: PersonalPhotoController? = null,
 ) {
+  val thumbnailModifier = modifier.size(ThumbnailSize)
   val source = item.image?.reference?.takeIf { it.isNotBlank() }
   if (item.image?.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-      source?.startsWith("itemPhotos/") == true) {
+      source != null &&
+      PersonalPhotoReference.hasStoragePrefix(source)) {
     // Scope decoded private pixels to this item and fridge session.
     key(item.id, source, personalPhotos) {
-      BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+      BoxWithConstraints(thumbnailModifier, contentAlignment = Alignment.Center) {
         val pixels = this.constraints.maxWidth
         StoredPersonalPhoto(item.name, source, pixels, personalPhotos)
       }
@@ -76,7 +80,7 @@ internal fun FridgeItemImage(
   }
 
   val context = LocalContext.current
-  BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+  BoxWithConstraints(thumbnailModifier, contentAlignment = Alignment.Center) {
     val pixels = this.constraints.maxWidth
     // Recreate the painter so a reused card cannot display its previous image while loading.
     key(item.id, item.image?.origin, source) {

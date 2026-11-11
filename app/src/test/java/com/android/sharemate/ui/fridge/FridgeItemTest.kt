@@ -135,6 +135,17 @@ class FridgeItemTest {
   }
 
   @Test
+  fun imageWithoutModifierUsesAn80DpThumbnail() {
+    val loader = controlledLoader()
+    compose.setContent { FridgeItemImage(item = item.value, imageLoader = loader) }
+
+    compose
+        .onNodeWithTag(C.Tag.fridge_image_placeholder)
+        .assertWidthIsEqualTo(80.dp)
+        .assertHeightIsEqualTo(80.dp)
+  }
+
+  @Test
   fun absentImageUsesLocalPlaceholderWithoutLoading() {
     show()
     compose

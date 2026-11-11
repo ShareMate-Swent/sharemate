@@ -7,6 +7,8 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 
+private const val DEFAULT_ITEM_QUANTITY = "1"
+
 data class FridgeUiState(
     /** Type of the fridge shown. Items can only be shared in a [FridgeType.SHARED] fridge. */
     val fridgeType: FridgeType,
@@ -15,7 +17,7 @@ data class FridgeUiState(
     val loadFailed: Boolean = false,
     val isAddItemDialogOpen: Boolean = false,
     val editingItemId: String? = null,
-    val itemQuantity: String = "1",
+    val itemQuantity: String = DEFAULT_ITEM_QUANTITY,
     val editSyncError: FridgeEditSyncError? = null,
     val pendingStatusIds: Set<String> = emptySet(),
     val statusError: FridgeStatusError? = null,
@@ -36,6 +38,14 @@ data class FridgeUiState(
     val removalFailed: Boolean = false,
     val removalSyncError: FridgeRemovalSyncError? = null,
 )
+
+internal fun FridgeUiState.resetItemFields(): FridgeUiState =
+    copy(
+        itemQuantity = DEFAULT_ITEM_QUANTITY,
+        itemName = "",
+        itemCategory = "",
+        itemSharing = ItemSharing.PERSONAL,
+        expirationDateInput = "")
 
 enum class BarcodeLookupError {
   UNREADABLE,
