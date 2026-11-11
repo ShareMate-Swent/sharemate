@@ -166,6 +166,7 @@ class ItemSharingDialogTest {
           FirebaseEmulator.firestore
               .collection("items")
               .whereEqualTo("ownerId", owner)
+              .whereEqualTo("householdId", home.id)
               .get(Source.SERVER)
               .await()
               .isEmpty
