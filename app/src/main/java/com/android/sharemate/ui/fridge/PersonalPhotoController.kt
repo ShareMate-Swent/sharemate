@@ -145,7 +145,8 @@ class PersonalPhotoController(
     val upload = uploads[item.id]
     val hasPhoto =
         item.image?.let {
-          it.origin == ItemImageOrigin.PERSONAL_PHOTO && it.reference.startsWith("itemPhotos/")
+          it.origin == ItemImageOrigin.PERSONAL_PHOTO &&
+              PersonalPhotoReference.hasStoragePrefix(it.reference)
         } == true
     if (upload == null && !hasPhoto) return
     // Keep the item present until Storage authorizes and confirms removal.

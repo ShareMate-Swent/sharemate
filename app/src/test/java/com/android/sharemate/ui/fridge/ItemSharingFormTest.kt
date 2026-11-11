@@ -126,6 +126,9 @@ class ItemSharingFormTest {
       vm.updateSharing(
           if (sharing == ItemSharing.SHARED) ItemSharing.PERSONAL else ItemSharing.SHARED)
       vm.dismissAddItemDialog()
+      assertNull(vm.uiState.value.originalItemSharing)
+      assertFalse(vm.uiState.value.canChangeSharing)
+      assertEquals(ItemSharing.PERSONAL, vm.uiState.value.itemSharing)
       assertTrue(repository.edits.isEmpty())
       vm.openEditItemDialog(original.id)
       assertEquals(sharing, vm.uiState.value.itemSharing)
