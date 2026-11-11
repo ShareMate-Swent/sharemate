@@ -213,14 +213,56 @@ class NotificationSettingsViewModelTest {
     val model = viewModel(store = store)
     advanceUntilIdle()
 
-    assertTrue(model.state.value.isLoaded)
+    assertFalse(model.state.value.isLoaded)
     assertTrue(model.state.value.loadFailed)
 
     model.retryLoad()
     advanceUntilIdle()
 
     assertFalse(model.state.value.loadFailed)
+    assertTrue(model.state.value.isLoaded)
     assertEquals(2, store.observations)
+  }
+
+  /** Nothing observes the preferences any more, so a change could not be seen once saved. */
+  @Test
+  fun afterTheListenerFailsFollowingALoadTheControlsAreHiddenAndEditsAreIgnored() = runTest {
+    val store = FailingListenerRepository()
+    val model = viewModel(store = store)
+    advanceUntilIdle()
+
+    assertFalse(model.state.value.isLoaded)
+    assertTrue(model.state.value.loadFailed)
+    model.setSoonDays(8)
+    model.setSoonRepeatDays(null)
+    model.setExpiredRepeatDays(2)
+    advanceUntilIdle()
+
+    assertTrue(store.updates.isEmpty())
+  }
+
+  @Test
+  fun editsStayIgnoredWhileRetryWaitsForTheRestartedListenerToReport() = runTest {
+    val store = FailingListenerRepository()
+    val model = viewModel(store = store)
+    advanceUntilIdle()
+
+    model.retryLoad()
+    advanceUntilIdle()
+
+    assertFalse(model.state.value.loadFailed)
+    assertFalse(model.state.value.isLoaded)
+    model.setSoonDays(8)
+    advanceUntilIdle()
+    assertTrue(store.updates.isEmpty())
+
+    store.release.complete(Unit)
+    advanceUntilIdle()
+
+    assertTrue(model.state.value.isLoaded)
+    model.setSoonDays(8)
+    advanceUntilIdle()
+    assertEquals(listOf<ExpirationChange>(ExpirationChange.SoonDays(8)), store.updates)
   }
 
   @Test
@@ -302,6 +344,36 @@ class NotificationSettingsViewModelTest {
     assertTrue(model.state.value.saveFailed)
   }
 
+  /**
+   * The first observation reports [FIRST_REPORT] then fails, as a listener does when it loses its
+   * access. A later observation reports [FIRST_REPORT] again only once [release] is completed.
+   */
+  private class FailingListenerRepository : ExpirationPreferencesRepository {
+    val release = CompletableDeferred<Unit>()
+
+    /** The changes saved, in order. */
+    val updates = mutableListOf<ExpirationChange>()
+    private var observations = 0
+
+    override fun observe(userId: String): Flow<ExpirationPreferences> = flow {
+      observations++
+      if (observations == 1) {
+        emit(FIRST_REPORT)
+        throw IOException("listener failed")
+      }
+      release.await()
+      emit(FIRST_REPORT)
+    }
+
+    override suspend fun get(userId: String) = FIRST_REPORT
+
+    override suspend fun save(userId: String, preferences: ExpirationPreferences) = Unit
+
+    override suspend fun update(userId: String, change: ExpirationChange) {
+      updates += change
+    }
+  }
+
   /** Counts how often the preferences are observed, and can fail once after a first snapshot. */
   private class CountingRepository(private val failAfterFirstSnapshotOnce: Boolean = false) :
       ExpirationPreferencesRepository {
@@ -362,5 +434,6 @@ class NotificationSettingsViewModelTest {
 
   private companion object {
     const val USER = "alice"
+    val FIRST_REPORT = ExpirationPreferences(soonDays = 7)
   }
 }

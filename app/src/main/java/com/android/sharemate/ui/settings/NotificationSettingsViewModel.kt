@@ -20,10 +20,13 @@ import kotlinx.coroutines.launch
  * What the notification settings screen shows.
  *
  * @property preferences The user's current reminder preferences, as last reported by the store.
- * @property isLoaded False until the saved preferences have been read, so the screen never shows
- *   defaults that are about to be replaced.
- * @property loadFailed Whether the saved preferences could not be read; the controls stay hidden
- *   until a retry succeeds, so nothing is saved on top of values the user never saw.
+ * @property isLoaded True only while the preferences are being observed and have been reported at
+ *   least once. It is false before the first report, and again as soon as the observation fails or
+ *   is restarted by a retry, until the restarted observation reports. The screen never shows
+ *   defaults that are about to be replaced, and no change is accepted when nothing would show it.
+ * @property loadFailed Whether the preferences could not be read, at the start or later; the
+ *   controls stay hidden until a retry succeeds, so nothing is saved on top of values the user
+ *   never saw. It is never true together with [isLoaded].
  * @property saveFailed Whether the last change was refused and could not be saved.
  */
 data class NotificationSettingsUiState(
@@ -61,14 +64,17 @@ class NotificationSettingsViewModel(
     load()
   }
 
-  /** Tries again to read the saved preferences after a failure; does nothing otherwise. */
+  /**
+   * Tries again to read the preferences after a failure; does nothing otherwise. The controls come
+   * back once the restarted observation reports.
+   */
   fun retryLoad() {
     if (mutableState.value.loadFailed) load()
   }
 
   private fun load() {
     observing?.cancel()
-    mutableState.update { it.copy(loadFailed = false) }
+    mutableState.update { it.copy(isLoaded = false, loadFailed = false) }
     observing =
         viewModelScope.launch {
           try {
@@ -79,7 +85,7 @@ class NotificationSettingsViewModel(
             throw cancelled
           } catch (error: Exception) {
             Log.w(TAG, "Unable to read the expiry preferences", error)
-            mutableState.update { it.copy(loadFailed = true) }
+            mutableState.update { it.copy(isLoaded = false, loadFailed = true) }
           }
         }
   }
@@ -102,7 +108,10 @@ class NotificationSettingsViewModel(
   /** Hides the message about a change that could not be saved. */
   fun dismissSaveError() = mutableState.update { it.copy(saveFailed = false) }
 
-  /** Saves [change], unless the preferences are not loaded yet or it changes nothing. */
+  /**
+   * Saves [change], unless the preferences are not being observed (not loaded yet, or the
+   * observation failed) or it changes nothing.
+   */
   private fun submit(change: ExpirationChange) {
     val current = mutableState.value
     if (!current.isLoaded || change.applyTo(current.preferences) == current.preferences) return
