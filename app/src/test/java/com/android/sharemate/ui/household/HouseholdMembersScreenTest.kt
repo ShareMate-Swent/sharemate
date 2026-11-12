@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
@@ -52,7 +53,8 @@ class HouseholdMembersScreenTest {
     show(HouseholdMembersUiState(members = listOf(me, emailOnly, unknown), isLoading = false))
 
     onMemberPart(HouseholdMembersTestTags.name("me")).assertTextEquals("Inge")
-    onMemberPart(HouseholdMembersTestTags.you("me")).assertTextEquals("You")
+    onMemberPart(HouseholdMembersTestTags.you("me"))
+        .assertTextEquals(composeTestRule.activity.getString(R.string.household_members_you))
     onMemberPart(HouseholdMembersTestTags.name("sam")).assertTextEquals("sam@example.com")
     onMemberPart(HouseholdMembersTestTags.you("sam")).assertDoesNotExist()
     onMemberPart(HouseholdMembersTestTags.name("newcomer"))
@@ -60,7 +62,8 @@ class HouseholdMembersScreenTest {
     // A name hides the email, so members only see it when there is nothing else to show.
     composeTestRule
         .onNodeWithTag(HouseholdMembersTestTags.member("me"))
-        .assertTextEquals("Inge", "You")
+        .assertTextEquals(
+            "Inge", composeTestRule.activity.getString(R.string.household_members_you))
   }
 
   @Test

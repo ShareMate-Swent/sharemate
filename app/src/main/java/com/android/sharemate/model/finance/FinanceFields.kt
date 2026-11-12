@@ -5,7 +5,6 @@ package com.android.sharemate.model.finance
 internal object FinanceFields {
   const val ID = "id"
   const val HOUSEHOLD_ID = "householdId"
-  const val TYPE = "type"
   const val PAID_BY = "paidBy"
   const val TOTAL_AMOUNT_CENTS = "totalAmountCents"
   const val SHARES = "shares"

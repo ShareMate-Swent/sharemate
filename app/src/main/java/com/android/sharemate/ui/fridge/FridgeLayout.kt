@@ -20,4 +20,11 @@ internal object FridgeLayout {
   val gridSpacing = 8.dp
   val gridVerticalPadding = 16.dp
   val productCornerRadius = 16.dp
+  val productContentSpacing = 2.dp
+  val imageProgressSize = 24.dp
+  const val gridColumns = 3
+  const val ownerFilterMaxLines = 3
+  const val ownershipBadgeCornerPercent = 50
+  const val productImageAspectRatio = 1f
+  const val productTextMaxLines = 1
 }

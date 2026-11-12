@@ -100,7 +100,7 @@ class ItemRemovalTest {
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
-        .assertTextEquals("Your fridge is empty")
+        .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_empty))
     composeTestRule.runOnIdle { assertEquals(listOf(milk.id), repository.deletedIds) }
   }
 
@@ -143,7 +143,7 @@ class ItemRemovalTest {
     composeTestRule.waitUntil(5_000) { !viewModel.uiState.value.isDeleting }
     for (item in listOf(milk, bread)) {
       composeTestRule
-          .onNodeWithTag("fridge_item_actions_${item.id}")
+          .onNodeWithTag(C.Tag.fridgeItemActions(item.id))
           .performScrollTo()
           .performClick()
       listOf(
@@ -176,7 +176,7 @@ class ItemRemovalTest {
   }
 
   private fun requestRemoval(item: Item) {
-    composeTestRule.onNodeWithTag("fridge_item_actions_${item.id}").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridgeItemActions(item.id)).performClick()
     composeTestRule
         .onNodeWithTag("${C.Tag.fridge_remove_prefix}${item.id}")
         .assertIsDisplayed()

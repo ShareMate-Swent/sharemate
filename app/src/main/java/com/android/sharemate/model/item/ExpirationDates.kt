@@ -49,6 +49,8 @@ object ExpirationDates {
   /** Days left on the last day an item is "expiring soon", the day before it expires. */
   const val LAST_SOON_DAY = EXPIRY_DAY + 1
 
+  private const val UTC_TIME_ZONE_ID = "UTC"
+  private const val COMPACT_DATE_PATTERN = "dd/MM/yyyy"
   private val INPUT_FORMAT = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
   /** Parses a strict `YYYY-MM-DD` input; surrounding spaces are ignored. */
@@ -73,13 +75,13 @@ object ExpirationDates {
   /** Localized text for the item card, formatted on the stored UTC day. */
   fun formatDisplay(date: Date, locale: Locale = Locale.getDefault()): String =
       DateFormat.getDateInstance(DateFormat.MEDIUM, locale)
-          .apply { timeZone = TimeZone.getTimeZone("UTC") }
+          .apply { timeZone = TimeZone.getTimeZone(UTC_TIME_ZONE_ID) }
           .format(date)
 
   /** Compact date for the inventory grid, formatted on the stored UTC day. */
   fun formatCompact(date: Date, locale: Locale = Locale.getDefault()): String =
-      SimpleDateFormat("dd/MM/yyyy", locale)
-          .apply { timeZone = TimeZone.getTimeZone("UTC") }
+      SimpleDateFormat(COMPACT_DATE_PATTERN, locale)
+          .apply { timeZone = TimeZone.getTimeZone(UTC_TIME_ZONE_ID) }
           .format(date)
 
   /** Days from [today] until [date]; negative once expired. Null without an expiration date. */

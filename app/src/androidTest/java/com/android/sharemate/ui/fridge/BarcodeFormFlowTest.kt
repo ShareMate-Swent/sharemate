@@ -24,6 +24,7 @@ import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
@@ -107,7 +108,7 @@ class BarcodeFormFlowTest {
         .onAllNodesWithText(compose.activity.getString(R.string.barcode_lookup_failed))
         .onLast()
         .assertExists()
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Manual food")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("3")
     compose.onNodeWithTag(C.Tag.fridge_category_input).assertTextContains("Dairy")
@@ -120,7 +121,7 @@ class BarcodeFormFlowTest {
   }
 
   private fun confirm() {
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
   }
 
   private fun showFormAndPhoto() {
@@ -169,7 +170,7 @@ class BarcodeFormFlowTest {
       fridge.updateQuantity("3")
       fridge.updateCategory("Dairy")
     }
-    compose.onNodeWithTag("barcode_photo_open").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).performScrollTo().performClick()
     compose.runOnIdle {
       photo.capture { uri ->
         withContext(Dispatchers.IO) {

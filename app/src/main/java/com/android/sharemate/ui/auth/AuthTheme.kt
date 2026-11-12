@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.auth
 
 import android.app.Activity
@@ -12,6 +13,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+
+private val AuthBackground = Color(0xFFFEF7FF)
+private val AuthForeground = Color(0xFF1D1B20)
+
+private val AuthColorScheme =
+    lightColorScheme(
+        primary = Color(0xFF6750A4),
+        onPrimary = Color.White,
+        background = AuthBackground,
+        onBackground = AuthForeground,
+        surface = AuthBackground,
+        onSurface = AuthForeground,
+        onSurfaceVariant = Color(0xFF49454F),
+        outline = Color(0xFF79747E))
 
 /** The Figma entry flow stays light independently of the application's theme. */
 @Composable
@@ -34,26 +49,15 @@ internal fun AuthTheme(updateSystemBars: Boolean = false, content: @Composable (
         }
       }
       SideEffect {
-        window.statusBarColor = Color(0xFFFEF7FF).toArgb()
-        window.navigationBarColor = Color(0xFFFEF7FF).toArgb()
+        window.statusBarColor = AuthColorScheme.background.toArgb()
+        window.navigationBarColor = AuthColorScheme.background.toArgb()
         controller.isAppearanceLightStatusBars = true
         controller.isAppearanceLightNavigationBars = true
       }
     }
   }
   MaterialTheme(
-      colorScheme =
-          lightColorScheme(
-              primary = Color(0xFF6750A4),
-              onPrimary = Color.White,
-              background = Color(0xFFFEF7FF),
-              onBackground = Color(0xFF1D1B20),
-              surface = Color(0xFFFEF7FF),
-              onSurface = Color(0xFF1D1B20),
-              onSurfaceVariant = Color(0xFF49454F),
-              outline = Color(0xFF79747E)),
-      typography = MaterialTheme.typography,
-      content = content)
+      colorScheme = AuthColorScheme, typography = MaterialTheme.typography, content = content)
 }
 
 private fun Context.findActivity(): Activity? =

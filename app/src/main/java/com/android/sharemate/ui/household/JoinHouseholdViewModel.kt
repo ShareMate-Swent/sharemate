@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.household
 
@@ -5,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.InviteCodeGenerator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +73,6 @@ class JoinHouseholdViewModel(
   }
 
   companion object {
-    const val MAX_CODE_LENGTH = 6
+    const val MAX_CODE_LENGTH = InviteCodeGenerator.CODE_LENGTH
   }
 }

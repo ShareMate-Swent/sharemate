@@ -39,7 +39,7 @@ fun AuthGate(
         AuthTheme(updateSystemBars = true) {
           Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              CircularProgressIndicator(Modifier.testTag("auth_restoring"))
+              CircularProgressIndicator(Modifier.testTag(AuthTestTags.RESTORING))
             }
           }
         }

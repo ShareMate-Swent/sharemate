@@ -31,5 +31,7 @@ interface MemberNameRepository {
 /** No email/identifier fallback or unbounded/multiline profile values in labels. */
 internal fun ownerDisplayName(raw: String?): String? =
     raw?.trim()?.replace(Regex("\\s+"), " ")?.takeIf {
-      it.isNotEmpty() && it.length <= 80 && '@' !in it
+      it.isNotEmpty() && it.length <= MAX_MEMBER_NAME_LENGTH && '@' !in it
     }
+
+private const val MAX_MEMBER_NAME_LENGTH = 80

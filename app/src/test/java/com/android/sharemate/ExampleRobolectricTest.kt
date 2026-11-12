@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -22,10 +23,14 @@ class SecondActivityTest : TestCase() {
   @Test
   fun test() = run {
     step("Start Second Activity") {
+      val activity = composeTestRule.activity
+      val greeting =
+          activity.getString(
+              R.string.greeting_robo, activity.getString(R.string.greeting_robo_name))
       ComposeScreen.onComposeScreen<SecondScreen>(composeTestRule) {
         simpleText {
           assertIsDisplayed()
-          assertTextEquals("Hello Robolectric!")
+          assertTextEquals(greeting)
         }
       }
     }

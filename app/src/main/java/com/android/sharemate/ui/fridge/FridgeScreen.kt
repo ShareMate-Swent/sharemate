@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
@@ -37,8 +36,11 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.theme.Dimens
 import com.android.sharemate.ui.theme.SampleAppTheme
 import kotlinx.coroutines.delay
+
+private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
 
 /**
  * Displays the fridge inventory with caller-provided state and actions.
@@ -102,7 +104,7 @@ fun FridgeScreen(
                     else R.string.fridge_type_shared)),
         modifier =
             Modifier.align(Alignment.CenterHorizontally)
-                .padding(bottom = 8.dp)
+                .padding(bottom = Dimens.spacingXs)
                 .testTag(C.Tag.fridge_type),
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -124,32 +126,36 @@ fun FridgeScreen(
     uiState.editSyncError?.let { error ->
       LaunchedEffect(error, uiState.isAddItemDialogOpen) {
         if (!uiState.isAddItemDialogOpen) {
-          delay(8_000)
+          delay(SYNC_ERROR_DISPLAY_DURATION_MS)
           onDismissEditSyncError(error)
         }
       }
       Text(
           stringResource(R.string.fridge_edit_sync_failed, error.itemName),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_edit_sync_error))
+          modifier =
+              Modifier.padding(horizontal = Dimens.screenHorizontalPadding)
+                  .testTag(C.Tag.fridge_edit_sync_error))
     }
     val photoFailure = personalPhotos?.failure?.collectAsState()?.value
     photoFailure?.let {
       Text(
           stringResource(R.string.personal_photo_attach_failed, it),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp))
+          modifier = Modifier.padding(horizontal = Dimens.screenHorizontalPadding))
     }
     if (uiState.loadFailed) {
       Text(
           stringResource(R.string.fridge_load_failed),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_inventory_error))
+          modifier =
+              Modifier.padding(horizontal = Dimens.screenHorizontalPadding)
+                  .testTag(C.Tag.fridge_inventory_error))
     }
     uiState.statusError?.let { error ->
       LaunchedEffect(error, uiState.isAddItemDialogOpen, uiState.pendingRemovalItem) {
         if (!uiState.isAddItemDialogOpen && uiState.pendingRemovalItem == null) {
-          delay(8_000)
+          delay(SYNC_ERROR_DISPLAY_DURATION_MS)
           onDismissStatusError(error)
         }
       }
@@ -159,19 +165,23 @@ fun FridgeScreen(
               else R.string.fridge_status_failed,
               error.itemName),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_status_error))
+          modifier =
+              Modifier.padding(horizontal = Dimens.screenHorizontalPadding)
+                  .testTag(C.Tag.fridge_status_error))
     }
     uiState.removalSyncError?.let { error ->
       LaunchedEffect(error, uiState.isAddItemDialogOpen, uiState.pendingRemovalItem) {
         if (!uiState.isAddItemDialogOpen && uiState.pendingRemovalItem == null) {
-          delay(8_000)
+          delay(SYNC_ERROR_DISPLAY_DURATION_MS)
           onDismissRemovalSyncError(error)
         }
       }
       Text(
           stringResource(R.string.fridge_remove_sync_failed, error.itemName),
           color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 24.dp).testTag(C.Tag.fridge_removal_sync_error))
+          modifier =
+              Modifier.padding(horizontal = Dimens.screenHorizontalPadding)
+                  .testTag(C.Tag.fridge_removal_sync_error))
     }
     Box(
         modifier =
@@ -183,7 +193,7 @@ fun FridgeScreen(
         contentAlignment = Alignment.Center) {
           if (activeItems.isNotEmpty()) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(FridgeLayout.gridColumns),
                 modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
                 horizontalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing),
                 verticalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing)) {
@@ -228,7 +238,7 @@ fun FridgeScreen(
           } else {
             Text(
                 if (selectedCategory != null || selectedOwnerId != null) {
-                  "No items match the selected filters."
+                  stringResource(R.string.fridge_empty_filtered)
                 } else {
                   stringResource(R.string.fridge_empty)
                 },
@@ -257,7 +267,7 @@ fun FridgeScreen(
         onDismissRequest = { if (!uiState.isDeleting) onCancelRemoval() },
         title = { Text(stringResource(R.string.fridge_remove_title)) },
         text = {
-          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
             Text(stringResource(R.string.fridge_remove_confirmation, item.name))
             if (uiState.removalFailed) {
               Text(

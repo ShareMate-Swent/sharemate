@@ -9,7 +9,9 @@ import androidx.lifecycle.ViewModelStoreOwner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.auth.AuthTestTags
 import com.android.sharemate.ui.chat.ChatTestTags
+import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import org.junit.Assert.assertEquals
@@ -26,7 +28,7 @@ class FridgeWiringTest {
 
   @Test
   fun inventoryIsNotObservedUntilHouseholdIsResolved() {
-    compose.onNodeWithTag("household_loading").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertExists()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     assertEquals(emptyList<String>(), firebase.observedHouseholds)
     resolve()
@@ -52,7 +54,7 @@ class FridgeWiringTest {
   @Test
   fun noHouseholdShowsOnboardingWithoutObservingInventory() {
     compose.runOnIdle { firebase.resolveInitialHousehold(null) }
-    compose.onNodeWithTag("household_sign_out").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.SIGN_OUT).assertExists()
     compose.onNodeWithTag(C.Tag.fridge_screen_container).assertDoesNotExist()
     assertEquals(emptyList<String>(), firebase.observedHouseholds)
   }
@@ -78,8 +80,8 @@ class FridgeWiringTest {
   fun signOutRemovesInventoryListenerEvenWhenFridgeEntryIsSaved() {
     resolve()
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithText("Sign out").performClick()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithText(compose.activity.getString(R.string.auth_sign_out)).performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
     assertEquals(listOf("student-home"), firebase.observedHouseholds)

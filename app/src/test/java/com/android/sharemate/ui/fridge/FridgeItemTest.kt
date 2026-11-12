@@ -31,6 +31,7 @@ import coil.intercept.Interceptor
 import coil.request.ErrorResult
 import coil.request.SuccessResult
 import coil.size.Size
+import com.android.sharemate.R
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -309,7 +310,7 @@ class FridgeItemTest {
                         authorUrl = "https://example.org/jane"))
     show(links = links)
     compose.onNodeWithContentDescription("Actions for Milk").performClick()
-    compose.onNodeWithText("Image details").performClick()
+    compose.onNodeWithText(context.getString(R.string.fridge_card_image_details)).performClick()
     compose
         .onNodeWithText("Fresh milk · Jane Doe · Wikimedia Commons · CC BY-SA 4.0")
         .assertIsDisplayed()
@@ -326,8 +327,8 @@ class FridgeItemTest {
     compose.runOnIdle {
       item.value = item.value.copy(image = ItemImage(reference = "content://photos/milk"))
     }
-    compose.onNodeWithText("Image source").assertDoesNotExist()
-    compose.onNodeWithText("License").assertDoesNotExist()
+    compose.onNodeWithText(context.getString(R.string.fridge_image_source)).assertDoesNotExist()
+    compose.onNodeWithText(context.getString(R.string.fridge_image_license)).assertDoesNotExist()
     compose.onNodeWithText("Image search powered by Openverse").assertDoesNotExist()
   }
 
@@ -354,10 +355,10 @@ class FridgeItemTest {
       }
     }
 
-    compose.onNodeWithText("Image source").performClick()
+    compose.onNodeWithText(context.getString(R.string.fridge_image_source)).performClick()
     compose.waitForIdle()
 
     assertEquals(listOf(url), attemptedLinks)
-    compose.onNodeWithText("Image source").assertIsDisplayed()
+    compose.onNodeWithText(context.getString(R.string.fridge_image_source)).assertIsDisplayed()
   }
 }
