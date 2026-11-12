@@ -14,6 +14,7 @@ import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -43,12 +44,12 @@ class ReceiptScanFlowTest {
     var shared by androidx.compose.runtime.mutableStateOf(false)
     var opened = 0
     compose.setContent { ReceiptScanFlow(photo, shared, { opened++ }) { emptyList() } }
-    compose.onNodeWithTag("receipts_balances").assertDoesNotExist()
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).assertDoesNotExist()
     compose.runOnIdle { shared = true }
-    compose.onNodeWithTag("receipts_balances").performClick()
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).performClick()
     assertEquals(1, opened)
     compose.runOnIdle { shared = false }
-    compose.onNodeWithTag("receipts_balances").assertDoesNotExist()
+    compose.onNodeWithTag(BalancesTestTags.ENTRY).assertDoesNotExist()
   }
 
   @Test

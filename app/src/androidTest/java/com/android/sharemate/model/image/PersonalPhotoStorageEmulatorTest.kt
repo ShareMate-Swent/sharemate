@@ -54,7 +54,9 @@ class PersonalPhotoStorageEmulatorTest {
   @get:Rule val temporary = TemporaryFolder()
   private val firestore = FirebaseEmulator.firestore
   private val storage =
-      FirebaseStorage.getInstance().apply { useEmulator(FirebaseEmulator.HOST, 9199) }
+      FirebaseStorage.getInstance().apply {
+        useEmulator(FirebaseEmulator.HOST, FirebaseEmulator.STORAGE_PORT)
+      }
   private val repository = FirebasePersonalPhotoRepository(storage, firestore)
   private val png =
       android.util.Base64.decode(
@@ -87,7 +89,8 @@ class PersonalPhotoStorageEmulatorTest {
   }
 
   private fun emulatorRequest(method: String, suffix: String): String {
-    val url = "http://${FirebaseEmulator.HOST}:9199/v0/b/${storage.reference.bucket}/o$suffix"
+    val url =
+        "http://${FirebaseEmulator.HOST}:${FirebaseEmulator.STORAGE_PORT}/v0/b/${storage.reference.bucket}/o$suffix"
     val connection = URL(url).openConnection() as HttpURLConnection
     return try {
       connection.requestMethod = method
@@ -105,7 +108,7 @@ class PersonalPhotoStorageEmulatorTest {
   private fun patchHousehold(home: String, field: String, fieldsJson: String) {
     val projectId = checkNotNull(firestore.app.options.projectId)
     val url =
-        "http://${FirebaseEmulator.HOST}:8080/v1/projects/$projectId/databases/(default)/documents/households/$home?updateMask.fieldPaths=$field"
+        "http://${FirebaseEmulator.HOST}:${FirebaseEmulator.FIRESTORE_PORT}/v1/projects/$projectId/databases/(default)/documents/households/$home?updateMask.fieldPaths=$field"
     val connection = URL(url).openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "PATCH"
