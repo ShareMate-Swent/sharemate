@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
@@ -149,7 +150,11 @@ class BarcodeFormFlowTest {
               expirationPreferences =
                   ExpirationPreferencesProvider(
                       FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-              fridgeType = FridgeType.SHARED)
+              fridgeType = FridgeType.SHARED,
+              memberNameRepository = testMemberNameRepository(),
+              currentUserDisplayName = null,
+              pseudoRepository = testPseudoRepository(),
+          )
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }

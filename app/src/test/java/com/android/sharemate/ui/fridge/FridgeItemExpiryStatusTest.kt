@@ -32,7 +32,13 @@ class FridgeItemExpiryStatusTest {
           householdId = "household-1")
 
   private fun show(status: ExpiryStatus) {
-    compose.setContent { FridgeItem(item, expiryStatus = status) }
+    compose.setContent {
+      FridgeItem(
+          item,
+          expiryStatus = status,
+          ownership = ItemOwnership(item.sharing),
+      )
+    }
   }
 
   private fun description(prefix: String): String =

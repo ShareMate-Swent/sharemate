@@ -67,7 +67,7 @@ fun FridgeItem(
     statusEnabled: Boolean = false,
     onStatusChange: (ItemStatus) -> Unit = {},
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
-    ownership: ItemOwnership = ItemOwnership(item.sharing),
+    ownership: ItemOwnership,
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val sharingLabel =

@@ -87,7 +87,7 @@ class OwnershipViewModelTest {
               expirationPreferences =
                   ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
               fridgeType = type,
-              pseudoRepository = pseudos,
+              pseudoRepository = pseudos ?: testPseudoRepository(),
               memberNameRepository = directory,
               currentUserDisplayName = name)
           .also { store.put("fridge", it) }
@@ -129,9 +129,8 @@ class OwnershipViewModelTest {
   }
 
   @Test
-  fun unavailableDirectoryAndPublicationNeverBlockInventory() = runTest {
+  fun unavailableDirectoryNeverBlocksInventory() = runTest {
     failNames = true
-    failPublish = true
     val item = Item("milk", "Milk", "alice", "home")
     items.emitItems(listOf(item))
     val vm = vm(name = "Alice")
@@ -143,29 +142,50 @@ class OwnershipViewModelTest {
   }
 
   @Test
-  fun privateFridgeUsesOnlyOwnAuthNameWithoutDirectoryQueries() = runTest {
+  fun publicationFailureNeverBlocksInventoryOrDirectoryNames() = runTest {
+    failPublish = true
     val item = Item("milk", "Milk", "alice", "home")
     items.emitItems(listOf(item))
-    val vm = vm(name = "Alice", type = FridgeType.PRIVATE)
+    val vm = vm(name = "Alice")
+    runCurrent()
+    assertEquals(listOf(item), vm.uiState.value.items)
+    assertFalse(vm.uiState.value.loadFailed)
+    assertEquals("Bob", vm.uiState.value.ownerNames["bob"])
+    assertEquals(1, publications)
+  }
+
+  @Test
+  fun privateFridgeUsesOwnPseudoWithoutDirectoryQueries() = runTest {
+    val item = Item("milk", "Milk", "alice", "home")
+    items.emitItems(listOf(item))
+    val profiles =
+        com.android.sharemate.model.user.FakePseudoRepository(mapOf("alice" to "My pseudo"))
+    val vm = vm(name = "Alice", type = FridgeType.PRIVATE, pseudos = profiles)
     runCurrent()
     assertEquals(0, subscriptions)
     assertEquals(0, publications)
     assertEquals(
-        ItemOwnership(ItemSharing.PERSONAL, "Alice", true), vm.uiState.value.ownershipFor(item))
+        ItemOwnership(ItemSharing.PERSONAL, "My pseudo", true), vm.uiState.value.ownershipFor(item))
+    profiles.setPseudo("alice", "New private pseudo")
+    runCurrent()
+    assertEquals("New private pseudo", vm.uiState.value.ownerNames["alice"])
     assertEquals(listOf("alice"), items.requestedUserIds)
   }
 
   @Test
   fun legacyDefaultsAndExplicitSharingAreIndependentOfHouseholdAndOwner() {
     val state = FridgeUiState(fridgeType = FridgeType.SHARED, currentUserId = "alice")
-    assertEquals(ItemSharing.PERSONAL, state.ownershipFor(Item(householdId = "home")).sharing)
-    assertEquals(ItemSharing.PERSONAL, state.ownershipFor(Item(householdId = "home")).sharing)
-    assertEquals(
-        ItemSharing.PERSONAL,
-        state.ownershipFor(Item(householdId = "home", sharing = ItemSharing.PERSONAL)).sharing)
-    assertEquals(
-        ItemSharing.SHARED,
-        state.ownershipFor(Item(householdId = "home", sharing = ItemSharing.SHARED)).sharing)
+    for (household in listOf("home", "private-fridge")) {
+      for (owner in listOf("alice", "bob")) {
+        val legacy = Item(householdId = household, ownerId = owner)
+        assertEquals(ItemSharing.PERSONAL, state.ownershipFor(legacy).sharing)
+        for (sharing in ItemSharing.values()) {
+          val ownership = state.ownershipFor(legacy.copy(sharing = sharing))
+          assertEquals(sharing, ownership.sharing)
+          assertEquals(owner == "alice", ownership.isCurrentUser)
+        }
+      }
+    }
   }
 
   @Test

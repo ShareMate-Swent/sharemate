@@ -115,7 +115,9 @@ class FridgeItemTest {
                   item = item.value,
                   imageLoader = loader,
                   modifier = Modifier.width(120.dp),
-                  expiryStatus = ExpiryStatus.NORMAL)
+                  expiryStatus = ExpiryStatus.NORMAL,
+                  ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+              )
             }
           }
     }

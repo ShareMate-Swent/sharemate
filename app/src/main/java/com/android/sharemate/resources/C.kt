@@ -34,7 +34,9 @@ object C {
     const val fridge_form_error = "fridge_form_error"
     const val fridge_inventory_error = "fridge_inventory_error"
     const val fridge_item_list = "fridge_item_list"
+    /** Sharing-badge tag prefix; append the item ID. */
     const val fridge_sharing_badge_prefix = "fridge_sharing_badge_"
+    /** Owner-name tag prefix; append the item ID. */
     const val fridge_owner_name_prefix = "fridge_owner_name_"
     const val fridge_item_prefix = "fridge_item_"
     const val fridge_image = "fridge_image"

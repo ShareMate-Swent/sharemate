@@ -241,7 +241,7 @@ private fun OwnerControl(
         onClick = { expanded = true },
         enabled = enabled && (owners.isNotEmpty() || selectedOwnerId != null),
         modifier =
-            Modifier.testTag("fridge_owner_filter").semantics {
+            Modifier.semantics {
               selected = selectedOwnerId != null
               contentDescription = label
             }) {

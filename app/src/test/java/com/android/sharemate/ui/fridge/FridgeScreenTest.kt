@@ -134,7 +134,9 @@ class FridgeScreenTest {
             item = Item(id = "milk", name = "Milk", householdId = "household-1"),
             statusEnabled = true,
             onStatusChange = { changes += it },
-            expiryStatus = ExpiryStatus.NORMAL)
+            expiryStatus = ExpiryStatus.NORMAL,
+            ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+        )
       }
     }
     openActions("milk")
@@ -200,7 +202,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -401,7 +407,10 @@ class FridgeScreenTest {
             pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(mapOf("owner-1" to "Alice")),
+            currentUserDisplayName = null,
+        )
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -421,7 +430,7 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("owner-1").assertDoesNotExist()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
-    composeRule.onNodeWithText("Owner: Alice").performClick()
+    composeRule.onNodeWithContentDescription("Owner: Alice").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_all").performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals("Dairy", viewModel.selectedCategory.value)
@@ -455,7 +464,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
 
@@ -520,7 +533,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {
@@ -596,11 +613,15 @@ class FridgeScreenTest {
           FridgeItem(
               item = itemExpiringIn(-1),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.EXPIRED)
+              expiryStatus = ExpiryStatus.EXPIRED,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
           FridgeItem(
               item = itemExpiringIn(3).copy(id = "soon"),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.SOON)
+              expiryStatus = ExpiryStatus.SOON,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
         }
       }
     }
@@ -616,7 +637,9 @@ class FridgeScreenTest {
         FridgeItem(
             item = itemExpiringIn(4),
             modifier = androidx.compose.ui.Modifier.width(100.dp),
-            expiryStatus = ExpiryStatus.NORMAL)
+            expiryStatus = ExpiryStatus.NORMAL,
+            ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+        )
       }
     }
 
@@ -640,7 +663,9 @@ class FridgeScreenTest {
                       expirationDate = expiration,
                       householdId = "household-1"),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.NORMAL)
+              expiryStatus = ExpiryStatus.NORMAL,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
         }
       }
       composeRule

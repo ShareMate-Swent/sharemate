@@ -32,13 +32,11 @@ import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
-import com.android.sharemate.model.user.ownerDisplayName
 import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -48,11 +46,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -77,15 +72,23 @@ class FridgeViewModel(
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferences: ExpirationPreferencesProvider,
-    private val pseudoRepository: PseudoRepository? = null,
+    pseudoRepository: PseudoRepository,
     private val fridgeType: FridgeType,
     private val today: () -> LocalDate = { LocalDate.now() },
-    private val memberNameRepository: MemberNameRepository? = null,
-    currentUserDisplayName: String? = null,
+    memberNameRepository: MemberNameRepository,
+    currentUserDisplayName: String?,
 ) : ViewModel() {
   private val supportsSharing = fridgeType == FridgeType.SHARED
-  private val ownName = ownerDisplayName(currentUserDisplayName)
-  private var ownNames = ownName?.let { mapOf(userId to it) }.orEmpty()
+  private val ownerNames =
+      FridgeOwnerNames(
+          memberNameRepository,
+          pseudoRepository,
+          householdId,
+          userId,
+          fridgeType,
+          currentUserDisplayName,
+          viewModelScope,
+          { failure, cause -> Log.w("FridgeViewModel", "Owner names: $failure", cause) })
   private val mutableUiState =
       MutableStateFlow(
           FridgeUiState(
@@ -93,7 +96,7 @@ class FridgeViewModel(
               isLoading = true,
               showSharingSelector = supportsSharing,
               currentUserId = userId,
-              ownerNames = ownNames))
+              ownerNames = ownerNames.names.value))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
           PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
@@ -138,27 +141,19 @@ class FridgeViewModel(
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
 
   /** The owners of the loaded items, with the pseudo to show for each. */
-  @OptIn(ExperimentalCoroutinesApi::class)
   val ownerOptions: StateFlow<List<OwnerOption>> =
       mutableUiState
-          .map { state -> state.items.map(Item::ownerId).filter(String::isNotBlank).toSortedSet() }
-          .distinctUntilChanged()
-          .flatMapLatest { ids ->
-            val pseudos =
-                if (memberNameRepository != null)
-                    mutableUiState.map { it.ownerNames }.distinctUntilChanged()
-                else
-                    pseudoRepository?.observePseudos(ids)?.catch { error ->
-                      Log.w("FridgeViewModel", "Unable to load owner pseudos", error)
-                      emit(emptyMap())
-                    } ?: flowOf(emptyMap())
-            pseudos.map { names ->
-              ids.map { OwnerOption(it, ownerDisplayName(names[it])) }
-                  .sortedWith(
-                      compareBy<OwnerOption> { it.pseudo == null }
-                          .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
-            }
+          .map { state ->
+            state.items
+                .map(Item::ownerId)
+                .filter(String::isNotBlank)
+                .toSortedSet()
+                .map { OwnerOption(it, state.ownerNameFor(it)) }
+                .sortedWith(
+                    compareBy<OwnerOption> { it.pseudo == null }
+                        .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
           }
+          .distinctUntilChanged()
           .stateIn(
               viewModelScope,
               SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
@@ -196,36 +191,8 @@ class FridgeViewModel(
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId.isNotBlank()) { "A household ID is required" }
-    if (fridgeType == FridgeType.SHARED && memberNameRepository != null) {
-      viewModelScope.launch {
-        try {
-          memberNameRepository.observeNames(householdId, userId).collect { names ->
-            mutableUiState.update { it.copy(ownerNames = names + ownNames) }
-          }
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (_: Exception) {
-          mutableUiState.update { it.copy(ownerNames = ownNames) }
-        }
-      }
-      viewModelScope.launch {
-        val profileNames =
-            pseudoRepository
-                ?.observePseudos(setOf(userId))
-                ?.map { ownerDisplayName(it[userId]) ?: ownName }
-                ?.catch { emit(ownName) } ?: flowOf(ownName)
-        profileNames.distinctUntilChanged().collect { name ->
-          ownNames = name?.let { mapOf(userId to it) }.orEmpty()
-          mutableUiState.update { it.copy(ownerNames = (it.ownerNames - userId) + ownNames) }
-          try {
-            memberNameRepository.publishOwnName(householdId, userId, name)
-          } catch (cancelled: CancellationException) {
-            throw cancelled
-          } catch (_: Exception) {
-            /* Name availability never blocks inventory. */
-          }
-        }
-      }
+    viewModelScope.launch {
+      ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
     }
     viewModelScope.launch {
       try {

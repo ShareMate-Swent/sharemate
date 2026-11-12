@@ -27,7 +27,9 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
+import com.android.sharemate.ui.fridge.testPseudoRepository
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -157,7 +159,11 @@ class FridgeImageNavigationTest {
                                 expirationPreferences =
                                     ExpirationPreferencesProvider(
                                         FakeExpirationPreferencesRepository()),
-                                fridgeType = FridgeType.SHARED)
+                                fridgeType = FridgeType.SHARED,
+                                memberNameRepository = testMemberNameRepository(),
+                                currentUserDisplayName = null,
+                                pseudoRepository = testPseudoRepository(),
+                            )
                           }
                         })
             Text("Fridge")

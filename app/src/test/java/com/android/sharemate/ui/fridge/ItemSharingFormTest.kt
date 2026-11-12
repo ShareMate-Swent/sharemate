@@ -73,7 +73,11 @@ class ItemSharingFormTest {
             catalog,
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = type)
+            fridgeType = type,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
         .also {
           store.put("vm-${nextVm++}", it)
           runCurrent()
