@@ -7,8 +7,11 @@ service firebase.storage {
     // truth). A private fridge also requires its creator. A missing type is treated as shared.
     function isCurrentMember(id) {
       let home = firestore.get(/databases/(default)/documents/households/$(id)).data;
+      let sharedFridgeType = 'SHARED';
+      let privateFridgeType = 'PRIVATE';
       return request.auth.uid in home.memberIds
-          && (home.get('type', 'SHARED') != 'PRIVATE' || home.createdBy == request.auth.uid);
+          && (home.get('type', sharedFridgeType) != privateFridgeType
+              || home.createdBy == request.auth.uid);
     }
 
     // Photos follow their item, as in firestore.rules: only current members of the item's household
@@ -16,21 +19,30 @@ service firebase.storage {
     // even for the owner, so a user who left the household can no longer reach their old photos.
     function canAccessItem(id, photo) {
       let item = firestore.get(/databases/(default)/documents/items/$(id)).data;
+      let ownerIdMetadataKey = 'itemOwnerId';
+      let sharedItemSharing = 'SHARED';
       // ownerId is immutable in Firestore. Reusing a deleted ID as another owner must not
       // grant access to the old photo. Null resources preserve authorized "not found" responses.
-      return (photo == null || photo.metadata.get('itemOwnerId', '') == item.ownerId)
+      return (photo == null || photo.metadata.get(ownerIdMetadataKey, '') == item.ownerId)
           && item.get('householdId', null) is string
           && isCurrentMember(item.householdId)
-          && (item.ownerId == request.auth.uid || item.get('sharing', null) == 'SHARED');
+          && (item.ownerId == request.auth.uid || item.get('sharing', null) == sharedItemSharing);
     }
     match /itemPhotos/{itemId}/{photoId} {
       allow get, delete: if request.auth != null && canAccessItem(itemId, resource);
+      function hasValidPhotoData() {
+        let photoIdPattern = '[a-f0-9-]{36}';
+        let maxPhotoBytes = 5 * 1024 * 1024;
+        let photoContentTypes = ['image/jpeg', 'image/png'];
+        return photoId.matches(photoIdPattern)
+            && request.resource.size > 0 && request.resource.size <= maxPhotoBytes
+            && request.resource.contentType in photoContentTypes;
+      }
+
       // Objects are immutable; replacing a photo creates a fresh identifier.
       allow create: if resource == null && request.auth != null
           && canAccessItem(itemId, request.resource)
-          && photoId.matches('[a-f0-9-]{36}')
-          && request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024
-          && request.resource.contentType in ['image/jpeg', 'image/png'];
+          && hasValidPhotoData();
       // No listing, overwrite, metadata update or access to any other path.
     }
   }

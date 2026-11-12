@@ -82,14 +82,18 @@ class PersonalPhotoCameraCaptureTest {
       compose.runOnIdle { vm.open() }
       compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
       compose.waitUntil(20_000) {
-        runCatching { compose.onNodeWithTag("barcode_photo_capture").assertIsEnabled() }.isSuccess
+        runCatching { compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsEnabled() }
+            .isSuccess
       }
-      compose.onNodeWithText("Add a personal photo").assertIsDisplayed()
+      compose
+          .onNodeWithText(compose.activity.getString(R.string.personal_photo_add))
+          .assertIsDisplayed()
       compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertDoesNotExist()
       compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsDisplayed()
       val frame =
           compose.onNodeWithTag(BarcodePhotoTestTags.VIEWFINDER).fetchSemanticsNode().boundsInRoot
-      val shutter = compose.onNodeWithTag("barcode_photo_capture").fetchSemanticsNode().boundsInRoot
+      val shutter =
+          compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
       assertTrue(frame.bottom <= shutter.top)
       lateinit var preview: PreviewView
       onView(isAssignableFrom(PreviewView::class.java)).check { view, _ ->
@@ -111,7 +115,7 @@ class PersonalPhotoCameraCaptureTest {
       } finally {
         screenshot.recycle()
       }
-      compose.onNodeWithTag("barcode_photo_capture").performScrollTo().performClick()
+      compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performScrollTo().performClick()
       compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
       compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
       compose.runOnIdle {
