@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.ktfmt)
     alias(libs.plugins.sonar)
     id("jacoco")
-    id("com.google.gms.google-services")
+    alias(libs.plugins.googleServices)
 }
 
 val ciKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
@@ -22,7 +22,7 @@ require(ciSigningValues.all { it.isNullOrBlank() } || ciSigningConfigured) {
 
 // AGP configures JaCoCo during evaluation; keep the report engine aligned afterward.
 afterEvaluate {
-    jacoco { toolVersion = "0.8.13" }
+    jacoco { toolVersion = libs.versions.jacoco.get() }
 }
 
 android {
@@ -73,7 +73,7 @@ android {
     }
 
     testCoverage {
-        jacocoVersion = "0.8.13"
+        jacocoVersion = libs.versions.jacoco.get()
     }
 
     buildFeatures {
