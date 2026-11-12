@@ -8,5 +8,17 @@
         <activity
             android:name="com.android.sharemate.MainUserFlowTestActivity"
             android:exported="false" />
+        <activity
+            android:name="com.android.sharemate.ReceiptToFridgeTestActivity"
+            android:exported="false" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.test-fixtures"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/test_fixture_paths" />
+        </provider>
     </application>
 </manifest>
