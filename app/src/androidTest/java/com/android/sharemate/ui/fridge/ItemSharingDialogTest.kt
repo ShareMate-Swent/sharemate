@@ -22,6 +22,7 @@ import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.theme.SampleAppTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
@@ -92,7 +93,7 @@ class ItemSharingDialogTest {
     assertEquals(0, changes)
     compose.onNodeWithTag(C.Tag.fridge_name_input).performScrollTo().assertIsEnabled()
     compose.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled()
-    compose.onNodeWithTag("barcode_photo_open").assertDoesNotExist()
+    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).assertDoesNotExist()
     compose.runOnIdle { state.value = state.value.copy(canChangeSharing = true, isSaving = true) }
     compose.onNodeWithTag(C.Tag.fridge_sharing_personal).performScrollTo().assertIsNotEnabled()
     compose.onNodeWithTag(C.Tag.fridge_sharing_shared).assertIsNotEnabled()
@@ -116,7 +117,7 @@ class ItemSharingDialogTest {
       }
     }
     compose.onNodeWithTag(C.Tag.fridge_sharing_selector).assertDoesNotExist()
-    compose.onNodeWithTag("barcode_photo_open").assertIsDisplayed().assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).assertIsDisplayed().assertIsEnabled()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertIsEnabled()
     compose.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled().performClick()
     assertEquals(1, saves)
@@ -191,7 +192,7 @@ class ItemSharingDialogTest {
     compose.waitUntil(5_000) { vm.uiState.value.items.singleOrNull()?.image == withImage.image }
     compose.waitForIdle()
     compose.runOnIdle { vm.openEditItemDialog(saved.id) }
-    compose.onNodeWithTag("barcode_photo_open").assertDoesNotExist()
+    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_sharing_personal).performScrollTo().assertIsSelected()
     compose.onNodeWithTag(C.Tag.fridge_sharing_shared).performScrollTo().performClick()
     assertEquals(

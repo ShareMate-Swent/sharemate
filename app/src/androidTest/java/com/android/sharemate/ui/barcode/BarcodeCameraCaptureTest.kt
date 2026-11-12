@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import android.Manifest
@@ -27,6 +28,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
+import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.resources.C
@@ -88,10 +90,14 @@ class BarcodeCameraCaptureTest {
     compose.runOnIdle { vm.confirm() }
     compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
     val selected = vm.state.value.uri
-    compose.onNodeWithText("Barcode photo selected").assertExists()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.barcode_photo_selected))
+        .assertExists()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_form_error).assertExists()
-    compose.onNodeWithText("Barcode photo selected").assertExists()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.barcode_photo_selected))
+        .assertExists()
     compose.runOnIdle {
       assertEquals(selected, vm.state.value.uri)
       owner.viewModelStore.clear()
@@ -118,8 +124,8 @@ class BarcodeCameraCaptureTest {
         }
       }
     }
-    compose.onNodeWithTag("barcode_photo_open").performScrollTo().performClick()
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("2")
     compose.onNodeWithTag(C.Tag.fridge_category_input).assertTextContains("Dairy")
@@ -148,15 +154,16 @@ class BarcodeCameraCaptureTest {
       }
     }
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag("barcode_photo_camera").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
     compose.waitUntil(20_000) {
-      runCatching { compose.onNodeWithTag("barcode_photo_capture").assertIsEnabled() }.isSuccess
+      runCatching { compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsEnabled() }
+          .isSuccess
     }
-    compose.onNodeWithTag("barcode_photo_capture").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performScrollTo().performClick()
     compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertEquals(null, handedOff) }
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
     compose.runOnIdle {
       assertEquals(vm.state.value.uri, handedOff)

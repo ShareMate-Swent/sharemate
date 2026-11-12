@@ -117,12 +117,13 @@ class MainUserFlowE2ETest {
             .onAllNodes(
                 SemanticsMatcher("fridge item actions") {
                   it.config.contains(SemanticsProperties.TestTag) &&
-                      it.config[SemanticsProperties.TestTag].startsWith("fridge_item_actions_")
+                      it.config[SemanticsProperties.TestTag].startsWith(
+                          C.Tag.fridge_item_actions_prefix)
                 })
             .fetchSemanticsNodes()
             .single()
             .config[SemanticsProperties.TestTag]
-    val itemId = actionsTag.removePrefix("fridge_item_actions_")
+    val itemId = actionsTag.removePrefix(C.Tag.fridge_item_actions_prefix)
     compose.onNodeWithTag(actionsTag).performClick()
     compose.onNodeWithTag("${C.Tag.fridge_remove_prefix}$itemId").performClick()
     compose.onNodeWithTag(C.Tag.fridge_remove_dialog).assertIsDisplayed()

@@ -97,7 +97,7 @@ internal fun FridgeControls(
             label = stringResource(R.string.fridge_category_all),
             selected = selectedCategory == null,
             enabled = categoryEnabled,
-            tag = "fridge_filter_category_all",
+            tag = C.Tag.fridge_filter_category_all,
             showCheckmark = selectedCategory == null,
             onClick = { onCategoryFilterChange?.invoke(null) })
         availableCategories.forEach { category ->
@@ -105,7 +105,7 @@ internal fun FridgeControls(
               label = category,
               selected = selectedCategory == category,
               enabled = hasFunctionalFilters,
-              tag = "fridge_filter_category_$category",
+              tag = C.Tag.fridgeFilterCategory(category),
               onClick = { onCategoryFilterChange?.invoke(category) })
         }
       }
@@ -247,14 +247,14 @@ private fun OwnerControl(
             }) {
           Text(
               label,
-              maxLines = 3,
+              maxLines = FridgeLayout.ownerFilterMaxLines,
               overflow = TextOverflow.Ellipsis,
               style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
         }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
       DropdownMenuItem(
           text = { Text(stringResource(R.string.fridge_owner_filter_all)) },
-          modifier = Modifier.testTag("fridge_filter_owner_all"),
+          modifier = Modifier.testTag(C.Tag.fridge_filter_owner_all),
           onClick = {
             onSelected?.invoke(null)
             expanded = false
@@ -262,7 +262,7 @@ private fun OwnerControl(
       owners.forEach { owner ->
         DropdownMenuItem(
             text = { Text(owner.pseudo ?: fallbackLabels.getValue(owner.id)) },
-            modifier = Modifier.testTag("fridge_filter_owner_${owner.id}"),
+            modifier = Modifier.testTag(C.Tag.fridgeFilterOwner(owner.id)),
             onClick = {
               onSelected?.invoke(owner.id)
               expanded = false

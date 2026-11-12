@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -42,6 +41,7 @@ import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.barcode.findActivity
 import com.android.sharemate.ui.theme.Dimens
@@ -104,12 +104,12 @@ fun AddItemDialog(
       text = {
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
               if (uiState.editingItemId == null) {
                 FilledTonalButton(
                     onClick = photoViewModel::open,
                     enabled = inputEnabled,
-                    modifier = Modifier.fillMaxWidth().testTag("barcode_photo_open")) {
+                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.OPEN)) {
                       Text(stringResource(R.string.barcode_photo_scanner))
                     }
                 if (photo.confirmed && !photo.failed)
@@ -122,7 +122,7 @@ fun AddItemDialog(
                   Text(
                       it,
                       color = MaterialTheme.colorScheme.error,
-                      modifier = Modifier.testTag("barcode_lookup_error"))
+                      modifier = Modifier.testTag(BarcodePhotoTestTags.LOOKUP_ERROR))
                 }
               }
               OutlinedTextField(

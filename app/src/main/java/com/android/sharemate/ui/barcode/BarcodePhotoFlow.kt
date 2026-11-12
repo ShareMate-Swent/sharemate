@@ -116,7 +116,7 @@ fun BarcodePhotoFlow(
                         contentScale = ContentScale.Fit,
                         modifier =
                             Modifier.fillMaxWidth()
-                                .height(PREVIEW_HEIGHT)
+                                .height(PhotoFrameHeight)
                                 .testTag(BarcodePhotoTestTags.PREVIEW),
                         onError = { viewModel.reportFailure() })
                     Button(
@@ -211,8 +211,11 @@ object BarcodePhotoTestTags {
   const val CONFIRM = "barcode_photo_confirm"
   const val CAMERA = "barcode_photo_camera"
   const val GALLERY = "barcode_photo_gallery"
+  const val CAPTURE = "barcode_photo_capture"
+  const val OPEN = "barcode_photo_open"
+  const val LOOKUP_ERROR = "barcode_lookup_error"
   const val CANCEL = "barcode_photo_cancel"
 }
 
 private const val PREVIEW_MAX_PIXELS = 1280
-private val PREVIEW_HEIGHT = 300.dp
+internal val PhotoFrameHeight = 300.dp
