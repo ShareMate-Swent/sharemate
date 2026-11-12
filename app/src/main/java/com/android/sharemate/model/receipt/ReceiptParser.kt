@@ -1,6 +1,8 @@
 // Co-authored-by: Codex
 package com.android.sharemate.model.receipt
 
+import com.android.sharemate.model.finance.FinanceAmounts.CENTS_PER_UNIT
+
 /** Vertical bounds allow OCR blocks for names and prices to be read as one printed row. */
 internal data class ReceiptLine(val text: String, val left: Int, val top: Int, val bottom: Int)
 
@@ -8,7 +10,7 @@ internal data class ReceiptLine(val text: String, val left: Int, val top: Int, v
 data class ReceiptItem(val name: String, val priceCents: Long?, val quantity: Int = 1)
 
 internal object ReceiptParser {
-  private const val CENTS_PER_UNIT = 100L
+  private const val COUNT_OPERATORS = "x×*"
   private const val MAX_WHOLE_DIGITS = 7
   private const val MAX_SCANNED_QUANTITY = 99
   private const val MAX_ROW_GAP_HEIGHTS = 2
@@ -170,7 +172,7 @@ internal object ReceiptParser {
         count
             .findAll(text)
             .filterNot {
-              it.value.trimEnd().last().lowercaseChar() in "x×*" &&
+              it.value.trimEnd().last().lowercaseChar() in COUNT_OPERATORS &&
                   packageSize.containsMatchIn(text.substring(it.range.last + 1))
             }
             .toList()
@@ -192,7 +194,7 @@ internal object ReceiptParser {
           counts.any {
             it.range.last < money.range.first &&
                 text.substring(it.range.last + 1, money.range.first).isBlank() &&
-                it.value.trimEnd().last().lowercaseChar() in "x×*"
+                it.value.trimEnd().last().lowercaseChar() in COUNT_OPERATORS
           } ||
               unitPrefix.containsMatchIn(text.take(money.range.first)) ||
               unitSuffix.containsMatchIn(text.substring(money.range.last + 1))

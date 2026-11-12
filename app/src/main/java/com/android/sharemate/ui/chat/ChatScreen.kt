@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.chat
 
@@ -107,7 +108,7 @@ fun ChatContent(
               onValueChange = onDraftChange,
               modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
               placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
-              maxLines = 4)
+              maxLines = ChatLayout.composerMaxLines)
           IconButton(
               onClick = onSend,
               enabled = state.canSend,

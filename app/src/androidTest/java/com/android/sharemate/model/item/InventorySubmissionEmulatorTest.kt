@@ -201,6 +201,24 @@ class InventorySubmissionEmulatorTest {
   }
 
   @Test
+  fun markerRejects101RowsOnTheServer() = runBlocking {
+    val home = households.createHousehold("Home", owner)
+    val rejected = submission(home.id)
+    val oversizedRows =
+        List(101) { index ->
+          mapOf(
+              Fields.ID to "row-$index",
+              Fields.NAME to "Product $index",
+              Fields.QUANTITY to 1,
+              Fields.PRICE to 480L)
+        }
+
+    // Write the raw marker so the client model's row limit cannot reject it first.
+    assertDenied { marker(rejected).set(data(rejected) + (Fields.ROWS to oversizedRows)).await() }
+    assertFalse(marker(rejected).get(Source.SERVER).await().exists())
+  }
+
+  @Test
   fun sdkRestartRecoversPersistedOfflineBatchWithoutAnotherInsertion() = runBlocking {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val app =

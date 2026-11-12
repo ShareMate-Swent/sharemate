@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
@@ -23,7 +24,7 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
 
   override fun observeMessages(householdId: String): Flow<List<Message>> {
     if (householdId.isBlank()) return flowOf(emptyList())
-    val query = messages(householdId).orderBy("timestamp", Query.Direction.ASCENDING)
+    val query = messages(householdId).orderBy(MessageFields.TIMESTAMP, Query.Direction.ASCENDING)
     return callbackFlow {
       val registration =
           query.addSnapshotListener { snapshot, error ->
@@ -98,24 +99,35 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
 
 internal fun DocumentSnapshot.toMessageOrNull(): Message? =
     try {
-      val senderId = getString("senderId")?.takeIf { it.isNotBlank() }
-      val type = MessageType.fromStored(getString("type"))
-      val text = getString("text") ?: if (type == MessageType.TEXT) null else ""
-      val itemName = getString("itemName").orEmpty()
+      val senderId = getString(MessageFields.SENDER_ID)?.takeIf { it.isNotBlank() }
+      val type = MessageType.fromStored(getString(MessageFields.TYPE))
+      val text = getString(MessageFields.TEXT) ?: if (type == MessageType.TEXT) null else ""
+      val itemName = getString(MessageFields.ITEM_NAME).orEmpty()
       if (senderId == null || text == null || (type != MessageType.TEXT && itemName.isBlank())) {
         null
       } else {
         Message(
             id = id,
             senderId = senderId,
-            senderName = getString("senderName").orEmpty(),
+            senderName = getString(MessageFields.SENDER_NAME).orEmpty(),
             text = text,
-            timestamp = getTimestamp("timestamp")?.toDate(),
+            timestamp = getTimestamp(MessageFields.TIMESTAMP)?.toDate(),
             type = type,
             itemName = itemName,
-            itemImageUrl = getString("itemImageUrl")?.takeIf { it.isNotBlank() })
+            itemImageUrl = getString(MessageFields.ITEM_IMAGE_URL)?.takeIf { it.isNotBlank() })
       }
     } catch (_: RuntimeException) {
       // Wrongly typed fields make the Firestore getters throw; skip the malformed document.
       null
     }
+
+/** Fields of a chat message document in Firestore. */
+private object MessageFields {
+  const val SENDER_ID = "senderId"
+  const val SENDER_NAME = "senderName"
+  const val TIMESTAMP = "timestamp"
+  const val TYPE = "type"
+  const val TEXT = "text"
+  const val ITEM_NAME = "itemName"
+  const val ITEM_IMAGE_URL = "itemImageUrl"
+}

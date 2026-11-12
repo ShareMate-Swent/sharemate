@@ -7,7 +7,9 @@ package com.android.sharemate.model.finance
  */
 object FinanceAmounts {
   const val CURRENCY_CODE = "CHF"
-  private val INPUT = Regex("[0-9]+(?:\\.[0-9]{1,2})?")
+  const val DECIMAL_SCALE = 2
+  internal const val CENTS_PER_UNIT = 100L
+  private val INPUT = Regex("[0-9]+(?:\\.[0-9]{1,$DECIMAL_SCALE})?")
 
   /**
    * Parses a positive payment amount exactly, returning null for invalid syntax or Long overflow.
@@ -21,8 +23,8 @@ object FinanceAmounts {
     if (!INPUT.matches(normalized)) return null
     val parts = normalized.split('.', limit = 2)
     val whole = parts[0].toLongOrNull() ?: return null
-    val fraction = if (parts.size == 1) 0L else parts[1].padEnd(2, '0').toLong()
-    if (whole > (Long.MAX_VALUE - fraction) / 100) return null
-    return (whole * 100 + fraction).takeIf { it > 0 }
+    val fraction = if (parts.size == 1) 0L else parts[1].padEnd(DECIMAL_SCALE, '0').toLong()
+    if (whole > (Long.MAX_VALUE - fraction) / CENTS_PER_UNIT) return null
+    return (whole * CENTS_PER_UNIT + fraction).takeIf { it > 0 }
   }
 }

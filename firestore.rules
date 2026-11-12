@@ -14,14 +14,26 @@ service cloud.firestore {
       return /databases/$(database)/documents/$(collection)/$(documentId);
     }
 
+    function householdPath(householdId) {
+      return /databases/$(database)/documents/households/$(householdId);
+    }
+
+    function privateFridgeType() {
+      return 'PRIVATE';
+    }
+
+    function sharedFridgeType() {
+      return 'SHARED';
+    }
+
     // Private access follows the immutable creator.
     function canAccessFridge(household) {
-      return household.type != 'PRIVATE'
+      return household.type != privateFridgeType()
           || household.createdBy == request.auth.uid;
     }
 
     function hasValidPrivateMembers(household) {
-      return household.type != 'PRIVATE'
+      return household.type != privateFridgeType()
           || household.memberIds.hasOnly([household.createdBy]);
     }
 
@@ -37,12 +49,19 @@ service cloud.firestore {
       // soon window 1-60 days, repeat every 1-30 days, with 0 standing for "never".
       function hasValidExpirationPreferences(data) {
         let preferences = data.get('expirationPreferences', null);
+        let soonDays = 'soonDays';
+        let soonRepeatDays = 'soonRepeatDays';
+        let expiredRepeatDays = 'expiredRepeatDays';
+        let minSoonDays = 1;
+        let maxSoonDays = 60;
+        let neverRepeat = 0;
+        let maxRepeatDays = 30;
         return preferences == null
             || (preferences is map
-                && preferences.keys().hasOnly(['soonDays', 'soonRepeatDays', 'expiredRepeatDays'])
-                && optionalIntInRange(preferences, 'soonDays', 1, 60)
-                && optionalIntInRange(preferences, 'soonRepeatDays', 0, 30)
-                && optionalIntInRange(preferences, 'expiredRepeatDays', 0, 30));
+                && preferences.keys().hasOnly([soonDays, soonRepeatDays, expiredRepeatDays])
+                && optionalIntInRange(preferences, soonDays, minSoonDays, maxSoonDays)
+                && optionalIntInRange(preferences, soonRepeatDays, neverRepeat, maxRepeatDays)
+                && optionalIntInRange(preferences, expiredRepeatDays, neverRepeat, maxRepeatDays));
       }
 
       allow read, delete: if signedIn() && request.auth.uid == userId;
@@ -56,14 +75,16 @@ service cloud.firestore {
     match /users/{userId}/inventorySubmissions/{submissionId} {
       function validSubmission() {
         let data = request.resource.data;
-        let household = get(documentPath('households', data.householdId)).data;
-        return data.keys().hasOnly(['id', 'ownerId', 'householdId', 'rows'])
-            && data.keys().hasAll(['id', 'ownerId', 'householdId', 'rows'])
+        let household = get(householdPath(data.householdId)).data;
+        let submissionFields = ['id', 'ownerId', 'householdId', 'rows'];
+        let maxRows = 100;
+        return data.keys().hasOnly(submissionFields)
+            && data.keys().hasAll(submissionFields)
             && submissionId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
             && data.id == submissionId && data.ownerId == userId
             && data.householdId is string
-            && household.type == 'SHARED' && request.auth.uid in household.memberIds
-            && data.rows is list && data.rows.size() > 0 && data.rows.size() <= 100;
+            && household.type == sharedFridgeType() && request.auth.uid in household.memberIds
+            && data.rows is list && data.rows.size() > 0 && data.rows.size() <= maxRows;
       }
 
       allow get, list: if signedIn() && request.auth.uid == userId;
@@ -78,7 +99,7 @@ service cloud.firestore {
       // own user document only says which household to check.
       function sharesHouseholdWith(otherId) {
         let householdId = get(documentPath('users', request.auth.uid)).data.get('householdId', null);
-        let members = get(documentPath('households', householdId)).data.memberIds;
+        let members = get(householdPath(householdId)).data.memberIds;
         return householdId is string && request.auth.uid in members && otherId in members;
       }
 
@@ -129,8 +150,8 @@ service cloud.firestore {
     // Codes cannot be listed, so they cannot be enumerated. Codes are immutable.
     match /inviteCodes/{code} {
       function pointsToOwnHousehold() {
-        let household = getAfter(documentPath('households', request.resource.data.householdId));
-        return household.data.type == 'SHARED'
+        let household = getAfter(householdPath(request.resource.data.householdId));
+        return household.data.type == sharedFridgeType()
             && household.data.createdBy == request.auth.uid && household.data.inviteCode == code;
       }
 
@@ -149,8 +170,8 @@ service cloud.firestore {
 
       // Private fridges have no invite code. Shared codes must map back to this household.
       function hasValidInviteCode(household) {
-        return (household.type == 'PRIVATE' && household.inviteCode == '')
-            || (household.type == 'SHARED'
+        return (household.type == privateFridgeType() && household.inviteCode == '')
+            || (household.type == sharedFridgeType()
                 && household.inviteCode.size() > 0
                 && getAfter(documentPath('inviteCodes', household.inviteCode)).data.householdId
                     == householdId);
@@ -161,7 +182,7 @@ service cloud.firestore {
         let household = request.resource.data;
         let fields = ['id', 'name', 'inviteCode', 'memberIds', 'createdBy', 'createdAt', 'type'];
         return household.keys().hasOnly(fields) && household.keys().hasAll(fields)
-            && household.type in ['PRIVATE', 'SHARED']
+            && household.type in [privateFridgeType(), sharedFridgeType()]
             && household.id == householdId
             && household.name is string
             && household.name.size() > 0
@@ -199,7 +220,7 @@ service cloud.firestore {
       function onlyRemovesSelf() {
         let before = resource.data.memberIds;
         let after = request.resource.data.memberIds;
-        return resource.data.type != 'PRIVATE'
+        return resource.data.type != privateFridgeType()
             && onlyMemberIdsChange()
             && request.auth.uid in before
             && after == before.removeAll([request.auth.uid])
@@ -210,7 +231,7 @@ service cloud.firestore {
       // Fetching a missing household is allowed so that lookups can return "not found".
       allow get: if signedIn() && (resource == null
           || (canAccessFridge(resource.data)
-              && (resource.data.type == 'PRIVATE' || isMember())));
+              && (resource.data.type == privateFridgeType() || isMember())));
       // Private memberships are restricted to the creator by every client write, so this cannot
       // expose a private fridge to another user. Admin-written private documents must preserve
       // that invariant.
@@ -221,7 +242,7 @@ service cloud.firestore {
           // relink the profile. Identical shared creation replays rewrite an immutable,
           // create-only inviteCodes document, rejecting the whole batch even when this household
           // update is a no-op.
-          && resource.data.type == 'SHARED'
+          && resource.data.type == sharedFridgeType()
           && hasValidPrivateMembers(request.resource.data)
           && (onlyAddsSelf() || onlyRemovesSelf());
     }
@@ -230,15 +251,17 @@ service cloud.firestore {
     // Queries must select current member document IDs, never the whole directory.
     match /households/{householdId}/memberNames/{memberId} {
       function canReadName() {
-        let household = get(documentPath('households', householdId)).data;
+        let household = get(householdPath(householdId)).data;
         return signedIn() && canAccessFridge(household)
             && request.auth.uid in household.memberIds && memberId in household.memberIds;
       }
       function validName() {
         let data = request.resource.data;
-        return data.keys().hasOnly(['displayName']) && data.keys().hasAll(['displayName'])
+        let nameFields = ['displayName'];
+        let maxNameLength = 80;
+        return data.keys().hasOnly(nameFields) && data.keys().hasAll(nameFields)
             && data.displayName is string && data.displayName.size() > 0
-            && data.displayName.size() <= 80 && data.displayName.matches('[^@]+');
+            && data.displayName.size() <= maxNameLength && data.displayName.matches('[^@]+');
       }
       allow read: if canReadName();
       allow create, update: if canReadName() && request.auth.uid == memberId && validName();
@@ -248,8 +271,8 @@ service cloud.firestore {
     // Expenses have no client producer yet. Parent membership also protects empty queries.
     match /households/{householdId}/expenses/{expenseId} {
       function canReadExpenses() {
-        let household = get(documentPath('households', householdId)).data;
-        return household.type == 'SHARED' && request.auth.uid in household.memberIds;
+        let household = get(householdPath(householdId)).data;
+        return household.type == sharedFridgeType() && request.auth.uid in household.memberIds;
       }
 
       allow read: if signedIn() && canReadExpenses();
@@ -259,8 +282,8 @@ service cloud.firestore {
     // Only the settlement service writes immutable reimbursement records.
     match /households/{householdId}/settlements/{settlementId} {
       function canReadSettlements() {
-        let household = get(documentPath('households', householdId)).data;
-        return household.type == 'SHARED' && request.auth.uid in household.memberIds;
+        let household = get(householdPath(householdId)).data;
+        return household.type == sharedFridgeType() && request.auth.uid in household.memberIds;
       }
 
       allow read: if signedIn() && canReadSettlements();
@@ -270,8 +293,8 @@ service cloud.firestore {
     // immutable and never deleted by clients. Private fridges have no chat.
     match /households/{householdId}/messages/{messageId} {
       function canUseChat() {
-        let household = get(documentPath('households', householdId)).data;
-        return household.type == 'SHARED'
+        let household = get(householdPath(householdId)).data;
+        return household.type == sharedFridgeType()
             && request.auth.uid in household.memberIds;
       }
 
@@ -290,10 +313,16 @@ service cloud.firestore {
             && (isValidTextMessage(message) || isValidActivityMessage(message));
       }
 
+      function hasVisibleText(text) {
+        return text.matches('[\\s\\S]*\\S[\\s\\S]*');
+      }
+
       function isValidTextMessage(message) {
-        return message.get('type', 'TEXT') == 'TEXT'
-            && message.text.matches('[\\s\\S]*\\S[\\s\\S]*')
-            && message.text.size() <= 2000
+        let textType = 'TEXT';
+        let maxTextLength = 2000;
+        return message.get('type', textType) == textType
+            && hasVisibleText(message.text)
+            && message.text.size() <= maxTextLength
             && message.get('itemName', '') == ''
             && message.get('itemImageUrl', null) == null;
       }
@@ -302,7 +331,7 @@ service cloud.firestore {
         return message.get('type', null) in ['EATEN', 'THROWN']
             && message.text == ''
             && message.get('itemName', null) is string
-            && message.itemName.matches('[\\s\\S]*\\S[\\s\\S]*')
+            && hasVisibleText(message.itemName)
             && (message.get('itemImageUrl', null) == null
                 || message.itemImageUrl is string);
       }
@@ -313,9 +342,9 @@ service cloud.firestore {
     }
 
     function isHouseholdMember(householdId) {
-      let household = get(documentPath('households', householdId)).data;
+      let household = get(householdPath(householdId)).data;
       return householdId != null && canAccessFridge(household)
-          && (household.type == 'PRIVATE'
+          && (household.type == privateFridgeType()
               || request.auth.uid in household.memberIds);
     }
 
@@ -370,31 +399,41 @@ service cloud.firestore {
     function isCurrentMember(householdId) {
       return householdId is string
           && householdId.size() > 0
-          && exists(documentPath('households', householdId))
-          && canAccessFridge(get(documentPath('households', householdId)).data)
-          && request.auth.uid in get(documentPath('households', householdId)).data.memberIds;
+          && exists(householdPath(householdId))
+          && canAccessFridge(get(householdPath(householdId)).data)
+          && request.auth.uid in get(householdPath(householdId)).data.memberIds;
+    }
+
+    function sharedItemSharing() {
+      return 'SHARED';
+    }
+
+    function personalItemSharing() {
+      return 'PERSONAL';
     }
 
     // PERSONAL is always allowed; SHARED only in a fridge that is not private.
     function sharingAllowedIn(householdId, sharing) {
-      return sharing == 'PERSONAL'
-          || (sharing == 'SHARED'
-              && get(documentPath('households', householdId)).data.type != 'PRIVATE');
+      return sharing == personalItemSharing()
+          || (sharing == sharedItemSharing()
+              && get(householdPath(householdId)).data.type != privateFridgeType());
     }
 
     // Who may see, edit and delete an item: current members of its household, if the item is
     // theirs or shared. An item without a household is inaccessible.
     function canAccessItem(item) {
       return isCurrentMember(item.get('householdId', null))
-          && (isOwner(item) || item.get('sharing', null) == 'SHARED');
+          && (isOwner(item) || item.get('sharing', null) == sharedItemSharing());
     }
 
     // Item documents must contain the fields the app expects. Their household is checked where an
     // item is created (isCurrentMember) and cannot change afterwards (canUpdateItem).
     function hasValidItemData(data) {
-      return data.sharing in ['SHARED', 'PERSONAL']
-          && data.quantity is int && data.quantity > 0 && data.quantity <= 2147483647
-          && data.status in ['ACTIVE', 'EATEN', 'DISCARDED']
+      let maxItemQuantity = 2147483647; // Kotlin Int.MAX_VALUE.
+      let itemStatuses = ['ACTIVE', 'EATEN', 'DISCARDED'];
+      return data.sharing in [sharedItemSharing(), personalItemSharing()]
+          && data.quantity is int && data.quantity > 0 && data.quantity <= maxItemQuantity
+          && data.status in itemStatuses
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
           && data.name.size() > 0

@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
@@ -43,6 +44,8 @@ import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.theme.Dimens
+
+private const val ITEM_NAME_MAX_LINES = 1
 
 object StagingTestTags {
   const val BACK = "staging_back"
@@ -256,7 +259,7 @@ private fun StagedItemCard(
             text = item.name,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
+            maxLines = ITEM_NAME_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
         Text(

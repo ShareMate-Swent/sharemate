@@ -1,7 +1,10 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { onCall } = require("firebase-functions/v2/https");
 
+const SETTLEMENT_REGION = "europe-west6";
+
 let db;
-exports.recordSettlement = onCall({ region: "europe-west6" }, (request) => {
+exports.recordSettlement = onCall({ region: SETTLEMENT_REGION }, (request) => {
   if (!db) {
     const { initializeApp } = require("firebase-admin/app");
     const { getFirestore } = require("firebase-admin/firestore");

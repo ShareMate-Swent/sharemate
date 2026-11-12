@@ -1,5 +1,13 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { HttpsError } = require("firebase-functions/v2/https");
 
+const HOUSEHOLDS = "households";
+const FINANCE_METADATA = "financeMetadata";
+const SETTLEMENT_REVISION = "settlementRevision";
+const SHARED_FRIDGE_TYPE = "SHARED";
+const MAX_DOCUMENT_ID_BYTES = 1500;
+const INVALID_SETTLEMENT_CODE = "invalid-argument";
+const INVALID_SETTLEMENT_MESSAGE = "Invalid settlement.";
 const EXPENSES = "expenses";
 const SETTLEMENTS = "settlements";
 const settlementFields = ["id", "householdId", "payerId", "recipientId", "amountCents"];
@@ -15,7 +23,7 @@ function hasFields(value, fields) {
 function isId(value) {
   return typeof value === "string" && value.trim().length > 0 &&
     !value.includes("/") && value !== "." && value !== ".." &&
-    !/^__.*__$/.test(value) && Buffer.byteLength(value) <= 1500;
+    !/^__.*__$/.test(value) && Buffer.byteLength(value) <= MAX_DOCUMENT_ID_BYTES;
 }
 
 function validSettlement(value) {
@@ -79,24 +87,24 @@ async function recordSettlement(db, uid, request) {
   // Decimal strings preserve all signed 64-bit cents across the callable JSON boundary.
   if (!hasFields(request, settlementFields) || typeof request.amountCents !== "string" ||
       !/^[1-9][0-9]{0,18}$/.test(request.amountCents)) {
-    throw new HttpsError("invalid-argument", "Invalid settlement.");
+    throw new HttpsError(INVALID_SETTLEMENT_CODE, INVALID_SETTLEMENT_MESSAGE);
   }
   const payment = { ...request, amountCents: BigInt(request.amountCents) };
   if (!validSettlement(payment)) {
-    throw new HttpsError("invalid-argument", "Invalid settlement.");
+    throw new HttpsError(INVALID_SETTLEMENT_CODE, INVALID_SETTLEMENT_MESSAGE);
   }
   if (uid !== payment.payerId) {
     throw new HttpsError("permission-denied", "Only the payer can record this settlement.");
   }
 
-  const household = db.collection("households").doc(payment.householdId);
+  const household = db.collection(HOUSEHOLDS).doc(payment.householdId);
   const settlements = household.collection(SETTLEMENTS);
   const operation = settlements.doc(payment.id);
-  const revision = household.collection("financeMetadata").doc("settlementRevision");
+  const revision = household.collection(FINANCE_METADATA).doc(SETTLEMENT_REVISION);
   const rejection = await db.runTransaction(async (transaction) => {
     try {
       const parent = (await transaction.get(household)).data();
-      if (parent?.type !== "SHARED" || !Array.isArray(parent.memberIds) ||
+      if (parent?.type !== SHARED_FRIDGE_TYPE || !Array.isArray(parent.memberIds) ||
           !parent.memberIds.includes(uid)) {
         throw new HttpsError("permission-denied", "Shared household membership is required.");
       }

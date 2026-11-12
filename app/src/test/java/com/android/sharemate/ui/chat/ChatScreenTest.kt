@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.chat
 
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import com.android.sharemate.R
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
@@ -89,7 +91,9 @@ class ChatScreenTest {
   @Test
   fun showsLoadError() {
     show(ChatUiState(isLoading = false, error = ChatError.LOAD_FAILED))
-    composeTestRule.onNodeWithText("Could not load messages.").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.chat_load_error))
+        .assertIsDisplayed()
   }
 
   @Test
