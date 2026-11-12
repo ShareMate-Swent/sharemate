@@ -439,7 +439,11 @@ class ManualItemCreationTest {
             expirationPreferences =
                 ExpirationPreferencesProvider(
                     FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-            fridgeType = fridgeType)
+            fridgeType = fridgeType,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }

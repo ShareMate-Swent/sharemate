@@ -200,7 +200,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     val store = ViewModelStore().also { it.put("fridge", viewModel) }
     try {
       composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
@@ -401,7 +405,10 @@ class FridgeScreenTest {
             pseudoRepository = FakePseudoRepository(mapOf("owner-1" to "Alice")),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(mapOf("owner-1" to "Alice")),
+            currentUserDisplayName = null,
+        )
 
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
@@ -421,7 +428,7 @@ class FridgeScreenTest {
     composeRule.onNodeWithText("owner-1").assertDoesNotExist()
     composeRule.onNodeWithTag("fridge_filter_owner_owner-1").performClick()
     assertEquals("owner-1", viewModel.selectedOwnerId.value)
-    composeRule.onNodeWithText("Owner: Alice").performClick()
+    composeRule.onNodeWithContentDescription("Owner: Alice").performClick()
     composeRule.onNodeWithTag("fridge_filter_owner_all").performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals("Dairy", viewModel.selectedCategory.value)
@@ -455,7 +462,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
 
@@ -520,7 +531,11 @@ class FridgeScreenTest {
             testProductCatalogRepository(),
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
     for (category in listOf("Fruits", "Vegetables")) {

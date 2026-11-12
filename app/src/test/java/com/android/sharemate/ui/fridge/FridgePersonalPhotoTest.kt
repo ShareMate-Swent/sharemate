@@ -102,7 +102,11 @@ class FridgePersonalPhotoTest {
             files,
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            currentUserDisplayName = "Owner",
+            memberNameRepository = testMemberNameRepository(),
+            pseudoRepository = testPseudoRepository(),
+        )
     models.put("fridge", viewModel)
   }
 
@@ -253,6 +257,31 @@ class FridgePersonalPhotoTest {
     assertEquals(1, items.addedItems.size)
     assertEquals(0, automaticLookups)
     assertFalse(selected.exists())
+  }
+
+  @Test
+  fun personalPhotoAndOwnershipSurviveAtomicSharingAndOrdinaryEdits() = runTest {
+    selectPhoto()
+    viewModel.updateSharing(ItemSharing.PERSONAL)
+    viewModel.saveItem()
+    runCurrent()
+    val personal = viewModel.uiState.value.items.single()
+    assertEquals(ItemSharing.PERSONAL, personal.sharing)
+    assertEquals("owner", personal.ownerId)
+    assertEquals("home", personal.householdId)
+    assertEquals(reference.path, personal.image?.reference)
+    assertEquals(
+        ItemOwnership(ItemSharing.PERSONAL, "Owner", true),
+        viewModel.uiState.value.ownershipFor(personal))
+    viewModel.openEditItemDialog(personal.id)
+    viewModel.updateName("Oat milk")
+    viewModel.updateSharing(ItemSharing.SHARED)
+    viewModel.saveItem()
+    runCurrent()
+    val shared = viewModel.uiState.value.items.single()
+    assertEquals(personal.copy(name = "Oat milk", sharing = ItemSharing.SHARED), shared)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
   }
 
   @Test
