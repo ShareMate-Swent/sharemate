@@ -27,6 +27,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
+import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.image.PersonalPhotoFiles
@@ -36,6 +37,7 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -54,6 +56,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -62,6 +65,10 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(RobolectricTestRunner::class)
 class FridgePersonalPhotoUiTest {
   @get:Rule val compose = createComposeRule()
+
+  private val testApplication
+    get() = RuntimeEnvironment.getApplication()
+
   @get:Rule val temporary = TemporaryFolder()
   private val scope = CoroutineScope(Dispatchers.Main.immediate)
   private val first = reference("milk")
@@ -110,13 +117,13 @@ class FridgePersonalPhotoUiTest {
         Column { PersonalPhotoPicker(photos.draft.collectAsState().value, photos, enabled.value) }
       }
     }
-    val entry = compose.onNodeWithText("Add a personal photo")
+    val entry = compose.onNodeWithText(testApplication.getString(R.string.personal_photo_add))
     entry.assertIsNotEnabled()
     compose.runOnIdle { enabled.value = true }
     entry.performClick()
-    compose.onNodeWithTag("barcode_photo_camera").assertIsEnabled()
-    compose.onNodeWithTag("barcode_photo_gallery").assertIsEnabled()
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     entry.assertIsEnabled()
     compose.runOnIdle { assertEquals(PersonalPhotoDraft(), photos.draft.value) }
   }
@@ -147,20 +154,22 @@ class FridgePersonalPhotoUiTest {
       }
     }
     compose.runOnIdle { photos.select("content://gallery/previous") }
-    compose.onNodeWithText("Change personal photo").performClick()
+    compose.onNodeWithText(testApplication.getString(R.string.personal_photo_change)).performClick()
     compose.runOnIdle {
       camera.capture { uri -> File(requireNotNull(Uri.parse(uri).path)).writeBytes(png(4, 4)) }
     }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(previous, photos.draft.value.file)
       assertTrue(previous.exists())
     }
-    compose.onNodeWithText("Change personal photo").performClick()
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithText(testApplication.getString(R.string.personal_photo_change)).performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(10_000) { photos.draft.value.file == replacement && !source.exists() }
-    compose.onNodeWithContentDescription("Selected personal photo").assertIsDisplayed()
+    compose
+        .onNodeWithContentDescription(testApplication.getString(R.string.personal_photo_preview))
+        .assertIsDisplayed()
     compose.runOnIdle {
       assertFalse(previous.exists())
       assertEquals(listOf(false, true), copyOrigins)
@@ -207,11 +216,13 @@ class FridgePersonalPhotoUiTest {
         }
       }
     }
-    val choose = compose.onNodeWithText("Add a personal photo")
-    val change = compose.onNodeWithText("Change personal photo")
-    val preview = compose.onNodeWithContentDescription("Selected personal photo")
-    val remove = compose.onNodeWithText("Remove personal photo")
-    val error = compose.onNodeWithText("Choose a readable JPEG or PNG photo of at most 5 MiB.")
+    val choose = compose.onNodeWithText(testApplication.getString(R.string.personal_photo_add))
+    val change = compose.onNodeWithText(testApplication.getString(R.string.personal_photo_change))
+    val preview =
+        compose.onNodeWithContentDescription(
+            testApplication.getString(R.string.personal_photo_preview))
+    val remove = compose.onNodeWithText(testApplication.getString(R.string.personal_photo_remove))
+    val error = compose.onNodeWithText(testApplication.getString(R.string.personal_photo_invalid))
 
     compose.onNodeWithText("Choose a personal photo").assertDoesNotExist()
     compose.onNodeWithText("Take a personal photo").assertDoesNotExist()
@@ -221,7 +232,7 @@ class FridgePersonalPhotoUiTest {
 
     choose.performClick()
     compose
-        .onNodeWithTag("barcode_photo_gallery")
+        .onNodeWithTag(BarcodePhotoTestTags.GALLERY)
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
@@ -230,18 +241,18 @@ class FridgePersonalPhotoUiTest {
       assertTrue(imports.isEmpty())
       assertFalse(camera.state.value.failed)
     }
-    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/valid") }
-    compose.onNodeWithTag("barcode_photo_gallery").assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsNotEnabled()
     compose.runOnIdle {
       assertFalse(photos.draft.value.importing)
       assertTrue(imports.isEmpty())
       pendingGalleryImport.complete(sourceUri)
     }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertTrue(imports.isEmpty()) }
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
-    compose.onNodeWithTag("barcode_photo_confirm").assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).assertIsNotEnabled()
     compose.runOnIdle { pendingCopy.complete(selected) }
     preview.assertIsDisplayed()
     choose.assertDoesNotExist()
@@ -249,18 +260,18 @@ class FridgePersonalPhotoUiTest {
     compose.runOnIdle { assertFalse(source.exists()) }
 
     change.performClick()
-    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver(null) }
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     error.assertDoesNotExist()
     preview.assertExists()
 
     change.performClick()
-    compose.onNodeWithTag("barcode_photo_gallery").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/invalid") }
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
     error.assertIsDisplayed()
     preview.assertExists()
     compose.runOnIdle {

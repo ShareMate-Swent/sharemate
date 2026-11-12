@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
@@ -83,10 +84,10 @@ class FridgeScreenTest {
   @Test
   fun queuedStatusActionsRetainRecordsAndRejectionRestoresAnEditableCard() {
     showScreen()
-    compose.onNodeWithTag("fridge_item_actions_carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeItemActions("carrot")).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_eaten_prefix + "carrot").performClick()
     item("carrot").assertDoesNotExist()
-    compose.onNodeWithTag("fridge_item_actions_banana").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeItemActions("banana")).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_discard_prefix + "banana").performClick()
     item("banana").assertDoesNotExist()
     compose.runOnIdle {
@@ -108,7 +109,7 @@ class FridgeScreenTest {
       assertEquals(
           ItemStatus.DISCARDED, viewModel.uiState.value.items.first { it.id == "banana" }.status)
     }
-    compose.onNodeWithTag("fridge_item_actions_carrot").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeItemActions("carrot")).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_edit_prefix + "carrot").performClick()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
@@ -116,19 +117,28 @@ class FridgeScreenTest {
   @Test
   fun sortMenuChangesTheRenderedOrder() {
     showScreen()
-    compose.onNodeWithText("Sort").performClick()
-    compose.onNodeWithText("Expiry date").assertIsSelected()
-    compose.onNodeWithText("Name").assertIsNotSelected()
-    compose.onNodeWithText("Expiry date").performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
+        .assertIsSelected()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.fridge_sort_name))
+        .assertIsNotSelected()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
+        .performClick()
     assertItemOrder("carrot", "banana", "apple")
 
-    compose.onNodeWithText("Sort").performClick()
-    compose.onNodeWithText("Name").performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     assertItemOrder("apple", "banana", "carrot")
 
-    compose.onNodeWithText("Sort").performClick()
-    compose.onNodeWithText("Name").assertIsSelected()
-    compose.onNodeWithText("Expiry date").assertIsNotSelected().performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).assertIsSelected()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
+        .assertIsNotSelected()
+        .performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
@@ -136,18 +146,18 @@ class FridgeScreenTest {
   fun categoryChipsFilterItemsAndCanBeCleared() {
     showScreen()
     compose
-        .onNodeWithTag("fridge_filter_category_Fruits")
+        .onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits"))
         .performScrollTo()
         .assertIsDisplayed()
         .performClick()
-    compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsSelected()
     item("banana").assertIsDisplayed()
     item("apple").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
 
-    compose.onNodeWithTag("fridge_filter_category_all").performScrollTo().performClick()
-    compose.onNodeWithTag("fridge_filter_category_Fruits").assertIsNotSelected()
-    compose.onNodeWithTag("fridge_filter_category_all").assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsNotSelected()
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
     assertItemOrder("carrot", "banana", "apple")
   }
 
@@ -155,24 +165,24 @@ class FridgeScreenTest {
   fun ownerAndCategoryFiltersCombineAndShowAnEmptyResult() {
     showScreen()
     filterChip("Owner").assertIsDisplayed().performClick()
-    compose.onNodeWithTag("fridge_filter_owner_alice").performClick()
+    compose.onNodeWithTag(C.Tag.fridgeFilterOwner("alice")).performClick()
     item("banana").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
     item("apple").assertDoesNotExist()
 
-    compose.onNodeWithTag("fridge_filter_category_Vegetables").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Vegetables")).performScrollTo().performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
-        .assertTextEquals("No items match the selected filters.")
+        .assertTextEquals(compose.activity.getString(R.string.fridge_empty_filtered))
     item("banana").assertDoesNotExist()
 
     filterChip("Owner: Alice").assertIsDisplayed().performClick()
-    compose.onNodeWithTag("fridge_filter_owner_all").performClick()
+    compose.onNodeWithTag(C.Tag.fridge_filter_owner_all).performClick()
     item("carrot").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
 
-    compose.onNodeWithTag("fridge_filter_category_all").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
@@ -182,13 +192,13 @@ class FridgeScreenTest {
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
-        .assertTextEquals("Your fridge is empty")
-    compose.onNodeWithTag("fridge_filter_category_all").assertIsNotEnabled().assertIsSelected()
+        .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsNotEnabled().assertIsSelected()
     filterChip("Owner").assertIsNotEnabled()
-    compose.onNodeWithText("Yours").assertIsNotEnabled()
-    compose.onNodeWithText("Shared").assertIsNotEnabled()
-    compose.onNodeWithText("Sort").performClick()
-    compose.onNodeWithText("Name").performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_yours)).assertIsNotEnabled()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_shared)).assertIsNotEnabled()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     compose.runOnIdle { assertEquals(FridgeSortOrder.NAME, viewModel.sortOrder.value) }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()

@@ -33,7 +33,19 @@ object C {
     const val fridge_cancel_item = "fridge_cancel_item"
     const val fridge_form_error = "fridge_form_error"
     const val fridge_inventory_error = "fridge_inventory_error"
+    const val fridge_filter_category_all = "fridge_filter_category_all"
+    const val fridge_filter_owner_all = "fridge_filter_owner_all"
+    const val fridge_item_actions_prefix = "fridge_item_actions_"
     const val fridge_item_list = "fridge_item_list"
+
+    fun fridgeFilterCategory(category: String) = "fridge_filter_category_$category"
+
+    fun fridgeFilterOwner(ownerId: String) = "fridge_filter_owner_$ownerId"
+
+    fun fridgeProductSquare(itemId: String) = "fridge_product_square_$itemId"
+
+    fun fridgeItemActions(itemId: String) = fridge_item_actions_prefix + itemId
+
     const val fridge_item_prefix = "fridge_item_"
     const val fridge_image = "fridge_image"
     const val fridge_image_loading = "fridge_image_loading"

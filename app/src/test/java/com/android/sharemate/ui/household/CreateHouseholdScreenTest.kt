@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
@@ -180,8 +181,14 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     composeTestRule.waitForIdle()
 
-    composeTestRule.onNodeWithText("Your private fridge is ready!").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Private", useUnmergedTree = true).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.private_fridge_ready_title))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(
+            composeTestRule.activity.getString(R.string.fridge_type_private),
+            useUnmergedTree = true)
+        .assertIsDisplayed()
     composeTestRule.onNodeWithText("ABC123").assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertDoesNotExist()
@@ -226,7 +233,8 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.ERROR).assertIsDisplayed()
     composeTestRule
-        .onNodeWithText("Go back to change the name or fridge type.")
+        .onNodeWithText(
+            composeTestRule.activity.getString(R.string.create_household_change_request_hint))
         .assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).assertIsEnabled()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsEnabled()

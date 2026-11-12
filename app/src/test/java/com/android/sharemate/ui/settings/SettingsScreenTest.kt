@@ -166,8 +166,12 @@ class SettingsScreenTest {
         .assertTextEquals("alex.morgan@example.com")
     composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_PLACEHOLDER).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_PHOTO).assertDoesNotExist()
-    composeTestRule.onNodeWithTag(SettingsTestTags.ACCOUNT_TITLE).assertTextEquals("Google account")
-    composeTestRule.onNodeWithTag(SettingsTestTags.ACCOUNT_STATUS).assertTextEquals("Connected")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.ACCOUNT_TITLE)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.settings_google_account))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.ACCOUNT_STATUS)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.settings_connected))
     composeTestRule.onNodeWithTag(SettingsTestTags.ACCOUNT_ERROR).assertDoesNotExist()
     composeTestRule
         .onNodeWithTag(SettingsTestTags.SWITCH_GOOGLE_ACCOUNT)
@@ -198,10 +202,13 @@ class SettingsScreenTest {
 
     composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_NAME).assertTextEquals("sam@example.com")
     composeTestRule.onNodeWithTag(SettingsTestTags.PROFILE_EMAIL).assertDoesNotExist()
-    composeTestRule.onNodeWithTag(SettingsTestTags.ACCOUNT_TITLE).assertTextEquals("Email account")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.ACCOUNT_TITLE)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.settings_email_account))
     composeTestRule
         .onNodeWithTag(SettingsTestTags.ACCOUNT_STATUS)
-        .assertTextEquals("Signed in with email")
+        .assertTextEquals(
+            composeTestRule.activity.getString(R.string.settings_signed_in_with_email))
     composeTestRule.onNodeWithTag(SettingsTestTags.SWITCH_GOOGLE_ACCOUNT).assertDoesNotExist()
     composeTestRule.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
 
@@ -417,7 +424,9 @@ class SettingsScreenTest {
                 hasAnyAncestor(hasTestTag(SettingsTestTags.LEAVE_DIALOG)))
         .assertIsDisplayed()
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_ERROR).assertDoesNotExist()
-    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertTextEquals("Leave")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.leave))
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).performClick()
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
 
@@ -443,7 +452,9 @@ class SettingsScreenTest {
         .onNodeWithTag(SettingsTestTags.LEAVE_ERROR)
         .assertIsDisplayed()
         .assertTextEquals(composeTestRule.activity.getString(R.string.leave_household_failed))
-    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertTextEquals("Try again")
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.household_retry))
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).performClick()
 
     assertEquals(1, confirms)

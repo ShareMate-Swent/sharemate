@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.household
 
@@ -8,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.android.sharemate.R
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -29,8 +31,12 @@ class HouseholdChoiceScreenTest {
         HouseholdChoiceScreen(onCreateHousehold = { creates++ }, onJoinHousehold = { joins++ })
       }
     }
-    composeTestRule.onNodeWithText("Create a household").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Join a household").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.create_a_household))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.join_a_household))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
     composeTestRule.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     assertEquals(1, creates)
