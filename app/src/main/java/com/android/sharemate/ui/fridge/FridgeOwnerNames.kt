@@ -9,13 +9,24 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+/** Name operations that can fail without blocking inventory or unrelated name observations. */
 internal enum class OwnerNameFailure {
+  /** Household membership or peer-name observation failed. */
   DIRECTORY,
+  /** The current user's profile observation failed; the sanitized auth fallback is used. */
   PROFILE,
+  /** Queuing a directory write failed, or its server acknowledgement reported rejection. */
   PUBLICATION
 }
 
-/** Name-only state. Peer names always follow the repository's server-confirmed access contract. */
+/**
+ * Name-only state. Peer names follow the repository's server-confirmed access contract.
+ *
+ * @param scope Lifecycle owner of observation, publication and acknowledgement-handler cleanup.
+ * @param reportFailure Called for directory/profile errors and immediate or eventual publication
+ *   failures while active; cancellation is propagated without being reported as an error. The
+ *   callback must be thread-safe because acknowledgement completion may run on an SDK thread.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class FridgeOwnerNames(
     directory: MemberNameRepository,
@@ -29,12 +40,14 @@ internal class FridgeOwnerNames(
 ) {
   private val fallback = ownerDisplayName(authName)
   private val mutableNames = MutableStateFlow(fallback?.let { mapOf(userId to it) }.orEmpty())
+  /** Sanitized names for display; unconfirmed peers are omitted, independently of publication. */
   val names = mutableNames.asStateFlow()
   private val handlers = ConcurrentHashMap<Any, DisposableHandle>()
 
   init {
     require(userId.isNotBlank() && householdId.isNotBlank())
     scope.launch {
+      var publication: Job? = null
       fun acknowledge(confirmation: Deferred<Result<Unit>>) {
         val token = Any()
         handlers[token] = DisposableHandle {}
@@ -59,12 +72,16 @@ internal class FridgeOwnerNames(
               .distinctUntilChanged()
               .onEach { name ->
                 if (fridgeType == FridgeType.SHARED) {
-                  try {
-                    acknowledge(directory.queueOwnName(householdId, userId, name))
-                  } catch (cancelled: CancellationException) {
-                    throw cancelled
-                  } catch (failure: Exception) {
-                    reportFailure(OwnerNameFailure.PUBLICATION, failure)
+                  // Cancel stale preparation, but keep acknowledgements for already queued writes.
+                  publication?.cancel()
+                  publication = launch {
+                    try {
+                      acknowledge(directory.queueOwnName(householdId, userId, name))
+                    } catch (cancelled: CancellationException) {
+                      throw cancelled
+                    } catch (failure: Exception) {
+                      reportFailure(OwnerNameFailure.PUBLICATION, failure)
+                    }
                   }
                 }
               }

@@ -41,7 +41,7 @@ data class FridgeUiState(
     val originalItemSharing: ItemSharing? = null,
     val showSharingSelector: Boolean = false,
     val canChangeSharing: Boolean = false,
-    val currentUserId: String? = null,
+    /** Sanitized own-profile and server-confirmed peer names used by the Owner filter. */
     val ownerNames: Map<String, String> = emptyMap(),
 )
 
@@ -54,16 +54,6 @@ internal fun FridgeUiState.resetItemFields(): FridgeUiState =
         originalItemSharing = null,
         canChangeSharing = false,
         expirationDateInput = "")
-
-/** Sharing is independent of both household association and ownership. */
-data class ItemOwnership(
-    val sharing: ItemSharing,
-    val name: String? = null,
-    val isCurrentUser: Boolean = false,
-)
-
-internal fun FridgeUiState.ownershipFor(item: Item) =
-    ItemOwnership(item.sharing, ownerNameFor(item.ownerId), item.ownerId == currentUserId)
 
 enum class BarcodeLookupError {
   UNREADABLE,
@@ -90,4 +80,5 @@ class FridgeStatusError(val itemName: String, val isSyncFailure: Boolean)
 
 class FridgeRemovalSyncError(val itemName: String)
 
+/** Returns a sanitized owner label, or null when no authorized name is available. */
 internal fun FridgeUiState.ownerNameFor(userId: String) = ownerDisplayName(ownerNames[userId])
