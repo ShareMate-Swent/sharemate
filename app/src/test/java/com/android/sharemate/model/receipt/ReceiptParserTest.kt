@@ -170,6 +170,63 @@ class ReceiptParserTest {
   }
 
   @Test
+  fun preservesWeightsAndOutOfRangeCountsForReviewWithoutGuessingCountsFromPrices() {
+    val lines =
+        listOf(
+            positionedLine(20, 140 to "Quantité", 200 to "Prix", 340 to "Total"),
+            positionedLine(40, 10 to "Pommes", 145 to "0.35 kg"),
+            positionedLine(60, 10 to "Pain", 149 to "0", 340 to "2.00"),
+            positionedLine(80, 10 to "Thé", 149 to "100", 340 to "4.00"),
+            positionedLine(100, 10 to "Pizzetta", 200 to "2.20", 340 to "6.60"))
+
+    assertEquals(
+        listOf(
+            ReceiptItem("0.35 kg Pommes", null),
+            ReceiptItem("0 Pain", 200),
+            ReceiptItem("100 Thé", 400),
+            ReceiptItem("Pizzetta", 660)),
+        ReceiptParser.parse(lines))
+  }
+
+  @Test
+  fun excludesTableMetadataAndKeepsOnlyUnambiguousTotals() {
+    val lines =
+        listOf(
+            positionedLine(20, 140 to "Menge", 200 to "Einzelpreis", 340 to "Betrag"),
+            positionedLine(40, 10 to "TVA", 149 to "1", 340 to "0.50"),
+            positionedLine(60, 10 to "Caisse", 149 to "2", 340 to "0.50"),
+            positionedLine(80, 10 to "En-tête sans chiffres"),
+            positionedLine(100, 10 to "Lait", 149 to "2", 340 to "EUR", 370 to "4.80"),
+            positionedLine(120, 10 to "Pain", 149 to "1", 340 to "3.10", 375 to "4.10"),
+            positionedLine(140, 10 to "Thé", 149 to "1", 340 to "2.00", 375 to "G"))
+
+    assertEquals(
+        listOf(ReceiptItem("Lait", null, 2), ReceiptItem("Pain", null), ReceiptItem("Thé", 200)),
+        ReceiptParser.parse(lines))
+  }
+
+  @Test
+  fun incompleteOrMisalignedColumnHeadersKeepTheOrdinaryReceiptFormat() {
+    val ordinaryRows =
+        listOf(
+            ReceiptLine("2x Lait 4.80", 10, 0, 10),
+            positionedLine(50, 10 to "2x", 35 to "Pain", 340 to "3.10"))
+    val falseHeaders =
+        listOf(
+            listOf(positionedLine(20, 140 to "Qty", 340 to "Total")),
+            listOf(positionedLine(20, 140 to "Qty", 200 to "Price")),
+            listOf(
+                positionedLine(20, 140 to "Qty", 340 to "Total"),
+                positionedLine(29, 200 to "Price")))
+
+    for (falseHeader in falseHeaders) {
+      assertEquals(
+          listOf(ReceiptItem("Lait", 480, 2), ReceiptItem("Pain", 310, 2)),
+          ReceiptParser.parse(ordinaryRows + falseHeader))
+    }
+  }
+
+  @Test
   fun slopedTableKeepsEachExplicitQuantityAndTotalOnItsOwnRow() {
     val lines =
         listOf(
