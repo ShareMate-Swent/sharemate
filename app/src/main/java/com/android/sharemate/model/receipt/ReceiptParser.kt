@@ -4,7 +4,30 @@ package com.android.sharemate.model.receipt
 import com.android.sharemate.model.finance.FinanceAmounts.CENTS_PER_UNIT
 
 /** Vertical bounds allow OCR blocks for names and prices to be read as one printed row. */
-internal data class ReceiptLine(val text: String, val left: Int, val top: Int, val bottom: Int)
+internal data class ReceiptLine(
+    val text: String,
+    val left: Int,
+    val top: Int,
+    val bottom: Int,
+    val words: List<ReceiptWord> = emptyList(),
+)
+
+internal data class ReceiptWord(
+    val text: String,
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int,
+) {
+  val x: Double
+    get() = (left.toDouble() + right) / 2
+
+  val y: Double
+    get() = (top.toDouble() + bottom) / 2
+
+  val height: Int
+    get() = maxOf(bottom - top, 1)
+}
 
 /** [priceCents] is the entire row total, never a unit price; null means it needs review. */
 data class ReceiptItem(val name: String, val priceCents: Long?, val quantity: Int = 1)
@@ -15,6 +38,7 @@ internal object ReceiptParser {
   private const val MAX_SCANNED_QUANTITY = 99
   private const val MAX_ROW_GAP_HEIGHTS = 2
   private const val MAX_DETAIL_INDENT_HEIGHTS = 4
+  private const val TABLE_ROW_CENTER_TOLERANCE = 0.75
   // A separate uppercase G/L at the end of a row can be a tax group.
   private const val MEASUREMENT_UNIT =
       """(?:(?i:kg|mg|ml|cl|litres?|liters?)\b|[gl]\b|[GL]\b(?=\s+\S))"""
@@ -22,17 +46,20 @@ internal object ReceiptParser {
   private val amount =
       Regex(
           """(?<![\w.,+\-])(?:CHF\s*)?(\d+)[.,](\d{2})(?:\s*CHF)?(?![\w.,])""",
-          RegexOption.IGNORE_CASE)
+          RegexOption.IGNORE_CASE,
+      )
   private val total = Regex("""^total\b""", RegexOption.IGNORE_CASE)
   // A sign inside a product reference or a signed count is not a discount.
   private val negativeAmount =
       Regex(
           """(?<!\S)(?:CHF\s*)?(?:[-−]\s*(?:CHF\s*)?\d+[.,]\d{2}(?![\w.,]|\s*$COUNT_MARKER)|\d+[.,]\d{2}(?:\s*CHF)?\s*[-−](?![\w.,]))""",
-          RegexOption.IGNORE_CASE)
+          RegexOption.IGNORE_CASE,
+      )
   private val summary =
       Regex(
           """^(?:(?:sous[- ]?|sub[- ]?)?total|tva|mwst|vat|cash|carte|visa|mastercard|rendu|rabais|remise)\b""",
-          RegexOption.IGNORE_CASE)
+          RegexOption.IGNORE_CASE,
+      )
   private val count =
       Regex("""(?<!\S)([-−]?\d+(?:[.,]\d+)?)\s*$COUNT_MARKER""", RegexOption.IGNORE_CASE)
   private val unitPrefix = Regex("""(?:^|\s)(?:[x×*@]|à)\s*$""", RegexOption.IGNORE_CASE)
@@ -49,7 +76,13 @@ internal object ReceiptParser {
   private val header =
       Regex(
           """^(?:migros|totalenergies|date|caisse|caissier|kasse|cashier)\b""",
-          RegexOption.IGNORE_CASE)
+          RegexOption.IGNORE_CASE,
+      )
+  private val quantityHeaders = setOf("quant", "quantité", "qty", "menge", "anzahl")
+  private val unitPriceHeaders = setOf("prix", "price", "preis", "einzelpreis")
+  private val discountHeaders = setOf("rabais", "remise", "discount", "rabatt")
+  private val totalHeaders = setOf("total", "betrag", "summe")
+  private val tableQuantity = Regex("""[-−]?\d+(?:[.,]\d+)?(?:\s*(?:kg|g))?""")
 
   /**
    * Recognizes explicit x/pcs counts, adjacent quantity details and unit prices marked by x/@/à or
@@ -58,6 +91,11 @@ internal object ReceiptParser {
    * stay in the label with one inventory row.
    */
   fun parse(lines: List<ReceiptLine>): List<ReceiptItem> {
+    parseTable(lines)
+        ?.takeIf { it.isNotEmpty() }
+        ?.let {
+          return it
+        }
     val rows = mutableListOf<MutableList<ReceiptLine>>()
     for (line in lines.sortedBy { it.top }) {
       val row = rows.lastOrNull()
@@ -122,13 +160,142 @@ internal object ReceiptParser {
                       previous.printedTotal -> old.priceCents
                       parsed.printedTotal -> parsed.price
                       else -> explicitCount?.let { unitPrice?.times(it) }
-                    })
+                    },
+            )
       }
-      // One immediate detail may augment a product; orphan prices never reuse a consumed label.
+      // One immediate detail may augment a product; orphan prices never reuse a consumed
+      // label.
       label = null
       candidate = null
     }
     return result
+  }
+
+  /** A recognized header gives numeric cells meaning even if OCR emits separate blocks. */
+  private fun parseTable(lines: List<ReceiptLine>): List<ReceiptItem>? {
+    val words =
+        lines.flatMap { line ->
+          line.words.ifEmpty {
+            listOf(ReceiptWord(line.text, line.left, line.top, line.left, line.bottom))
+          }
+        }
+    val columns = findTableColumns(words) ?: return null
+    val aligned = parseTableRows(words, columns, columns::rowY)
+    // A receipt can curve so the header's angle differs from that of the products.
+    // Keep the unadjusted alignment when it recovers more complete product totals.
+    val unadjusted = parseTableRows(words, columns, ReceiptWord::y)
+    return if (unadjusted.count { it.priceCents != null } > aligned.count { it.priceCents != null })
+        unadjusted
+    else aligned
+  }
+
+  private fun parseTableRows(
+      words: List<ReceiptWord>,
+      columns: TableColumns,
+      rowY: (ReceiptWord) -> Double,
+  ): List<ReceiptItem> {
+    val rows = mutableListOf<MutableList<ReceiptWord>>()
+    val ordered = words.sortedBy(rowY)
+    for (word in ordered) {
+      if (!columns.isBelowHeader(word)) continue
+      val first = rows.lastOrNull()?.firstOrNull()
+      if (first != null &&
+          rowY(word) - rowY(first) <=
+              maxOf(first.height, word.height) * TABLE_ROW_CENTER_TOLERANCE) {
+        rows.last().add(word)
+      } else {
+        rows.add(mutableListOf(word))
+      }
+    }
+    val items = mutableListOf<ReceiptItem>()
+    for (row in rows) {
+      val orderedRow = row.sortedBy { it.x }
+      if (total.containsMatchIn(orderedRow.first().text.trim())) break
+      val name =
+          orderedRow
+              .cellText { it.x < columns.quantityStart }
+              .replaceFirst(leadingBarcode, "")
+              .replaceFirst(marker, "")
+      if (summary.containsMatchIn(name) ||
+          header.containsMatchIn(name) ||
+          name.none(Char::isLetter))
+          continue
+      val quantityText = orderedRow.cellText { it.x in columns.quantityStart ..< columns.unitStart }
+      val unitText = orderedRow.cellText { it.x in columns.unitStart ..< columns.unitEnd }
+      val totalText = orderedRow.cellText { it.x in columns.totalStart ..< columns.totalEnd }
+      if (negativeAmount.containsMatchIn(totalText)) continue
+      val count = quantityText.toIntOrNull()?.takeIf { it in 1..MAX_SCANNED_QUANTITY }
+      val rowPrice =
+          amount
+              .find(totalText)
+              ?.takeIf {
+                it.range.first == 0 && taxSuffix.matches(totalText.substring(it.range.last + 1))
+              }
+              ?.cents()
+      if (count == null &&
+          rowPrice == null &&
+          !amount.matches(unitText) &&
+          !tableQuantity.matches(quantityText))
+          continue
+      val reviewName =
+          if (count == null && tableQuantity.matches(quantityText)) {
+            "$quantityText $name"
+          } else name
+      items += ReceiptItem(reviewName, rowPrice, count ?: 1)
+    }
+    return items
+  }
+
+  private fun List<ReceiptWord>.cellText(inColumn: (ReceiptWord) -> Boolean): String =
+      filter(inColumn).joinToString(" ") { it.text.trim() }.trim().replace(spaces, " ")
+
+  private fun findTableColumns(words: List<ReceiptWord>): TableColumns? {
+    val headerWords = words.sortedBy { it.x }
+    for (quantity in headerWords.filter { it.headerToken() in quantityHeaders }) {
+      val sameLine =
+          headerWords.filter {
+            it.x > quantity.x &&
+                kotlin.math.abs(it.y - quantity.y) <= maxOf(it.height, quantity.height)
+          }
+      val unitPrice = sameLine.firstOrNull { it.headerToken() in unitPriceHeaders } ?: continue
+      val total =
+          sameLine.firstOrNull { it.x > unitPrice.x && it.headerToken() in totalHeaders }
+              ?: continue
+      val unitPosition = (unitPrice.x - quantity.x) / (total.x - quantity.x)
+      val expectedUnitY = quantity.y + unitPosition * (total.y - quantity.y)
+      if (kotlin.math.abs(unitPrice.y - expectedUnitY) >
+          unitPrice.height * TABLE_ROW_CENTER_TOLERANCE)
+          continue
+      val discount =
+          sameLine.firstOrNull {
+            it.x in unitPrice.x ..< total.x && it.headerToken() in discountHeaders
+          }
+      val tax = sameLine.firstOrNull { it.x > total.x && it.headerToken() == "#" }
+      return TableColumns(quantity, unitPrice, discount, total, tax)
+    }
+    return null
+  }
+
+  private fun ReceiptWord.headerToken() = text.trim().trimEnd('.', ':').lowercase()
+
+  private class TableColumns(
+      quantity: ReceiptWord,
+      unitPrice: ReceiptWord,
+      discount: ReceiptWord?,
+      total: ReceiptWord,
+      tax: ReceiptWord?,
+  ) {
+    private val tilt = (total.y - quantity.y) / (total.x - quantity.x)
+    private val headerBottom = rowY(quantity) + quantity.height / 2.0
+    val quantityStart = minOf(quantity.left.toDouble(), quantity.x - quantity.height / 2.0)
+    val unitStart = (quantity.x + unitPrice.x) / 2
+    val unitEnd = (unitPrice.x + (discount ?: total).x) / 2
+    val totalStart = ((discount ?: unitPrice).x + total.x) / 2
+    val totalEnd = tax?.let { (total.x + it.x) / 2 } ?: Double.POSITIVE_INFINITY
+
+    fun rowY(word: ReceiptWord): Double = word.y - word.x * tilt
+
+    fun isBelowHeader(word: ReceiptWord): Boolean = rowY(word) > headerBottom
   }
 
   private class PrintedRow(lines: List<ReceiptLine>) {
@@ -239,7 +406,8 @@ internal object ReceiptParser {
         amounts.isNotEmpty(),
         price,
         totals.isNotEmpty(),
-        unitAmounts.singleOrNull()?.cents())
+        unitAmounts.singleOrNull()?.cents(),
+    )
   }
 
   // Seven whole digits and at most 99 units keep multiplication well below Long.MAX_VALUE.

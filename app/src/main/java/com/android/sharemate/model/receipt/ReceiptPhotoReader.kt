@@ -27,7 +27,15 @@ class ReceiptPhotoReader(
           val lines =
               text.textBlocks.flatMap { block ->
                 block.lines.mapNotNull { line ->
-                  line.boundingBox?.let { ReceiptLine(line.text, it.left, it.top, it.bottom) }
+                  line.boundingBox?.let { box ->
+                    val words =
+                        line.elements.mapNotNull { element ->
+                          element.boundingBox?.let {
+                            ReceiptWord(element.text, it.left, it.top, it.right, it.bottom)
+                          }
+                        }
+                    ReceiptLine(line.text, box.left, box.top, box.bottom, words)
+                  }
                 }
               }
           ReceiptParser.parse(lines)
