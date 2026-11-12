@@ -36,6 +36,7 @@ object UserExpirationFields {
 
 /** Fields of a public profile document. */
 object UserProfileFields {
+  /** Also used by the household name directory and legacy user documents. */
   const val DISPLAY_NAME = "displayName"
   const val PHOTO_URL = "photoUrl"
   const val EMAIL = "email"

@@ -9,16 +9,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import com.android.sharemate.R
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class AuthScreenTest {
   @get:Rule val compose = createComposeRule()
+
+  private val testApplication
+    get() = RuntimeEnvironment.getApplication()
 
   @Test
   fun loginForwardsInputsAndSubmitAndSignupOffersConfirmation() {
@@ -36,22 +41,25 @@ class AuthScreenTest {
             onSwitchMode = { state = state.copy(mode = AuthMode.SIGN_UP) })
       }
     }
-    compose.onNodeWithTag("auth_confirm_password").assertDoesNotExist()
-    compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
-    compose.onNodeWithTag("auth_password").performTextInput("secret")
+    compose.onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput("student@example.org")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("secret")
     compose
-        .onNodeWithTag("auth_password")
+        .onNodeWithTag(AuthTestTags.PASSWORD)
         .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
-    compose.onNodeWithTag("auth_password").performImeAction()
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performImeAction()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals("student@example.org", state.email)
       assertEquals("secret", state.password)
       assertEquals(2, submissions)
     }
-    compose.onNodeWithTag("auth_switch_mode").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.SWITCH_MODE).performScrollTo().performClick()
     compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Student")
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput("secret")
     compose.runOnIdle {
       assertEquals("Student", state.pseudo)
       assertEquals("secret", state.confirmPassword)
@@ -70,13 +78,15 @@ class AuthScreenTest {
     compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
 
     compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsEnabled()
-    compose.onNodeWithTag("auth_email").assertDoesNotExist()
-    compose.onNodeWithTag("auth_password").assertDoesNotExist()
-    compose.onNodeWithTag("auth_confirm_password").assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertTextEquals("Save pseudo and continue")
+    compose.onNodeWithTag(AuthTestTags.EMAIL).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD).assertDoesNotExist()
     compose
-        .onNodeWithTag("auth_error")
-        .assertTextEquals("That pseudo is already in use. Choose another one.")
+        .onNodeWithTag(AuthTestTags.SUBMIT)
+        .assertTextEquals(testApplication.getString(R.string.auth_save_pseudo))
+    compose
+        .onNodeWithTag(AuthTestTags.ERROR)
+        .assertTextEquals(testApplication.getString(R.string.auth_error_pseudo_taken))
   }
 
   @Test
@@ -94,20 +104,20 @@ class AuthScreenTest {
             onSwitchMode = { state = state.copy(mode = AuthMode.SIGN_UP, password = "") })
       }
     }
-    compose.onNodeWithTag("auth_password").performTextInput("login-secret")
-    compose.onNodeWithText("Show").performClick()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("login-secret")
+    compose.onNodeWithText(testApplication.getString(R.string.auth_show_password)).performClick()
     compose
-        .onNodeWithTag("auth_password")
+        .onNodeWithTag(AuthTestTags.PASSWORD)
         .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Password))
-    compose.onNodeWithText("Hide").performClick()
+    compose.onNodeWithText(testApplication.getString(R.string.auth_hide_password)).performClick()
     compose
-        .onNodeWithTag("auth_password")
+        .onNodeWithTag(AuthTestTags.PASSWORD)
         .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
-    compose.onNodeWithText("Show").performClick()
-    compose.onNodeWithTag("auth_switch_mode").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_password").performScrollTo().performTextInput("signup-secret")
+    compose.onNodeWithText(testApplication.getString(R.string.auth_show_password)).performClick()
+    compose.onNodeWithTag(AuthTestTags.SWITCH_MODE).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performScrollTo().performTextInput("signup-secret")
     compose
-        .onNodeWithTag("auth_password")
+        .onNodeWithTag(AuthTestTags.PASSWORD)
         .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
   }
 
@@ -124,28 +134,28 @@ class AuthScreenTest {
           {},
           onBack = {})
     }
-    compose.onNodeWithTag("auth_loading").assertExists()
-    compose.onNodeWithTag("auth_back").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_switch_mode").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_email").assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertExists()
+    compose.onNodeWithTag(AuthTestTags.BACK).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.SWITCH_MODE).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).assertIsNotEnabled()
     compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsNotEnabled()
-    compose.onNodeWithTag("auth_password").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_confirm_password").assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD).assertIsNotEnabled()
   }
 
   @Test
   fun restoringSessionShowsProgressAndDisablesSubmit() {
     var state by mutableStateOf(AuthUiState())
     compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
-    compose.onNodeWithTag("auth_loading").assertExists()
-    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertExists()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertIsNotEnabled()
     compose.runOnIdle { state = state.copy(isLoading = true) }
-    compose.onNodeWithTag("auth_loading").assertExists()
-    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertExists()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertIsNotEnabled()
     compose.runOnIdle { state = state.copy(isRestoringSession = false, isLoading = false) }
-    compose.onNodeWithTag("auth_loading").assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertIsEnabled()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertIsEnabled()
   }
 
   @Test
@@ -154,29 +164,30 @@ class AuthScreenTest {
     compose.setContent { AuthScreen(state, {}, {}, {}, {}, {}, {}) }
     val feedback =
         mapOf(
-            AuthUiError.INVALID_EMAIL to "Enter a valid email address.",
-            AuthUiError.PSEUDO_REQUIRED to "Enter a pseudo.",
-            AuthUiError.PSEUDO_TAKEN to "That pseudo is already in use. Choose another one.",
-            AuthUiError.PSEUDO_TOO_LONG to
-                "Use $MAX_PSEUDO_LENGTH characters or fewer for your pseudo.",
-            AuthUiError.PASSWORD_REQUIRED to "Enter your password.",
-            AuthUiError.WEAK_PASSWORD to "Choose a stronger password with at least 6 characters.",
-            AuthUiError.PASSWORD_MISMATCH to "The passwords do not match.",
-            AuthUiError.INVALID_CREDENTIALS to "Unable to log in. Check your email and password.",
-            AuthUiError.EMAIL_IN_USE to
-                "Unable to create an account with this email. Try logging in instead.",
-            AuthUiError.NETWORK to "Check your internet connection and try again.",
-            AuthUiError.TOO_MANY_REQUESTS to "Too many attempts. Please try again later.",
-            AuthUiError.PROVIDER_DISABLED to
-                "This sign-in method is currently unavailable. Please try again later.",
-            AuthUiError.GOOGLE_UNAVAILABLE to
-                "Google sign-in is unavailable. Please use email or try again later.",
-            AuthUiError.ACCOUNT_CONFLICT to
-                "This account uses another sign-in method. Please sign in with that method.",
-            AuthUiError.UNKNOWN to "Something went wrong. Please try again.")
-    for ((error, message) in feedback) {
+            AuthUiError.INVALID_EMAIL to R.string.auth_error_email,
+            AuthUiError.PSEUDO_REQUIRED to R.string.auth_error_pseudo_required,
+            AuthUiError.PSEUDO_TAKEN to R.string.auth_error_pseudo_taken,
+            AuthUiError.PSEUDO_TOO_LONG to R.string.auth_error_pseudo_too_long,
+            AuthUiError.PASSWORD_REQUIRED to R.string.auth_error_password_required,
+            AuthUiError.WEAK_PASSWORD to R.string.auth_error_weak_password,
+            AuthUiError.PASSWORD_MISMATCH to R.string.auth_error_password_mismatch,
+            AuthUiError.INVALID_CREDENTIALS to R.string.auth_error_credentials,
+            AuthUiError.EMAIL_IN_USE to R.string.auth_error_email_in_use,
+            AuthUiError.NETWORK to R.string.auth_error_network,
+            AuthUiError.TOO_MANY_REQUESTS to R.string.auth_error_rate_limit,
+            AuthUiError.PROVIDER_DISABLED to R.string.auth_error_provider_disabled,
+            AuthUiError.GOOGLE_UNAVAILABLE to R.string.auth_error_google_unavailable,
+            AuthUiError.ACCOUNT_CONFLICT to R.string.auth_error_account_conflict,
+            AuthUiError.UNKNOWN to R.string.auth_error_unknown)
+    for ((error, messageRes) in feedback) {
+      val message =
+          if (error == AuthUiError.PSEUDO_TOO_LONG) {
+            testApplication.getString(messageRes, MAX_PSEUDO_LENGTH)
+          } else {
+            testApplication.getString(messageRes)
+          }
       compose.runOnIdle { state = state.copy(error = error) }
-      compose.onNodeWithTag("auth_error").assertTextEquals(message)
+      compose.onNodeWithTag(AuthTestTags.ERROR).assertTextEquals(message)
     }
   }
 }

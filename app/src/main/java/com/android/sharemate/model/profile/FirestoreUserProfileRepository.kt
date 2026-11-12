@@ -1,9 +1,11 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.profile
 
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
+import com.android.sharemate.model.household.HouseholdFields
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,12 +84,8 @@ class FirestoreUserProfileRepository(private val firestore: FirebaseFirestore) :
   }
 
   private fun DocumentSnapshot.memberIds(): List<String> =
-      (get(MEMBER_IDS_FIELD) as? List<*>)?.filterIsInstance<String>().orEmpty()
+      (get(HouseholdFields.MEMBER_IDS) as? List<*>)?.filterIsInstance<String>().orEmpty()
 
   private fun DocumentSnapshot.text(field: String): String? =
       getString(field)?.takeIf { it.isNotBlank() }
-
-  private companion object {
-    const val MEMBER_IDS_FIELD = "memberIds"
-  }
 }

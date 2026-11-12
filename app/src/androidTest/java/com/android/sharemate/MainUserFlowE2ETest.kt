@@ -23,8 +23,11 @@ import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.auth.AUTH_PSEUDO_TEST_TAG
+import com.android.sharemate.ui.auth.AuthTestTags
 import com.android.sharemate.ui.household.CreateHouseholdTestTags
 import com.android.sharemate.ui.household.HouseholdChoiceTestTags
+import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.JoinHouseholdTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.settings.SettingsTestTags
@@ -64,15 +67,18 @@ class MainUserFlowE2ETest {
     compose.runOnUiThread { compose.activity.imageLookup = { FoodImageSearchResult.NotFound } }
 
     waitUntil("authentication welcome screen", 10_000) {
-      compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).performScrollTo().performClick()
 
-    compose.onNodeWithTag("auth_email").performTextInput(email)
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Main User")
-    compose.onNodeWithTag("auth_password").performTextInput(password)
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput(email)
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Main User")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput(password)
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput(password)
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
 
     waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
@@ -90,7 +96,10 @@ class MainUserFlowE2ETest {
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
-    compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed().assertTextEquals("Fridge")
+    compose
+        .onNodeWithTag(C.Tag.fridge_title)
+        .assertIsDisplayed()
+        .assertTextEquals(compose.activity.getString(R.string.fridge_title))
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
@@ -134,15 +143,15 @@ class MainUserFlowE2ETest {
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
-        .assertTextEquals("Your fridge is empty")
+        .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
 
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
 
     waitUntil("signed-out welcome screen", 10_000) {
-      compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag("auth_welcome").assertIsDisplayed()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertIsDisplayed()
   }
 
   @Test
@@ -155,14 +164,20 @@ class MainUserFlowE2ETest {
     val privateItemName = "Private Cheese"
 
     waitUntil("authentication welcome screen", 10_000) {
-      compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_email").performTextInput(firstUserEmail)
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Household Owner")
-    compose.onNodeWithTag("auth_password").performTextInput(password)
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput(firstUserEmail)
+    compose
+        .onNodeWithTag(AUTH_PSEUDO_TEST_TAG)
+        .performScrollTo()
+        .performTextInput("Household Owner")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput(password)
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput(password)
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
 
     waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
@@ -199,23 +214,29 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
     waitUntil("signed-out welcome screen", 10_000) {
-      compose.onAllNodesWithTag("auth_welcome").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()
     }
     waitUntil("sign-up action enabled", 10_000) {
       compose
-          .onAllNodesWithTag("auth_welcome_signup")
+          .onAllNodesWithTag(AuthTestTags.WELCOME_SIGNUP)
           .fetchSemanticsNodes()
           .singleOrNull()
           ?.config
           ?.contains(SemanticsProperties.Disabled) == false
     }
 
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_email").performTextInput(secondUserEmail)
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Household Member")
-    compose.onNodeWithTag("auth_password").performTextInput(password)
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput(password)
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput(secondUserEmail)
+    compose
+        .onNodeWithTag(AUTH_PSEUDO_TEST_TAG)
+        .performScrollTo()
+        .performTextInput("Household Member")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput(password)
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput(password)
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     waitForHouseholdChoice(HouseholdChoiceTestTags.JOIN)
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput(inviteCode)
@@ -250,12 +271,13 @@ class MainUserFlowE2ETest {
   private fun waitForHouseholdChoice(testTag: String) {
     waitUntil("household choice after sign-up") {
       compose.onAllNodesWithTag(testTag).fetchSemanticsNodes().isNotEmpty() ||
-          compose.onAllNodesWithTag("auth_error").fetchSemanticsNodes().isNotEmpty() ||
-          compose.onAllNodesWithTag("household_retry").fetchSemanticsNodes().isNotEmpty()
+          compose.onAllNodesWithTag(AuthTestTags.ERROR).fetchSemanticsNodes().isNotEmpty() ||
+          compose.onAllNodesWithTag(HouseholdGateTestTags.RETRY).fetchSemanticsNodes().isNotEmpty()
     }
 
     val authError =
-        compose.onAllNodesWithTag("auth_error").fetchSemanticsNodes().firstOrNull()?.let { node ->
+        compose.onAllNodesWithTag(AuthTestTags.ERROR).fetchSemanticsNodes().firstOrNull()?.let {
+            node ->
           node.config[SemanticsProperties.Text].joinToString { it.text }
         }
     check(authError == null) { "Sign-up failed: $authError" }
