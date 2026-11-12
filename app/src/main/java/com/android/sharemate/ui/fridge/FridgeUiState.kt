@@ -41,7 +41,9 @@ data class FridgeUiState(
     val originalItemSharing: ItemSharing? = null,
     val showSharingSelector: Boolean = false,
     val canChangeSharing: Boolean = false,
+    /** Signed-in user used to mark their own items; null when no viewer is available. */
     val currentUserId: String? = null,
+    /** Sanitized own-profile and server-confirmed peer names used by the Owner filter. */
     val ownerNames: Map<String, String> = emptyMap(),
 )
 
@@ -55,13 +57,20 @@ internal fun FridgeUiState.resetItemFields(): FridgeUiState =
         canChangeSharing = false,
         expirationDateInput = "")
 
-/** Sharing is independent of both household association and ownership. */
+/**
+ * Presentation data; sharing is independent of household association and ownership.
+ *
+ * @property sharing Explicit Shared/Personal status of the item.
+ * @property name Sanitized owner label, or null when no authorized name is available.
+ * @property isCurrentUser Whether this item belongs to the signed-in viewer.
+ */
 data class ItemOwnership(
     val sharing: ItemSharing,
     val name: String? = null,
     val isCurrentUser: Boolean = false,
 )
 
+/** Builds card ownership from the item sharing, authorized names and current viewer. */
 internal fun FridgeUiState.ownershipFor(item: Item) =
     ItemOwnership(item.sharing, ownerNameFor(item.ownerId), item.ownerId == currentUserId)
 
@@ -90,4 +99,5 @@ class FridgeStatusError(val itemName: String, val isSyncFailure: Boolean)
 
 class FridgeRemovalSyncError(val itemName: String)
 
+/** Returns a sanitized owner label, or null when no authorized name is available. */
 internal fun FridgeUiState.ownerNameFor(userId: String) = ownerDisplayName(ownerNames[userId])

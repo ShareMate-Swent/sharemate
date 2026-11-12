@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.user.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.*
 
@@ -13,6 +14,9 @@ internal class TestMemberNames(initial: Map<String, String> = emptyMap()) : Memb
   val published = mutableListOf<String?>()
   var observations = 0
   var finite = false
+  var queueGate: CompletableDeferred<Unit>? = null
+  var queueAttempts = 0
+  var cancelledQueues = 0
 
   override fun observeNames(householdId: String, viewerId: String) = flow {
     observations++
@@ -29,6 +33,13 @@ internal class TestMemberNames(initial: Map<String, String> = emptyMap()) : Memb
       userId: String,
       authName: String?
   ): CompletableDeferred<Result<Unit>> {
+    queueAttempts++
+    try {
+      queueGate?.await()
+    } catch (cancelled: CancellationException) {
+      cancelledQueues++
+      throw cancelled
+    }
     publicationFailure?.let { throw it }
     published += authName
     return confirmation

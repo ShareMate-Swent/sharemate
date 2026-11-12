@@ -37,6 +37,8 @@ import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.model.user.FakePseudoRepository
+import com.android.sharemate.model.user.PseudoRepository
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -1269,6 +1271,7 @@ class FridgeViewModelTest {
       householdId: String = "test-household",
       fridgeType: FridgeType = FridgeType.SHARED,
       directory: TestMemberNames = testMemberNameRepository(),
+      profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
   ): FridgeViewModel =
       FridgeViewModel(
@@ -1279,7 +1282,7 @@ class FridgeViewModelTest {
               barcodeScanner,
               productCatalogRepository,
               expirationPreferences = ExpirationPreferencesProvider(preferences),
-              pseudoRepository = testPseudoRepository(),
+              pseudoRepository = profiles,
               fridgeType = fridgeType,
               today = { STATUS_TODAY },
               memberNameRepository = directory,
@@ -1416,6 +1419,32 @@ class FridgeViewModelTest {
     runCurrent()
 
     assertEquals(listOf(OwnerOption("u1", "New")), vm.ownerOptions.value)
+  }
+
+  @Test
+  fun suspendedNamePublicationDoesNotBlockUiStateAndCancelsStaleQueue() = runTest {
+    val directory = testMemberNameRepository().also { it.queueGate = CompletableDeferred() }
+    val profiles = FakePseudoRepository(mapOf("test-user" to "First"))
+    val vm = viewModel(directory = directory, profiles = profiles)
+    val milk =
+        Item(id = "milk", name = "Milk", ownerId = "test-user", householdId = "test-household")
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    assertEquals(1, directory.queueAttempts)
+    assertEquals("First", vm.uiState.value.ownerNames["test-user"])
+    profiles.setPseudo("test-user", "Second")
+    directory.names.value = mapOf("peer" to "Peer")
+    runCurrent()
+    assertEquals("Second", vm.uiState.value.ownerNames["test-user"])
+    assertEquals("Peer", vm.uiState.value.ownerNames["peer"])
+    assertEquals(listOf(milk), vm.uiState.value.items)
+    assertEquals(2, directory.queueAttempts)
+    assertEquals(1, directory.cancelledQueues)
+    assertTrue(directory.published.isEmpty())
+    viewModelStore.clear()
+    runCurrent()
+    assertEquals(2, directory.cancelledQueues)
+    assertFalse(checkNotNull(directory.queueGate).isCompleted)
   }
 
   @Test

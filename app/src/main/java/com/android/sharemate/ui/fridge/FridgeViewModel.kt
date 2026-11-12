@@ -54,6 +54,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+private const val TAG = "FridgeViewModel"
+private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
+
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
 data class OwnerOption(val id: String, val pseudo: String?)
 
@@ -88,7 +91,7 @@ class FridgeViewModel(
           fridgeType,
           currentUserDisplayName,
           viewModelScope,
-          { failure, cause -> Log.w("FridgeViewModel", "Owner names: $failure", cause) })
+          { failure, cause -> Log.w(TAG, "$OWNER_NAMES_FAILURE_MESSAGE: $failure", cause) })
   private val mutableUiState =
       MutableStateFlow(
           FridgeUiState(
