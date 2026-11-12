@@ -59,7 +59,9 @@ class PrivateFridgeCreationTest {
     screenshot("private-fridge-selection")
     compose.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
     waitFor(CreateHouseholdTestTags.CONTINUE)
-    compose.onNodeWithText("Your private fridge is ready!").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.private_fridge_ready_title))
+        .assertIsDisplayed()
     compose.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertDoesNotExist()
     compose.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertDoesNotExist()
     val household = runBlocking {

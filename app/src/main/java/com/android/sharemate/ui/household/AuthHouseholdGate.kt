@@ -84,21 +84,21 @@ fun AuthHouseholdGate(
         val navController = rememberNavController()
         val complete = {
           gateViewModel.refresh()
-          navController.popBackStack("household_gate", inclusive = false)
+          navController.popBackStack(HouseholdRoutes.GATE, inclusive = false)
           Unit
         }
         NavHost(
             navController = navController,
-            startDestination = "household_gate",
+            startDestination = HouseholdRoutes.GATE,
             modifier = Modifier.fillMaxSize(),
         ) {
-          composable("household_gate") {
+          composable(HouseholdRoutes.GATE) {
             Column(Modifier.fillMaxSize()) {
               Box(Modifier.weight(1f)) {
                 HouseholdGate(
                     viewModel = gateViewModel,
-                    onCreateHousehold = { navController.navigate("household_create") },
-                    onJoinHousehold = { navController.navigate("household_join") },
+                    onCreateHousehold = { navController.navigate(HouseholdRoutes.CREATE) },
+                    onJoinHousehold = { navController.navigate(HouseholdRoutes.JOIN) },
                 ) { household ->
                   key(household.id) { content(session, household, gateViewModel::refresh) }
                 }
@@ -106,14 +106,14 @@ fun AuthHouseholdGate(
               if (state !is HouseholdGateState.Ready) {
                 TextButton(
                     onClick = authViewModel::signOut,
-                    modifier = Modifier.testTag("household_sign_out"),
+                    modifier = Modifier.testTag(HouseholdGateTestTags.SIGN_OUT),
                 ) {
                   Text(stringResource(R.string.auth_sign_out))
                 }
               }
             }
           }
-          composable("household_create") {
+          composable(HouseholdRoutes.CREATE) {
             val createViewModel: CreateHouseholdViewModel = viewModel(factory = factory)
             val back = { if (!createViewModel.state.value.isLoading) complete() }
             CreateHouseholdScreen(
@@ -123,7 +123,7 @@ fun AuthHouseholdGate(
             )
             BackHandler(onBack = back)
           }
-          composable("household_join") {
+          composable(HouseholdRoutes.JOIN) {
             val joinViewModel: JoinHouseholdViewModel = viewModel(factory = factory)
             val back = { if (!joinViewModel.state.value.isLoading) complete() }
             JoinHouseholdScreen(
@@ -154,3 +154,9 @@ private tailrec fun Context.findActivity(): Activity? =
       is ContextWrapper -> baseContext.findActivity()
       else -> null
     }
+
+internal object HouseholdRoutes {
+  const val GATE = "household_gate"
+  const val CREATE = "household_create"
+  const val JOIN = "household_join"
+}

@@ -15,6 +15,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
@@ -22,6 +23,8 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.profile.InMemoryUserProfileRepository
+import com.android.sharemate.ui.auth.AUTH_PSEUDO_TEST_TAG
+import com.android.sharemate.ui.auth.AuthTestTags
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CancellationException
@@ -47,12 +50,15 @@ class AuthHouseholdGateTest {
     auth.session.value = null
     val content: @Composable () -> Unit = { GateContent() }
     compose.setContent(content)
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
-    compose.onNodeWithTag("auth_password").performTextInput("secret")
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("secret")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput("student@example.org")
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Student")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("secret")
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput("secret")
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     compose.onNodeWithTag("private_app").assertDoesNotExist()
     startCreation()
     compose.onNodeWithText("ABC123").assertIsDisplayed()
@@ -159,14 +165,16 @@ class AuthHouseholdGateTest {
     households.failure = IllegalStateException("Offline")
     compose.setContent { GateContent() }
     compose.onNodeWithTag("private_app").assertDoesNotExist()
-    compose.onNodeWithText("Something went wrong. Please try again.").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.household_generic_error))
+        .assertIsDisplayed()
     val pending = CompletableDeferred<Unit>()
     compose.runOnIdle {
       households.failure = null
       households.pending["student"] = pending
     }
-    compose.onNodeWithTag("household_retry").performClick()
-    compose.onNodeWithTag("household_loading").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.RETRY).performClick()
+    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertExists()
     compose.onNodeWithTag("private_app").assertDoesNotExist()
     compose.runOnIdle { auth.session.value = AuthSession("other-user", "other@example.org") }
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
@@ -178,8 +186,8 @@ class AuthHouseholdGateTest {
     compose.onNodeWithTag("private_app").assertDoesNotExist()
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).assertIsDisplayed()
     assertEquals(listOf("student", "student", "other-user"), households.lookups)
-    compose.onNodeWithTag("household_sign_out").performClick()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.SIGN_OUT).performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertDoesNotExist()
   }
 

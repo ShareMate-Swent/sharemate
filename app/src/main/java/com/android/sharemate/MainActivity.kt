@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
@@ -215,6 +216,7 @@ open class MainActivity : ComponentActivity() {
                   bottomBar = {
                     NavigationBar {
                       TopLevelDestination.entries.forEach { destination ->
+                        val label = stringResource(destination.labelRes)
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
                             selected = destination.isSelected(currentRoute),
@@ -235,18 +237,17 @@ open class MainActivity : ComponentActivity() {
                               }
                             },
                             icon = {
-                              when (destination) {
-                                TopLevelDestination.FRIDGE -> Icon(Icons.Filled.Kitchen, "Fridge")
-                                TopLevelDestination.RECIPES ->
-                                    Icon(Icons.Filled.MenuBook, "Recipes")
-                                TopLevelDestination.RECEIPTS ->
-                                    Icon(Icons.Filled.ReceiptLong, "Receipts")
-                                TopLevelDestination.CHAT -> Icon(Icons.Filled.Chat, "Chat")
-                                TopLevelDestination.SETTINGS ->
-                                    Icon(Icons.Filled.Settings, "Settings")
-                              }
+                              val icon =
+                                  when (destination) {
+                                    TopLevelDestination.FRIDGE -> Icons.Filled.Kitchen
+                                    TopLevelDestination.RECIPES -> Icons.Filled.MenuBook
+                                    TopLevelDestination.RECEIPTS -> Icons.Filled.ReceiptLong
+                                    TopLevelDestination.CHAT -> Icons.Filled.Chat
+                                    TopLevelDestination.SETTINGS -> Icons.Filled.Settings
+                                  }
+                              Icon(icon, label)
                             },
-                            label = { Text(destination.textId) },
+                            label = { Text(label) },
                         )
                       }
                     }

@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
@@ -29,6 +30,7 @@ internal object HouseholdLayout {
   val readyCardVerticalPadding = 20.dp
 
   // Rows of the members list.
+  const val memberNameMaxLines = 1
   val memberAvatarSize = 40.dp
   val memberAvatarIconSize = 24.dp
 }

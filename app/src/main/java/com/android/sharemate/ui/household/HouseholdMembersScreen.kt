@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
@@ -116,7 +117,7 @@ private fun MemberRow(member: HouseholdMember) {
         text = name,
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 1,
+        maxLines = HouseholdLayout.memberNameMaxLines,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.weight(1f).testTag(HouseholdMembersTestTags.name(member.uid)),
     )

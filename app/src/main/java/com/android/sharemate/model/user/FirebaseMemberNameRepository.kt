@@ -2,6 +2,9 @@
 package com.android.sharemate.model.user
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.UserProfileFields
+import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.household.HouseholdFields
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
@@ -38,16 +41,18 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                     if (error != null) close(error)
                     else {
                       val ids =
-                          (snapshot?.get("memberIds") as? List<*>)
+                          (snapshot?.get(HouseholdFields.MEMBER_IDS) as? List<*>)
                               ?.filterIsInstance<String>()
                               .orEmpty()
-                      val privateFridge = snapshot?.getString("type") == "PRIVATE"
+                      val privateFridge =
+                          snapshot?.getString(HouseholdFields.TYPE) == FridgeType.PRIVATE.name
                       trySend(
                           if (snapshot != null &&
                               !snapshot.metadata.isFromCache &&
                               !snapshot.metadata.hasPendingWrites() &&
                               viewerId in ids &&
-                              (!privateFridge || snapshot.getString("createdBy") == viewerId))
+                              (!privateFridge ||
+                                  snapshot.getString(HouseholdFields.CREATED_BY) == viewerId))
                               ids.filter { it.isNotBlank() && '/' !in it }.distinct().sorted()
                           else emptyList())
                     }
@@ -60,10 +65,12 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
         .flatMapLatest { ids ->
           if (ids.isEmpty()) flowOf(emptyMap())
           else
-              combine(ids.chunked(10).map { batch -> observeBatch(householdId, batch) }) { results
-                    ->
-                    results.fold(emptyMap<String, String>()) { names, result -> names + result }
-                  }
+              combine(
+                      ids.chunked(MEMBER_QUERY_BATCH_SIZE).map { batch ->
+                        observeBatch(householdId, batch)
+                      }) { results ->
+                        results.fold(emptyMap<String, String>()) { names, result -> names + result }
+                      }
                   .onStart { emit(emptyMap()) }
         }
         .distinctUntilChanged()
@@ -87,9 +94,9 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                           snapshot.documents
                               .orEmpty()
                               .mapNotNull { document ->
-                                ownerDisplayName(document.get("displayName") as? String)?.let {
-                                  document.id to it
-                                }
+                                ownerDisplayName(
+                                        document.get(UserProfileFields.DISPLAY_NAME) as? String)
+                                    ?.let { document.id to it }
                               }
                               .toMap())
                 }
@@ -115,10 +122,12 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
                     .document(userId)
                     .get()
                     .await()
-                    .get("displayName") as? String)
+                    .get(UserProfileFields.DISPLAY_NAME) as? String)
     val reference =
         household(householdId).collection(FirestoreCollections.MEMBER_NAMES).document(userId)
-    val task = if (name == null) reference.delete() else reference.set(mapOf("displayName" to name))
+    val task =
+        if (name == null) reference.delete()
+        else reference.set(mapOf(UserProfileFields.DISPLAY_NAME to name))
     if (task.isComplete && !task.isSuccessful)
         throw task.exception ?: IllegalStateException("Write cancelled")
     val confirmation = CompletableDeferred<Result<Unit>>()
@@ -130,3 +139,5 @@ class FirebaseMemberNameRepository(private val firestore: FirebaseFirestore) :
     return confirmation
   }
 }
+
+private const val MEMBER_QUERY_BATCH_SIZE = 10

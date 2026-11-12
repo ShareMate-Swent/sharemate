@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import android.os.Bundle
@@ -9,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -24,7 +26,7 @@ class SecondActivity : ComponentActivity() {
         Surface(
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.second_screen_container },
             color = MaterialTheme.colorScheme.background) {
-              GreetingRobo("Robolectric")
+              GreetingRobo(stringResource(R.string.greeting_robo_name))
             }
       }
     }
@@ -33,11 +35,13 @@ class SecondActivity : ComponentActivity() {
 
 @Composable
 fun GreetingRobo(name: String, modifier: Modifier = Modifier) {
-  Text(text = "Hello $name!", modifier = modifier.semantics { testTag = C.Tag.greeting_robo })
+  Text(
+      text = stringResource(R.string.greeting_robo, name),
+      modifier = modifier.semantics { testTag = C.Tag.greeting_robo })
 }
 
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview2() {
-  SampleAppTheme { GreetingRobo("Robolectric") }
+  SampleAppTheme { GreetingRobo(stringResource(R.string.greeting_robo_name)) }
 }

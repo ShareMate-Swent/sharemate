@@ -12,6 +12,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
@@ -36,49 +37,54 @@ class AuthWelcomeScreenTest {
       vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
       AuthGate(vm, googleTokenProvider = { null }) { Text("Private content") }
     }
-    compose.onNodeWithTag("auth_welcome").assertExists()
-    compose.onNodeWithTag("auth_google_sign_in").assertExists()
-    compose.onNodeWithTag("auth_welcome_signup").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_confirm_password").assertExists()
-    compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
-    compose.onNodeWithTag("auth_pseudo").performScrollTo().performTextInput("Student")
-    compose.onNodeWithTag("auth_password").performTextInput("secret")
-    compose.onNodeWithTag("auth_confirm_password").performScrollTo().performTextInput("different")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_error").assertTextEquals("The passwords do not match.")
-    compose.onNodeWithTag("auth_back").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN).assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD).assertExists()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput("student@example.org")
+    compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).performScrollTo().performTextInput("Student")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("secret")
+    compose
+        .onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD)
+        .performScrollTo()
+        .performTextInput("different")
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(AuthTestTags.ERROR)
+        .assertTextEquals(compose.activity.getString(R.string.auth_error_password_mismatch))
+    compose.onNodeWithTag(AuthTestTags.BACK).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.runOnIdle {
       assertEquals("", vm.state.value.password)
       assertEquals("", vm.state.value.confirmPassword)
       assertNull(vm.state.value.error)
       assertTrue(repository.calls.isEmpty())
     }
-    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_confirm_password").assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_LOGIN).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.CONFIRM_PASSWORD).assertDoesNotExist()
     compose
-        .onNodeWithTag("auth_email")
+        .onNodeWithTag(AuthTestTags.EMAIL)
         .assert(
             SemanticsMatcher.expectValue(
                 SemanticsProperties.EditableText, AnnotatedString("student@example.org")))
     compose
-        .onNodeWithTag("auth_password")
+        .onNodeWithTag(AuthTestTags.PASSWORD)
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
-    compose.onNodeWithTag("auth_password").performTextInput("secret")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_back").assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("secret")
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.BACK).assertIsNotEnabled()
     compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-    compose.onNodeWithTag("auth_welcome").assertDoesNotExist()
-    compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertExists()
     compose.runOnIdle {
       assertEquals(listOf("student@example.org" to "secret"), repository.calls)
       repository.pending.completeExceptionally(AuthException(AuthError.NETWORK))
     }
     compose
-        .onNodeWithTag("auth_error")
-        .assertTextEquals("Check your internet connection and try again.")
-    compose.onNodeWithTag("auth_back").assertIsEnabled().performScrollTo().performClick()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+        .onNodeWithTag(AuthTestTags.ERROR)
+        .assertTextEquals(compose.activity.getString(R.string.auth_error_network))
+    compose.onNodeWithTag(AuthTestTags.BACK).assertIsEnabled().performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
   }
 
   @Test
@@ -88,19 +94,19 @@ class AuthWelcomeScreenTest {
       val vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
       AuthGate(vm, googleTokenProvider = { null }) { Text("Private content") }
     }
-    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_email").performTextInput("student@example.org")
-    compose.onNodeWithTag("auth_password").performTextInput("secret")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_LOGIN).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput("student@example.org")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("secret")
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     compose.runOnIdle { repository.pending.complete(Unit) }
-    compose.onNodeWithTag("auth_submit").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_back").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_loading").assertExists()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.BACK).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertExists()
     compose.onNodeWithText("Private content").assertDoesNotExist()
     compose.runOnIdle { repository.session.value = AuthSession("user", "student@example.org") }
     compose.onNodeWithText("Private content").assertIsDisplayed()
-    compose.onNodeWithTag("auth_loading").assertDoesNotExist()
-    compose.onNodeWithTag("auth_submit").assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.LOADING).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertDoesNotExist()
   }
 
   @Test
@@ -112,9 +118,13 @@ class AuthWelcomeScreenTest {
         AuthWelcomeScreen({ loginClicks++ }, { signupClicks++ })
       }
     }
-    compose.onNodeWithTag("auth_welcome_login").performScrollTo().assertIsDisplayed().performClick()
     compose
-        .onNodeWithTag("auth_welcome_signup")
+        .onNodeWithTag(AuthTestTags.WELCOME_LOGIN)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    compose
+        .onNodeWithTag(AuthTestTags.WELCOME_SIGNUP)
         .performScrollTo()
         .assertIsDisplayed()
         .performClick()
@@ -137,7 +147,7 @@ class AuthWelcomeScreenTest {
           error = AuthUiError.GOOGLE_UNAVAILABLE)
     }
     compose
-        .onNodeWithTag("auth_google_sign_in")
+        .onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN)
         .performScrollTo()
         .assertIsDisplayed()
         .performClick()
@@ -145,14 +155,14 @@ class AuthWelcomeScreenTest {
       assertEquals(1, calls)
       loading.value = true
     }
-    compose.onNodeWithTag("auth_google_sign_in").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_welcome_login").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_welcome_signup").assertIsNotEnabled()
-    compose.onNodeWithTag("auth_google_loading").assertExists()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_LOGIN).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_SIGNUP).assertIsNotEnabled()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_LOADING).assertExists()
     compose.runOnIdle { loading.value = false }
-    compose.onNodeWithTag("auth_google_loading").assertDoesNotExist()
-    compose.onNodeWithTag("auth_google_sign_in").assertIsEnabled()
-    compose.onNodeWithTag("auth_error").assertExists()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_LOADING).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN).assertIsEnabled()
+    compose.onNodeWithTag(AuthTestTags.ERROR).assertExists()
   }
 
   @Test
@@ -163,9 +173,9 @@ class AuthWelcomeScreenTest {
       vm = androidx.lifecycle.viewmodel.compose.viewModel { AuthViewModel(repository) }
       AuthGate(vm, googleTokenProvider = { "google-token" }) { Text("Private content") }
     }
-    compose.onNodeWithTag("auth_google_sign_in").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN).performScrollTo().performClick()
     compose.runOnIdle { repository.pending.complete(Unit) }
-    compose.onNodeWithTag("auth_google_loading").assertExists()
+    compose.onNodeWithTag(AuthTestTags.GOOGLE_LOADING).assertExists()
     compose.onNodeWithText("Private content").assertDoesNotExist()
     compose.runOnIdle {
       repository.session.value =
@@ -174,7 +184,7 @@ class AuthWelcomeScreenTest {
     compose.onNodeWithText("Private content").assertIsDisplayed()
     compose.runOnIdle { vm.signOut() }
     compose.onNodeWithText("Private content").assertDoesNotExist()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
   }
 
   private class WelcomeRepository : AuthRepository {
