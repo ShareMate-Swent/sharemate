@@ -29,7 +29,9 @@ class InventorySubmission(
         draft ||
             (this.items.size <= MAX_ITEMS &&
                 this.items.all {
-                  !it.name.exceeds(TextLimits.ITEM_NAME) && it.id.length <= MAX_ID_LENGTH
+                  !it.name.exceeds(TextLimits.ITEM_NAME) &&
+                      it.quantity <= ItemQuantity.MAX &&
+                      it.id.length <= MAX_ID_LENGTH
                 }))
   }
 

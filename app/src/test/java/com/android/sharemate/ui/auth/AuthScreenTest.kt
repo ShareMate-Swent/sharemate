@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.material3.MaterialTheme
@@ -10,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.android.sharemate.R
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -170,6 +172,7 @@ class AuthScreenTest {
             AuthUiError.PSEUDO_TOO_LONG to R.string.auth_error_pseudo_too_long,
             AuthUiError.PASSWORD_REQUIRED to R.string.auth_error_password_required,
             AuthUiError.WEAK_PASSWORD to R.string.auth_error_weak_password,
+            AuthUiError.PASSWORD_TOO_LONG to R.string.auth_error_password_too_long,
             AuthUiError.PASSWORD_MISMATCH to R.string.auth_error_password_mismatch,
             AuthUiError.INVALID_CREDENTIALS to R.string.auth_error_credentials,
             AuthUiError.EMAIL_IN_USE to R.string.auth_error_email_in_use,
@@ -181,10 +184,11 @@ class AuthScreenTest {
             AuthUiError.UNKNOWN to R.string.auth_error_unknown)
     for ((error, messageRes) in feedback) {
       val message =
-          if (error == AuthUiError.PSEUDO_TOO_LONG) {
-            testApplication.getString(messageRes, MAX_PSEUDO_LENGTH)
-          } else {
-            testApplication.getString(messageRes)
+          when (error) {
+            AuthUiError.PSEUDO_TOO_LONG -> testApplication.getString(messageRes, MAX_PSEUDO_LENGTH)
+            AuthUiError.PASSWORD_TOO_LONG ->
+                testApplication.getString(messageRes, TextLimits.PASSWORD)
+            else -> testApplication.getString(messageRes)
           }
       compose.runOnIdle { state = state.copy(error = error) }
       compose.onNodeWithTag(AuthTestTags.ERROR).assertTextEquals(message)

@@ -43,7 +43,9 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       }
 
   override suspend fun addItem(item: Item): String? {
-    if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null
+    if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity !in ItemQuantity.RANGE) {
+      return null
+    }
     if (!item.hasValidTexts()) return null
     return try {
       val document = items.document()
@@ -163,8 +165,10 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   }
 
   override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
-    if (edit.name.isBlank() || edit.quantity <= 0) {
-      return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
+    if (edit.name.isBlank() || edit.quantity !in ItemQuantity.RANGE) {
+      return ItemWrite.Rejected(
+          IllegalArgumentException(
+              "A name and a quantity from 1 to ${ItemQuantity.MAX} are required"))
     }
     if (!itemTextsFit(edit.name, edit.category)) {
       return ItemWrite.Rejected(IllegalArgumentException("Name or category is too long"))

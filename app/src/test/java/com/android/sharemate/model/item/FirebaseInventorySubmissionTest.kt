@@ -111,6 +111,19 @@ class FirebaseInventorySubmissionTest {
   }
 
   @Test
+  fun submissionAcceptsQuantitiesUpToTheMaximumAndRefusesMore() {
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      val row = StagedItem("row", "Milk", quantity, 100)
+      assertEquals(listOf(row), InventorySubmission(ID, "owner", "home", listOf(row)).items)
+    }
+    for (quantity in listOf(ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertThrows(IllegalArgumentException::class.java) {
+        InventorySubmission(ID, "owner", "home", listOf(StagedItem("row", "Milk", quantity, 100)))
+      }
+    }
+  }
+
+  @Test
   fun submissionValidationRejectsUnsupportedPayloadsBeforeRepositoryWrites() {
     val row = StagedItem("row", "Milk", 2, 480)
     for (count in listOf(InventorySubmission.MAX_ITEMS - 1, InventorySubmission.MAX_ITEMS)) {

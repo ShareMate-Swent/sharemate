@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.staging
 
 import androidx.lifecycle.ViewModel
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.staging.PriceInput
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
@@ -83,8 +84,9 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     it.copy(name = name.limitedTo(TextLimits.ITEM_NAME), error = null)
   }
 
+  /** Updates the quantity, cut to [ItemQuantity.MAX_INPUT_LENGTH] characters. */
   fun updateDraftQuantity(quantity: String) = updateDraft {
-    it.copy(quantity = quantity, error = null)
+    it.copy(quantity = quantity.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), error = null)
   }
 
   fun updateDraftPrice(price: String) = updateDraft { it.copy(price = price, error = null) }
@@ -98,7 +100,7 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state ->
       val draft = state.draft ?: return@update state
       val name = draft.name.trim()
-      val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
+      val quantity = ItemQuantity.parse(draft.quantity)
       val price = Prices.parse(draft.price)
       val error =
           when {

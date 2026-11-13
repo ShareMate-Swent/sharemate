@@ -36,10 +36,12 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
@@ -244,7 +246,7 @@ class ManualItemCreationTest {
     val viewModel = showManualEntryScreen(repository)
     composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
-    listOf("", "abc", "1.5", "0", "-1", "2147483648").forEach { input ->
+    listOf("", "abc", "1.5", "0", "-1", "10000", "2147483648").forEach { input ->
       composeTestRule
           .onNodeWithTag(C.Tag.fridge_quantity_input)
           .performScrollTo()
@@ -255,11 +257,14 @@ class ManualItemCreationTest {
           .onNodeWithTag(C.Tag.fridge_form_error)
           .performScrollTo()
           .assertIsDisplayed()
-          .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_quantity_invalid))
+          .assertTextEquals(
+              composeTestRule.activity.getString(
+                  R.string.fridge_quantity_invalid, ItemQuantity.MIN, ItemQuantity.MAX))
       composeTestRule.runOnIdle {
         assertTrue(repository.submissions.isEmpty())
         assertTrue(viewModel.uiState.value.items.isEmpty())
-        assertEquals(input, viewModel.uiState.value.itemQuantity)
+        assertEquals(
+            input.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), viewModel.uiState.value.itemQuantity)
       }
     }
     composeTestRule

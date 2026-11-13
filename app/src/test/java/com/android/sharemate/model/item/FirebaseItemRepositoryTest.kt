@@ -387,6 +387,17 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
+  fun addItem_refusesAQuantityOutsideTheRangeWithoutWriting() =
+      runBlocking<Unit> {
+        for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+          assertNull(
+              repository.addItem(
+                  Item(name = "Milk", ownerId = "u", householdId = "h", quantity = quantity)))
+        }
+        verifyNoInteractions(collection)
+      }
+
+  @Test
   fun addItem_acceptsTextsAtTheLimitsAfterTrimming() =
       runBlocking<Unit> {
         val document = mock(DocumentReference::class.java)

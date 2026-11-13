@@ -21,6 +21,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -598,8 +599,9 @@ class FridgeViewModel(
     }
   }
 
+  /** Updates the quantity, cut to [ItemQuantity.MAX_INPUT_LENGTH] characters. */
   fun updateQuantity(quantity: String) = updateDraft {
-    it.copy(itemQuantity = quantity, formError = null)
+    it.copy(itemQuantity = quantity.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), formError = null)
   }
 
   /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
@@ -651,8 +653,8 @@ class FridgeViewModel(
             return
           }
         }
-    val quantity = state.itemQuantity.trim().toIntOrNull()
-    if (quantity == null || quantity <= 0) {
+    val quantity = ItemQuantity.parse(state.itemQuantity)
+    if (quantity == null) {
       mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
       return
     }

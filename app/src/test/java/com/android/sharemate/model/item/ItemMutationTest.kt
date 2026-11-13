@@ -246,6 +246,33 @@ class ItemMutationTest {
   }
 
   @Test
+  fun editsWithAQuantityOutsideTheRangeAreRejectedBeforeWriting() {
+    for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertTrue(
+          repository.updateItem("item", ItemEdit("Milk", quantity, null, null))
+              is ItemWrite.Rejected)
+    }
+    verifyNoInteractions(document)
+  }
+
+  @Test
+  fun editsAtTheQuantityBoundsAreSubmitted() {
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      val fields =
+          mapOf(
+              "name" to "Milk",
+              "quantity" to quantity,
+              "category" to null,
+              "expirationDate" to null)
+      `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
+
+      assertTrue(
+          repository.updateItem("item", ItemEdit("Milk", quantity, null, null)) is ItemWrite.Queued)
+      verify(document).update(fields)
+    }
+  }
+
+  @Test
   fun editsWithTextsAtTheLimitsAreSubmittedTrimmed() {
     val name = "n".repeat(TextLimits.ITEM_NAME)
     val category = "c".repeat(TextLimits.ITEM_CATEGORY)

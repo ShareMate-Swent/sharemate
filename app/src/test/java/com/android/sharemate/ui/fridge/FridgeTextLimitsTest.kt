@@ -10,6 +10,7 @@ import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
@@ -185,6 +186,69 @@ class FridgeTextLimitsTest {
     assertEquals(FridgeFormError.NAME_TOO_LONG, validateItemTexts(name + "a", category + "c"))
     assertNull(
         validateItemTexts("🍎".repeat(TextLimits.ITEM_NAME), "🥛".repeat(TextLimits.ITEM_CATEGORY)))
+  }
+
+  @Test
+  fun pastedQuantityIsCutAndRefusedWithoutOverflowing() = runTest {
+    val pi = "3141592653589793238462643383279502884197169399375105820974944592307816406286"
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.updateQuantity(pi)
+    assertEquals(pi.take(ItemQuantity.MAX_INPUT_LENGTH), vm.uiState.value.itemQuantity)
+    vm.saveItem()
+    runCurrent()
+    assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+    assertTrue(items.addedItems.isEmpty())
+  }
+
+  @Test
+  fun quantityCanBeCorrectedAfterAnInvalidPaste() = runTest {
+    vm.openAddItemDialog()
+    vm.updateName("Milk")
+    vm.updateQuantity("9".repeat(40))
+    vm.saveItem()
+    runCurrent()
+    assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+    vm.updateQuantity("")
+    assertNull(vm.uiState.value.formError)
+    vm.updateQuantity("1")
+    vm.saveItem()
+    runCurrent()
+    assertNull(vm.uiState.value.formError)
+    assertEquals(1, items.addedItems.single().quantity)
+  }
+
+  @Test
+  fun quantityBoundsAreInclusive() = runTest {
+    for ((input, expected) in
+        listOf("1" to 1, "9999" to ItemQuantity.MAX, "10000" to null, "0" to null)) {
+      vm.openAddItemDialog()
+      vm.updateName("Milk")
+      vm.updateQuantity(input)
+      vm.saveItem()
+      runCurrent()
+      assertEquals(expected, items.addedItems.lastOrNull()?.quantity?.takeIf { expected != null })
+      if (expected == null) {
+        assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+        vm.dismissAddItemDialog()
+      }
+    }
+    assertEquals(listOf(1, ItemQuantity.MAX), items.addedItems.map { it.quantity })
+  }
+
+  @Test
+  fun oldQuantityOverTheMaximumMustBeLoweredBeforeAnEditIsSaved() = runTest {
+    items.emitItems(listOf(legacy().copy(quantity = ItemQuantity.MAX + 1)))
+    runCurrent()
+    vm.openEditItemDialog(LEGACY_ID)
+    vm.saveItem()
+    runCurrent()
+    assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+    assertTrue(items.edits.isEmpty())
+    vm.updateQuantity(ItemQuantity.MAX.toString())
+    vm.saveItem()
+    runCurrent()
+    assertEquals(ItemQuantity.MAX, items.edits.single().second.quantity)
   }
 
   private fun legacy(name: String = "Old", category: String? = null) =

@@ -10,6 +10,7 @@ import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -628,6 +629,53 @@ class FirestoreSecurityRulesTest {
     Tasks.await(itemRef.update("name", "n".repeat(TextLimits.ITEM_NAME)))
     Tasks.await(itemRef.update("category", "c".repeat(TextLimits.ITEM_CATEGORY)))
     Tasks.await(itemRef.update("category", null))
+  }
+
+  @Test
+  fun itemQuantitiesMustBeWithinTheMaximumOnCreationAndEdit() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      Tasks.await(
+          itemReference("ok$quantity")
+              .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to quantity)))
+    }
+    for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertDenied(
+          itemReference("denied$quantity")
+              .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to quantity)))
+    }
+    assertDenied(
+        itemReference("fraction")
+            .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to 1.5)))
+    val itemRef = itemReference("ok${ItemQuantity.MIN}")
+    assertDenied(itemRef.update("quantity", ItemQuantity.MAX + 1))
+    assertDenied(itemRef.update("quantity", 0))
+    Tasks.await(itemRef.update("quantity", ItemQuantity.MAX))
+  }
+
+  @Test
+  fun itemSavedWithAQuantityOverTheMaximumCanStillChangeStatusButNotKeepRaisingIt() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    val stored = ItemQuantity.MAX * 10
+    FirebaseEmulator.seedDocument(
+        FirestoreCollections.ITEMS,
+        "legacy",
+        mapOf(
+            "ownerId" to ownerId,
+            "householdId" to household.id,
+            "name" to "Apple",
+            "quantity" to stored,
+            "status" to "ACTIVE",
+            "sharing" to "PERSONAL"))
+    val itemRef = itemReference("legacy")
+
+    Tasks.await(itemRef.update("status", "EATEN"))
+    Tasks.await(itemRef.update("quantity", stored))
+    assertDenied(itemRef.update("quantity", stored + 1))
+    Tasks.await(itemRef.update("quantity", ItemQuantity.MAX))
+    assertDenied(itemRef.update("quantity", stored))
   }
 
   @Test

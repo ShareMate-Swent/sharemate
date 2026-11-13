@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.staging
 
 import android.content.Context
 import android.content.SharedPreferences
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemQuantity
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
@@ -135,7 +137,7 @@ class InventorySubmissionStoreTest {
             "12345678-1234-1234-1234-123456789abc",
             "owner",
             "home",
-            listOf(StagedItem("milk", "Milk", Int.MAX_VALUE, Long.MAX_VALUE)))
+            listOf(StagedItem("milk", "Milk", ItemQuantity.MAX, Long.MAX_VALUE)))
     store.save(saved)
     assertEquals(saved, store.load("owner", "home"))
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)

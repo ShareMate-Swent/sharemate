@@ -10,7 +10,7 @@
     <string name="auth_save_pseudo">Save pseudo and continue</string>
     <string name="auth_password">Password</string>
     <string name="auth_confirm_password">Confirm password</string>
-    <string name="auth_password_hint">Use at least 6 characters.</string>
+    <string name="auth_password_hint">Use %1$d to %2$d characters.</string>
     <string name="auth_show_password">Show</string>
     <string name="auth_hide_password">Hide</string>
     <string name="auth_need_account">New here? Sign up</string>
@@ -21,6 +21,7 @@
     <string name="auth_error_pseudo_too_long">Use %1$d characters or fewer for your pseudo.</string>
     <string name="auth_error_password_required">Enter your password.</string>
     <string name="auth_error_weak_password">Choose a stronger password with at least 6 characters.</string>
+    <string name="auth_error_password_too_long">Use %1$d characters or fewer for your password.</string>
     <string name="auth_error_password_mismatch">The passwords do not match.</string>
     <string name="auth_error_credentials">Unable to log in. Check your email and password.</string>
     <string name="auth_error_email_in_use">Unable to create an account with this email. Try logging in instead.</string>

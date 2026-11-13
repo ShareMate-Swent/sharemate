@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +9,8 @@ import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.PseudoValidationError
 import com.android.sharemate.model.user.trimPseudoPadding
 import com.android.sharemate.model.user.validatePseudo as validateModelPseudo
@@ -34,6 +37,8 @@ enum class AuthUiError {
   PSEUDO_TOO_LONG,
   PASSWORD_REQUIRED,
   WEAK_PASSWORD,
+  /** A new password is longer than [TextLimits.PASSWORD]. */
+  PASSWORD_TOO_LONG,
   PASSWORD_MISMATCH,
   INVALID_CREDENTIALS,
   EMAIL_IN_USE,
@@ -88,7 +93,10 @@ class AuthViewModel(
     }
   }
 
-  fun updateEmail(value: String) = edit { it.copy(email = value, error = null) }
+  /** Updates the email, cut to [TextLimits.EMAIL] characters so a paste cannot exceed it. */
+  fun updateEmail(value: String) = edit {
+    it.copy(email = value.limitedTo(TextLimits.EMAIL), error = null)
+  }
 
   fun updatePseudo(value: String) = edit { it.copy(pseudo = value, error = null) }
 
@@ -136,10 +144,8 @@ class AuthViewModel(
           !EMAIL_PATTERN.matches(email) -> AuthUiError.INVALID_EMAIL
           pseudoError != null -> pseudoError
           current.password.isEmpty() -> AuthUiError.PASSWORD_REQUIRED
-          current.mode == AuthMode.SIGN_UP && current.password.length < MIN_PASSWORD_LENGTH ->
-              AuthUiError.WEAK_PASSWORD
-          current.mode == AuthMode.SIGN_UP && current.password != current.confirmPassword ->
-              AuthUiError.PASSWORD_MISMATCH
+          current.mode == AuthMode.SIGN_UP ->
+              PasswordRules.signUpError(current.password, current.confirmPassword)
           else -> null
         }
     if (error != null) {
@@ -312,7 +318,6 @@ class AuthViewModel(
   }
 
   private companion object {
-    const val MIN_PASSWORD_LENGTH = 6
     val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
   }
 }

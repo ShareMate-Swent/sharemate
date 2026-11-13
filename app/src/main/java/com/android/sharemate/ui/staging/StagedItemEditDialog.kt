@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.theme.Dimens
@@ -90,13 +91,7 @@ fun StagedItemEditDialog(
           )
           draft.error?.let { error ->
             Text(
-                text =
-                    stringResource(
-                        when (error) {
-                          StagedItemError.NAME_REQUIRED -> R.string.fridge_name_required
-                          StagedItemError.INVALID_QUANTITY -> R.string.fridge_quantity_invalid
-                          StagedItemError.INVALID_PRICE -> R.string.staging_price_invalid
-                        }),
+                text = stagedItemErrorText(error),
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.testTag(StagedItemEditTestTags.ERROR),
             )
@@ -115,3 +110,13 @@ fun StagedItemEditDialog(
       },
   )
 }
+
+/** The message of [error], including the quantity range for [StagedItemError.INVALID_QUANTITY]. */
+@Composable
+private fun stagedItemErrorText(error: StagedItemError): String =
+    when (error) {
+      StagedItemError.NAME_REQUIRED -> stringResource(R.string.fridge_name_required)
+      StagedItemError.INVALID_QUANTITY ->
+          stringResource(R.string.fridge_quantity_invalid, ItemQuantity.MIN, ItemQuantity.MAX)
+      StagedItemError.INVALID_PRICE -> stringResource(R.string.staging_price_invalid)
+    }

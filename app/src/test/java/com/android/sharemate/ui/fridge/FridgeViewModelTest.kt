@@ -24,6 +24,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -33,6 +34,7 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
@@ -474,17 +476,17 @@ class FridgeViewModelTest {
     vm.saveItem()
     assertEquals(FridgeFormError.INVALID_EXPIRATION_DATE, vm.uiState.value.formError)
     vm.updateExpirationDate("")
-    listOf("", "0", "-1", "1.5", "abc", "2147483648").forEach {
+    listOf("", "0", "-1", "1.5", "abc", "10000", "2147483648").forEach {
       vm.updateQuantity(it)
       vm.saveItem()
       assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
     }
     assertTrue(repository.edits.isEmpty())
-    vm.updateQuantity("2147483647")
+    vm.updateQuantity(ItemQuantity.MAX.toString())
     vm.updateCategory(" ")
     vm.saveItem()
     runCurrent()
-    assertEquals(milk.copy(quantity = Int.MAX_VALUE), vm.uiState.value.items.single())
+    assertEquals(milk.copy(quantity = ItemQuantity.MAX), vm.uiState.value.items.single())
   }
 
   @Test
@@ -1718,7 +1720,7 @@ class FridgeViewModelTest {
   fun addSavesPositiveTrimmedAndMaximumQuantities() = runTest {
     val vm = viewModel()
     runCurrent()
-    listOf("2", " 12 ", Int.MAX_VALUE.toString()).forEach { input ->
+    listOf("2", " 12 ", ItemQuantity.MAX.toString()).forEach { input ->
       vm.openAddItemDialog()
       assertEquals("1", vm.uiState.value.itemQuantity)
       vm.updateName("Milk")
@@ -1739,19 +1741,20 @@ class FridgeViewModelTest {
     runCurrent()
     vm.openAddItemDialog()
     vm.updateName("Milk")
-    listOf("", " ", "abc", "1.5", "0", "-1", "2147483648", "999999999999999999999").forEach { input
-      ->
-      vm.updateQuantity(input)
-      assertNull(vm.uiState.value.formError)
-      vm.saveItem()
-      runCurrent()
-      assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
-      assertEquals(input, vm.uiState.value.itemQuantity)
-      assertTrue(vm.uiState.value.isAddItemDialogOpen)
-      assertFalse(vm.uiState.value.isSaving)
-      assertTrue(repository.addedItems.isEmpty())
-      assertTrue(vm.uiState.value.items.isEmpty())
-    }
+    listOf("", " ", "abc", "1.5", "0", "-1", "10000", "2147483648", "999999999999999999999")
+        .forEach { input ->
+          vm.updateQuantity(input)
+          assertNull(vm.uiState.value.formError)
+          vm.saveItem()
+          runCurrent()
+          assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+          assertEquals(
+              input.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), vm.uiState.value.itemQuantity)
+          assertTrue(vm.uiState.value.isAddItemDialogOpen)
+          assertFalse(vm.uiState.value.isSaving)
+          assertTrue(repository.addedItems.isEmpty())
+          assertTrue(vm.uiState.value.items.isEmpty())
+        }
   }
 
   @Test

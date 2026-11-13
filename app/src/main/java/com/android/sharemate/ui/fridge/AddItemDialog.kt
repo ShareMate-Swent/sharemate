@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.resources.C
@@ -257,7 +258,8 @@ fun AddItemDialog(
 @Composable
 private fun fridgeFormErrorText(error: FridgeFormError): String =
     when (error) {
-      FridgeFormError.INVALID_QUANTITY -> stringResource(R.string.fridge_quantity_invalid)
+      FridgeFormError.INVALID_QUANTITY ->
+          stringResource(R.string.fridge_quantity_invalid, ItemQuantity.MIN, ItemQuantity.MAX)
       FridgeFormError.NAME_REQUIRED -> stringResource(R.string.fridge_name_required)
       FridgeFormError.NAME_TOO_LONG ->
           stringResource(R.string.fridge_name_too_long, TextLimits.ITEM_NAME)

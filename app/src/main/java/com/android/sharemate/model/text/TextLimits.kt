@@ -15,6 +15,12 @@ object TextLimits {
 
   /** Longest optional item category. */
   const val ITEM_CATEGORY = 40
+
+  /** Longest new password; firebase itself accepts up to 4096 characters. */
+  const val PASSWORD = 128
+
+  /** Longest email address, the limit of RFC 5321. */
+  const val EMAIL = 254
 }
 
 /** Number of Unicode code points, the unit of [TextLimits] (an emoji counts as one, not two). */
