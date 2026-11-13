@@ -270,7 +270,7 @@ service cloud.firestore {
       allow delete: if canReadName() && request.auth.uid == memberId;
     }
 
-    // Expenses have no client producer yet. Parent membership also protects empty queries.
+    // The authenticated expense callable writes expenses. Clients can only read them.
     match /households/{householdId}/expenses/{expenseId} {
       function canReadExpenses() {
         let household = get(householdPath(householdId)).data;

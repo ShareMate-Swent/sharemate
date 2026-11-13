@@ -3,7 +3,7 @@ package com.android.sharemate.model.finance
 
 import kotlinx.coroutines.flow.Flow
 
-/** Read-only storage boundary for shared expenses, before settlement-ledger integration. */
+/** Read-only expense boundary; the complete ledger also includes settlements. */
 interface HouseholdExpenseRepository {
   /**
    * Observes complete expense lists for a nonblank household document ID under a read-only data
@@ -17,11 +17,10 @@ interface HouseholdExpenseRepository {
    * listeners. Membership authorization belongs to the trusted backend; [householdId] is not proof
    * of access. Historical payers and share participants remain in records.
    *
-   * This expense-only boundary does not represent a complete ledger with settlements. No client
-   * producer is enabled yet; expense writing requires an agreed allocation contract and trusted
-   * authorization. Producer integration must revisit optimistic-write handling: SDK metadata alone
-   * cannot certify the absence of external pending deletions. Member names must not be obtained by
-   * exposing private user profiles.
+   * This expense-only boundary does not represent a complete ledger with settlements. Writes use
+   * [ExpenseSubmissionRepository]'s authenticated callable; direct client writes remain denied.
+   * SDK metadata alone cannot certify the absence of external pending deletions. Member names must
+   * not be obtained by exposing private user profiles.
    */
   fun observeHouseholdExpenses(householdId: String): Flow<List<SharedExpense>>
 }
