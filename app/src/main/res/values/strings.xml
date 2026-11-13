@@ -225,6 +225,11 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
+    <string name="fridge_personal">Personal</string>
+    <string name="fridge_item_owner">Owner: %1$s</string>
+    <string name="fridge_owner_you_named">%1$s (you)</string>
+    <string name="fridge_owner_you">You</string>
+    <string name="fridge_item_owner_unknown">Unknown owner</string>
     <string name="personal_photo_add">Add a personal photo</string>
     <string name="personal_photo_sources">Take a photo to illustrate your item, or choose one from your gallery.</string>
     <string name="personal_photo_change">Change personal photo</string>

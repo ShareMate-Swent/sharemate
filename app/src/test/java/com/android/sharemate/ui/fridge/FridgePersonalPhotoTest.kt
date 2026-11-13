@@ -260,6 +260,31 @@ class FridgePersonalPhotoTest {
   }
 
   @Test
+  fun personalPhotoAndOwnershipSurviveAtomicSharingAndOrdinaryEdits() = runTest {
+    selectPhoto()
+    viewModel.updateSharing(ItemSharing.PERSONAL)
+    viewModel.saveItem()
+    runCurrent()
+    val personal = viewModel.uiState.value.items.single()
+    assertEquals(ItemSharing.PERSONAL, personal.sharing)
+    assertEquals("owner", personal.ownerId)
+    assertEquals("home", personal.householdId)
+    assertEquals(reference.path, personal.image?.reference)
+    assertEquals(
+        ItemOwnership(ItemSharing.PERSONAL, "Owner", true),
+        viewModel.uiState.value.ownershipFor(personal))
+    viewModel.openEditItemDialog(personal.id)
+    viewModel.updateName("Oat milk")
+    viewModel.updateSharing(ItemSharing.SHARED)
+    viewModel.saveItem()
+    runCurrent()
+    val shared = viewModel.uiState.value.items.single()
+    assertEquals(personal.copy(name = "Oat milk", sharing = ItemSharing.SHARED), shared)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
+  }
+
+  @Test
   fun cancellingSelectionDiscardsPhotoAndRestoresPersonalDraft() = runTest {
     selectPhoto()
     viewModel.updateSharing(ItemSharing.PERSONAL)

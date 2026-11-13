@@ -101,6 +101,7 @@ class FridgeViewModel(
               fridgeType = fridgeType,
               isLoading = true,
               showSharingSelector = supportsSharing,
+              currentUserId = userId,
               ownerNames = ownerNames.names.value))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)

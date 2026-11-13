@@ -37,6 +37,10 @@ object C {
     const val fridge_filter_owner_all = "fridge_filter_owner_all"
     const val fridge_item_actions_prefix = "fridge_item_actions_"
     const val fridge_item_list = "fridge_item_list"
+    /** Sharing-badge tag prefix; append the item ID. */
+    const val fridge_sharing_badge_prefix = "fridge_sharing_badge_"
+    /** Owner-name tag prefix; append the item ID. */
+    const val fridge_owner_name_prefix = "fridge_owner_name_"
 
     fun fridgeFilterCategory(category: String) = "fridge_filter_category_$category"
 

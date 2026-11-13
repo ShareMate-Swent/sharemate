@@ -139,7 +139,9 @@ class FridgeScreenTest {
             item = Item(id = "milk", name = "Milk", householdId = "household-1"),
             statusEnabled = true,
             onStatusChange = { changes += it },
-            expiryStatus = ExpiryStatus.NORMAL)
+            expiryStatus = ExpiryStatus.NORMAL,
+            ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+        )
       }
     }
     openActions("milk")
@@ -649,11 +651,15 @@ class FridgeScreenTest {
           FridgeItem(
               item = itemExpiringIn(-1),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.EXPIRED)
+              expiryStatus = ExpiryStatus.EXPIRED,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
           FridgeItem(
               item = itemExpiringIn(3).copy(id = "soon"),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.SOON)
+              expiryStatus = ExpiryStatus.SOON,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
         }
       }
     }
@@ -669,7 +675,9 @@ class FridgeScreenTest {
         FridgeItem(
             item = itemExpiringIn(4),
             modifier = androidx.compose.ui.Modifier.width(100.dp),
-            expiryStatus = ExpiryStatus.NORMAL)
+            expiryStatus = ExpiryStatus.NORMAL,
+            ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+        )
       }
     }
 
@@ -693,7 +701,9 @@ class FridgeScreenTest {
                       expirationDate = expiration,
                       householdId = "household-1"),
               modifier = androidx.compose.ui.Modifier.width(100.dp),
-              expiryStatus = ExpiryStatus.NORMAL)
+              expiryStatus = ExpiryStatus.NORMAL,
+              ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
+          )
         }
       }
       composeRule

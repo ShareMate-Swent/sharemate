@@ -200,6 +200,7 @@ fun FridgeScreen(
                   items(activeItems, key = { it.id }) { item ->
                     FridgeItem(
                         item = item,
+                        ownership = uiState.ownershipFor(item),
                         expiryStatus = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL,
                         personalPhotos = personalPhotos,
                         editEnabled =
