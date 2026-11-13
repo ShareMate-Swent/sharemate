@@ -1,8 +1,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.profile
 
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 
 /**
@@ -38,6 +40,4 @@ fun AuthSession.toPublicProfile(): UserProfile =
         email = email?.takeIf { it.isNotBlank() },
     )
 
-private fun String.truncatePseudo(): String =
-    if (codePointCount(0, length) <= MAX_PSEUDO_LENGTH) this
-    else substring(0, offsetByCodePoints(0, MAX_PSEUDO_LENGTH))
+private fun String.truncatePseudo(): String = limitedTo(MAX_PSEUDO_LENGTH)

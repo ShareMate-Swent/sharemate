@@ -1,7 +1,10 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import java.util.Collections
 import java.util.UUID
 
@@ -26,7 +29,7 @@ class InventorySubmission(
         draft ||
             (this.items.size <= MAX_ITEMS &&
                 this.items.all {
-                  it.name.length <= MAX_NAME_LENGTH && it.id.length <= MAX_NAME_LENGTH
+                  !it.name.exceeds(TextLimits.ITEM_NAME) && it.id.length <= MAX_ID_LENGTH
                 }))
   }
 
@@ -46,7 +49,7 @@ class InventorySubmission(
   companion object {
     /** Product policy keeps one atomic batch and its retained receipt comfortably bounded. */
     const val MAX_ITEMS = 100
-    const val MAX_NAME_LENGTH = 1000
+    const val MAX_ID_LENGTH = 1000
   }
 }
 

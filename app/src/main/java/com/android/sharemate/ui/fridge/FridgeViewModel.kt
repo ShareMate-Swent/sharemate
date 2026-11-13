@@ -29,6 +29,8 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
@@ -481,7 +483,9 @@ class FridgeViewModel(
               } else {
                 updateBarcodeScanState(generation) {
                   it.copy(
-                      itemName = if (it.itemName == initial.itemName) name else it.itemName,
+                      itemName =
+                          if (it.itemName == initial.itemName) name.limitedTo(TextLimits.ITEM_NAME)
+                          else it.itemName,
                       barcodeValue = result.product.barcode,
                       formError =
                           if (it.formError == FridgeFormError.NAME_REQUIRED) null else it.formError)
@@ -598,10 +602,14 @@ class FridgeViewModel(
     it.copy(itemQuantity = quantity, formError = null)
   }
 
-  fun updateName(name: String) = updateDraft { it.copy(itemName = name, formError = null) }
+  /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
+  fun updateName(name: String) = updateDraft {
+    it.copy(itemName = name.limitedTo(TextLimits.ITEM_NAME), formError = null)
+  }
 
+  /** Updates the category, cut to [TextLimits.ITEM_CATEGORY] characters. */
   fun updateCategory(category: String) = updateDraft {
-    it.copy(itemCategory = category, formError = null)
+    it.copy(itemCategory = category.limitedTo(TextLimits.ITEM_CATEGORY), formError = null)
   }
 
   fun updateExpirationDate(date: String) = updateDraft {
@@ -628,6 +636,10 @@ class FridgeViewModel(
     val name = state.itemName.trim()
     if (name.isEmpty()) {
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }
+      return
+    }
+    validateItemTexts(name, state.itemCategory.trim())?.let { error ->
+      mutableUiState.update { it.copy(formError = error) }
       return
     }
     val expirationDate =

@@ -1,7 +1,10 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import java.util.Date
 import java.util.UUID
 
@@ -16,6 +19,7 @@ class InMemoryHouseholdRepository : HouseholdRepository {
       operationId: String
   ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
+    require(!name.exceeds(TextLimits.HOUSEHOLD_NAME)) { "Household name is too long" }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
     val id = "$creatorId:$operationId"
     households[id]?.let {

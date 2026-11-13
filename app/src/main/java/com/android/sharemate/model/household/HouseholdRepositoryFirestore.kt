@@ -1,9 +1,12 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -28,6 +31,9 @@ class HouseholdRepositoryFirestore(
       operationId: String
   ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
+    require(!name.exceeds(TextLimits.HOUSEHOLD_NAME)) {
+      "Household name must have at most ${TextLimits.HOUSEHOLD_NAME} characters"
+    }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
     require(operationId.matches(CREATION_OPERATION_ID_PATTERN)) { "Invalid creation operation ID" }
     val householdReference =

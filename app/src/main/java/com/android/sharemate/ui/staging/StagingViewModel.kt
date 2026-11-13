@@ -1,10 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
 import androidx.lifecycle.ViewModel
 import com.android.sharemate.model.staging.PriceInput
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,7 +78,10 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     }
   }
 
-  fun updateDraftName(name: String) = updateDraft { it.copy(name = name, error = null) }
+  /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
+  fun updateDraftName(name: String) = updateDraft {
+    it.copy(name = name.limitedTo(TextLimits.ITEM_NAME), error = null)
+  }
 
   fun updateDraftQuantity(quantity: String) = updateDraft {
     it.copy(quantity = quantity, error = null)

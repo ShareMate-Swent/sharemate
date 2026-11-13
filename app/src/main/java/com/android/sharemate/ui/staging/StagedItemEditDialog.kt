@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.android.sharemate.R
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.theme.Dimens
 
 object StagedItemEditTestTags {
@@ -60,6 +63,7 @@ fun StagedItemEditDialog(
               value = draft.name,
               onValueChange = onNameChange,
               label = { Text(stringResource(R.string.fridge_item_name)) },
+              supportingText = { TextLengthCounter(draft.name, TextLimits.ITEM_NAME) },
               isError = draft.error == StagedItemError.NAME_REQUIRED,
               singleLine = true,
               modifier = Modifier.fillMaxWidth().testTag(StagedItemEditTestTags.NAME),

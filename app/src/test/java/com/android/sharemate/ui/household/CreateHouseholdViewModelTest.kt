@@ -1,6 +1,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.SavedStateHandle
@@ -10,6 +11,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.text.TextLimits
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -264,5 +266,38 @@ class CreateHouseholdViewModelTest {
     override suspend fun getHousehold(householdId: String) = delegate.getHousehold(householdId)
 
     override suspend fun getHouseholdForUser(userId: String) = delegate.getHouseholdForUser(userId)
+  }
+
+  @Test
+  fun pastedNameIsCutToTheLimitAndCreatedWithIt() = runTest {
+    val viewModel = CreateHouseholdViewModel(repository, auth)
+    viewModel.updateName("n".repeat(TextLimits.HOUSEHOLD_NAME * 10))
+    assertEquals("n".repeat(TextLimits.HOUSEHOLD_NAME), viewModel.state.value.name)
+    viewModel.createHousehold()
+    advanceUntilIdle()
+    assertEquals(listOf("n".repeat(TextLimits.HOUSEHOLD_NAME)), repository.createdNames)
+  }
+
+  @Test
+  fun nameAtTheLimitIsKeptAndOneMoreCodePointIsDropped() = runTest {
+    val viewModel = CreateHouseholdViewModel(repository, auth)
+    for (unit in listOf("a", "😀")) {
+      viewModel.updateName(unit.repeat(TextLimits.HOUSEHOLD_NAME))
+      assertEquals(unit.repeat(TextLimits.HOUSEHOLD_NAME), viewModel.state.value.name)
+      viewModel.updateName(unit.repeat(TextLimits.HOUSEHOLD_NAME + 1))
+      assertEquals(unit.repeat(TextLimits.HOUSEHOLD_NAME), viewModel.state.value.name)
+    }
+  }
+
+  @Test
+  fun cutNameIsSavedForRestoration() = runTest {
+    val saved = SavedStateHandle()
+    val viewModel = CreateHouseholdViewModel(repository, auth, saved)
+
+    viewModel.updateName("n".repeat(TextLimits.HOUSEHOLD_NAME + 5))
+
+    assertEquals(
+        "n".repeat(TextLimits.HOUSEHOLD_NAME),
+        CreateHouseholdViewModel(repository, auth, saved).state.value.name)
   }
 }

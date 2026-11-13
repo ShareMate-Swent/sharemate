@@ -39,7 +39,9 @@ import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
@@ -129,7 +131,10 @@ fun AddItemDialog(
                   value = uiState.itemName,
                   onValueChange = onNameChange,
                   label = { Text(stringResource(R.string.fridge_item_name)) },
-                  isError = uiState.formError == FridgeFormError.NAME_REQUIRED,
+                  supportingText = { TextLengthCounter(uiState.itemName, TextLimits.ITEM_NAME) },
+                  isError =
+                      uiState.formError == FridgeFormError.NAME_REQUIRED ||
+                          uiState.formError == FridgeFormError.NAME_TOO_LONG,
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_name_input))
@@ -145,6 +150,10 @@ fun AddItemDialog(
                   value = uiState.itemCategory,
                   onValueChange = onCategoryChange,
                   label = { Text(stringResource(R.string.fridge_item_category_optional)) },
+                  supportingText = {
+                    TextLengthCounter(uiState.itemCategory, TextLimits.ITEM_CATEGORY)
+                  },
+                  isError = uiState.formError == FridgeFormError.CATEGORY_TOO_LONG,
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_category_input))
@@ -213,15 +222,7 @@ fun AddItemDialog(
               }
               uiState.formError?.let { error ->
                 Text(
-                    text =
-                        stringResource(
-                            when (error) {
-                              FridgeFormError.INVALID_QUANTITY -> R.string.fridge_quantity_invalid
-                              FridgeFormError.NAME_REQUIRED -> R.string.fridge_name_required
-                              FridgeFormError.INVALID_EXPIRATION_DATE ->
-                                  R.string.fridge_date_invalid
-                              FridgeFormError.SAVE_FAILED -> R.string.fridge_save_failed
-                            }),
+                    text = fridgeFormErrorText(error),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.testTag(C.Tag.fridge_form_error))
               }
@@ -251,3 +252,17 @@ fun AddItemDialog(
   BarcodePhotoFlow(
       photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
 }
+
+/** The message of [error], including the limit for the errors that name one. */
+@Composable
+private fun fridgeFormErrorText(error: FridgeFormError): String =
+    when (error) {
+      FridgeFormError.INVALID_QUANTITY -> stringResource(R.string.fridge_quantity_invalid)
+      FridgeFormError.NAME_REQUIRED -> stringResource(R.string.fridge_name_required)
+      FridgeFormError.NAME_TOO_LONG ->
+          stringResource(R.string.fridge_name_too_long, TextLimits.ITEM_NAME)
+      FridgeFormError.CATEGORY_TOO_LONG ->
+          stringResource(R.string.fridge_category_too_long, TextLimits.ITEM_CATEGORY)
+      FridgeFormError.INVALID_EXPIRATION_DATE -> stringResource(R.string.fridge_date_invalid)
+      FridgeFormError.SAVE_FAILED -> stringResource(R.string.fridge_save_failed)
+    }

@@ -1,7 +1,9 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -115,4 +117,23 @@ class HouseholdPrivateCreationTest {
     }
     verifyNoInteractions(firestore, generator)
   }
+
+  @Test
+  fun nameAtTheLimitIsCreatedAndOneCodePointMoreIsRefusedBeforeAnyWrite() =
+      runBlocking<Unit> {
+        for (name in
+            listOf("a".repeat(TextLimits.HOUSEHOLD_NAME), "😀".repeat(TextLimits.HOUSEHOLD_NAME))) {
+          assertEquals(name, repository.createHousehold(name, "creator", FridgeType.PRIVATE).name)
+        }
+        clearInvocations(batch)
+        for (name in
+            listOf(
+                "a".repeat(TextLimits.HOUSEHOLD_NAME + 1),
+                "😀".repeat(TextLimits.HOUSEHOLD_NAME + 1))) {
+          assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.createHousehold(name, "creator", FridgeType.PRIVATE) }
+          }
+        }
+        verifyNoInteractions(batch)
+      }
 }

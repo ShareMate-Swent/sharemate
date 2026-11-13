@@ -185,7 +185,9 @@ service cloud.firestore {
             && household.type in [privateFridgeType(), sharedFridgeType()]
             && household.id == householdId
             && household.name is string
-            && household.name.size() > 0
+            // Regex counts Unicode code points; size() counts UTF-16 code units. Keep the limit
+            // in sync with TextLimits.HOUSEHOLD_NAME.
+            && household.name.matches('(?s).{1,40}')
             && household.inviteCode is string
             && household.createdBy == request.auth.uid
             && household.memberIds == [request.auth.uid]
@@ -426,6 +428,16 @@ service cloud.firestore {
           && (isOwner(item) || item.get('sharing', null) == sharedItemSharing());
     }
 
+    // Keep the text limits in sync with TextLimits.ITEM_NAME and TextLimits.ITEM_CATEGORY. The
+    // regex counts Unicode code points; size() counts UTF-16 code units.
+    function hasValidItemName(name) {
+      return name is string && name.matches('(?s).{1,80}');
+    }
+
+    function hasValidItemCategory(category) {
+      return category == null || (category is string && category.matches('(?s).{0,40}'));
+    }
+
     // Item documents must contain the fields the app expects. Their household is checked where an
     // item is created (isCurrentMember) and cannot change afterwards (canUpdateItem).
     function hasValidItemData(data) {
@@ -441,11 +453,24 @@ service cloud.firestore {
           && (data.get('category', null) == null || data.category is string);
     }
 
+    // New and changed texts must fit their limits. An update that leaves a text as it was is
+    // accepted, so an item saved before the limits existed can still change status or sharing.
+    function hasValidNewItemTexts(data) {
+      return hasValidItemName(data.name) && hasValidItemCategory(data.get('category', null));
+    }
+
+    function hasValidChangedItemTexts(before, after) {
+      return (after.name == before.name || hasValidItemName(after.name))
+          && (after.get('category', null) == before.get('category', null)
+              || hasValidItemCategory(after.get('category', null)));
+    }
+
     // ownerId and householdId are immutable (moving an item is not supported yet). Only the owner
     // may change the sharing, and never to SHARED in a private fridge.
     function canUpdateItem(before, after) {
       return canAccessItem(before)
           && hasValidItemData(after)
+          && hasValidChangedItemTexts(before, after)
           && after.ownerId == before.ownerId
           && after.householdId == before.householdId
           && (after.sharing == before.sharing
@@ -460,6 +485,7 @@ service cloud.firestore {
       allow read: if signedIn() && canAccessItem(resource.data);
       allow create: if signedIn()
           && hasValidItemData(request.resource.data)
+          && hasValidNewItemTexts(request.resource.data)
           && isOwner(request.resource.data)
           && isCurrentMember(request.resource.data.householdId)
           && sharingAllowedIn(request.resource.data.householdId, request.resource.data.sharing);
