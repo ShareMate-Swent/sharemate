@@ -18,9 +18,9 @@ interface HouseholdExpenseRepository {
    * of access. Historical payers and share participants remain in records.
    *
    * This expense-only boundary does not represent a complete ledger with settlements. Writes use
-   * [ExpenseSubmissionRepository]'s authenticated callable; direct client writes remain denied.
-   * SDK metadata alone cannot certify the absence of external pending deletions. Member names must
-   * not be obtained by exposing private user profiles.
+   * [ExpenseSubmissionRepository]'s authenticated callable; direct client writes remain denied. SDK
+   * metadata alone cannot certify the absence of external pending deletions. Member names must not
+   * be obtained by exposing private user profiles.
    */
   fun observeHouseholdExpenses(householdId: String): Flow<List<SharedExpense>>
 }
