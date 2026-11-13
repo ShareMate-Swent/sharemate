@@ -68,6 +68,8 @@ class BarcodeLookupException(val error: BarcodeLookupError) : Exception()
 
 enum class FridgeFormError {
   NAME_REQUIRED,
+  NAME_TOO_LONG,
+  CATEGORY_TOO_LONG,
   INVALID_QUANTITY,
   INVALID_EXPIRATION_DATE,
   SAVE_FAILED,

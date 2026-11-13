@@ -16,6 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import java.util.concurrent.ExecutionException
+import org.json.JSONObject
 
 /**
  * Gives instrumented tests access to the local Firebase emulators.
@@ -30,6 +31,9 @@ object FirebaseEmulator {
   const val STORAGE_PORT = 9199
   const val FUNCTIONS_PORT = 5001
   private const val TEST_PASSWORD = "emulator-only-password"
+  private const val FIELDS = "fields"
+  private const val STRING_VALUE = "stringValue"
+  private const val INTEGER_VALUE = "integerValue"
 
   val firestore: FirebaseFirestore by lazy {
     FirebaseFirestore.getInstance().apply { useEmulator(HOST, FIRESTORE_PORT) }
@@ -130,6 +134,41 @@ object FirebaseEmulator {
     delete(
         "http://$HOST:$FIRESTORE_PORT/emulator/v1/projects/$projectId/databases/(default)/documents")
   }
+
+  /**
+   * Creates the document [collection]/[documentId] with [fields] without going through
+   * `firestore.rules`, to model data written before a rule existed. A field value must be a
+   * [String], an [Int] or a [Long].
+   */
+  fun seedDocument(collection: String, documentId: String, fields: Map<String, Any>) {
+    val typedFields = JSONObject()
+    fields.forEach { (name, value) -> typedFields.put(name, typedValue(value)) }
+    val body = JSONObject().put(FIELDS, typedFields).toString()
+    val url =
+        "http://$HOST:$FIRESTORE_PORT/v1/projects/$projectId/databases/(default)/documents/" +
+            "$collection?documentId=$documentId"
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+      connection.requestMethod = "POST"
+      connection.doOutput = true
+      connection.setRequestProperty("Authorization", "Bearer owner")
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+      check(connection.responseCode in 200..299) {
+        "Could not seed $collection/$documentId: HTTP ${connection.responseCode}"
+      }
+    } finally {
+      connection.disconnect()
+    }
+  }
+
+  private fun typedValue(value: Any): JSONObject =
+      when (value) {
+        is String -> JSONObject().put(STRING_VALUE, value)
+        is Int,
+        is Long -> JSONObject().put(INTEGER_VALUE, value.toString())
+        else -> throw IllegalArgumentException("Unsupported seeded value: $value")
+      }
 
   private fun delete(url: String) {
     val connection = URL(url).openConnection() as HttpURLConnection

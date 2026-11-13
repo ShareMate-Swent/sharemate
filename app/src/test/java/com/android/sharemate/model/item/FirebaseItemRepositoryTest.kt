@@ -5,6 +5,7 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -36,6 +37,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 
 class FirebaseItemRepositoryTest {
@@ -365,6 +367,52 @@ class FirebaseItemRepositoryTest {
       Filter.and(
           Filter.equalTo("householdId", householdId),
           Filter.or(Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", userId)))
+
+  @Test
+  fun addItem_refusesTextsOverTheLimitsWithoutWriting() =
+      runBlocking<Unit> {
+        val tooLongName = "n".repeat(TextLimits.ITEM_NAME + 1)
+        val tooLongCategory = "c".repeat(TextLimits.ITEM_CATEGORY + 1)
+        assertNull(repository.addItem(Item(name = tooLongName, ownerId = "u", householdId = "h")))
+        assertNull(
+            repository.addItem(
+                Item(
+                    name = "😀".repeat(TextLimits.ITEM_NAME + 1),
+                    ownerId = "u",
+                    householdId = "h")))
+        assertNull(
+            repository.addItem(
+                Item(name = "Milk", category = tooLongCategory, ownerId = "u", householdId = "h")))
+        verifyNoInteractions(collection)
+      }
+
+  @Test
+  fun addItem_refusesAQuantityOutsideTheRangeWithoutWriting() =
+      runBlocking<Unit> {
+        for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+          assertNull(
+              repository.addItem(
+                  Item(name = "Milk", ownerId = "u", householdId = "h", quantity = quantity)))
+        }
+        verifyNoInteractions(collection)
+      }
+
+  @Test
+  fun addItem_acceptsTextsAtTheLimitsAfterTrimming() =
+      runBlocking<Unit> {
+        val document = mock(DocumentReference::class.java)
+        `when`(collection.document()).thenReturn(document)
+        `when`(document.id).thenReturn("generated-id")
+        `when`(document.set(any(Item::class.java))).thenReturn(Tasks.forResult(null))
+        val name = "n".repeat(TextLimits.ITEM_NAME)
+        val category = "c".repeat(TextLimits.ITEM_CATEGORY)
+
+        val id =
+            repository.addItem(
+                Item(name = " $name ", category = category, ownerId = "u", householdId = "h"))
+
+        assertEquals("generated-id", id)
+      }
 }
 
 /** Stubs the fields every stored item document must contain. */

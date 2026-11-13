@@ -1,10 +1,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
 import androidx.lifecycle.ViewModel
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.staging.PriceInput
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,10 +79,14 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     }
   }
 
-  fun updateDraftName(name: String) = updateDraft { it.copy(name = name, error = null) }
+  /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
+  fun updateDraftName(name: String) = updateDraft {
+    it.copy(name = name.limitedTo(TextLimits.ITEM_NAME), error = null)
+  }
 
+  /** Updates the quantity, cut to [ItemQuantity.MAX_INPUT_LENGTH] characters. */
   fun updateDraftQuantity(quantity: String) = updateDraft {
-    it.copy(quantity = quantity, error = null)
+    it.copy(quantity = quantity.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), error = null)
   }
 
   fun updateDraftPrice(price: String) = updateDraft { it.copy(price = price, error = null) }
@@ -92,7 +100,7 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state ->
       val draft = state.draft ?: return@update state
       val name = draft.name.trim()
-      val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
+      val quantity = ItemQuantity.parse(draft.quantity)
       val price = Prices.parse(draft.price)
       val error =
           when {

@@ -21,6 +21,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -29,6 +30,8 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
@@ -494,7 +497,9 @@ class FridgeViewModel(
               } else {
                 updateBarcodeScanState(generation) {
                   it.copy(
-                      itemName = if (it.itemName == initial.itemName) name else it.itemName,
+                      itemName =
+                          if (it.itemName == initial.itemName) name.limitedTo(TextLimits.ITEM_NAME)
+                          else it.itemName,
                       barcodeValue = result.product.barcode,
                       formError =
                           if (it.formError == FridgeFormError.NAME_REQUIRED) null else it.formError)
@@ -607,14 +612,19 @@ class FridgeViewModel(
     }
   }
 
+  /** Updates the quantity, cut to [ItemQuantity.MAX_INPUT_LENGTH] characters. */
   fun updateQuantity(quantity: String) = updateDraft {
-    it.copy(itemQuantity = quantity, formError = null)
+    it.copy(itemQuantity = quantity.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), formError = null)
   }
 
-  fun updateName(name: String) = updateDraft { it.copy(itemName = name, formError = null) }
+  /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
+  fun updateName(name: String) = updateDraft {
+    it.copy(itemName = name.limitedTo(TextLimits.ITEM_NAME), formError = null)
+  }
 
+  /** Updates the category, cut to [TextLimits.ITEM_CATEGORY] characters. */
   fun updateCategory(category: String) = updateDraft {
-    it.copy(itemCategory = category, formError = null)
+    it.copy(itemCategory = category.limitedTo(TextLimits.ITEM_CATEGORY), formError = null)
   }
 
   fun updateExpirationDate(date: String) = updateDraft {
@@ -643,6 +653,10 @@ class FridgeViewModel(
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }
       return
     }
+    validateItemTexts(name, state.itemCategory.trim())?.let { error ->
+      mutableUiState.update { it.copy(formError = error) }
+      return
+    }
     val expirationDate =
         when (val parsed = ExpirationDates.parse(state.expirationDateInput)) {
           ExpirationInput.Empty -> null
@@ -652,8 +666,8 @@ class FridgeViewModel(
             return
           }
         }
-    val quantity = state.itemQuantity.trim().toIntOrNull()
-    if (quantity == null || quantity <= 0) {
+    val quantity = ItemQuantity.parse(state.itemQuantity)
+    if (quantity == null) {
       mutableUiState.update { it.copy(formError = FridgeFormError.INVALID_QUANTITY) }
       return
     }

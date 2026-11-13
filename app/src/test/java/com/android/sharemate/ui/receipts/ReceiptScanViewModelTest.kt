@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.SavedStateHandle
@@ -7,6 +8,7 @@ import com.android.sharemate.model.receipt.ReceiptLine
 import com.android.sharemate.model.receipt.ReceiptParser
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.staging.StagingViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -99,5 +101,27 @@ class ReceiptScanViewModelTest {
       assertFalse(model.needsReview.value)
       assertTrue(model.reviewed.value)
     }
+  }
+
+  @Test
+  fun scannedNamesAreCutToTheItemNameLimitWithoutBreakingTheRow() = runTest {
+    val long = "p".repeat(TextLimits.ITEM_NAME * 3)
+    val padded = " " + "q".repeat(TextLimits.ITEM_NAME - 1) + " tail"
+    val exact = "e".repeat(TextLimits.ITEM_NAME)
+    val model =
+        ReceiptScanViewModel(
+            ReceiptReader {
+              listOf(ReceiptItem(long, 100), ReceiptItem(padded, 200), ReceiptItem(exact, 300, 2))
+            },
+            SavedStateHandle())
+
+    model.read("content://receipt")
+
+    assertEquals(
+        listOf(
+            StagedItem("0", "p".repeat(TextLimits.ITEM_NAME), priceCents = 100),
+            StagedItem("1", "q".repeat(TextLimits.ITEM_NAME - 1), priceCents = 200),
+            StagedItem("2", exact, 2, 300)),
+        model.currentItems())
   }
 }

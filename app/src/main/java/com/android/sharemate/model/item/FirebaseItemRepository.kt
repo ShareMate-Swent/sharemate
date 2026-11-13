@@ -3,6 +3,8 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -41,7 +43,10 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       }
 
   override suspend fun addItem(item: Item): String? {
-    if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity <= 0) return null
+    if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity !in ItemQuantity.RANGE) {
+      return null
+    }
+    if (!item.hasValidTexts()) return null
     return try {
       val document = items.document()
       val savedItem = item.copy(id = document.id, name = item.name.trim())
@@ -160,8 +165,13 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   }
 
   override fun updateItem(itemId: String, edit: ItemEdit): ItemWrite {
-    if (edit.name.isBlank() || edit.quantity <= 0) {
-      return ItemWrite.Rejected(IllegalArgumentException("Name and positive quantity are required"))
+    if (edit.name.isBlank() || edit.quantity !in ItemQuantity.RANGE) {
+      return ItemWrite.Rejected(
+          IllegalArgumentException(
+              "A name and a quantity from 1 to ${ItemQuantity.MAX} are required"))
+    }
+    if (!itemTextsFit(edit.name, edit.category)) {
+      return ItemWrite.Rejected(IllegalArgumentException("Name or category is too long"))
     }
     val fields =
         mutableMapOf<String, Any?>(
@@ -304,6 +314,15 @@ private fun DocumentSnapshot.getItemImageOrNull(): ItemImage? {
 
 private fun Map<*, *>.optionalImageString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
+
+private fun Item.hasValidTexts(): Boolean = itemTextsFit(name, category)
+
+/**
+ * The trimmed [name] and [category] are within [TextLimits], as `firestore.rules` also requires.
+ */
+private fun itemTextsFit(name: String, category: String?): Boolean =
+    !name.trim().exceeds(TextLimits.ITEM_NAME) &&
+        category?.trim()?.exceeds(TextLimits.ITEM_CATEGORY) != true
 
 /** Fields of an item document in Firestore. */
 internal object ItemFields {

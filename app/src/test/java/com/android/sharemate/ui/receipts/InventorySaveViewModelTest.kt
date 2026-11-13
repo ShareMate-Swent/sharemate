@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -270,10 +272,12 @@ class InventorySaveViewModelTest {
     runCurrent()
     repository.status.value = InventorySubmissionStatus.MISSING
     runCurrent()
-    val staging = com.android.sharemate.ui.staging.StagingViewModel(rows)
-    staging.startEditing(rows.first().id)
-    staging.updateDraftName("a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))
-    staging.saveDraft()
+    // The staging form cuts typed names, so only a row from an older draft can be too long.
+    val tooLong =
+        rows.mapIndexed { i, row ->
+          if (i == 0) row.copy(name = "a".repeat(TextLimits.ITEM_NAME + 1)) else row
+        }
+    val staging = com.android.sharemate.ui.staging.StagingViewModel(tooLong)
     val corrected = checkNotNull(staging.confirmedItems())
     assertFalse(vm.confirm(corrected))
     runCurrent()

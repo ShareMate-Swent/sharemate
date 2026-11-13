@@ -185,7 +185,9 @@ service cloud.firestore {
             && household.type in [privateFridgeType(), sharedFridgeType()]
             && household.id == householdId
             && household.name is string
-            && household.name.size() > 0
+            // Regex counts Unicode code points; size() counts UTF-16 code units. Keep the limit
+            // in sync with TextLimits.HOUSEHOLD_NAME.
+            && household.name.matches('(?s).{1,40}')
             && household.inviteCode is string
             && household.createdBy == request.auth.uid
             && household.memberIds == [request.auth.uid]
@@ -426,13 +428,28 @@ service cloud.firestore {
           && (isOwner(item) || item.get('sharing', null) == sharedItemSharing());
     }
 
+    // Keep the limits in sync with TextLimits.ITEM_NAME, TextLimits.ITEM_CATEGORY and
+    // ItemQuantity.MAX. The regex counts Unicode code points; size() counts UTF-16 code units.
+    function hasValidItemName(name) {
+      return name is string && name.matches('(?s).{1,80}');
+    }
+
+    function hasValidItemCategory(category) {
+      return category == null || (category is string && category.matches('(?s).{0,40}'));
+    }
+
+    function hasValidItemQuantity(quantity) {
+      return quantity is int && quantity > 0 && quantity <= 9999;
+    }
+
     // Item documents must contain the fields the app expects. Their household is checked where an
     // item is created (isCurrentMember) and cannot change afterwards (canUpdateItem).
     function hasValidItemData(data) {
-      let maxItemQuantity = 2147483647; // Kotlin Int.MAX_VALUE.
+      // Items saved before ItemQuantity.MAX existed may hold up to Kotlin's Int.MAX_VALUE.
+      let maxStoredItemQuantity = 2147483647;
       let itemStatuses = ['ACTIVE', 'EATEN', 'DISCARDED'];
       return data.sharing in [sharedItemSharing(), personalItemSharing()]
-          && data.quantity is int && data.quantity > 0 && data.quantity <= maxItemQuantity
+          && data.quantity is int && data.quantity > 0 && data.quantity <= maxStoredItemQuantity
           && data.status in itemStatuses
           && data.ownerId is string && data.ownerId.size() > 0
           && data.name is string
@@ -441,11 +458,27 @@ service cloud.firestore {
           && (data.get('category', null) == null || data.category is string);
     }
 
+    // New and changed texts and quantities must fit their limits. An update that leaves a value as
+    // it was is accepted, so an item saved before the limits existed can still change status or
+    // sharing.
+    function hasValidNewItemLimits(data) {
+      return hasValidItemName(data.name) && hasValidItemCategory(data.get('category', null))
+          && hasValidItemQuantity(data.quantity);
+    }
+
+    function hasValidChangedItemLimits(before, after) {
+      return (after.name == before.name || hasValidItemName(after.name))
+          && (after.get('category', null) == before.get('category', null)
+              || hasValidItemCategory(after.get('category', null)))
+          && (after.quantity == before.quantity || hasValidItemQuantity(after.quantity));
+    }
+
     // ownerId and householdId are immutable (moving an item is not supported yet). Only the owner
     // may change the sharing, and never to SHARED in a private fridge.
     function canUpdateItem(before, after) {
       return canAccessItem(before)
           && hasValidItemData(after)
+          && hasValidChangedItemLimits(before, after)
           && after.ownerId == before.ownerId
           && after.householdId == before.householdId
           && (after.sharing == before.sharing
@@ -460,6 +493,7 @@ service cloud.firestore {
       allow read: if signedIn() && canAccessItem(resource.data);
       allow create: if signedIn()
           && hasValidItemData(request.resource.data)
+          && hasValidNewItemLimits(request.resource.data)
           && isOwner(request.resource.data)
           && isCurrentMember(request.resource.data.householdId)
           && sharingAllowedIn(request.resource.data.householdId, request.resource.data.sharing);

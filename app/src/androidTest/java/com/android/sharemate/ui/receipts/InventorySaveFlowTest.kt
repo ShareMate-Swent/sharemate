@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
@@ -24,6 +25,7 @@ import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
@@ -158,14 +160,13 @@ class InventorySaveFlowTest {
     compose.runOnIdle { status.value = InventorySubmissionStatus.MISSING }
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
     compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
+    // A pasted name longer than an item name may be is cut, so it can never be refused later.
     compose
         .onNodeWithTag(StagedItemEditTestTags.NAME)
-        .performTextReplacement("a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertDoesNotExist()
-    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
-    compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
+        .performTextReplacement("a".repeat(TextLimits.ITEM_NAME + 1))
+    compose
+        .onNodeWithTag(StagedItemEditTestTags.NAME)
+        .assert(hasText("a".repeat(TextLimits.ITEM_NAME)))
     compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Valid correction")
     compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().performClick()

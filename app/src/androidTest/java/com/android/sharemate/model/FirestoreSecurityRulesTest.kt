@@ -10,6 +10,8 @@ import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.item.ItemQuantity
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
@@ -280,6 +282,19 @@ class FirestoreSecurityRulesTest {
     assertDenied(householdReference(valid.id).set(valid))
 
     Tasks.await(createHousehold(valid))
+  }
+
+  @Test
+  fun householdNamesAreLimitedInCodePointsNotUtf16Units() {
+    val userId = FirebaseEmulator.signInAs("creator")
+    val limit = TextLimits.HOUSEHOLD_NAME
+    val allowed = listOf("a".repeat(limit), "😀".repeat(limit), "a")
+    val denied = listOf("a".repeat(limit + 1), "😀".repeat(limit + 1), "")
+    for ((index, name) in (allowed + denied).withIndex()) {
+      val household = privateHousehold("household$index", name, userId)
+      if (name in allowed) Tasks.await(createHousehold(household))
+      else assertDenied(createHousehold(household))
+    }
   }
 
   @Test
@@ -571,6 +586,125 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
+  fun itemNamesAndCategoriesAreLimitedOnCreation() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    val nameLimit = TextLimits.ITEM_NAME
+    val categoryLimit = TextLimits.ITEM_CATEGORY
+    val allowed =
+        listOf(
+            "a".repeat(nameLimit) to null,
+            "😀".repeat(nameLimit) to null,
+            "Milk" to "c".repeat(categoryLimit),
+            "Milk" to "😀".repeat(categoryLimit),
+            "Milk" to "")
+    val denied =
+        listOf(
+            "a".repeat(nameLimit + 1) to null,
+            "😀".repeat(nameLimit + 1) to null,
+            "" to null,
+            "Milk" to "c".repeat(categoryLimit + 1),
+            "Milk" to "😀".repeat(categoryLimit + 1))
+
+    for ((index, texts) in allowed.withIndex()) {
+      Tasks.await(itemReference("ok$index").set(itemTexts(ownerId, household.id, texts)))
+    }
+    for ((index, texts) in denied.withIndex()) {
+      assertDenied(itemReference("denied$index").set(itemTexts(ownerId, household.id, texts)))
+    }
+  }
+
+  @Test
+  fun editedItemTextsMustFitTheLimits() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    val itemRef = itemReference("item1")
+    Tasks.await(itemRef.set(itemData(ownerId, household.id, "PERSONAL")))
+
+    assertDenied(itemRef.update("name", "n".repeat(TextLimits.ITEM_NAME + 1)))
+    assertDenied(itemRef.update("category", "c".repeat(TextLimits.ITEM_CATEGORY + 1)))
+    assertDenied(
+        itemRef.update(
+            mapOf("name" to "Milk", "category" to "c".repeat(TextLimits.ITEM_CATEGORY + 1))))
+    Tasks.await(itemRef.update("name", "n".repeat(TextLimits.ITEM_NAME)))
+    Tasks.await(itemRef.update("category", "c".repeat(TextLimits.ITEM_CATEGORY)))
+    Tasks.await(itemRef.update("category", null))
+  }
+
+  @Test
+  fun itemQuantitiesMustBeWithinTheMaximumOnCreationAndEdit() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      Tasks.await(
+          itemReference("ok$quantity")
+              .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to quantity)))
+    }
+    for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertDenied(
+          itemReference("denied$quantity")
+              .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to quantity)))
+    }
+    assertDenied(
+        itemReference("fraction")
+            .set(itemData(ownerId, household.id, "PERSONAL") + ("quantity" to 1.5)))
+    val itemRef = itemReference("ok${ItemQuantity.MIN}")
+    assertDenied(itemRef.update("quantity", ItemQuantity.MAX + 1))
+    assertDenied(itemRef.update("quantity", 0))
+    Tasks.await(itemRef.update("quantity", ItemQuantity.MAX))
+  }
+
+  @Test
+  fun itemSavedWithAQuantityOverTheMaximumCanStillChangeStatusButNotKeepRaisingIt() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    val stored = ItemQuantity.MAX * 10
+    FirebaseEmulator.seedDocument(
+        FirestoreCollections.ITEMS,
+        "legacy",
+        mapOf(
+            "ownerId" to ownerId,
+            "householdId" to household.id,
+            "name" to "Apple",
+            "quantity" to stored,
+            "status" to "ACTIVE",
+            "sharing" to "PERSONAL"))
+    val itemRef = itemReference("legacy")
+
+    Tasks.await(itemRef.update("status", "EATEN"))
+    Tasks.await(itemRef.update("quantity", stored))
+    assertDenied(itemRef.update("quantity", stored + 1))
+    Tasks.await(itemRef.update("quantity", ItemQuantity.MAX))
+    assertDenied(itemRef.update("quantity", stored))
+  }
+
+  @Test
+  fun itemSavedBeforeTheLimitsCanStillChangeStatusAndSharingButNotKeepEditingTheLongText() {
+    val household = createHouseholdAs("creator")
+    val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
+    val longName = "n".repeat(TextLimits.ITEM_NAME * 2)
+    val longCategory = "c".repeat(TextLimits.ITEM_CATEGORY * 2)
+    FirebaseEmulator.seedDocument(
+        FirestoreCollections.ITEMS,
+        "legacy",
+        itemData(ownerId, household.id, "PERSONAL")
+            .filterValues { it != null }
+            .mapValues { checkNotNull(it.value) } +
+            mapOf("name" to longName, "category" to longCategory))
+    val itemRef = itemReference("legacy")
+
+    Tasks.await(itemRef.update("status", "EATEN"))
+    Tasks.await(itemRef.update("sharing", "SHARED"))
+    Tasks.await(itemRef.update("quantity", 2))
+    // Rewriting the long texts as they are is allowed; changing them to another long text is not.
+    Tasks.await(itemRef.update(mapOf("name" to longName, "category" to longCategory)))
+    assertDenied(itemRef.update("name", longName + "x"))
+    assertDenied(itemRef.update("category", longCategory + "x"))
+    Tasks.await(itemRef.update(mapOf("name" to "Milk", "category" to "Dairy")))
+    assertDenied(itemRef.update("name", longName))
+  }
+
+  @Test
   fun userCannotAddItemsToAHouseholdTheyAreNotIn() {
     val otherHousehold = createHouseholdAs("other")
     val ownerId = FirebaseEmulator.signInAs("owner")
@@ -853,6 +987,27 @@ class FirestoreSecurityRulesTest {
         put("sharing", sharing)
         if (householdId != null) put("householdId", householdId)
       }
+
+  /** A valid item whose name and category are the given pair; a null category is left out. */
+  private fun itemTexts(
+      ownerId: String,
+      householdId: String,
+      texts: Pair<String, String?>,
+  ): Map<String, Any?> =
+      itemData(ownerId, householdId, "PERSONAL") +
+          mapOf("name" to texts.first) +
+          (texts.second?.let { mapOf("category" to it) } ?: emptyMap())
+
+  /** A private fridge, which needs no invite code, with the given [name]. */
+  private fun privateHousehold(id: String, name: String, creatorId: String) =
+      Household(
+          id = id,
+          name = name,
+          inviteCode = "",
+          memberIds = listOf(creatorId),
+          createdBy = creatorId,
+          createdAt = Date(),
+          type = FridgeType.PRIVATE)
 
   private fun itemReference(itemId: String): DocumentReference =
       firestore.collection(FirestoreCollections.ITEMS).document(itemId)

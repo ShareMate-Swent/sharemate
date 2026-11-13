@@ -3,6 +3,7 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
@@ -230,4 +231,58 @@ class ItemMutationTest {
         `when`(it.getString("householdId")).thenReturn("home")
         it.stubRequiredItemFields()
       }
+
+  @Test
+  fun editsWithTextsOverTheLimitsAreRejectedBeforeWriting() {
+    val tooLongName = "n".repeat(TextLimits.ITEM_NAME + 1)
+    val tooLongCategory = "c".repeat(TextLimits.ITEM_CATEGORY + 1)
+
+    assertTrue(
+        repository.updateItem("item", ItemEdit(tooLongName, 1, null, null)) is ItemWrite.Rejected)
+    assertTrue(
+        repository.updateItem("item", ItemEdit("Milk", 1, tooLongCategory, null))
+            is ItemWrite.Rejected)
+    verifyNoInteractions(document)
+  }
+
+  @Test
+  fun editsWithAQuantityOutsideTheRangeAreRejectedBeforeWriting() {
+    for (quantity in listOf(0, -1, ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertTrue(
+          repository.updateItem("item", ItemEdit("Milk", quantity, null, null))
+              is ItemWrite.Rejected)
+    }
+    verifyNoInteractions(document)
+  }
+
+  @Test
+  fun editsAtTheQuantityBoundsAreSubmitted() {
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      val fields =
+          mapOf(
+              "name" to "Milk",
+              "quantity" to quantity,
+              "category" to null,
+              "expirationDate" to null)
+      `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
+
+      assertTrue(
+          repository.updateItem("item", ItemEdit("Milk", quantity, null, null)) is ItemWrite.Queued)
+      verify(document).update(fields)
+    }
+  }
+
+  @Test
+  fun editsWithTextsAtTheLimitsAreSubmittedTrimmed() {
+    val name = "n".repeat(TextLimits.ITEM_NAME)
+    val category = "c".repeat(TextLimits.ITEM_CATEGORY)
+    val fields =
+        mapOf("name" to name, "quantity" to 1, "category" to category, "expirationDate" to null)
+    `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
+
+    val result = repository.updateItem("item", ItemEdit(" $name ", 1, category, null))
+
+    assertTrue(result is ItemWrite.Queued)
+    verify(document).update(fields)
+  }
 }

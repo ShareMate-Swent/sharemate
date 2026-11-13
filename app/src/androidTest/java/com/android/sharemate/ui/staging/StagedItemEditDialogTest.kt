@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
 import androidx.activity.ComponentActivity
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ItemQuantity
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -53,7 +55,7 @@ class StagedItemEditDialogTest {
     }
   }
 
-  private fun string(id: Int) = composeTestRule.activity.getString(id)
+  private fun string(id: Int, vararg args: Any) = composeTestRule.activity.getString(id, *args)
 
   @Test
   fun showsTheDraftValues() {
@@ -84,9 +86,10 @@ class StagedItemEditDialogTest {
     setDialog()
     val expected =
         mapOf(
-            StagedItemError.NAME_REQUIRED to R.string.fridge_name_required,
-            StagedItemError.INVALID_QUANTITY to R.string.fridge_quantity_invalid,
-            StagedItemError.INVALID_PRICE to R.string.staging_price_invalid,
+            StagedItemError.NAME_REQUIRED to string(R.string.fridge_name_required),
+            StagedItemError.INVALID_QUANTITY to
+                string(R.string.fridge_quantity_invalid, ItemQuantity.MIN, ItemQuantity.MAX),
+            StagedItemError.INVALID_PRICE to string(R.string.staging_price_invalid),
         )
 
     for ((error, message) in expected) {
@@ -94,7 +97,7 @@ class StagedItemEditDialogTest {
       composeTestRule
           .onNodeWithTag(StagedItemEditTestTags.ERROR)
           .assertIsDisplayed()
-          .assertTextEquals(string(message))
+          .assertTextEquals(message)
     }
   }
 }

@@ -1,7 +1,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -298,5 +301,56 @@ class StagingViewModelTest {
 
     viewModel.cancelEditing()
     assertEquals(listOf(milk), viewModel.confirmedItems())
+  }
+
+  @Test
+  fun pastedNameIsCutToTheItemNameLimit() {
+    val viewModel = viewModel(milk)
+    viewModel.startEditing("milk")
+
+    viewModel.updateDraftName("a".repeat(TextLimits.ITEM_NAME * 10))
+    assertEquals("a".repeat(TextLimits.ITEM_NAME), viewModel.state.value.draft?.name)
+    viewModel.saveDraft()
+
+    assertEquals("a".repeat(TextLimits.ITEM_NAME), viewModel.confirmedItems()?.single()?.name)
+  }
+
+  @Test
+  fun nameAtTheLimitIsKeptAndEmojiAreNotSplit() {
+    val viewModel = viewModel(milk)
+    viewModel.startAdding()
+
+    viewModel.updateDraftName("🍎".repeat(TextLimits.ITEM_NAME))
+    assertEquals("🍎".repeat(TextLimits.ITEM_NAME), viewModel.state.value.draft?.name)
+    viewModel.updateDraftName("🍎".repeat(TextLimits.ITEM_NAME + 1))
+    assertEquals("🍎".repeat(TextLimits.ITEM_NAME), viewModel.state.value.draft?.name)
+  }
+
+  @Test
+  fun updatingTheNameWithoutAnOpenDraftDoesNothing() {
+    val viewModel = viewModel(milk)
+
+    viewModel.updateDraftName("a".repeat(TextLimits.ITEM_NAME + 1))
+
+    assertNull(viewModel.state.value.draft)
+  }
+
+  @Test
+  fun quantityIsCutAndMustBeWithinTheItemQuantityRange() {
+    val viewModel = viewModel(milk)
+    viewModel.startEditing("milk")
+
+    viewModel.updateDraftQuantity("9".repeat(30))
+    assertEquals("9".repeat(ItemQuantity.MAX_INPUT_LENGTH), viewModel.state.value.draft?.quantity)
+    viewModel.saveDraft()
+    assertEquals(StagedItemError.INVALID_QUANTITY, viewModel.state.value.draft?.error)
+
+    viewModel.updateDraftQuantity("10000")
+    viewModel.saveDraft()
+    assertEquals(StagedItemError.INVALID_QUANTITY, viewModel.state.value.draft?.error)
+
+    viewModel.updateDraftQuantity(ItemQuantity.MAX.toString())
+    viewModel.saveDraft()
+    assertEquals(ItemQuantity.MAX, viewModel.confirmedItems()?.single()?.quantity)
   }
 }
