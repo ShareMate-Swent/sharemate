@@ -78,7 +78,11 @@ class FridgeEditTest {
             expirationPreferences =
                 ExpirationPreferencesProvider(
                     FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()

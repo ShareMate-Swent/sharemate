@@ -82,7 +82,11 @@ class FridgeImageFirestoreTest {
                   expirationPreferences =
                       ExpirationPreferencesProvider(
                           FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-                  fridgeType = FridgeType.SHARED)
+                  fridgeType = FridgeType.SHARED,
+                  memberNameRepository = testMemberNameRepository(),
+                  currentUserDisplayName = null,
+                  pseudoRepository = testPseudoRepository(),
+              )
               .also { store.put("fridge", it) }
         }
     withContext(Dispatchers.Main) {

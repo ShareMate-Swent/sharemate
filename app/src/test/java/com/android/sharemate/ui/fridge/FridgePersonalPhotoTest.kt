@@ -102,7 +102,11 @@ class FridgePersonalPhotoTest {
             files,
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            currentUserDisplayName = "Owner",
+            memberNameRepository = testMemberNameRepository(),
+            pseudoRepository = testPseudoRepository(),
+        )
     models.put("fridge", viewModel)
   }
 

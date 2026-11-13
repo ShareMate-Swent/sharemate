@@ -30,13 +30,13 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
+import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DisposableHandle
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -46,16 +46,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private const val TAG = "FridgeViewModel"
+private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
 
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
 data class OwnerOption(val id: String, val pseudo: String?)
@@ -75,20 +75,35 @@ class FridgeViewModel(
     photoStorage: PersonalPhotoRepository? = null,
     photoFiles: PersonalPhotoFiles? = null,
     private val expirationPreferences: ExpirationPreferencesProvider,
-    private val pseudoRepository: PseudoRepository? = null,
+    pseudoRepository: PseudoRepository,
     private val fridgeType: FridgeType,
     private val today: () -> LocalDate = { LocalDate.now() },
+    memberNameRepository: MemberNameRepository,
+    currentUserDisplayName: String?,
 ) : ViewModel() {
+  private val supportsSharing = fridgeType == FridgeType.SHARED
+  private val ownerNames =
+      FridgeOwnerNames(
+          memberNameRepository,
+          pseudoRepository,
+          householdId,
+          userId,
+          fridgeType,
+          currentUserDisplayName,
+          viewModelScope,
+          { failure, cause -> Log.w(TAG, "$OWNER_NAMES_FAILURE_MESSAGE: $failure", cause) })
+  private val mutableUiState =
+      MutableStateFlow(
+          FridgeUiState(
+              fridgeType = fridgeType,
+              isLoading = true,
+              showSharingSelector = supportsSharing,
+              ownerNames = ownerNames.names.value))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
           PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
       else null
 
-  private val supportsSharing = fridgeType == FridgeType.SHARED
-  private val mutableUiState =
-      MutableStateFlow(
-          FridgeUiState(
-              fridgeType = fridgeType, isLoading = true, showSharingSelector = supportsSharing))
   val uiState = mutableUiState.asStateFlow()
 
   /** The user's "expiring soon" window; the default until their preferences load. */
@@ -128,24 +143,19 @@ class FridgeViewModel(
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
 
   /** The owners of the loaded items, with the pseudo to show for each. */
-  @OptIn(ExperimentalCoroutinesApi::class)
   val ownerOptions: StateFlow<List<OwnerOption>> =
       mutableUiState
-          .map { state -> state.items.map(Item::ownerId).filter(String::isNotBlank).toSortedSet() }
-          .distinctUntilChanged()
-          .flatMapLatest { ids ->
-            val pseudos =
-                pseudoRepository?.observePseudos(ids)?.catch { error ->
-                  Log.w("FridgeViewModel", "Unable to load owner pseudos", error)
-                  emit(emptyMap())
-                } ?: flowOf(emptyMap())
-            pseudos.map { names ->
-              ids.map { OwnerOption(it, names[it]?.trim()?.takeIf(String::isNotEmpty)) }
-                  .sortedWith(
-                      compareBy<OwnerOption> { it.pseudo == null }
-                          .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
-            }
+          .map { state ->
+            state.items
+                .map(Item::ownerId)
+                .filter(String::isNotBlank)
+                .toSortedSet()
+                .map { OwnerOption(it, state.ownerNameFor(it)) }
+                .sortedWith(
+                    compareBy<OwnerOption> { it.pseudo == null }
+                        .thenBy(String.CASE_INSENSITIVE_ORDER) { it.pseudo ?: it.id })
           }
+          .distinctUntilChanged()
           .stateIn(
               viewModelScope,
               SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
@@ -183,6 +193,9 @@ class FridgeViewModel(
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId.isNotBlank()) { "A household ID is required" }
+    viewModelScope.launch {
+      ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
+    }
     viewModelScope.launch {
       try {
         itemRepository.getFridgeItems(householdId, userId).collect { items ->

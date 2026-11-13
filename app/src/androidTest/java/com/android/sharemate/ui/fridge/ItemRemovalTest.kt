@@ -209,7 +209,11 @@ class ItemRemovalTest {
             expirationPreferences =
                 ExpirationPreferencesProvider(
                     FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("removal-test", viewModel)
     }

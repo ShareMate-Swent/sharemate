@@ -6,6 +6,7 @@ package com.android.sharemate.ui.fridge
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
+import com.android.sharemate.model.user.ownerDisplayName
 
 private const val DEFAULT_ITEM_QUANTITY = "1"
 
@@ -40,6 +41,8 @@ data class FridgeUiState(
     val originalItemSharing: ItemSharing? = null,
     val showSharingSelector: Boolean = false,
     val canChangeSharing: Boolean = false,
+    /** Sanitized own-profile and server-confirmed peer names used by the Owner filter. */
+    val ownerNames: Map<String, String> = emptyMap(),
 )
 
 internal fun FridgeUiState.resetItemFields(): FridgeUiState =
@@ -76,3 +79,6 @@ class FridgeEditSyncError(val itemName: String)
 class FridgeStatusError(val itemName: String, val isSyncFailure: Boolean)
 
 class FridgeRemovalSyncError(val itemName: String)
+
+/** Returns a sanitized owner label, or null when no authorized name is available. */
+internal fun FridgeUiState.ownerNameFor(userId: String) = ownerDisplayName(ownerNames[userId])

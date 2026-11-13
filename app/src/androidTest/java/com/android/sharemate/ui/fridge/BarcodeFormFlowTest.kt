@@ -151,7 +151,11 @@ class BarcodeFormFlowTest {
               expirationPreferences =
                   ExpirationPreferencesProvider(
                       FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-              fridgeType = FridgeType.SHARED)
+              fridgeType = FridgeType.SHARED,
+              memberNameRepository = testMemberNameRepository(),
+              currentUserDisplayName = null,
+              pseudoRepository = testPseudoRepository(),
+          )
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }

@@ -160,7 +160,11 @@ class ItemSharingDialogTest {
                           error("Preference updates are not used by this dialog test")
                         }
                       }),
-              fridgeType = FridgeType.SHARED)
+              fridgeType = FridgeType.SHARED,
+              memberNameRepository = testMemberNameRepository(),
+              currentUserDisplayName = null,
+              pseudoRepository = testPseudoRepository(),
+          )
       store.put("sharing-dialog", vm)
     }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }

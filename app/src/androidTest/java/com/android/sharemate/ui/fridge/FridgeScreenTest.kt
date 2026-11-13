@@ -231,7 +231,11 @@ class FridgeScreenTest {
               expirationPreferences =
                   ExpirationPreferencesProvider(
                       FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-              fridgeType = FridgeType.SHARED)
+              fridgeType = FridgeType.SHARED,
+              memberNameRepository =
+                  testMemberNameRepository(mapOf("alice" to "Alice", "bob" to "Bob")),
+              currentUserDisplayName = null,
+          )
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
     compose.setContent {

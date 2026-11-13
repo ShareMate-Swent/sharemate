@@ -73,7 +73,9 @@ import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
+import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
+import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
@@ -129,6 +131,9 @@ open class MainActivity : ComponentActivity() {
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
     FirebaseItemRepository(FirebaseFirestore.getInstance())
+  }
+  private val memberNameRepository: MemberNameRepository by lazy {
+    FirebaseMemberNameRepository(FirebaseFirestore.getInstance())
   }
   private val pseudoRepository: PseudoRepository by lazy {
     FirebasePseudoRepository(FirebaseFirestore.getInstance())
@@ -281,7 +286,9 @@ open class MainActivity : ComponentActivity() {
                                             photoFiles =
                                                 AndroidPersonalPhotoFiles(applicationContext),
                                             expirationPreferences = expirationPreferencesProvider,
-                                            pseudoRepository = pseudoRepository)
+                                            pseudoRepository = pseudoRepository,
+                                            memberNameRepository = memberNameRepository,
+                                            currentUserDisplayName = session.displayName)
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
