@@ -387,11 +387,16 @@ class ManualItemCreationTest {
     val viewModel = showManualEntryScreen(repository, fridgeType = FridgeType.SHARED)
     for ((name, share) in listOf("Private milk" to false, "Shared bread" to true)) {
       composeTestRule.onNodeWithTag(C.Tag.fridge_add_item).performClick()
-      composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).assertIsDisplayed().assertIsOff()
+      // The switch is the last row of a scrollable dialog, below the fields and their counters.
+      composeTestRule
+          .onNodeWithTag(C.Tag.fridge_share_switch)
+          .performScrollTo()
+          .assertIsDisplayed()
+          .assertIsOff()
       composeTestRule.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(name)
       Espresso.closeSoftKeyboard()
       if (share) {
-        composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).performClick()
+        composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().performClick()
         composeTestRule.onNodeWithTag(C.Tag.fridge_share_switch).assertIsOn()
       }
       composeTestRule.onNodeWithTag(C.Tag.fridge_save_item).performClick()
