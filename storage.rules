@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
@@ -44,6 +45,26 @@ service firebase.storage {
           && canAccessItem(itemId, request.resource)
           && hasValidPhotoData();
       // No listing, overwrite, metadata update or access to any other path.
+    }
+
+    // Each user has one profile photo, which only they can read through the SDK or replace. A new
+    // upload overwrites it. The tokenised download URL, shared as the account photo URL, is readable
+    // by anyone who has it.
+    match /users/{uid}/avatar.jpg {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      function hasValidAvatarData() {
+        let maxAvatarBytes = 5 * 1024 * 1024;
+        let avatarContentTypes = ['image/jpeg', 'image/png'];
+        return request.resource.size > 0 && request.resource.size <= maxAvatarBytes
+            && request.resource.contentType in avatarContentTypes;
+      }
+
+      allow get: if isOwner();
+      // `update` also covers an owner-only metadata update, still limited to a valid image type.
+      allow create, update: if isOwner() && hasValidAvatarData();
+      // No delete, listing or access to any other path under users/.
     }
   }
 }
