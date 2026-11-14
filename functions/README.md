@@ -1,4 +1,4 @@
-# Settlement service
+# Financial services
 
 Run the backend tests from the repository root with Node.js 22 and Firebase CLI installed.
 
@@ -23,6 +23,13 @@ former member if the household ledger still shows an outstanding debt to them. L
 not erase the debt or restore a former member's access to the household ledger.
 
 The Functions endpoint and settlement rules require deployment before an app can use them.
+
+`recordExpense` in the same region creates immutable expenses through authenticated household
+membership validation, with stable retry IDs and exact integer-cent shares. Direct client expense
+writes remain denied. See [the submission contract](../docs/purchase-expense-submission.md) for
+authorization, replay and proposed inventory/expense recovery semantics. Backend unit tests can
+run independently with `node --test functions/expenses.unit.test.js` from the repository root;
+the full test command above also runs callable/Firestore emulator scenarios.
 
 The household join batch now submits the invite code with the private profile link.
 Deploy the rules in coordination with the Android update. An older client cannot add a

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -61,7 +62,10 @@ class FridgeTextLimitsTest {
             },
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            pseudoRepository = testPseudoRepository(),
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null)
     owner.put("fridge", vm)
   }
 

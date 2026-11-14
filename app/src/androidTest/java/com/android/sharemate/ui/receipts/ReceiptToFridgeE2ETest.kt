@@ -51,6 +51,8 @@ import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeUiState
 import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.testMemberNameRepository
+import com.android.sharemate.ui.fridge.testPseudoRepository
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import com.android.sharemate.utils.FirebaseEmulator
@@ -246,7 +248,10 @@ class ReceiptToFridgeE2ETest {
         barcodeScanner = MlKitBarcodeScanner(compose.activity),
         productCatalogRepository = productCatalog,
         expirationPreferences =
-            ExpirationPreferencesProvider(FirebaseExpirationPreferencesRepository(firestore)))
+            ExpirationPreferencesProvider(FirebaseExpirationPreferencesRepository(firestore)),
+        pseudoRepository = testPseudoRepository(),
+        memberNameRepository = testMemberNameRepository(),
+        currentUserDisplayName = null)
   }
 
   private fun addSharedBarcodeItem(image: Uri, fridge: FridgeViewModel) {
