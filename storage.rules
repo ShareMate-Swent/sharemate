@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
@@ -44,6 +45,27 @@ service firebase.storage {
           && canAccessItem(itemId, request.resource)
           && hasValidPhotoData();
       // No listing, overwrite, metadata update or access to any other path.
+    }
+
+    // Profile photos: each upload gets a new path, so the previous photo stays readable until the
+    // account photo URL points at the new one; the owner then deletes the older ones. Only the
+    // owner can read them through the SDK, list or delete them. The tokenised download URL, shared
+    // as the account photo URL, is readable by anyone who has it.
+    match /users/{uid}/avatars/{photoId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      function hasValidAvatarData() {
+        let maxAvatarBytes = 5 * 1024 * 1024;
+        let avatarContentTypes = ['image/jpeg', 'image/png'];
+        return request.resource.size > 0 && request.resource.size <= maxAvatarBytes
+            && request.resource.contentType in avatarContentTypes;
+      }
+
+      allow get, list, delete: if isOwner();
+      // Photos are never overwritten: a replacement is a new object.
+      allow create: if resource == null && isOwner() && hasValidAvatarData();
+      // No update and no access to any other path under users/.
     }
   }
 }
