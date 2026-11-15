@@ -35,7 +35,11 @@ data class StagedItemDraft(
 data class StagingUiState(
     val items: List<StagedItem> = emptyList(),
     val draft: StagedItemDraft? = null,
+    val purchase: PurchaseReview? = null,
 ) {
+  val purchasePreview: PurchasePreview?
+    get() = purchase?.preview(items)
+
   /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
     get() = items.isNotEmpty() && draft == null
@@ -45,15 +49,68 @@ data class StagingUiState(
  * Lets the user review scanned items before they are saved. It neither knows where the items come
  * from nor saves them: the screen receives [initialItems] and hands [confirmedItems] back.
  */
-class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
+class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseReview? = null) :
+    ViewModel() {
   init {
     require(initialItems.map { it.id }.toSet().size == initialItems.size) {
       "Staged item ids must be unique"
     }
   }
 
-  private val mutableState = MutableStateFlow(StagingUiState(items = initialItems))
+  private val mutableState =
+      MutableStateFlow(StagingUiState(items = initialItems, purchase = purchaseReview))
   val state: StateFlow<StagingUiState> = mutableState.asStateFlow()
+
+  /**
+   * The coordinator supplies current member names through its existing household abstractions.
+   * Removed selections are cleared, never replaced with another payer/participant.
+   */
+  fun updatePurchaseMembers(members: Map<String, String>) {
+    mutableState.update { state -> state.copy(purchase = state.purchase?.withMembers(members)) }
+  }
+
+  fun selectPayer(userId: String) {
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (userId in it.members) it.copy(paidBy = userId, membershipChanged = false)
+                else it
+              })
+    }
+  }
+
+  fun toggleParticipant(userId: String) {
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (userId !in it.members) it
+                else
+                    it.copy(
+                        membershipChanged = false,
+                        participants =
+                            if (userId in it.participants) it.participants - userId
+                            else it.participants + userId,
+                    )
+              })
+    }
+  }
+
+  /** Snapshot for Task 37.3; this review layer performs no persistence. */
+  fun confirmedPurchase(): ReviewedPurchase? {
+    val current = state.value
+    if (!current.canConfirm) return null
+    val review = current.purchase ?: return null
+    val preview = current.purchasePreview ?: return null
+    if (preview.error != null) return null
+    return ReviewedPurchase(
+        current.items.toList(),
+        checkNotNull(review.paidBy),
+        checkNotNull(preview.totalCents),
+        preview.shares,
+    )
+  }
 
   /** Opens a blank draft with the default quantity, leaving the current list unchanged. */
   fun startAdding() {
@@ -75,7 +132,8 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
                   itemId = item.id,
                   name = item.name,
                   quantity = item.quantity.toString(),
-                  price = Prices.format(item.priceCents)))
+                  price = Prices.format(item.priceCents),
+              ))
     }
   }
 
@@ -115,7 +173,8 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
               id = draft.itemId ?: UUID.randomUUID().toString(),
               name = name,
               quantity = checkNotNull(quantity),
-              priceCents = (price as? PriceInput.Valid)?.cents)
+              priceCents = (price as? PriceInput.Valid)?.cents,
+          )
       val items =
           if (draft.itemId == null) state.items + updated
           else state.items.map { if (it.id == updated.id) updated else it }
@@ -133,7 +192,8 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state ->
       state.copy(
           items = state.items.filterNot { it.id == itemId },
-          draft = state.draft?.takeIf { it.itemId != itemId })
+          draft = state.draft?.takeIf { it.itemId != itemId },
+      )
     }
   }
 
