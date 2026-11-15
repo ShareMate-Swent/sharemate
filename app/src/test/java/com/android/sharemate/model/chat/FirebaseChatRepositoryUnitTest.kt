@@ -31,6 +31,7 @@ import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 
@@ -152,6 +153,23 @@ class FirebaseChatRepositoryUnitTest {
                 "itemName" to "Milk",
                 "itemImageUrl" to "http://i"),
             captor.value)
+      }
+
+  @Test
+  fun sendActivity_normalizesBlankImageUrlsToNull() =
+      runBlocking<Unit> {
+        val blankUrls = listOf("", " \t\n")
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        blankUrls.forEach { url ->
+          assertEquals(
+              "m1", repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk", url))
+        }
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document, times(blankUrls.size)).set(captor.capture())
+        captor.allValues.forEach { activity ->
+          assertNull(activity["itemImageUrl"])
+          assertEquals(FieldValue.serverTimestamp(), activity["timestamp"])
+        }
       }
 
   @Test
