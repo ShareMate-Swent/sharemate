@@ -4,6 +4,7 @@ package com.android.sharemate.model.chat
 
 import com.android.sharemate.model.FirestoreCollections
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import java.util.Date
@@ -78,16 +79,17 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
         return null
     return try {
       val document = messages(householdId).document()
-      val message =
-          Message(
-              id = document.id,
-              senderId = senderId,
-              senderName = senderName,
-              timestamp = Date(),
-              type = type,
-              itemName = itemName.trim(),
-              itemImageUrl = itemImageUrl?.takeIf { it.isNotBlank() })
-      document.set(message).await()
+      val activity =
+          mapOf(
+              MessageFields.ID to document.id,
+              MessageFields.SENDER_ID to senderId,
+              MessageFields.SENDER_NAME to senderName,
+              MessageFields.TEXT to "",
+              MessageFields.TIMESTAMP to FieldValue.serverTimestamp(),
+              MessageFields.TYPE to type.name,
+              MessageFields.ITEM_NAME to itemName.trim(),
+              MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() })
+      document.set(activity).await()
       document.id
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -123,6 +125,7 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
 
 /** Fields of a chat message document in Firestore. */
 private object MessageFields {
+  const val ID = "id"
   const val SENDER_ID = "senderId"
   const val SENDER_NAME = "senderName"
   const val TIMESTAMP = "timestamp"

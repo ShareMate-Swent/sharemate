@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
@@ -8,6 +9,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -137,13 +139,19 @@ class FirebaseChatRepositoryUnitTest {
         assertEquals(
             "m1",
             repository.sendActivity("h1", "u1", "Ann", MessageType.THROWN, " Milk ", "http://i"))
-        val captor = ArgumentCaptor.forClass(Message::class.java)
+        val captor = ArgumentCaptor.forClass(Map::class.java)
         verify(document).set(captor.capture())
-        assertEquals(MessageType.THROWN, captor.value.type)
-        assertEquals("Milk", captor.value.itemName)
-        assertEquals("http://i", captor.value.itemImageUrl)
-        assertEquals("", captor.value.text)
-        assertNotNull(captor.value.timestamp)
+        assertEquals(
+            mapOf(
+                "id" to "m1",
+                "senderId" to "u1",
+                "senderName" to "Ann",
+                "text" to "",
+                "timestamp" to FieldValue.serverTimestamp(),
+                "type" to "THROWN",
+                "itemName" to "Milk",
+                "itemImageUrl" to "http://i"),
+            captor.value)
       }
 
   @Test
