@@ -2,21 +2,15 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 
 const FIELDS = ["id", "householdId", "paidBy", "totalAmountCents", "shares"];
-const MAX_CENTS = 9_223_372_036_854_775_807n;
-const MAX_ID_BYTES = 1500;
+const MAX_EXPENSE_CENTS = 100_000_000n;
+const { HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE, isId } = require("./finance-common");
 const EXPENSES = "expenses";
 const OPERATIONS = "expenseSubmissions";
-
-function isId(value) {
-  return typeof value === "string" && value.trim().length > 0 &&
-    !value.includes("/") && value !== "." && value !== ".." &&
-    !/^__.*__$/.test(value) && Buffer.byteLength(value) <= MAX_ID_BYTES;
-}
 
 function cents(value, positive = false) {
   if (typeof value !== "string" || !/^(0|[1-9][0-9]{0,18})$/.test(value)) return null;
   const amount = BigInt(value);
-  return amount <= MAX_CENTS && (!positive || amount > 0n) ? amount : null;
+  return amount <= MAX_EXPENSE_CENTS && (!positive || amount > 0n) ? amount : null;
 }
 
 function parseExpense(request) {
@@ -52,15 +46,18 @@ async function recordExpense(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in to record an expense.");
   const expense = parseExpense(request);
   if (!expense) throw new HttpsError("invalid-argument", "Invalid expense.");
-  const household = db.collection("households").doc(expense.householdId);
+  if (expense.paidBy !== uid) {
+    throw new HttpsError("permission-denied", "Only the payer can record this expense.");
+  }
+  const household = db.collection(HOUSEHOLDS).doc(expense.householdId);
   const document = household.collection(EXPENSES).doc(expense.id);
   // Bind one submitter's stable operation to one household, including across scope switches.
   const operation = db.collection("users").doc(uid).collection(OPERATIONS).doc(expense.id);
-  const revision = household.collection("financeMetadata").doc("settlementRevision");
+  const revision = household.collection(FINANCE_METADATA).doc(SETTLEMENT_REVISION);
   const rejection = await db.runTransaction(async (transaction) => {
     try {
       const parent = (await transaction.get(household)).data();
-      if (parent?.type !== "SHARED" || !Array.isArray(parent.memberIds) ||
+      if (parent?.type !== SHARED_FRIDGE_TYPE || !Array.isArray(parent.memberIds) ||
           !parent.memberIds.includes(uid)) {
         throw new HttpsError("permission-denied", "Shared household membership is required.");
       }

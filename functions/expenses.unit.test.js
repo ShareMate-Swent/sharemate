@@ -24,7 +24,7 @@ function fixture() {
       return result;
     },
   };
-  const payload = { id: "operation", householdId: "home", paidBy: "payer",
+  const payload = { id: "operation", householdId: "home", paidBy: "author",
     totalAmountCents: "1000", shares: { author: "500", payer: "500" } };
   return { db, records, payload };
 }
@@ -40,15 +40,15 @@ test("records only the canonical ledger fields and returns the original wire pay
   const size = records.size;
   await recordExpense(db, "author", payload);
   assert.equal(records.size, size);
-  await assert.rejects(recordExpense(db, "author", { ...payload, paidBy: "author" }), { code: "already-exists" });
-  await assert.rejects(recordExpense(db, "payer", payload), { code: "already-exists" });
+  await assert.rejects(recordExpense(db, "author", { ...payload, paidBy: "payer" }), { code: "permission-denied" });
+  await assert.rejects(recordExpense(db, "payer", payload), { code: "permission-denied" });
 });
 
 test("rejects malformed payloads and does not write on validation failure", async () => {
   const { db, records, payload } = fixture();
   const cases = [null, [], {}, { ...payload, extra: "forged" },
     ...["", " ", ".", "..", "a/b", "__reserved__", "x".repeat(1501)].map((id) => ({ ...payload, id })),
-    ...[null, 1000, "0", "-1", "1.0", "01", "9223372036854775808"].map((totalAmountCents) =>
+    ...[null, 1000, "0", "-1", "1.0", "01", "100000001", "9223372036854775807", "9223372036854775808"].map((totalAmountCents) =>
       ({ ...payload, totalAmountCents })),
     ...[null, [], {}, { author: "999" }, { author: "1001" }, { author: "-1" },
       { author: 1000 }, { "bad/id": "1000" }, { author: "9223372036854775808" }].map((shares) =>
@@ -71,7 +71,7 @@ test("requires current membership on creation, replay and across households", as
   await assert.rejects(recordExpense(db, "author", { ...payload, householdId: "other" }), { code: "already-exists" });
   records.set("households/home", { type: "SHARED", memberIds: ["author"] });
   await recordExpense(db, "author", payload);
-  await assert.rejects(recordExpense(db, "author", { ...payload, id: "new" }), { code: "permission-denied" });
+  await assert.rejects(recordExpense(db, "author", { ...payload, id: "new", shares: { payer: "1000" } }), { code: "permission-denied" });
   for (const parent of [undefined, { type: "PRIVATE", memberIds: ["author"] },
     { type: "SHARED", memberIds: "author" }, { type: "SHARED", memberIds: ["payer"] }]) {
     records.set("households/home", parent);
@@ -79,16 +79,16 @@ test("requires current membership on creation, replay and across households", as
   }
 });
 
-test("preserves Long.MAX_VALUE and zero shares without floating point or prototype keys", async () => {
+test("preserves the business cap and zero shares without floating point or prototype keys", async () => {
   const { db, records, payload } = fixture();
-  const maximum = { ...payload, totalAmountCents: "9223372036854775807",
-    shares: { author: "9223372036854775807", payer: "0" } };
+  const maximum = { ...payload, totalAmountCents: "100000000",
+    shares: { author: "100000000", payer: "0" } };
   await recordExpense(db, "author", maximum);
-  assert.equal(records.get("households/home/expenses/operation").totalAmountCents, 9223372036854775807n);
+  assert.equal(records.get("households/home/expenses/operation").totalAmountCents, 100000000n);
   const special = { ...payload, id: "special", paidBy: "constructor", totalAmountCents: "1",
     shares: JSON.parse('{"constructor":"1"}') };
   records.set("households/home", { type: "SHARED", memberIds: ["author", "constructor"] });
-  await recordExpense(db, "author", special);
+  await recordExpense(db, "constructor", special);
   assert.equal(Object.getOwnPropertyDescriptor(records.get("households/home/expenses/special").shares,
     "constructor").value, 1n);
 });

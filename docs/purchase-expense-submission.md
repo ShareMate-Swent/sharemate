@@ -11,12 +11,11 @@ inventory submission, the ledger observer, balance calculation or settlement.
 The payload has exactly the existing `SharedExpense` fields: `id`, `householdId`,
 `paidBy`, `totalAmountCents`, `shares`. Total and share amounts cross the callable boundary
 as canonical unsigned decimal strings, then become Firestore signed 64-bit integers.
-Total is positive; shares are nonnegative, nonempty and sum exactly to the total.
+Total is positive and at most 100,000,000 cents (1,000,000 CHF); shares are nonnegative, nonempty and sum exactly to the total.
 No floating-point conversion or automatic allocation is performed by this endpoint.
 
 The authenticated submitter, selected payer and participants must be current members of
-the selected shared household on first creation. The submitter may select another member
-as payer. This records a member's declared purchase; it is not proof of an external payment.
+the selected shared household on first creation. The authenticated submitter must be the payer. This records a member's declared purchase; it is not proof of an external payment.
 The payer need not consume a share. Direct client writes to expenses remain denied.
 
 The expense is created at `households/{householdId}/expenses/{id}` with no extra fields,
@@ -61,3 +60,10 @@ introduced. `functions/expenses.test.js` exercises real callable authentication,
 transactions, authorization, retry conflicts and unchanged expense-write rules in the emulators.
 The existing `npm --prefix functions test` CI command discovers these tests automatically.
 The adapter JVM tests cover exact amounts, acknowledgements, retries and failure classification.
+
+Queue ownership remains an open integration dependency: no agreement by the #370 owner
+is asserted here. Do not call this remote writer directly from offline confirmation.
+Before enabling the purchase UI, #370 must persist the reviewed operation and expose
+queued/server-confirmed/rejected/unknown progress through the durable purchase journal.
+The per-expense cap limits input mistakes; it is not a mathematical bound on lifetime
+aggregate ledger balances.

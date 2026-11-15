@@ -10,10 +10,20 @@ interface ExpenseSubmissionRepository {
    * [ExpenseRejectedException] means this attempt was conclusively refused; an earlier attempt may
    * already have committed. Other failures (including cancellation or a lost/malformed response)
    * have uncertain outcomes: reconcile or retry the original payload, never mint a replacement ID.
-   * A current member may select another current member as payer; IDs do not grant authorization.
+   * The authenticated caller must be the payer; IDs do not grant authorization.
    */
   suspend fun recordExpense(expense: SharedExpense): SharedExpense
 }
 
 /** Definite rejection of this attempt, not proof that an earlier attempt did not commit. */
-class ExpenseRejectedException(cause: Throwable) : Exception("Expense rejected", cause)
+class ExpenseRejectedException(val reason: ExpenseRejectionReason, cause: Throwable) :
+    Exception("Expense rejected: $reason", cause)
+
+/** Recovery category independent of Firebase types. */
+enum class ExpenseRejectionReason {
+  Conflict,
+  PermissionDenied,
+  Invalid,
+  Unauthenticated,
+  FailedPrecondition,
+}

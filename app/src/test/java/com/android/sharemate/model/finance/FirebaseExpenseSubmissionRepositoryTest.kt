@@ -93,6 +93,15 @@ class FirebaseExpenseSubmissionRepositoryTest {
       if (code.name in rejected) {
         assertEquals(ExpenseRejectedException::class.java, failure.javaClass)
         assertSame(error, failure.cause)
+        val expected =
+            when (code.name) {
+              "ALREADY_EXISTS" -> ExpenseRejectionReason.Conflict
+              "PERMISSION_DENIED" -> ExpenseRejectionReason.PermissionDenied
+              "INVALID_ARGUMENT" -> ExpenseRejectionReason.Invalid
+              "UNAUTHENTICATED" -> ExpenseRejectionReason.Unauthenticated
+              else -> ExpenseRejectionReason.FailedPrecondition
+            }
+        assertEquals(expected, (failure as ExpenseRejectedException).reason)
       } else assertSame(error, failure)
     }
   }

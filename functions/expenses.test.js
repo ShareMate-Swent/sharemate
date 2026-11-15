@@ -26,7 +26,7 @@ async function account() {
 }
 
 function purchase(id, changes = {}) {
-  return { id, householdId, paidBy: payer.localId, totalAmountCents: "1000",
+  return { id, householdId, paidBy: author.localId, totalAmountCents: "1000",
     shares: { [author.localId]: "500", [payer.localId]: "500" }, ...changes };
 }
 
@@ -63,10 +63,11 @@ test("authorizes caller, payer and every participant using the selected househol
   });
   const attempts = [
     [purchase("denied"), null, "UNAUTHENTICATED"],
+    [purchase("denied", { paidBy: payer.localId }), author, "PERMISSION_DENIED"],
     [purchase("denied"), outsider, "PERMISSION_DENIED"],
     [purchase("denied", { paidBy: outsider.localId }), author, "PERMISSION_DENIED"],
     [purchase("denied", { shares: { [outsider.localId]: "1000" } }), author, "PERMISSION_DENIED"],
-    [purchase("denied", { householdId: "expense-other" }), author, "PERMISSION_DENIED"],
+    [purchase("denied", { householdId: "expense-other", shares: { [payer.localId]: "1000" } }), author, "PERMISSION_DENIED"],
     [purchase("denied", { householdId: "expense-private" }), author, "PERMISSION_DENIED"],
     [purchase("denied", { householdId: "expense-missing" }), author, "PERMISSION_DENIED"],
     [purchase("denied", { ownerId: author.localId }), outsider, "INVALID_ARGUMENT"],
@@ -80,7 +81,7 @@ test("authorizes caller, payer and every participant using the selected househol
 test("rejects malformed money, IDs and allocations without creating any expense", async () => {
   const attempts = [null, [], {},
     ...["", " ", ".", "..", "a/b", "__reserved__", "x".repeat(1501)].map((id) => purchase(id)),
-    ...[0, 1, null, "", "0", "-1", "1.5", "01", "9223372036854775808"].map((totalAmountCents) =>
+    ...[0, 1, null, "", "0", "-1", "1.5", "01", "100000001", "9223372036854775807", "9223372036854775808"].map((totalAmountCents) =>
       purchase("invalid", { totalAmountCents })),
     ...[null, [], {}, { [author.localId]: "999" }, { [author.localId]: "1001" },
       { [author.localId]: 1000 }, { [author.localId]: "-1" }, { "a/b": "1000" },
@@ -106,9 +107,8 @@ test("concurrent identical retries commit exactly one expense and preserve the l
     .get("lastExpenseId"), "retry");
   const reordered = purchase("retry", { shares: { [payer.localId]: "500", [author.localId]: "500" } });
   assert.deepEqual((await call(reordered)).result, reordered);
-  assert.equal((await call(payload, payer)).error?.status, "ALREADY_EXISTS");
+  assert.equal((await call(payload, payer)).error?.status, "PERMISSION_DENIED");
   for (const changes of [
-    { paidBy: author.localId },
     { totalAmountCents: "1001", shares: { [author.localId]: "501", [payer.localId]: "500" } },
     { shares: { [author.localId]: "1000" } },
   ]) assert.equal((await call(purchase("retry", changes))).error?.status, "ALREADY_EXISTS");
@@ -123,10 +123,10 @@ test("binds the submitter operation to one household, even with valid membership
   assert.deepEqual((await call(payload)).result, payload);
 });
 
-test("preserves 64-bit cents, accepts zero shares and lets payer consume no share", async () => {
-  for (const amount of ["1", "9223372036854775807"]) {
+test("preserves bounded exact cents, accepts zero shares and lets payer consume no share", async () => {
+  for (const amount of ["1", "100000000"]) {
     const payload = purchase(`amount-${amount}`, {
-      totalAmountCents: amount, shares: { [author.localId]: amount, [payer.localId]: "0" },
+      totalAmountCents: amount, shares: { [payer.localId]: amount, [author.localId]: "0" },
     });
     assert.deepEqual((await call(payload)).result, payload);
     assert.equal((await expenses.doc(payload.id).get()).get("totalAmountCents"), BigInt(amount));
@@ -152,7 +152,7 @@ test("rules permit member reads and deny direct expense and operation marker tam
 test("retains historical shares but revokes caller access before checking replay", async () => {
   await household.update({ memberIds: [author.localId] });
   assert.deepEqual((await call(purchase("retry"))).result, purchase("retry"));
-  assert.equal((await call(purchase("departed-payer"))).error?.status, "PERMISSION_DENIED");
+  assert.equal((await call(purchase("departed-participant"))).error?.status, "PERMISSION_DENIED");
   await household.update({ memberIds: [payer.localId] });
   assert.equal((await call(purchase("retry"))).error?.status, "PERMISSION_DENIED");
   assert.equal((await direct("retry", "GET", author)).status, 403);

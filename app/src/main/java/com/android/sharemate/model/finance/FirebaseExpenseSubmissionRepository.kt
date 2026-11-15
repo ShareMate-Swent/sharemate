@@ -26,7 +26,8 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
         try {
           functions.getHttpsCallable(FinanceFunctions.RECORD_EXPENSE).call(payload).await().data
         } catch (error: FirebaseFunctionsException) {
-          if (error.code in DEFINITIVE_REJECTIONS) throw ExpenseRejectedException(error)
+          val reason = FinanceCallablePolicy.rejectionReason(error.code)
+          if (reason != null) throw ExpenseRejectedException(reason, error)
           throw error
         }
     check(response == payload) { "Unexpected expense response" }
@@ -34,14 +35,7 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
   }
 
   companion object {
-    const val REGION = "europe-west6"
-    private val DEFINITIVE_REJECTIONS =
-        setOf(
-            FirebaseFunctionsException.Code.INVALID_ARGUMENT,
-            FirebaseFunctionsException.Code.PERMISSION_DENIED,
-            FirebaseFunctionsException.Code.UNAUTHENTICATED,
-            FirebaseFunctionsException.Code.FAILED_PRECONDITION,
-            FirebaseFunctionsException.Code.ALREADY_EXISTS,
-        )
+    /** Region hosting the financial callables. */
+    const val REGION = FinanceCallablePolicy.REGION
   }
 }
