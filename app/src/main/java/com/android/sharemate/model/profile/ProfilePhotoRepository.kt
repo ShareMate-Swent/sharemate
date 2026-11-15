@@ -9,14 +9,14 @@ import java.io.File
  * Failures are returned as [Result.failure]; coroutine cancellation is thrown. A cancelled upload
  * cancels the transfer, but an upload the server already committed is not undone.
  *
- * The photo is stored before the account photo URL is updated. If that later step fails or is
- * cancelled, Storage already holds the new photo while the account still has its previous URL, so
- * callers should offer a retry: uploading again writes the same path and finishes the update.
+ * Each upload is stored at a new path, and the previous photos are deleted only once the account
+ * photo URL points at the new one. So if the upload or the account update fails or is cancelled,
+ * the previous photo and its URL keep working.
  */
 interface ProfilePhotoRepository {
   /**
-   * Uploads [source] as the profile photo of the signed-in user, replacing any previous one, and
-   * sets the returned download URL as their account photo.
+   * Uploads [source] as the profile photo of the signed-in user, sets the returned download URL as
+   * their account photo, then deletes their previous photos.
    *
    * [source] belongs to the caller and is only read. JPEG/PNG signatures and the
    * [com.android.sharemate.model.image.PersonalPhotoRepository.MAX_BYTES] limit are checked before
@@ -31,21 +31,37 @@ interface ProfilePhotoRepository {
   suspend fun upload(expectedUid: String, source: File): Result<String>
 }
 
-/** Storage paths of profile photos. Each user has a single photo, so a new upload replaces it. */
+/**
+ * Storage paths of profile photos. Each upload gets its own path under the user's folder, so the
+ * previous photo stays readable until the account points at the new one.
+ */
 internal object ProfilePhotoPaths {
   /** Top-level Storage folder that holds one folder per user. */
   const val USERS = "users"
 
-  /** File name of the profile photo inside a user's folder. */
-  const val AVATAR = "avatar.jpg"
+  /** Folder inside a user's folder that holds their profile photos. */
+  const val AVATARS = "avatars"
 
   /**
-   * Returns the Storage path of [uid]'s profile photo.
+   * Returns the Storage folder that holds [uid]'s profile photos.
    *
    * @throws IllegalArgumentException if [uid] is blank, `.`, `..` or contains a `/`.
    */
-  fun avatar(uid: String): String {
-    require(uid.isNotBlank() && '/' !in uid && uid != "." && uid != "..") { "Invalid user id" }
-    return "$USERS/$uid/$AVATAR"
+  fun folder(uid: String): String {
+    require(isSegment(uid)) { "Invalid user id" }
+    return "$USERS/$uid/$AVATARS"
   }
+
+  /**
+   * Returns the Storage path of [uid]'s profile photo [photoId].
+   *
+   * @throws IllegalArgumentException if [uid] or [photoId] is blank, `.`, `..` or contains a `/`.
+   */
+  fun avatar(uid: String, photoId: String): String {
+    require(isSegment(photoId)) { "Invalid photo id" }
+    return "${folder(uid)}/$photoId"
+  }
+
+  private fun isSegment(value: String): Boolean =
+      value.isNotBlank() && '/' !in value && value != "." && value != ".."
 }

@@ -23,8 +23,9 @@ import org.junit.runner.RunWith
 
 /**
  * Real SDK and `storage.rules` tests for profile photos, against the Auth and Storage emulators:
- * only the signed-in owner can write a valid photo to `users/{uid}/avatar.jpg` or read it, and the
- * repository saves the download URL as the Auth photo URL.
+ * only the signed-in owner can create a valid photo under `users/{uid}/avatars/`, read, list or
+ * delete it, nobody can overwrite one, and the repository saves the download URL as the Auth photo
+ * URL before deleting the previous photo.
  */
 @RunWith(AndroidJUnit4::class)
 class ProfilePhotoStorageEmulatorTest {
@@ -84,85 +85,92 @@ class ProfilePhotoStorageEmulatorTest {
     val url = upload(png)
 
     assertTrue(url.isNotBlank())
-    val stored = avatarOf(owner)
+    val stored = photosOf(owner).single()
     assertEquals("image/png", stored.metadata.await().contentType)
     assertArrayEquals(png, stored.getBytes(MAX_READ).await())
     assertEquals(url, reloadedPhotoUrl())
   }
 
   @Test
-  fun secondUploadReplacesContentAndUpdatesAccountPhotoUrl() = runBlocking {
+  fun secondUploadBecomesTheAccountPhotoAndDeletesThePreviousOne() = runBlocking {
     val first = upload(png)
     val second = upload(jpeg)
 
-    val stored = avatarOf(owner)
+    assertNotEquals(first, second)
+    assertEquals(second, reloadedPhotoUrl())
+    // Only the new photo is left, so the previous one was deleted after the account update.
+    val stored = photosOf(owner).single()
     assertArrayEquals(jpeg, stored.getBytes(MAX_READ).await())
     assertEquals("image/jpeg", stored.metadata.await().contentType)
-    assertEquals(second, reloadedPhotoUrl())
-    // An overwrite gets a new download token, so image caches keyed on the URL reload the photo.
-    // It also means that until a failed account update is retried, the old URL may stop working.
-    assertNotEquals(first, second)
   }
 
   @Test
-  fun ownerCanWriteValidPhotoDirectly() = runBlocking {
-    avatarOf(owner).putBytes(png, metadata("image/png")).await()
-    assertArrayEquals(png, avatarOf(owner).getBytes(MAX_READ).await())
+  fun ownerCanWriteListAndDeleteTheirOwnPhotos() = runBlocking {
+    val photo = photoOf(owner, "direct")
+    photo.putBytes(png, metadata("image/png")).await()
+    assertEquals(listOf("direct"), photosOf(owner).map { it.name })
+
+    photo.delete().await()
+    assertTrue(photosOf(owner).isEmpty())
   }
 
   @Test
-  fun anotherUserCannotCreateOrReplaceOwnersAvatar() = runBlocking {
+  fun ownerCannotOverwriteAPhotoOrWriteOtherPathsUnderUsers() = runBlocking {
+    upload(png)
+    val stored = photosOf(owner).single()
+
+    denied(runCatching { stored.putBytes(jpeg, metadata("image/jpeg")).await() })
+    for (path in listOf("users/$owner/other.jpg", "users/$owner/avatar.jpg")) {
+      denied(
+          runCatching {
+            storage.reference.child(path).putBytes(png, metadata("image/png")).await()
+          })
+    }
+    assertArrayEquals(png, stored.getBytes(MAX_READ).await())
+  }
+
+  @Test
+  fun anotherUserCannotCreateReplaceOrDeleteOwnersPhotos() = runBlocking {
     FirebaseEmulator.signInAs("avatar-intruder")
-    denied(runCatching { avatarOf(owner).putBytes(png, metadata("image/png")).await() })
+    denied(runCatching { photoOf(owner, "forged").putBytes(png, metadata("image/png")).await() })
 
     FirebaseEmulator.signInAs("avatar-owner")
     upload(png)
+    val name = photosOf(owner).single().name
     FirebaseEmulator.signInAs("avatar-intruder")
-    denied(runCatching { avatarOf(owner).putBytes(jpeg, metadata("image/jpeg")).await() })
+    denied(runCatching { photoOf(owner, name).putBytes(jpeg, metadata("image/jpeg")).await() })
+    denied(runCatching { photoOf(owner, name).delete().await() })
 
     FirebaseEmulator.signInAs("avatar-owner")
-    assertArrayEquals(png, avatarOf(owner).getBytes(MAX_READ).await())
+    assertArrayEquals(png, photoOf(owner, name).getBytes(MAX_READ).await())
   }
 
   @Test
-  fun signedOutUserCannotWriteAvatar() = runBlocking {
+  fun anotherUserCannotReadOrListOwnersPhotos() = runBlocking {
+    upload(png)
+    val name = photosOf(owner).single().name
+    FirebaseEmulator.signInAs("avatar-reader")
+    denied(runCatching { photoOf(owner, name).downloadUrl.await() })
+    denied(runCatching { photoOf(owner, name).getBytes(MAX_READ).await() })
+    denied(runCatching { photosOf(owner) })
+  }
+
+  @Test
+  fun signedOutUserCannotWriteAPhoto() = runBlocking {
     FirebaseEmulator.signOut()
-    denied(runCatching { avatarOf(owner).putBytes(png, metadata("image/png")).await() })
+    denied(runCatching { photoOf(owner, "anonymous").putBytes(png, metadata("image/png")).await() })
   }
 
   @Test
   fun nonImageContentTypeIsRejected() = runBlocking {
-    denied(runCatching { avatarOf(owner).putBytes(png, metadata("text/plain")).await() })
+    denied(runCatching { photoOf(owner, "text").putBytes(png, metadata("text/plain")).await() })
   }
 
   @Test
   fun emptyOrOversizedPhotoIsRejected() = runBlocking {
     for (bytes in listOf(byteArrayOf(), png.copyOf(PersonalPhotoRepository.MAX_BYTES + 1))) {
-      denied(runCatching { avatarOf(owner).putBytes(bytes, metadata("image/png")).await() })
+      denied(runCatching { photoOf(owner, "size").putBytes(bytes, metadata("image/png")).await() })
     }
-  }
-
-  @Test
-  fun ownerCannotDeleteListOrWriteOtherPathsUnderUsers() = runBlocking {
-    upload(png)
-    denied(runCatching { avatarOf(owner).delete().await() })
-    denied(runCatching { storage.reference.child("users/$owner").listAll().await() })
-    denied(
-        runCatching {
-          storage.reference
-              .child("users/$owner/other.jpg")
-              .putBytes(png, metadata("image/png"))
-              .await()
-        })
-    assertArrayEquals(png, avatarOf(owner).getBytes(MAX_READ).await())
-  }
-
-  @Test
-  fun anotherUserCannotReadOwnersAvatar() = runBlocking {
-    upload(png)
-    FirebaseEmulator.signInAs("avatar-reader")
-    denied(runCatching { avatarOf(owner).downloadUrl.await() })
-    denied(runCatching { avatarOf(owner).getBytes(MAX_READ).await() })
   }
 
   @Test
@@ -172,9 +180,7 @@ class ProfilePhotoStorageEmulatorTest {
 
     assertTrue("$result", result.exceptionOrNull() is IllegalStateException)
     assertNotEquals(owner, other)
-    val missing =
-        runCatching { avatarOf(other).metadata.await() }.exceptionOrNull() as StorageException
-    assertEquals(StorageException.ERROR_OBJECT_NOT_FOUND, missing.errorCode)
+    assertTrue(photosOf(other).isEmpty())
     assertNull(reloadedPhotoUrl())
   }
 
@@ -185,7 +191,11 @@ class ProfilePhotoStorageEmulatorTest {
     }
   }
 
-  private fun avatarOf(uid: String) = storage.reference.child(ProfilePhotoPaths.avatar(uid))
+  private fun photoOf(uid: String, photoId: String) =
+      storage.reference.child(ProfilePhotoPaths.avatar(uid, photoId))
+
+  private suspend fun photosOf(uid: String) =
+      storage.reference.child(ProfilePhotoPaths.folder(uid)).listAll().await().items
 
   private suspend fun reloadedPhotoUrl(): String? {
     val user = checkNotNull(auth.currentUser)
