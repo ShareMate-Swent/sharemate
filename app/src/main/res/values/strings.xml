@@ -259,4 +259,10 @@
     <string name="inventory_save_success">Items saved to the shared fridge.</string>
     <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
     <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
+    <string name="incident_photo_add">Add incident photo</string>
+    <string name="incident_photo_replace">Replace photo</string>
+    <string name="incident_photo_remove">Remove photo</string>
+    <string name="incident_photo_preview">Incident photo preview</string>
+    <string name="incident_photo_sources">Take a photo or choose an image for this incident.</string>
+    <string name="incident_photo_invalid">Photo could not be attached. Choose a JPEG or PNG image up to 5 MB, or try taking a photo again.</string>
 </resources>
