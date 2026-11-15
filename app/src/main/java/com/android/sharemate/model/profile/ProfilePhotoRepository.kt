@@ -2,6 +2,8 @@
 package com.android.sharemate.model.profile
 
 import java.io.File
+import java.net.URI
+import java.net.URLDecoder
 
 /**
  * Stores the signed-in user's profile photo and makes it their account photo.
@@ -9,14 +11,15 @@ import java.io.File
  * Failures are returned as [Result.failure]; coroutine cancellation is thrown. A cancelled upload
  * cancels the transfer, but an upload the server already committed is not undone.
  *
- * Each upload is stored at a new path, and the previous photos are deleted only once the account
- * photo URL points at the new one. So if the upload or the account update fails or is cancelled,
- * the previous photo and its URL keep working.
+ * Each upload is stored at a new path, and the previous account photo is deleted only once the
+ * account photo URL points at the new one. So if the upload or the account update fails or is
+ * cancelled, the previous photo and its URL keep working. Only that previous photo is deleted, so
+ * overlapping uploads never delete each other's photo; photos they leave unused are kept.
  */
 interface ProfilePhotoRepository {
   /**
    * Uploads [source] as the profile photo of the signed-in user, sets the returned download URL as
-   * their account photo, then deletes their previous photos.
+   * their account photo, then deletes their previous account photo.
    *
    * [source] belongs to the caller and is only read. JPEG/PNG signatures and the
    * [com.android.sharemate.model.image.PersonalPhotoRepository.MAX_BYTES] limit are checked before
@@ -61,6 +64,23 @@ internal object ProfilePhotoPaths {
     require(isSegment(photoId)) { "Invalid photo id" }
     return "${folder(uid)}/$photoId"
   }
+
+  /**
+   * Returns the object path in [bucket] that the Storage download URL [url] points to, or `null` if
+   * [url] is not a download URL (`.../v0/b/{bucket}/o/{path}`) of that bucket, such as a Google
+   * account photo. The host is not checked, so emulator URLs work too.
+   */
+  fun objectPath(url: String, bucket: String): String? {
+    val segments = runCatching { URI(url).rawPath }.getOrNull()?.split('/') ?: return null
+    if (segments.size != DOWNLOAD_URL_SEGMENTS) return null
+    val (empty, version, b, urlBucket, o) = segments
+    if (empty.isNotEmpty() || version != "v0" || b != "b" || o != "o") return null
+    if (URLDecoder.decode(urlBucket, UTF_8) != bucket) return null
+    return URLDecoder.decode(segments.last().replace("+", "%2B"), UTF_8).ifEmpty { null }
+  }
+
+  private const val DOWNLOAD_URL_SEGMENTS = 6
+  private const val UTF_8 = "UTF-8"
 
   private fun isSegment(value: String): Boolean =
       value.isNotBlank() && '/' !in value && value != "." && value != ".."

@@ -19,7 +19,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Stores profile photos in Firebase Storage at a new [ProfilePhotoPaths.avatar] for each upload,
- * saves their download URL as the Firebase Auth photo URL, then deletes the user's older photos.
+ * saves their download URL as the Firebase Auth photo URL, then deletes the photo the account
+ * pointed to before.
  */
 class FirebaseProfilePhotoRepository
 private constructor(
@@ -52,35 +53,41 @@ private constructor(
     val contentType = PhotoBytes.contentType(bytes)
     val user = auth.currentUser ?: throw IllegalStateException(NO_SIGNED_IN_USER_MESSAGE)
     if (user.uid != expectedUid) throw IllegalStateException(SIGNED_IN_USER_CHANGED_MESSAGE)
+    val previousUrl = user.photoUrl?.toString()
     val reference = storage.reference.child(ProfilePhotoPaths.avatar(user.uid, newPhotoId()))
     val metadata = StorageMetadata.Builder().setContentType(contentType).build()
     currentCoroutineContext().ensureActive()
     reference.putBytes(bytes, metadata).awaitPhotoTransfer()
     // Until the profile update succeeds, the previous photo is left untouched. A failure here
-    // leaves
-    // the new object unused; it is not deleted, because a failed profile update may still have
-    // reached the server. The next successful upload removes it. Unlike UploadTask, these SDK Tasks
-    // have no cancel operation.
+    // leaves the new object unused; it is not deleted, because a failed profile update may still
+    // have reached the server. Unlike UploadTask, these SDK Tasks have no cancel operation.
     val url = reference.downloadUrl.await()
     user.updateProfile(UserProfileChangeRequest.Builder().setPhotoUri(url).build()).await()
-    deleteOlderPhotos(user.uid, reference.name)
+    deletePreviousPhoto(user.uid, previousUrl, reference.name)
     url.toString()
   }
 
   /**
-   * Deletes [uid]'s photos other than [currentName], ignoring failures: the new photo is already
+   * Deletes the photo at [previousUrl], the account photo before this upload, if it is one of
+   * [uid]'s profile photos other than [currentName]. Failures are ignored: the new photo is already
    * the account photo, so a photo left behind only uses storage. Runs even if the caller is
    * cancelled.
+   *
+   * Only that photo is deleted, never the rest of the folder: if uploads overlap (for example on
+   * two devices), another upload's photo may have become the account photo in the meantime. Photos
+   * left unused by overlapping or failed uploads are kept.
    */
-  private suspend fun deleteOlderPhotos(uid: String, currentName: String) =
+  private suspend fun deletePreviousPhoto(uid: String, previousUrl: String?, currentName: String) =
       withContext(NonCancellable) {
         try {
-          val photos = storage.reference.child(ProfilePhotoPaths.folder(uid)).listAll().await()
-          photos.items
-              .filter { it.name != currentName }
-              .forEach { runCatching { it.delete().await() } }
+          val root = storage.reference
+          val path = ProfilePhotoPaths.objectPath(previousUrl ?: return@withContext, root.bucket)
+          val name = path?.substringAfterLast('/') ?: return@withContext
+          if (name != currentName && path == ProfilePhotoPaths.avatar(uid, name)) {
+            root.child(path).delete().await()
+          }
         } catch (error: Exception) {
-          // Listing failed: the older photos stay until the next successful upload.
+          // Not one of this user's photos, or the delete failed: nothing else to do.
         }
       }
 

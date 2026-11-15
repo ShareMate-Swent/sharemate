@@ -25,7 +25,7 @@ import org.junit.runner.RunWith
  * Real SDK and `storage.rules` tests for profile photos, against the Auth and Storage emulators:
  * only the signed-in owner can create a valid photo under `users/{uid}/avatars/`, read, list or
  * delete it, nobody can overwrite one, and the repository saves the download URL as the Auth photo
- * URL before deleting the previous photo.
+ * URL before deleting the previous account photo, and no other photo.
  */
 @RunWith(AndroidJUnit4::class)
 class ProfilePhotoStorageEmulatorTest {
@@ -102,6 +102,21 @@ class ProfilePhotoStorageEmulatorTest {
     val stored = photosOf(owner).single()
     assertArrayEquals(jpeg, stored.getBytes(MAX_READ).await())
     assertEquals("image/jpeg", stored.metadata.await().contentType)
+  }
+
+  @Test
+  fun uploadKeepsAnotherUploadsPhotoThatTheAccountDoesNotPointAt() = runBlocking {
+    val first = upload(png)
+    // Another device's upload has stored its photo but not saved it to the account yet.
+    photoOf(owner, "other-device").putBytes(png, metadata("image/png")).await()
+
+    val second = upload(jpeg)
+
+    assertEquals(second, reloadedPhotoUrl())
+    val left = photosOf(owner)
+    assertEquals(2, left.size)
+    assertTrue(left.any { it.name == "other-device" })
+    assertTrue(left.none { it.downloadUrl.await().toString() == first })
   }
 
   @Test

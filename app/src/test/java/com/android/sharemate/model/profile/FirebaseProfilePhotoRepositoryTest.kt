@@ -8,7 +8,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.ListResult
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
 import com.google.firebase.storage.UploadTask
@@ -32,9 +31,9 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Unit tests for [FirebaseProfilePhotoRepository] with mocked Firebase Storage and Auth: the new
- * storage path and content type, the Auth photo URL update, deletion of older photos only after
- * that update, validation before any transfer, the signed-in user check, failure propagation
- * between steps and cancellation of the upload.
+ * storage path and content type, the Auth photo URL update, deletion of only the previous account
+ * photo and only after that update, validation before any transfer, the signed-in user check,
+ * failure propagation between steps and cancellation of the upload.
  */
 @RunWith(RobolectricTestRunner::class)
 class FirebaseProfilePhotoRepositoryTest {
@@ -45,12 +44,10 @@ class FirebaseProfilePhotoRepositoryTest {
   private val root = mock(StorageReference::class.java)
   private val upload = mock(UploadTask::class.java)
   private val references = mutableMapOf<String, StorageReference>()
-  private val stored = mutableListOf<StorageReference>()
   private var nextId = 0
   private val repository = FirebaseProfilePhotoRepository(storage, auth) { "photo-${++nextId}" }
-  private val folder = reference(FOLDER)
   private val remote = reference("$FOLDER/photo-1")
-  private val previous = reference("$FOLDER/previous").also { stored += it }
+  private val previous = reference("$FOLDER/previous")
   private val png = byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10, 42)
   private val jpeg = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 42)
 
@@ -60,27 +57,22 @@ class FirebaseProfilePhotoRepositoryTest {
     `when`(root.child(anyString())).thenAnswer { reference(it.getArgument(0)) }
     `when`(upload.isComplete).thenReturn(true)
     `when`(upload.result).thenReturn(mock(UploadTask.TaskSnapshot::class.java))
-    `when`(folder.listAll()).thenAnswer {
-      val listing = mock(ListResult::class.java)
-      `when`(listing.items).thenReturn(stored.toList())
-      Tasks.forResult(listing)
-    }
+    `when`(root.bucket).thenReturn(BUCKET)
     `when`(auth.currentUser).thenReturn(user)
     `when`(user.uid).thenReturn(UID)
+    `when`(user.photoUrl).thenReturn(Uri.parse(downloadUrl("$FOLDER/previous")))
     `when`(user.updateProfile(any(UserProfileChangeRequest::class.java)))
         .thenReturn(Tasks.forResult<Void>(null))
   }
 
-  /** Returns the mock at [path]; uploading to it adds it to the folder listing. */
+  /** Returns the mock Storage reference at [path]. */
   private fun reference(path: String): StorageReference =
       references.getOrPut(path) {
         mock(StorageReference::class.java).also { reference ->
           `when`(reference.name).thenReturn(path.substringAfterLast('/'))
+          `when`(reference.path).thenReturn("/$path")
           `when`(reference.putBytes(any(ByteArray::class.java), any(StorageMetadata::class.java)))
-              .thenAnswer {
-                stored += reference
-                upload
-              }
+              .thenReturn(upload)
           `when`(reference.downloadUrl).thenReturn(Tasks.forResult(Uri.parse(URL)))
           `when`(reference.delete()).thenReturn(Tasks.forResult<Void>(null))
         }
@@ -112,23 +104,55 @@ class FirebaseProfilePhotoRepositoryTest {
   }
 
   @Test
-  fun olderPhotosAreDeletedOnlyAfterTheAccountPointsAtTheNewOne() = runTest {
+  fun previousAccountPhotoIsDeletedOnlyAfterTheAccountPointsAtTheNewOne() = runTest {
     repository.upload(UID, photo(png)).getOrThrow()
 
-    val order = inOrder(user, folder, previous)
+    val order = inOrder(user, previous)
     order.verify(user).updateProfile(any(UserProfileChangeRequest::class.java))
-    order.verify(folder).listAll()
     order.verify(previous).delete()
     verify(remote, never()).delete()
+  }
+
+  @Test
+  fun overlappingUploadsNeverDeleteEachOthersPhoto() = runTest {
+    // Two uploads (e.g. from two devices) both start while the account still points at "previous".
+    // Each one may delete only that photo, never the other upload's photo, whichever saves last.
+    assertEquals(URL, repository.upload(UID, photo(png)).getOrThrow())
+    assertEquals(URL, repository.upload(UID, photo(jpeg)).getOrThrow())
+
+    verify(previous, times(2)).delete()
+    verify(remote, never()).delete()
+    verify(reference("$FOLDER/photo-2"), never()).delete()
+    verify(root, never()).child(FOLDER)
+  }
+
+  @Test
+  fun previousPhotoOutsideTheUsersAvatarsIsNeverDeleted() = runTest {
+    `when`(user.photoUrl).thenReturn(null)
+    assertEquals(URL, repository.upload(UID, photo(png)).getOrThrow())
+
+    // A Google account photo and another bucket's URL are not this app's photos; the others are
+    // not this user's avatars.
+    val foreign =
+        listOf(
+            "https://lh3.googleusercontent.com/a/photo",
+            downloadUrl("$FOLDER/previous", bucket = "other-bucket"),
+            downloadUrl("users/other/avatars/photo"),
+            downloadUrl("users/$UID/other.jpg"))
+    for (url in foreign) {
+      `when`(user.photoUrl).thenReturn(Uri.parse(url))
+      assertEquals(url, URL, repository.upload(UID, photo(png)).getOrThrow())
+    }
+    verify(reference("users/other/avatars/photo"), never()).delete()
+    verify(reference("users/$UID/other.jpg"), never()).delete()
+    verify(previous, never()).delete()
   }
 
   @Test
   fun failedCleanupStillReturnsTheNewPhoto() = runTest {
     `when`(previous.delete()).thenReturn(Tasks.forException(IOException("delete failed")))
     assertEquals(URL, repository.upload(UID, photo(png)).getOrThrow())
-
-    `when`(folder.listAll()).thenReturn(Tasks.forException(IOException("list failed")))
-    assertEquals(URL, repository.upload(UID, photo(png)).getOrThrow())
+    verify(previous).delete()
   }
 
   @Test
@@ -213,9 +237,10 @@ class FirebaseProfilePhotoRepositoryTest {
 
     assertEquals(URL, repository.upload(UID, source).getOrThrow())
     verify(root).child("$FOLDER/photo-2")
-    // The retry's success removes both the previous photo and the unused first attempt.
+    // The retry's success removes the previous account photo. The unused first attempt is kept:
+    // it cannot be told apart from another device's upload that may now be the account photo.
     verify(previous).delete()
-    verify(remote).delete()
+    verify(remote, never()).delete()
     verify(reference("$FOLDER/photo-2"), never()).delete()
   }
 
@@ -241,6 +266,24 @@ class FirebaseProfilePhotoRepositoryTest {
   }
 
   @Test
+  fun objectPathIsReadFromDownloadUrlsOfTheBucketOnly() {
+    val emulator =
+        "http://10.0.2.2:9199/v0/b/$BUCKET/o/users%2F$UID%2Favatars%2Fp?alt=media&token=t"
+    assertEquals("$FOLDER/p", ProfilePhotoPaths.objectPath(emulator, BUCKET))
+    assertEquals("$FOLDER/a+b", ProfilePhotoPaths.objectPath(downloadUrl("$FOLDER/a+b"), BUCKET))
+    for (url in
+        listOf(
+            downloadUrl("$FOLDER/p", bucket = "other-bucket"),
+            "https://lh3.googleusercontent.com/a/photo",
+            "https://host/v1/b/$BUCKET/o/p",
+            "https://host/v0/b/$BUCKET/o/",
+            "https://host/prefix/v0/b/$BUCKET/o/p",
+            "not a url %")) {
+      assertNull(url, ProfilePhotoPaths.objectPath(url, BUCKET))
+    }
+  }
+
+  @Test
   fun avatarPathsRejectInvalidSegments() {
     assertEquals("users/$UID/avatars", ProfilePhotoPaths.folder(UID))
     assertEquals("users/$UID/avatars/p", ProfilePhotoPaths.avatar(UID, "p"))
@@ -251,13 +294,20 @@ class FirebaseProfilePhotoRepositoryTest {
   }
 
   private fun verifyPreviousPhotoKept() {
-    verify(folder, never()).listAll()
     verify(previous, never()).delete()
   }
 
   private companion object {
     const val UID = "uid"
     const val FOLDER = "users/$UID/avatars"
+    const val BUCKET = "bucket"
+
+    /** Returns a Firebase Storage download URL of [path] in [bucket]. */
+    fun downloadUrl(path: String, bucket: String = BUCKET): String =
+        "https://firebasestorage.googleapis.com/v0/b/$bucket/o/" +
+            java.net.URLEncoder.encode(path, "UTF-8") +
+            "?alt=media&token=t"
+
     const val URL = "https://storage.example/users/uid/avatars/photo-1?alt=media&token=t"
   }
 }
