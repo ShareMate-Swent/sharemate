@@ -26,7 +26,8 @@ class FirebaseSettlementRepository(private val functions: FirebaseFunctions) :
         try {
           functions.getHttpsCallable(FinanceFunctions.RECORD_SETTLEMENT).call(payload).await().data
         } catch (error: FirebaseFunctionsException) {
-          if (error.code in DEFINITIVE_REJECTIONS) throw SettlementRejectedException()
+          if (FinanceCallablePolicy.rejectionReason(error.code) != null)
+              throw SettlementRejectedException()
           throw error
         }
     check(response == payload) { "Unexpected settlement response" }
@@ -34,14 +35,7 @@ class FirebaseSettlementRepository(private val functions: FirebaseFunctions) :
   }
 
   companion object {
-    const val REGION = "europe-west6"
-    private val DEFINITIVE_REJECTIONS =
-        setOf(
-            FirebaseFunctionsException.Code.INVALID_ARGUMENT,
-            FirebaseFunctionsException.Code.PERMISSION_DENIED,
-            FirebaseFunctionsException.Code.UNAUTHENTICATED,
-            FirebaseFunctionsException.Code.FAILED_PRECONDITION,
-            FirebaseFunctionsException.Code.ALREADY_EXISTS,
-        )
+    /** Region hosting the financial callables. */
+    const val REGION = FinanceCallablePolicy.REGION
   }
 }
