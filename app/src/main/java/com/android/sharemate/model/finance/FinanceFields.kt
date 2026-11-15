@@ -1,7 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.finance
 
-/** Shared wire names for ledger documents and settlement callable payloads. */
+/** Shared wire names for ledger documents and financial callable payloads. */
 internal object FinanceFields {
   const val ID = "id"
   const val HOUSEHOLD_ID = "householdId"
@@ -14,5 +14,6 @@ internal object FinanceFields {
 }
 
 internal object FinanceFunctions {
+  const val RECORD_EXPENSE = "recordExpense"
   const val RECORD_SETTLEMENT = "recordSettlement"
 }

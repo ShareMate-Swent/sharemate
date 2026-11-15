@@ -1,29 +1,19 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { HttpsError } = require("firebase-functions/v2/https");
 
-const HOUSEHOLDS = "households";
-const FINANCE_METADATA = "financeMetadata";
-const SETTLEMENT_REVISION = "settlementRevision";
-const SHARED_FRIDGE_TYPE = "SHARED";
-const MAX_DOCUMENT_ID_BYTES = 1500;
+const { HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE,
+  MAX_CENTS, isId } = require("./finance-common");
 const INVALID_SETTLEMENT_CODE = "invalid-argument";
 const INVALID_SETTLEMENT_MESSAGE = "Invalid settlement.";
 const EXPENSES = "expenses";
 const SETTLEMENTS = "settlements";
 const settlementFields = ["id", "householdId", "payerId", "recipientId", "amountCents"];
-const MAX_CENTS = 9_223_372_036_854_775_807n;
 const expenseFields = ["id", "householdId", "paidBy", "totalAmountCents", "shares"];
 
 function hasFields(value, fields) {
   return value && typeof value === "object" && !Array.isArray(value) &&
     Object.keys(value).length === fields.length &&
     fields.every((field) => Object.hasOwn(value, field));
-}
-
-function isId(value) {
-  return typeof value === "string" && value.trim().length > 0 &&
-    !value.includes("/") && value !== "." && value !== ".." &&
-    !/^__.*__$/.test(value) && Buffer.byteLength(value) <= MAX_DOCUMENT_ID_BYTES;
 }
 
 function validSettlement(value) {
