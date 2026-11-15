@@ -41,10 +41,12 @@ class ExpenseSubmissionEmulatorTest {
       assertEquals(expense, repository.recordExpense(expense))
     }
   }
+
   private fun seedHousehold(payer: String) {
     val project = FirebaseApp.getInstance().options.projectId
     val connection =
-        URL("http://${FirebaseEmulator.HOST}:${FirebaseEmulator.FIRESTORE_PORT}/v1/projects/$project/databases/(default)/documents/households/expense-sdk")
+        URL(
+                "http://${FirebaseEmulator.HOST}:${FirebaseEmulator.FIRESTORE_PORT}/v1/projects/$project/databases/(default)/documents/households/expense-sdk")
             .openConnection() as HttpURLConnection
     try {
       connection.connectTimeout = 10_000
@@ -53,12 +55,12 @@ class ExpenseSubmissionEmulatorTest {
       connection.setRequestProperty("Authorization", "Bearer owner")
       connection.setRequestProperty("Content-Type", "application/json")
       connection.doOutput = true
-      val body = """{"fields":{"type":{"stringValue":"SHARED"},"memberIds":{"arrayValue":{"values":[{"stringValue":"$payer"},{"stringValue":"bob"}]}}}}"""
+      val body =
+          """{"fields":{"type":{"stringValue":"SHARED"},"memberIds":{"arrayValue":{"values":[{"stringValue":"$payer"},{"stringValue":"bob"}]}}}}"""
       connection.outputStream.use { it.write(body.toByteArray()) }
       assertEquals(200, connection.responseCode)
     } finally {
       connection.disconnect()
     }
   }
-
 }
