@@ -72,6 +72,8 @@ import com.android.sharemate.model.profile.FirebaseProfilePhotoRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.push.FirebasePushTokenRepository
+import com.android.sharemate.model.push.PushTokenRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -81,6 +83,8 @@ import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
+import com.android.sharemate.notifications.push.DeviceId
+import com.android.sharemate.notifications.push.PushTokenRegistrar
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
@@ -110,7 +114,9 @@ import com.android.sharemate.ui.theme.SampleAppTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 open class MainActivity : ComponentActivity() {
   private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
@@ -145,6 +151,13 @@ open class MainActivity : ComponentActivity() {
   }
   private val expirationPreferencesProvider: ExpirationPreferencesProvider by lazy {
     ExpirationPreferencesProvider(expirationPreferencesRepository)
+  }
+  private val pushTokenRepository: PushTokenRepository by lazy {
+    FirebasePushTokenRepository(FirebaseFirestore.getInstance())
+  }
+  private val pushTokenRegistrar: PushTokenRegistrar by lazy {
+    PushTokenRegistrar(
+        authRepository, pushTokenRepository, DeviceId.getOrCreate(applicationContext))
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -212,6 +225,11 @@ open class MainActivity : ComponentActivity() {
               LaunchedEffect(Unit) {
                 if (NotificationPermission.shouldRequest(this@MainActivity)) {
                   notificationPermissionLauncher.launch(NotificationPermission.PERMISSION)
+                }
+              }
+              LaunchedEffect(session.uid) {
+                pushTokenRegistrar.registerCurrentToken {
+                  FirebaseMessaging.getInstance().token.await()
                 }
               }
               DisposableEffect(navController) {

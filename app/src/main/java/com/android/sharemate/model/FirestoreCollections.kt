@@ -21,6 +21,17 @@ object FirestoreCollections {
   /** Sub-collection of a household document. */
   const val MESSAGES = "messages"
   const val MEMBER_NAMES = "memberNames"
+  /** Sub-collection of a user document; see [PushTokenFields]. */
+  const val PUSH_TOKENS = "pushTokens"
+}
+
+/** Fields of a push token document, one per device registered for push notifications. */
+object PushTokenFields {
+  const val TOKEN = "token"
+  const val PLATFORM = "platform"
+  const val UPDATED_AT = "updatedAt"
+
+  const val PLATFORM_ANDROID = "ANDROID"
 }
 
 /** Fields of a user document holding the expiry notification preferences. */

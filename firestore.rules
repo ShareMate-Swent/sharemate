@@ -2,6 +2,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -68,6 +69,26 @@ service cloud.firestore {
       allow create, update: if signedIn()
           && request.auth.uid == userId
           && hasValidExpirationPreferences(request.resource.data);
+    }
+
+    // One push token per device, keyed by a client-generated device id. A device's token is
+    // replaced in place on refresh rather than accumulating one document per refresh.
+    match /users/{userId}/pushTokens/{deviceId} {
+      function isValidPushToken(data) {
+        let maxTokenLength = 4096;
+        let fields = ['token', 'platform', 'updatedAt'];
+        return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+            && data.token is string && data.token.size() > 0
+            && data.token.size() <= maxTokenLength
+            && data.platform == 'ANDROID'
+            && data.updatedAt == request.time;
+      }
+
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn()
+          && request.auth.uid == userId
+          && isValidPushToken(request.resource.data);
+      allow delete, list: if false;
     }
 
     // Private receipt handoff, not an expense ledger or trusted financial proof. The immutable

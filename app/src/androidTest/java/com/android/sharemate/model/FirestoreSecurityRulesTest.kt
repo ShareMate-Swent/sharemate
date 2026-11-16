@@ -11,6 +11,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.ItemQuantity
+import com.android.sharemate.model.push.FirebasePushTokenRepository
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -156,6 +157,54 @@ class FirestoreSecurityRulesTest {
     FirebaseEmulator.signInAs("alice")
 
     assertDenied(expiryPreferencesWrite(otherId, mapOf(UserExpirationFields.SOON_DAYS to 7)))
+  }
+
+  @Test
+  fun pushTokenRepositorySavesAndOverwritesTheDeviceToken() = runBlocking {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val repository = FirebasePushTokenRepository(firestore)
+
+    repository.saveToken(userId, "device-1", "token-a")
+    repository.saveToken(userId, "device-1", "token-b")
+
+    val saved = Tasks.await(pushTokenReference(userId, "device-1").get(Source.SERVER))
+    assertEquals("token-b", saved.getString(PushTokenFields.TOKEN))
+    assertEquals(PushTokenFields.PLATFORM_ANDROID, saved.getString(PushTokenFields.PLATFORM))
+    assertNotNull(saved.getTimestamp(PushTokenFields.UPDATED_AT))
+  }
+
+  @Test
+  fun userCannotSaveInvalidPushTokenData() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val refused =
+        listOf(
+            validPushTokenData() - PushTokenFields.PLATFORM,
+            validPushTokenData() + (PushTokenFields.PLATFORM to "IOS"),
+            validPushTokenData() + ("extra" to 1),
+            validPushTokenData() + (PushTokenFields.TOKEN to ""),
+            validPushTokenData() + (PushTokenFields.TOKEN to 123),
+            validPushTokenData() + (PushTokenFields.UPDATED_AT to Date()))
+
+    refused.forEach { assertDenied(pushTokenReference(userId, "device-1").set(it)) }
+  }
+
+  @Test
+  fun userCannotReadOrWriteAnotherUsersPushToken() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    Tasks.await(pushTokenReference(userId, "device-1").set(validPushTokenData()))
+    FirebaseEmulator.signInAs("outsider")
+
+    assertDenied(pushTokenReference(userId, "device-1").get())
+    assertDenied(pushTokenReference(userId, "device-1").set(validPushTokenData()))
+    assertDenied(pushTokenReference(userId, "device-1").delete())
+  }
+
+  @Test
+  fun ownerCannotDeleteAPushTokenEither() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    Tasks.await(pushTokenReference(userId, "device-1").set(validPushTokenData()))
+
+    assertDenied(pushTokenReference(userId, "device-1").delete())
   }
 
   @Test
@@ -1022,6 +1071,15 @@ class FirestoreSecurityRulesTest {
 
   private fun userReference(userId: String): DocumentReference =
       firestore.collection(FirestoreCollections.USERS).document(userId)
+
+  private fun validPushTokenData(token: String = "token-abc"): Map<String, Any> =
+      mapOf(
+          PushTokenFields.TOKEN to token,
+          PushTokenFields.PLATFORM to PushTokenFields.PLATFORM_ANDROID,
+          PushTokenFields.UPDATED_AT to FieldValue.serverTimestamp())
+
+  private fun pushTokenReference(userId: String, deviceId: String): DocumentReference =
+      userReference(userId).collection(FirestoreCollections.PUSH_TOKENS).document(deviceId)
 
   private fun householdReference(householdId: String): DocumentReference =
       firestore.collection(FirestoreCollections.HOUSEHOLDS).document(householdId)
