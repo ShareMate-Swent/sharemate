@@ -40,6 +40,11 @@ class ChatScreenTest {
     }
   }
 
+  private fun disambiguators(messages: List<Message>): Map<String, Int> =
+      senderDisambiguators(messages, "Member") { name, number ->
+        composeTestRule.activity.getString(R.string.chat_sender_identity, name, number)
+      }
+
   @Test
   fun showsLoading() {
     show(ChatUiState())
@@ -67,6 +72,89 @@ class ChatScreenTest {
         1, composeTestRule.onAllNodesWithTag(ChatTestTags.OWN_MESSAGE).fetchSemanticsNodes().size)
     assertEquals(
         1, composeTestRule.onAllNodesWithTag(ChatTestTags.OTHER_MESSAGE).fetchSemanticsNodes().size)
+  }
+
+  @Test
+  fun identicalNamesShowDifferentMemberNumbersWithoutExposingIds() {
+    val firstId = "Xk3abcdefghijABCDEFGHIJKLMNO"
+    val secondId = "Xk3abcdefghijABCDEFGHIJKLMNP"
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", firstId, "Sam", "First"),
+                    Message("2", secondId, "Sam", "Second"))))
+    composeTestRule.onNodeWithText("Sam · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 2").assertIsDisplayed()
+    composeTestRule.onNodeWithText(firstId, substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText(secondId, substring = true).assertDoesNotExist()
+  }
+
+  @Test
+  fun literalGeneratedLabelDoesNotCollideWithAnotherSender() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "a", "Sam", "First"),
+                    Message("2", "b", "Sam", "Second"),
+                    Message("3", "c", "Sam · Member 1", "Third"))))
+    composeTestRule.onNodeWithText("Sam · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 2").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 1 · Member 3").assertIsDisplayed()
+  }
+
+  @Test
+  fun generatedLabelCollisionsAreResolvedTransitively() {
+    val messages =
+        listOf(
+            Message("1", "a", "Sam", "First"),
+            Message("2", "b", "Sam", "Second"),
+            Message("3", "c", "Sam · Member 1", "Third"),
+            Message("4", "d", "Sam · Member 1 · Member 3", "Fourth"))
+    assertEquals(mapOf("a" to 1, "b" to 2, "c" to 3, "d" to 4), disambiguators(messages))
+  }
+
+  @Test
+  fun historicalNamesDoNotConflictWithTheSameAccount() {
+    assertEquals(
+        emptyMap<String, Int>(),
+        disambiguators(
+            listOf(
+                Message("1", "a", "Sam", "First"),
+                Message("2", "a", "Alex", "Second"),
+                Message("3", "a", "Sam", "Third"))))
+  }
+
+  @Test
+  fun disambiguatesHistoricalNamesAndOwnMessages() {
+    val messages =
+        listOf(
+            Message("1", "me", "Sam", "Own"),
+            Message("2", "other", " sam ", "Other"),
+            Message("3", "other", "Alex", "Renamed"))
+    assertEquals(mapOf("me" to 1, "other" to 2), disambiguators(messages))
+    show(ChatUiState(isLoading = false, messages = messages))
+    composeTestRule.onNodeWithText("sam · Member 2").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Alex · Member 2").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 1").assertDoesNotExist()
+  }
+
+  @Test
+  fun blankAndEmailNamesUseDefaultAndAreDisambiguated() {
+    val messages =
+        listOf(
+            Message("1", "a", "", "First"),
+            Message("2", "b", "person@example.com", "Second"),
+            Message("3", "c", "Member", "Third"))
+    assertEquals(mapOf("a" to 1, "b" to 2, "c" to 3), disambiguators(messages))
+    show(ChatUiState(isLoading = false, messages = messages))
+    composeTestRule.onNodeWithText("Member · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Member · Member 2").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Member · Member 3").assertIsDisplayed()
+    composeTestRule.onNodeWithText("person@example.com", substring = true).assertDoesNotExist()
   }
 
   @Test
@@ -102,7 +190,8 @@ class ChatScreenTest {
         ChatUiState(
             isLoading = false, messages = listOf(Message("1", "me", "Alex", "Hello", Date(0)))))
     composeTestRule
-        .onNodeWithText(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(0)))
+        .onNodeWithText(
+            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
         .assertIsDisplayed()
   }
 
