@@ -60,11 +60,13 @@ data class HouseholdMembersUiState(
  * opening the list never sends a request to a server another member chose.
  *
  * @param currentUserId The signed-in user, marked as "You" and listed first.
+ * @param photoBucket Storage bucket of uploaded profile photos; null shows Google photos only.
  */
 class HouseholdMembersViewModel(
     private val profileRepository: UserProfileRepository,
     private val householdId: String,
     private val currentUserId: String,
+    private val photoBucket: String? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(HouseholdMembersUiState())
   val state = mutableState.asStateFlow()
@@ -105,7 +107,7 @@ class HouseholdMembersViewModel(
                 uid = profile.uid,
                 displayName = profile.displayName,
                 email = profile.email,
-                photoUrl = supportedPhotoUrl(profile.photoUrl),
+                photoUrl = supportedPhotoUrl(profile.photoUrl, profile.uid, photoBucket),
                 isCurrentUser = profile.uid == currentUserId,
             )
           }
