@@ -20,9 +20,12 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.*
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -30,8 +33,12 @@ import com.android.sharemate.ui.barcode.BarcodePhotoFlow
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.barcode.findActivity
 import com.android.sharemate.ui.finance.BalancesTestTags
+import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.staging.PurchasePreview
+import com.android.sharemate.ui.staging.PurchaseReview
+import com.android.sharemate.ui.staging.PurchaseReviewContent
 import com.android.sharemate.ui.staging.StagingScreen
 import com.android.sharemate.ui.staging.StagingTestTags
 import com.android.sharemate.ui.staging.StagingViewModel
@@ -53,7 +60,9 @@ fun ReceiptsScreen(
     householdId: String,
     sharedHousehold: Boolean,
     showBalances: Boolean = false,
-    onOpenBalances: () -> Unit = {}
+    onOpenBalances: () -> Unit = {},
+    expenseRepository: ExpenseSubmissionRepository? = null,
+    profileRepository: UserProfileRepository? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
@@ -77,10 +86,43 @@ fun ReceiptsScreen(
                       AndroidInventorySubmissionStore(context),
                       userId,
                       householdId,
-                      sharedHousehold)
+                      sharedHousehold,
+                      expenseRepository)
                 }
               })
-  ReceiptScanFlow(photo, reader, save, sharedHousehold, showBalances, onOpenBalances)
+  val memberModel: HouseholdMembersViewModel? =
+      if (sharedHousehold && profileRepository != null) {
+        viewModel(
+            key = "receipt-members_${userId}_$householdId",
+            factory =
+                viewModelFactory {
+                  initializer { HouseholdMembersViewModel(profileRepository, householdId, userId) }
+                })
+      } else null
+  val memberState = memberModel?.state?.collectAsStateWithLifecycle()?.value
+  val members =
+      if (memberState == null || memberState.isLoading || memberState.hasError) emptyMap()
+      else memberState.members.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }
+  Column {
+    if (memberState?.isLoading == true) Text(stringResource(R.string.purchase_members_loading))
+    if (memberState?.hasError == true) {
+      Text(stringResource(R.string.household_members_error))
+      Button(
+          onClick = { memberModel.retry() },
+          modifier = Modifier.testTag("purchase_members_retry")) {
+            Text(stringResource(R.string.household_retry))
+          }
+    }
+    ReceiptScanFlow(
+        photo,
+        reader,
+        save,
+        sharedHousehold,
+        showBalances,
+        onOpenBalances,
+        if (sharedHousehold && expenseRepository != null) PurchaseReview.forUser(userId, members)
+        else null)
+  }
 }
 
 @Composable
@@ -101,6 +143,7 @@ internal fun ReceiptScanFlow(
     sharedHousehold: Boolean = true,
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
+    purchaseReview: PurchaseReview? = null,
 ) {
   val nav = rememberNavController()
   val activity = LocalContext.current.findActivity()
@@ -191,13 +234,19 @@ internal fun ReceiptScanFlow(
       val staging: StagingViewModel =
           viewModel(
               viewModelStoreOwner = entry,
-              key = "$REVIEW_MODEL_KEY:${saveState?.submission?.id ?: UNSUBMITTED_REVIEW}",
+              key =
+                  "$REVIEW_MODEL_KEY:${saveState?.submission?.id ?: UNSUBMITTED_REVIEW}:${saveState?.submission?.expense != null}",
               factory =
                   viewModelFactory {
                     initializer {
-                      StagingViewModel(saveState?.submission?.items ?: scan.currentItems())
+                      StagingViewModel(
+                          saveState?.submission?.items ?: scan.currentItems(),
+                          purchaseReview.takeIf { saveState?.submission?.expense == null })
                     }
                   })
+      LaunchedEffect(staging, purchaseReview?.members) {
+        purchaseReview?.let { staging.updatePurchaseMembers(it.members) }
+      }
       StagingScreen(
           staging,
           onConfirm = { confirmed ->
@@ -208,7 +257,28 @@ internal fun ReceiptScanFlow(
           },
           onBack = { nav.popBackStack() },
           actionsEnabled = sharedHousehold && saveState?.canConfirm != false,
+          onConfirmPurchase =
+              purchaseReview?.let { review ->
+                { purchase ->
+                  if (save?.confirmPurchase(purchase, review.members) == true) {
+                    scan.confirm(purchase.items)
+                    nav.popBackStack()
+                  }
+                }
+              },
           statusContent = {
+            saveState?.submission?.expense?.let { expense ->
+              val names =
+                  (expense.shares.keys + expense.paidBy).associateWith {
+                    purchaseReview?.members?.get(it) ?: it
+                  }
+              PurchaseReviewContent(
+                  PurchasePreview(expense.totalAmountCents, expense.shares),
+                  PurchaseReview(names, expense.paidBy, expense.shares.keys),
+                  {},
+                  {},
+                  enabled = false)
+            }
             InventorySaveFeedback(saveState, sharedHousehold, onRetry = { save?.retry() })
           })
     }
@@ -230,6 +300,13 @@ internal fun InventorySaveFeedback(
   val message =
       when {
         !sharedHousehold -> R.string.inventory_save_shared_only
+        state?.submission?.expense != null && state.submission.inventoryConfirmed ->
+            when (state.submission.expenseProgress) {
+              ExpenseProgress.CONFIRMED -> R.string.purchase_save_success
+              ExpenseProgress.REJECTED -> R.string.purchase_save_rejected
+              ExpenseProgress.UNKNOWN -> R.string.purchase_save_unknown
+              ExpenseProgress.QUEUED -> R.string.purchase_save_pending
+            }
         state == null || state.phase == InventorySavePhase.READY -> null
         state.phase == InventorySavePhase.LOADING -> R.string.inventory_save_loading
         state.phase == InventorySavePhase.SUBMITTING -> R.string.inventory_save_submitting
@@ -245,7 +322,10 @@ internal fun InventorySaveFeedback(
   }
   if (state?.phase == InventorySavePhase.FAILED &&
       state.submission != null &&
-      !state.invalidInput || state?.phase == InventorySavePhase.RECOVERY_FAILED) {
+      !state.invalidInput ||
+      state?.phase == InventorySavePhase.RECOVERY_FAILED ||
+      state?.submission?.expenseProgress in
+          setOf(ExpenseProgress.UNKNOWN, ExpenseProgress.REJECTED)) {
     Button(onClick = onRetry, modifier = Modifier.testTag(InventorySaveTestTags.RETRY)) {
       Text(stringResource(R.string.household_retry))
     }

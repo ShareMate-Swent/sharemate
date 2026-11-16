@@ -6,6 +6,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PurchaseReviewTest {
+  @Test
+  fun firstMemberSnapshotDefaultsPayerWithoutResettingLaterSelections() {
+    val vm = StagingViewModel(emptyList(), PurchaseReview.forUser("a", emptyMap()))
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertEquals("a", vm.state.value.purchase?.paidBy)
+    vm.selectPayer("b")
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertEquals("b", vm.state.value.purchase?.paidBy)
+    vm.updatePurchaseMembers(emptyMap())
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertNull(vm.state.value.purchase?.paidBy)
+    assertTrue(vm.state.value.purchase?.membershipChanged == true)
+  }
+
   private val members = mapOf("c" to "Chris", "a" to "Alex", "b" to "Blair")
 
   private fun item(cents: Long? = 1000L, id: String = "row") =

@@ -22,6 +22,52 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun purchaseProgressSurvivesRestartAndLegacyRowsStayInventoryOnly() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "owner", 1000, mapOf("owner" to 500L, "bob" to 500L))
+    for (progress in com.android.sharemate.model.item.ExpenseProgress.entries) {
+      val purchase =
+          InventorySubmission(
+              id,
+              "owner",
+              "home",
+              rows,
+              expense = expense,
+              inventoryConfirmed = true,
+              expenseProgress = progress)
+      store.save(purchase)
+      assertEquals(purchase, AndroidInventorySubmissionStore(app, dispatcher).load("owner", "home"))
+    }
+    store.save(InventorySubmission(id, "owner", "home", rows))
+    assertNull(store.load("owner", "home")?.expense)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val key = JSONArray(listOf("owner", "home")).toString()
+    val json = JSONObject(checkNotNull(preferences.getString(key, null)))
+    assertFalse(json.has(Fields.EXPENSE))
+    val purchase = InventorySubmission(id, "owner", "home", rows, expense = expense)
+    store.save(purchase)
+    val original = checkNotNull(preferences.getString(key, null))
+    for (mutate in
+        listOf<(JSONObject) -> Unit>(
+            { it.put(Fields.INVENTORY_CONFIRMED, "true") },
+            { it.put(Fields.EXPENSE_PROGRESS, "invalid") },
+            { it.getJSONObject(Fields.EXPENSE).put("totalAmountCents", "1000") },
+            { it.getJSONObject(Fields.EXPENSE).put("paidBy", "other") },
+            { it.getJSONObject(Fields.EXPENSE).getJSONObject("shares").put("bob", 1.5) })) {
+      val corrupt = JSONObject(original).also(mutate)
+      preferences.edit().putString(key, corrupt.toString()).commit()
+      assertTrue(runCatching { store.load("owner", "home") }.isFailure)
+    }
+    preferences.edit().clear().commit()
+  }
+
+  @Test
   fun recreatedStoreRestoresExactPayloadAndSeparatesUserAndHouseholdScopes() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)

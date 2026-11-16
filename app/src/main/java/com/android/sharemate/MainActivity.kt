@@ -55,6 +55,7 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
 import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
@@ -156,6 +157,10 @@ open class MainActivity : ComponentActivity() {
               FirebaseFunctions.getInstance(FirebaseSettlementRepository.REGION)))
 
   private val financeRepository by lazy { createHouseholdFinanceRepository() }
+  private val expenseRepository by lazy {
+    FirebaseExpenseSubmissionRepository(
+        FirebaseFunctions.getInstance(FirebaseExpenseSubmissionRepository.REGION))
+  }
 
   /** Creates the repository that uploads the photo picked in the post-sign-up step. */
   protected open fun createProfilePhotoRepository(): ProfilePhotoRepository =
@@ -322,7 +327,9 @@ open class MainActivity : ComponentActivity() {
                               household.type ==
                                   com.android.sharemate.model.household.FridgeType.SHARED,
                               showBalances = household.canViewBalances(session.uid),
-                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) })
+                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
+                              expenseRepository = expenseRepository,
+                              profileRepository = profileRepository)
                         }
                       }
                   composable(BALANCES_ROUTE) {

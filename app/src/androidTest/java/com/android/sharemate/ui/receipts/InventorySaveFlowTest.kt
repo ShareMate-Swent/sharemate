@@ -8,7 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
@@ -19,8 +21,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.profile.UserProfile
+import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.InventorySubmissionStore
@@ -28,6 +35,7 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
@@ -45,6 +53,109 @@ import org.junit.runner.RunWith
 class InventorySaveFlowTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val owner = ViewModelStore()
+
+  @Test
+  fun recoveredDraftKeepsInventoryAvailableAndDefaultsPayerAfterLoading() {
+    val review = mutableStateOf(PurchaseReview.forUser("owner", emptyMap()))
+    showPurchase(
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)) {
+          review.value
+        }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.runOnIdle {
+      review.value = PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob"))
+    }
+    compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
+  }
+
+  @Test
+  fun retainedPurchaseDisplaysImmutableSplitAndFinancialStatus() {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val expense = SharedExpense(id, "home", "owner", 1000, mapOf("owner" to 500L, "bob" to 500L))
+    showPurchase(
+        InventorySubmission(
+            id, "owner", "home", listOf(StagedItem("milk", "Milk", 2, 1000)), expense = expense)) {
+          PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob"))
+        }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose
+        .onNodeWithTag("staging_participant_bob")
+        .performScrollTo()
+        .assertIsOn()
+        .assertIsNotEnabled()
+    compose.onNodeWithTag("staging_share_bob").assertIsDisplayed()
+    compose.onNodeWithTag("staging_purchase_error").assertDoesNotExist()
+    val screenshot = compose.onRoot().captureToImage().asAndroidBitmap()
+    File(compose.activity.getExternalFilesDir(null), "purchase-recovery.png").outputStream().use {
+      screenshot.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it)
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.purchase_save_success))
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun memberListenerFailureOffersWorkingRetry() {
+    var attempts = 0
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              kotlinx.coroutines.flow.flow<List<UserProfile>> {
+                if (attempts++ == 0) error("offline")
+                emit(listOf(UserProfile("owner", displayName = "Alice")))
+              }
+        }
+    val expenses =
+        object : ExpenseSubmissionRepository {
+          override suspend fun recordExpense(expense: SharedExpense) =
+              error("No submission expected")
+        }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "member-retry-owner",
+            "member-retry-home",
+            true,
+            expenseRepository = expenses,
+            profileRepository = profiles)
+      }
+    }
+    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+    compose.runOnIdle { assertEquals(2, attempts) }
+  }
+
+  private fun showPurchase(submission: InventorySubmission, review: () -> PurchaseReview) {
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = submission
+
+          override suspend fun save(submission: InventorySubmission) = Unit
+        }
+    lateinit var save: InventorySaveViewModel
+    compose.runOnIdle {
+      save = InventorySaveViewModel(ControlledItems(), store, "owner", "home")
+      owner.put("save", save)
+    }
+    val photo =
+        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    owner.put("photo", photo)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptScanFlow(photo, ReceiptReader { error("No scan") }, save, purchaseReview = review())
+      }
+    }
+  }
 
   @After
   fun tearDown() {

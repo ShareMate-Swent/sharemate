@@ -2,6 +2,9 @@
 package com.android.sharemate.model.staging
 
 import android.content.Context
+import com.android.sharemate.model.finance.FinanceFields
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import kotlinx.coroutines.CoroutineDispatcher
@@ -60,7 +63,23 @@ class AndroidInventorySubmissionStore(
                         (quantity as Number).toInt(),
                         (price as? Number)?.toLong())
                   },
-                  draft)
+                  draft,
+                  if (json.has(Fields.EXPENSE))
+                      json.getJSONObject(Fields.EXPENSE).let { expense ->
+                        val shares = expense.getJSONObject(FinanceFields.SHARES)
+                        SharedExpense(
+                            json.requiredString(Fields.ID),
+                            json.requiredString(Fields.HOUSEHOLD),
+                            expense.requiredString(FinanceFields.PAID_BY),
+                            expense.requiredLong(FinanceFields.TOTAL_AMOUNT_CENTS),
+                            shares.keys().asSequence().associateWith { shares.requiredLong(it) })
+                      }
+                  else null,
+                  if (json.has(Fields.EXPENSE)) json.get(Fields.INVENTORY_CONFIRMED) as Boolean
+                  else false,
+                  if (json.has(Fields.EXPENSE))
+                      ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))
+                  else ExpenseProgress.QUEUED)
               .also { require(it.ownerId == ownerId && it.householdId == householdId) }
         }
       }
@@ -83,6 +102,17 @@ class AndroidInventorySubmissionStore(
                               .put(Fields.QUANTITY, row.quantity)
                               .put(Fields.PRICE, row.priceCents ?: JSONObject.NULL)
                         }))
+        submission.expense?.let { expense ->
+          json
+              .put(
+                  Fields.EXPENSE,
+                  JSONObject()
+                      .put(FinanceFields.PAID_BY, expense.paidBy)
+                      .put(FinanceFields.TOTAL_AMOUNT_CENTS, expense.totalAmountCents)
+                      .put(FinanceFields.SHARES, JSONObject(expense.shares)))
+              .put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
+              .put(Fields.EXPENSE_PROGRESS, submission.expenseProgress.name)
+        }
         check(
             preferences
                 .edit()
@@ -97,6 +127,12 @@ class AndroidInventorySubmissionStore(
 
   private fun JSONObject.requiredString(field: String): String =
       get(field) as? String ?: error("Invalid submission field")
+
+  private fun JSONObject.requiredLong(field: String): Long {
+    val value = get(field)
+    require(value is Int || value is Long)
+    return (value as Number).toLong()
+  }
 
   private companion object {
     const val FILE = "inventory-submissions"
