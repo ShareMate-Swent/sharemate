@@ -143,11 +143,7 @@ class ChatScreenTest {
         ChatUiState(
             isLoading = false,
             messages =
-                listOf(
-                    Message(
-                        senderName = "",
-                        type = MessageType.EATEN,
-                        itemName = "Eggs"))))
+                listOf(Message(senderName = "", type = MessageType.EATEN, itemName = "Eggs"))))
 
     composeTestRule.onNodeWithText("Member").assertIsDisplayed()
   }
