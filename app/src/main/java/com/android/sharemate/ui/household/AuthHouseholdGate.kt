@@ -16,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -37,13 +38,19 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
+import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.ui.auth.AuthGate
 import com.android.sharemate.ui.auth.AuthViewModel
+import com.android.sharemate.ui.profile.ProfilePhotoStepScreen
+import com.android.sharemate.ui.profile.ProfilePhotoViewModel
 
 /**
- * Gives each signed-in user an isolated household flow, cleared when their session ends.
+ * Gives each signed-in user an isolated household flow, cleared when their session ends. A user who
+ * just signed up by email first sees the optional profile photo step.
  *
+ * @param profilePhotoRepository Uploads the photo picked in the profile photo step.
  * @param content The application, shown once the user belongs to a household. It receives that
  *   session, household and a callback to invoke when membership may have changed (e.g. after
  *   leaving), so the gate looks it up again and shows onboarding if needed.
@@ -54,6 +61,7 @@ fun AuthHouseholdGate(
     authRepository: AuthRepository,
     householdRepository: HouseholdRepository,
     profileRepository: UserProfileRepository,
+    profilePhotoRepository: ProfilePhotoRepository,
     googleTokenProvider: suspend () -> String?,
     modifier: Modifier = Modifier,
     content:
@@ -67,7 +75,8 @@ fun AuthHouseholdGate(
               key = "household_flow_${session.uid}",
               factory = viewModelFactory { initializer { HouseholdFlowStore() } },
           )
-      val activity = LocalContext.current.findActivity()
+      val context = LocalContext.current
+      val activity = context.findActivity()
       DisposableEffect(owner, activity) {
         onDispose { if (activity?.isChangingConfigurations != true) owner.viewModelStore.clear() }
       }
@@ -78,6 +87,17 @@ fun AuthHouseholdGate(
             CreateHouseholdViewModel(householdRepository, authRepository, createSavedStateHandle())
           }
           initializer { JoinHouseholdViewModel(householdRepository, authRepository) }
+          initializer {
+            ProfilePhotoViewModel(
+                profilePhotoRepository,
+                AndroidPersonalPhotoFiles(context.applicationContext),
+                session.uid)
+          }
+        }
+        // Decided once per session; the navigation back stack then keeps the current screen.
+        val startDestination = rememberSaveable {
+          if (authViewModel.state.value.profilePhotoStepUid == session.uid) HouseholdRoutes.PHOTO
+          else HouseholdRoutes.GATE
         }
         val gateViewModel: HouseholdGateViewModel = viewModel(factory = factory)
         val state by gateViewModel.state.collectAsStateWithLifecycle()
@@ -89,9 +109,21 @@ fun AuthHouseholdGate(
         }
         NavHost(
             navController = navController,
-            startDestination = HouseholdRoutes.GATE,
+            startDestination = startDestination,
             modifier = Modifier.fillMaxSize(),
         ) {
+          // Inside the NavHost, so the photo ViewModels get the entry's saved state.
+          composable(HouseholdRoutes.PHOTO) {
+            ProfilePhotoStepScreen(
+                viewModel = viewModel(factory = factory),
+                onDone = {
+                  authViewModel.finishProfilePhotoStep()
+                  navController.navigate(HouseholdRoutes.GATE) {
+                    popUpTo(HouseholdRoutes.PHOTO) { inclusive = true }
+                  }
+                },
+            )
+          }
           composable(HouseholdRoutes.GATE) {
             Column(Modifier.fillMaxSize()) {
               Box(Modifier.weight(1f)) {
@@ -159,4 +191,5 @@ internal object HouseholdRoutes {
   const val GATE = "household_gate"
   const val CREATE = "household_create"
   const val JOIN = "household_join"
+  const val PHOTO = "profile_photo"
 }

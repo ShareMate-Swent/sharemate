@@ -68,7 +68,9 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.profile.FirebaseProfilePhotoRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
+import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
@@ -155,6 +157,12 @@ open class MainActivity : ComponentActivity() {
 
   private val financeRepository by lazy { createHouseholdFinanceRepository() }
 
+  /** Creates the repository that uploads the photo picked in the post-sign-up step. */
+  protected open fun createProfilePhotoRepository(): ProfilePhotoRepository =
+      FirebaseProfilePhotoRepository.create()
+
+  private val profilePhotoRepository by lazy { createProfilePhotoRepository() }
+
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
 
@@ -186,6 +194,7 @@ open class MainActivity : ComponentActivity() {
             authRepository,
             householdRepository,
             profileRepository,
+            profilePhotoRepository,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
