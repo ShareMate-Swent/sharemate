@@ -23,7 +23,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Checks which actions the profile photo step offers in each state, that they reach their
- * callbacks, and that system back skips the step, also while uploading.
+ * callbacks, that a short screen scrolls to all of them, and that system back skips the step, also
+ * while uploading.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w411dp-h891dp")
@@ -97,6 +98,22 @@ class ProfilePhotoStepScreenTest {
     setContent()
     node(ProfilePhotoStepTestTags.ERROR).assertTextEquals(text(R.string.personal_photo_invalid))
     node(ProfilePhotoStepTestTags.SAVE).assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "w640dp-h320dp")
+  fun shortScreenScrollsToEveryAction() {
+    state = ProfilePhotoUiState(photo = File("picked.jpg"), error = ProfilePhotoError.UPLOAD_FAILED)
+    setContent()
+    node(ProfilePhotoStepTestTags.SKIP).assertIsNotDisplayed()
+    for (tag in
+        listOf(
+            ProfilePhotoStepTestTags.ADD_PHOTO,
+            ProfilePhotoStepTestTags.RETRY,
+            ProfilePhotoStepTestTags.SKIP)) {
+      node(tag).performScrollTo().assertIsDisplayed().performClick()
+    }
+    assertEquals(listOf("add", "save", "skip"), calls)
   }
 
   @Test
