@@ -138,6 +138,19 @@ class ChatScreenTest {
   }
 
   @Test
+  fun showsDefaultSenderNameWhenActivitySenderIsBlank() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message(
+                        "1", "other", "", "", type = MessageType.EATEN, itemName = "Eggs"))))
+
+    composeTestRule.onNodeWithText("Member").assertIsDisplayed()
+  }
+
+  @Test
   fun loadErrorHidesEmptyState() {
     show(ChatUiState(isLoading = false, error = ChatError.LOAD_FAILED))
     composeTestRule.onNodeWithTag(ChatTestTags.EMPTY).assertDoesNotExist()
