@@ -286,6 +286,21 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun activitySendCancellationDoesNotFailStatusChange() = runTest {
+    repository.emitItems(listOf(milk))
+    chatRepository.failure = CancellationException("Chat cancelled")
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(1, chatRepository.attempts.size)
+  }
+
+  @Test
   fun olderStatusRejectionPreservesNewerStateDraftAndErrorIdentity() = runTest {
     repository.emitItems(listOf(milk))
     val first = CompletableDeferred<Result<Unit>>()

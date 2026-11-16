@@ -384,12 +384,7 @@ class FridgeViewModel(
   private suspend fun postActivity(item: Item, status: ItemStatus) {
     val repository = chatRepository ?: return
     if (fridgeType != FridgeType.SHARED || item.sharing != ItemSharing.SHARED) return
-    val type =
-        when (status) {
-          ItemStatus.EATEN -> MessageType.EATEN
-          ItemStatus.DISCARDED -> MessageType.THROWN
-          ItemStatus.ACTIVE -> return
-        }
+    val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
     try {
       if (repository.sendActivity(householdId, userId, activitySenderName, type, item.name) ==
           null) {
