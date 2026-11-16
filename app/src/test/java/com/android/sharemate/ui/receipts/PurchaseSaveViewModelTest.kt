@@ -81,6 +81,56 @@ class PurchaseSaveViewModelTest {
   private val expenses = Expenses()
 
   @Test
+  fun unknownOutcomeBackoffCapsAtOneMinuteAndManualRetryWakesIt() = runTest {
+    expenses.failure = IOException("response lost")
+    val vm = submit()
+    confirmInventory()
+    var calls = 1
+    for (delay in listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L)) {
+      advanceTimeBy(delay - 1)
+      runCurrent()
+      assertEquals(calls, expenses.calls.size)
+      advanceTimeBy(1)
+      runCurrent()
+      assertEquals(++calls, expenses.calls.size)
+    }
+    val immutable = expenses.calls.first()
+    assertTrue(expenses.calls.all { it == immutable })
+    expenses.failure = null
+    expenses.result.complete(Unit)
+    vm.retry()
+    runCurrent()
+    assertEquals(++calls, expenses.calls.size)
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    vm.retry()
+    runCurrent()
+    assertEquals(calls, expenses.calls.size)
+    assertEquals(1, inventory.calls.size)
+  }
+
+  @Test
+  fun pendingInventoryRetryWaitsAndMissingInventoryRetriesTheSamePurchase() = runTest {
+    val vm = submit()
+    val retained = inventory.calls.single()
+    vm.retry()
+    runCurrent()
+    assertEquals(listOf(retained), inventory.calls)
+    assertTrue(expenses.calls.isEmpty())
+    inventory.status.value = InventorySubmissionStatus.MISSING
+    runCurrent()
+    assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
+    inventory.status.value = InventorySubmissionStatus.PENDING
+    vm.retry()
+    runCurrent()
+    assertEquals(listOf(retained, retained), inventory.calls)
+    confirmInventory()
+    expenses.result.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(retained.expense), expenses.calls)
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+  }
+
+  @Test
   fun retryCannotOvertakeAnInFlightJournalCommit() = runTest {
     expenses.failure = IOException("response lost")
     val vm = submit()

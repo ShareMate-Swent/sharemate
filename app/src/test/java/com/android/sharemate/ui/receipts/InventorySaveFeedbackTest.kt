@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.staging.StagedItem
 import org.junit.Assert.assertEquals
@@ -24,6 +26,48 @@ class InventorySaveFeedbackTest {
           "owner",
           "home",
           listOf(StagedItem("milk", "Milk", 2, 480)))
+
+  @Test
+  fun financialProgressShowsItsMessageAndOnlyUncertainOrRejectedPurchasesCanRetry() {
+    val expense = SharedExpense(retained.id, "home", "owner", 480, mapOf("owner" to 480L))
+    val purchase =
+        InventorySubmission(
+            retained.id,
+            "owner",
+            "home",
+            retained.items,
+            expense = expense,
+            inventoryConfirmed = true)
+    val state = mutableStateOf(InventorySaveState(InventorySavePhase.PENDING, purchase))
+    var retries = 0
+    compose.setContent { MaterialTheme { InventorySaveFeedback(state.value, true) { retries++ } } }
+    val app = RuntimeEnvironment.getApplication()
+    val messages =
+        listOf(
+            ExpenseProgress.QUEUED to R.string.purchase_save_pending,
+            ExpenseProgress.UNKNOWN to R.string.purchase_save_unknown,
+            ExpenseProgress.REJECTED to R.string.purchase_save_rejected,
+            ExpenseProgress.CONFIRMED to R.string.purchase_save_success)
+    for ((progress, message) in messages) {
+      compose.runOnIdle {
+        state.value =
+            InventorySaveState(
+                if (progress == ExpenseProgress.CONFIRMED) InventorySavePhase.CONFIRMED
+                else InventorySavePhase.PENDING,
+                purchase.withProgress(true, progress))
+      }
+      compose
+          .onNodeWithTag(InventorySaveTestTags.STATUS)
+          .assertTextEquals(app.getString(message, InventorySubmission.MAX_ITEMS))
+          .assertIsDisplayed()
+      if (progress == ExpenseProgress.UNKNOWN || progress == ExpenseProgress.REJECTED) {
+        compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertIsDisplayed().performClick()
+      } else {
+        compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertDoesNotExist()
+      }
+    }
+    assertEquals(2, retries)
+  }
 
   @Test
   fun saveProgressAndFailuresRenderTheirOwnMessageWithoutPrematureSuccess() {
