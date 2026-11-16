@@ -145,7 +145,9 @@ class ChatScreenTest {
             messages =
                 listOf(
                     Message(
-                        "1", "other", "", "", type = MessageType.EATEN, itemName = "Eggs"))))
+                        senderName = "",
+                        type = MessageType.EATEN,
+                        itemName = "Eggs"))))
 
     composeTestRule.onNodeWithText("Member").assertIsDisplayed()
   }
