@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.chat.ChatRepository
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.PersonalPhotoFiles
@@ -59,6 +61,7 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "FridgeViewModel"
 private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
+private const val ACTIVITY_SEND_FAILURE_MESSAGE = "Fridge activity message could not be sent"
 
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
 data class OwnerOption(val id: String, val pseudo: String?)
@@ -68,6 +71,12 @@ enum class FridgeSortOrder {
   NAME,
 }
 
+/**
+ * Coordinates the fridge inventory and its presentation state.
+ *
+ * @param chatRepository Optional repository used to post confirmed shared-item activity.
+ * @param activitySenderName Name displayed for activity messages sent by the current user.
+ */
 class FridgeViewModel(
     private val itemRepository: ItemRepository,
     private val userId: String,
@@ -83,6 +92,8 @@ class FridgeViewModel(
     private val today: () -> LocalDate = { LocalDate.now() },
     memberNameRepository: MemberNameRepository,
     currentUserDisplayName: String?,
+    private val chatRepository: ChatRepository? = null,
+    private val activitySenderName: String = currentUserDisplayName.orEmpty(),
 ) : ViewModel() {
   private val supportsSharing = fridgeType == FridgeType.SHARED
   private val ownerNames =
@@ -351,9 +362,14 @@ class FridgeViewModel(
             reportStatusError(item.name, false)
           }
           is ItemWrite.Queued ->
-              trackConfirmation(write) {
-                if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
-              }
+              trackConfirmation(
+                  write,
+                  onFailure = {
+                    if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
+                  },
+                  onSuccess = {
+                    if (latestStatusWrites[itemId] === operation) postActivity(item, status)
+                  })
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -362,6 +378,27 @@ class FridgeViewModel(
       } finally {
         mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds - itemId) }
       }
+    }
+  }
+
+  private suspend fun postActivity(item: Item, status: ItemStatus) {
+    val repository = chatRepository ?: return
+    if (fridgeType != FridgeType.SHARED || item.sharing != ItemSharing.SHARED) return
+    val type =
+        when (status) {
+          ItemStatus.EATEN -> MessageType.EATEN
+          ItemStatus.DISCARDED -> MessageType.THROWN
+          ItemStatus.ACTIVE -> return
+        }
+    try {
+      if (repository.sendActivity(householdId, userId, activitySenderName, type, item.name) ==
+          null) {
+        Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE)
+      }
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE, failure)
     }
   }
 
@@ -799,6 +836,7 @@ class FridgeViewModel(
   private fun trackConfirmation(
       write: ItemWrite.Queued,
       onComplete: () -> Unit = {},
+      onSuccess: suspend () -> Unit = {},
       onFailure: () -> Unit,
   ) {
     val operation = Any()
@@ -808,12 +846,18 @@ class FridgeViewModel(
           viewModelScope.launch {
             confirmationHandlers.remove(operation)?.dispose()
             if (cause !is CancellationException) {
-              try {
-                if (write.confirmation.await().isFailure) onFailure()
-              } catch (cancelled: CancellationException) {
-                throw cancelled
-              } catch (_: Exception) {
+              val result =
+                  try {
+                    write.confirmation.await()
+                  } catch (cancelled: CancellationException) {
+                    throw cancelled
+                  } catch (_: Exception) {
+                    null
+                  }
+              if (result == null || result.isFailure) {
                 onFailure()
+              } else {
+                onSuccess()
               }
             }
             onComplete()
