@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,26 +32,56 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 
+/** Semantic test tags for the chat screen and its messages. */
 object ChatTestTags {
+  /** Tag for the chat screen container. */
   const val SCREEN = "chat_screen"
+
+  /** Tag for the scrollable message list. */
   const val LIST = "chat_list"
+
+  /** Tag for the empty-chat message. */
   const val EMPTY = "chat_empty"
+
+  /** Tag for the initial loading indicator. */
   const val LOADING = "chat_loading"
+
+  /** Tag for chat errors. */
   const val ERROR = "chat_error"
+
+  /** Tag for the message composer. */
   const val INPUT = "chat_input"
+
+  /** Tag for the send button. */
   const val SEND = "chat_send"
+
+  /** Tag for messages sent by the current user. */
   const val OWN_MESSAGE = "chat_message_own"
+
+  /** Tag for messages sent by another household member. */
   const val OTHER_MESSAGE = "chat_message_other"
+
+  /** Tag for fridge activity badges. */
+  const val ACTIVITY = "chat_activity"
 }
 
+/**
+ * Displays the household chat and forwards user actions to [viewModel].
+ *
+ * @param viewModel Provides the chat state and actions.
+ * @param modifier Modifier applied to the screen.
+ */
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -60,6 +93,15 @@ fun ChatScreen(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
       modifier = modifier)
 }
 
+/**
+ * Renders the chat screen from [state].
+ *
+ * @param state Current chat content and composer state.
+ * @param currentUserId UID used to identify messages sent by the current user.
+ * @param onDraftChange Called when the composer text changes.
+ * @param onSend Called when the user requests to send a message.
+ * @param modifier Modifier applied to the screen.
+ */
 @Composable
 fun ChatContent(
     state: ChatUiState,
@@ -140,6 +182,11 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
 
 @Composable
 private fun MessageBubble(message: Message, own: Boolean) {
+  if (message.type != MessageType.TEXT) {
+    ActivityBadge(message)
+    return
+  }
+
   Box(
       Modifier.fillMaxWidth(),
       contentAlignment = if (own) Alignment.CenterEnd else Alignment.CenterStart) {
@@ -168,4 +215,69 @@ private fun MessageBubble(message: Message, own: Boolean) {
               }
             }
       }
+}
+
+@Composable
+private fun ActivityBadge(message: Message) {
+  val actionText =
+      when (message.type) {
+        MessageType.EATEN -> stringResource(R.string.chat_activity_eaten, message.itemName)
+        MessageType.THROWN -> stringResource(R.string.chat_activity_thrown, message.itemName)
+        MessageType.TEXT -> return
+      }
+  val containerColor =
+      when (message.type) {
+        MessageType.EATEN -> MaterialTheme.colorScheme.tertiaryContainer
+        MessageType.THROWN -> MaterialTheme.colorScheme.errorContainer
+        MessageType.TEXT -> return
+      }
+  val contentColor =
+      when (message.type) {
+        MessageType.EATEN -> MaterialTheme.colorScheme.onTertiaryContainer
+        MessageType.THROWN -> MaterialTheme.colorScheme.onErrorContainer
+        MessageType.TEXT -> return
+      }
+  val actionIcon =
+      when (message.type) {
+        MessageType.EATEN -> Icons.Filled.Restaurant
+        MessageType.THROWN -> Icons.Filled.DeleteOutline
+        MessageType.TEXT -> return
+      }
+  val senderName = message.senderName.ifBlank { stringResource(R.string.chat_default_sender_name) }
+
+  Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    Surface(
+        modifier = Modifier.widthIn(max = ChatLayout.bubbleMaxWidth).testTag(ChatTestTags.ACTIVITY),
+        shape = RoundedCornerShape(Dimens.spacingM),
+        color = containerColor,
+        contentColor = contentColor) {
+          Row(
+              modifier = Modifier.fillMaxWidth().padding(Dimens.spacingS),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+                Icon(
+                    imageVector = actionIcon,
+                    contentDescription = null,
+                    modifier = Modifier.size(Dimens.activityBadgeIconSize))
+                Column(Modifier.weight(1f)) {
+                  Text(senderName, style = MaterialTheme.typography.labelMedium)
+                  Text(actionText, style = MaterialTheme.typography.bodyMedium)
+                  message.timestamp?.let {
+                    Text(
+                        DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
+                        style = MaterialTheme.typography.labelSmall)
+                  }
+                }
+                message.itemImageUrl?.let { imageUrl ->
+                  AsyncImage(
+                      model = imageUrl,
+                      contentDescription =
+                          stringResource(
+                              R.string.chat_activity_image_description, message.itemName),
+                      contentScale = ContentScale.Crop,
+                      modifier = Modifier.size(Dimens.activityBadgeImageSize))
+                }
+              }
+        }
+  }
 }

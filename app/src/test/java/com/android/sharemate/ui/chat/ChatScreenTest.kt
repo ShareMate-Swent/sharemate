@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -104,6 +105,36 @@ class ChatScreenTest {
     composeTestRule
         .onNodeWithText(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(0)))
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun showsEatenActivityBadgeWithItemImageAndTimestamp() {
+    val message =
+        Message("1", "other", "Sam", "", Date(0), MessageType.EATEN, "Milk", "file:///milk")
+    show(ChatUiState(isLoading = false, messages = listOf(message)))
+
+    composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Ate Milk").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(0)))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Image of Milk").assertIsDisplayed()
+  }
+
+  @Test
+  fun showsThrownActivityBadgeWithActionSpecificLabel() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message(
+                        "1", "other", "Sam", "", type = MessageType.THROWN, itemName = "Bread"))))
+
+    composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Threw away Bread").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Image of Bread").assertDoesNotExist()
   }
 
   @Test

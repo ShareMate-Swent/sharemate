@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.theme
 
 import androidx.compose.ui.unit.dp
@@ -33,4 +34,11 @@ object Dimens {
   val iconSmall = 18.dp
   val progressSize = 20.dp
   val progressStrokeWidth = 2.dp
+
+  // Chat activity badges.
+  /** Icon size for the fridge action shown in a chat badge. */
+  val activityBadgeIconSize = 24.dp
+
+  /** Item thumbnail size for a fridge activity shown in chat. */
+  val activityBadgeImageSize = 48.dp
 }
