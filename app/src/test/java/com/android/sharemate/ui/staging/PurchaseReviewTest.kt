@@ -15,6 +15,30 @@ class PurchaseReviewTest {
       StagingViewModel(items, PurchaseReview.forUser("a", members))
 
   @Test
+  fun anotherPayerBlocksPurchaseButAllowsInventoryAndReselectingSelfRecovers() {
+    val vm = model()
+    vm.toggleParticipant("b")
+    vm.selectPayer("b")
+    assertNull(vm.confirmedPurchase())
+    assertNotNull(vm.confirmedItems())
+    assertEquals("b", vm.state.value.purchase?.paidBy)
+    vm.selectPayer("a")
+    assertEquals("a", vm.confirmedPurchase()?.paidBy)
+    assertEquals(mapOf("b" to 1000L), vm.confirmedPurchase()?.shares)
+  }
+
+  @Test
+  fun missingOrUnknownSignedInUserCannotConfirmBySelectingMember() {
+    for (user in listOf(null, "", " ", "outsider")) {
+      val vm = StagingViewModel(listOf(item()), PurchaseReview.forUser(user, members))
+      vm.selectPayer("a")
+      vm.toggleParticipant("b")
+      assertNull(vm.confirmedPurchase())
+      assertNotNull(vm.confirmedItems())
+    }
+  }
+
+  @Test
   fun defaultsToCurrentUserButDoesNotChargeAnyoneWithoutSelection() {
     val vm = model()
     assertEquals("a", vm.state.value.purchase?.paidBy)
@@ -39,7 +63,7 @@ class PurchaseReviewTest {
 
   @Test
   fun centsSmallerThanParticipantCountRemainExact() {
-    val review = PurchaseReview(members, "a", setOf("c", "a", "b"))
+    val review = PurchaseReview(members, "a", setOf("c", "a", "b"), currentUserId = "a")
     assertEquals(mapOf("a" to 1L, "b" to 0L, "c" to 0L), review.preview(listOf(item(1))).shares)
   }
 
@@ -59,7 +83,7 @@ class PurchaseReviewTest {
 
   @Test
   fun zeroOverflowAndServerLimitAreRejected() {
-    val review = PurchaseReview(members, "a", setOf("b"))
+    val review = PurchaseReview(members, "a", setOf("b"), currentUserId = "a")
     assertEquals(PurchaseReviewError.NONPOSITIVE_TOTAL, review.preview(listOf(item(0))).error)
     assertEquals(PurchaseReviewError.NONPOSITIVE_TOTAL, review.preview(emptyList()).error)
     assertEquals(
@@ -76,11 +100,11 @@ class PurchaseReviewTest {
     val vm = model()
     vm.toggleParticipant("b")
     vm.selectPayer("c")
-    assertEquals("c", vm.confirmedPurchase()?.paidBy)
+    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
     vm.selectPayer("outsider")
     vm.toggleParticipant("outsider")
-    assertEquals("c", vm.confirmedPurchase()?.paidBy)
-    assertEquals(setOf("b"), vm.confirmedPurchase()?.shares?.keys)
+    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertEquals(setOf("b"), vm.state.value.purchase?.participants)
     assertEquals(
         PurchaseReviewError.INVALID_PAYER,
         PurchaseReview.forUser("outsider", members).preview(listOf(item())).error,
@@ -102,7 +126,7 @@ class PurchaseReviewTest {
     assertNull(vm.state.value.purchase?.paidBy)
     assertNull(vm.confirmedPurchase())
     vm.selectPayer("b")
-    assertEquals("b", vm.confirmedPurchase()?.paidBy)
+    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
   }
 
   @Test
@@ -136,7 +160,9 @@ class PurchaseReviewTest {
     assertNull(vm.confirmedPurchase())
     assertEquals(
         PurchaseReviewError.INVALID_PARTICIPANTS,
-        PurchaseReview(members, "a", setOf("outsider")).preview(listOf(item())).error,
+        PurchaseReview(members, "a", setOf("outsider"), currentUserId = "a")
+            .preview(listOf(item()))
+            .error,
     )
     assertNull(PurchaseReview.forUser(null, members).paidBy)
   }
@@ -148,7 +174,8 @@ class PurchaseReviewTest {
       assertEquals(PurchaseReviewError.INVALID_PAYER, preview.error)
       assertTrue(preview.shares.isEmpty())
     }
-    val preview = PurchaseReview(members, "a", setOf(" ")).preview(listOf(item()))
+    val preview =
+        PurchaseReview(members, "a", setOf(" "), currentUserId = "a").preview(listOf(item()))
     assertEquals(PurchaseReviewError.INVALID_PARTICIPANTS, preview.error)
     assertTrue(preview.shares.isEmpty())
     val review = PurchaseReview.forUser(" ", members + (" " to "Invalid"))

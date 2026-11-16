@@ -22,4 +22,7 @@ not a multiplier), with remainder cents assigned by lexicographic UID order.
 The payer may be excluded. Zero-cent participant shares are supported by
 recordExpense. The current backend allows at most 100,000,000 cents and
 requires the authenticated submitter to be the payer; choosing another payer
-in review does not grant permission to submit on their behalf.
+in review disables financial confirmation and explains that they must submit
+the purchase. The signed-in user ID is retained separately from the selected
+payer; missing identity also blocks financial confirmation. The pinned button
+is labelled "Save inventory only" in purchase mode.

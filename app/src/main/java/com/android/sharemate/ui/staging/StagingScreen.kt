@@ -205,7 +205,10 @@ fun StagingContent(
             enabled = state.canConfirm && actionsEnabled,
             modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
         ) {
-          Text(stringResource(R.string.staging_confirm))
+          Text(
+              stringResource(
+                  if (state.purchase != null) R.string.purchase_save_inventory_only
+                  else R.string.staging_confirm))
         }
       }
 }

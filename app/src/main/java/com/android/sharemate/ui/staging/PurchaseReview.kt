@@ -10,6 +10,7 @@ enum class PurchaseReviewError {
   MEMBERSHIP_CHANGED,
   NONPOSITIVE_TOTAL,
   INVALID_PAYER,
+  PAYER_MUST_SUBMIT,
   NO_PARTICIPANTS,
   INVALID_PARTICIPANTS,
 }
@@ -31,12 +32,14 @@ data class ReviewedPurchase(
 /**
  * Optional financial review, populated by the coordinator from current household member names.
  * Participants start empty so nobody is silently charged. Payer and participants are independent.
+ * [currentUserId] is the signed-in submitter, retained independently when the payer changes.
  */
 data class PurchaseReview(
     val members: Map<String, String>,
     val paidBy: String?,
     val participants: Set<String> = emptySet(),
     val membershipChanged: Boolean = false,
+    val currentUserId: String? = null,
 ) {
   fun withMembers(current: Map<String, String>): PurchaseReview =
       copy(
@@ -65,6 +68,8 @@ data class PurchaseReview(
           total > MAX_PURCHASE_CENTS -> PurchaseReviewError.TOTAL_TOO_LARGE
           total <= 0 -> PurchaseReviewError.NONPOSITIVE_TOTAL
           paidBy.isNullOrBlank() || paidBy !in members -> PurchaseReviewError.INVALID_PAYER
+          currentUserId.isNullOrBlank() || paidBy != currentUserId ->
+              PurchaseReviewError.PAYER_MUST_SUBMIT
           participants.isEmpty() -> PurchaseReviewError.NO_PARTICIPANTS
           participants.any { it.isBlank() || it !in members } ->
               PurchaseReviewError.INVALID_PARTICIPANTS
@@ -90,6 +95,8 @@ data class PurchaseReview(
     fun forUser(currentUserId: String?, members: Map<String, String>): PurchaseReview =
         PurchaseReview(
             members.filterKeys { it.isNotBlank() }.toMap(),
-            currentUserId?.takeIf { it.isNotBlank() && it in members })
+            currentUserId?.takeIf { it.isNotBlank() && it in members },
+            currentUserId = currentUserId?.takeIf { it.isNotBlank() },
+        )
   }
 }

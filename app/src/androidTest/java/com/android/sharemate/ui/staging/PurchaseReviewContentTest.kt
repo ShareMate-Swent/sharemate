@@ -71,6 +71,7 @@ class PurchaseReviewContentTest {
             PurchaseReviewError.MEMBERSHIP_CHANGED to R.string.purchase_membership_changed,
             PurchaseReviewError.NONPOSITIVE_TOTAL to R.string.purchase_positive_total,
             PurchaseReviewError.INVALID_PAYER to R.string.purchase_invalid_payer,
+            PurchaseReviewError.PAYER_MUST_SUBMIT to R.string.purchase_payer_must_submit,
             PurchaseReviewError.NO_PARTICIPANTS to R.string.purchase_no_participants,
             PurchaseReviewError.INVALID_PARTICIPANTS to R.string.purchase_invalid_participants,
         )
@@ -96,7 +97,7 @@ class PurchaseReviewContentTest {
     val vm =
         StagingViewModel(
             listOf(StagedItem("row", "Milk", priceCents = 1000)),
-            PurchaseReview.forUser(null, mapOf("a" to " ")),
+            PurchaseReview.forUser("a", mapOf("a" to " ")).copy(paidBy = null),
         )
     var confirmed: ReviewedPurchase? = null
     compose.setContent {
