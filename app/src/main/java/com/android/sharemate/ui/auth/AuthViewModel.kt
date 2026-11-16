@@ -312,6 +312,8 @@ class AuthViewModel(
   /** Ends the optional profile photo step shown after an email sign-up. */
   fun finishProfilePhotoStep() {
     mutableState.update { it.copy(profilePhotoStepUid = null) }
+    // A photo saved in the step changed the profile, which the session does not report by itself.
+    repository.refreshSession()
   }
 
   fun signOut() {

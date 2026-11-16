@@ -597,6 +597,7 @@ class AuthViewModelTest {
     assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
     viewModel.finishProfilePhotoStep()
     assertNull(viewModel.state.value.profilePhotoStepUid)
+    assertEquals(1, repository.refreshCalls)
   }
 
   @Test
@@ -676,6 +677,11 @@ class AuthViewModelTest {
     var signUpFailureAfterSession: Exception? = null
     var profileUpdateFailure: Exception? = null
     val profileUpdateCalls = mutableListOf<String>()
+    var refreshCalls = 0
+
+    override fun refreshSession() {
+      refreshCalls++
+    }
 
     override suspend fun signIn(email: String, password: String) =
         authenticate(false, email, password)

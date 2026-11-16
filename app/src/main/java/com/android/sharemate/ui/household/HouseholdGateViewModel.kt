@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.profile.UserProfile
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.profile.toPublicProfile
 import kotlinx.coroutines.CancellationException
@@ -28,8 +29,8 @@ sealed interface HouseholdGateState {
 /**
  * Checks membership for one authenticated user; create a new instance when the user changes.
  *
- * On start it also saves the user's public profile, so the other members of their household see
- * their current name and photo.
+ * On start, and whenever [updateSession] reports a changed name or photo, it also saves the user's
+ * public profile, so the other members of their household see their current name and photo.
  */
 class HouseholdGateViewModel(
     private val householdRepository: HouseholdRepository,
@@ -42,17 +43,29 @@ class HouseholdGateViewModel(
   val state = mutableState.asStateFlow()
 
   private var refreshJob: Job? = null
+  private var savedProfile: UserProfile? = null
 
   init {
-    savePublicProfile(session)
+    updateSession(session)
     refresh()
   }
 
+  /**
+   * Saves the public profile of [session] if its name or photo changed since the last save, e.g.
+   * after a new profile photo. Sessions of another user are ignored.
+   */
+  fun updateSession(session: AuthSession) {
+    val profile = session.toPublicProfile()
+    if (profile.uid != userId || profile == savedProfile) return
+    savedProfile = profile
+    savePublicProfile(profile)
+  }
+
   // Runs on its own: a failure must not block the app, and the next sign-in saves it again.
-  private fun savePublicProfile(session: AuthSession) {
+  private fun savePublicProfile(profile: UserProfile) {
     viewModelScope.launch {
       try {
-        profileRepository.savePublicProfile(session.toPublicProfile())
+        profileRepository.savePublicProfile(profile)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {}

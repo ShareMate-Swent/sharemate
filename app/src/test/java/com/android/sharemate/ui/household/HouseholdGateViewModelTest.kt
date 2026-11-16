@@ -144,6 +144,18 @@ class HouseholdGateViewModelTest {
     assertEquals(1, profiles.saved.size)
   }
 
+  @Test
+  fun changedSessionProfileIsSavedOnceAndOtherUsersAreIgnored() = runTest {
+    startViewModel()
+    val withPhoto = session.copy(photoUrl = "https://photos.example/new.jpg")
+    viewModel.updateSession(session)
+    viewModel.updateSession(withPhoto)
+    viewModel.updateSession(withPhoto)
+    viewModel.updateSession(withPhoto.copy(uid = "someone-else", photoUrl = null))
+    advanceUntilIdle()
+    assertEquals(listOf(null, "https://photos.example/new.jpg"), profiles.saved.map { it.photoUrl })
+  }
+
   private fun startViewModel() {
     viewModel = HouseholdGateViewModel(repository, profiles, session)
     store.put("household-gate", viewModel)

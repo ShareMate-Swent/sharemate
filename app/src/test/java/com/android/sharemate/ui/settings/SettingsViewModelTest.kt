@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.settings
 
+import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
@@ -11,8 +12,12 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
+import com.android.sharemate.model.image.PersonalPhotoFiles
+import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.ui.profile.ProfilePhotoError
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -63,7 +68,12 @@ class SettingsViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private fun createViewModel() = SettingsViewModel(auth, households, pseudos, household)
+  private val events = mutableListOf<String>()
+  private val photos = FakePhotoRepository()
+  private val files = FakeFiles()
+
+  private fun createViewModel(current: Household = household) =
+      SettingsViewModel(auth, households, pseudos, current, photos, files)
 
   @Test
   fun showsTheLoadedHouseholdAtOnceAndThenTheProfile() = runTest {
@@ -276,7 +286,7 @@ class SettingsViewModelTest {
   fun exposesTheFridgeTypeOfTheLoadedAndRefetchedHousehold() = runTest {
     val privateHousehold = household.copy(type = FridgeType.PRIVATE)
     households.latest = privateHousehold
-    val viewModel = SettingsViewModel(auth, households, pseudos, privateHousehold)
+    val viewModel = createViewModel(privateHousehold)
 
     assertEquals(FridgeType.PRIVATE, viewModel.state.value.fridgeType)
 
@@ -477,9 +487,114 @@ class SettingsViewModelTest {
     assertTrue(viewModel.state.value.isSwitchingAccount)
   }
 
+  @Test
+  fun changedPhotoIsUploadedForTheUserThenTheSessionIsRefreshedAndTheCopyDeleted() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    viewModel.changePhoto("content://a", fromCamera = true)
+    assertTrue(viewModel.state.value.isUploadingPhoto)
+    advanceUntilIdle()
+    assertEquals(listOf("content://a" to true), files.copies)
+    assertEquals(listOf("user-1" to File("copy-a")), photos.uploads)
+    assertEquals(1, auth.refreshes)
+    assertEquals(listOf(File("copy-a")), files.deleted)
+    assertFalse(viewModel.state.value.isUploadingPhoto)
+    assertNull(viewModel.state.value.photoError)
+  }
+
+  @Test
+  fun invalidPhotoShowsItsErrorWithoutUploading() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    files.failure = IllegalArgumentException("too large")
+    viewModel.changePhoto("content://a", fromCamera = false)
+    assertEquals(ProfilePhotoError.INVALID_PHOTO, viewModel.state.value.photoError)
+    assertTrue(photos.uploads.isEmpty())
+  }
+
+  @Test
+  fun failedUploadKeepsTheCopyForRetryAndANewPhotoReplacesIt() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    photos.next = { Result.failure(IllegalStateException("offline")) }
+    viewModel.changePhoto("content://a", fromCamera = false)
+    advanceUntilIdle()
+    assertEquals(ProfilePhotoError.UPLOAD_FAILED, viewModel.state.value.photoError)
+    viewModel.retryPhotoUpload()
+    advanceUntilIdle()
+    assertEquals(2, photos.uploads.size)
+    assertTrue(files.deleted.isEmpty())
+    assertEquals(0, auth.refreshes)
+
+    photos.next = { Result.success("url") }
+    viewModel.changePhoto("content://b", fromCamera = false)
+    advanceUntilIdle()
+    assertEquals(listOf(File("copy-a"), File("copy-b")), files.deleted)
+    assertEquals(File("copy-b"), photos.uploads.last().second)
+    assertNull(viewModel.state.value.photoError)
+    assertEquals(1, auth.refreshes)
+  }
+
+  @Test
+  fun photoChangesAreIgnoredWhileUploadingAndClearingCancelsBeforeDeleting() = runTest {
+    val store = ViewModelStore()
+    val viewModel = createViewModel().also { store.put("settings", it) }
+    advanceUntilIdle()
+    photos.next = { CompletableDeferred<Result<String>>().await() }
+    viewModel.changePhoto("content://a", fromCamera = false)
+    advanceUntilIdle()
+    viewModel.changePhoto("content://b", fromCamera = false)
+    viewModel.retryPhotoUpload()
+    advanceUntilIdle()
+    assertEquals(1, files.copies.size)
+    assertEquals(1, photos.uploads.size)
+
+    store.clear()
+    advanceUntilIdle()
+    assertEquals(listOf("upload cancelled", "delete copy-a"), events)
+  }
+
+  /** Copies `scheme://name` to `copy-name`; deletions are recorded, never performed. */
+  private inner class FakeFiles : PersonalPhotoFiles {
+    val copies = mutableListOf<Pair<String, Boolean>>()
+    val deleted = mutableListOf<File>()
+    var failure: Exception? = null
+
+    override suspend fun copy(uri: String, fromCamera: Boolean): File {
+      copies += uri to fromCamera
+      failure?.let { throw it }
+      return File("copy-" + uri.substringAfter("://"))
+    }
+
+    override suspend fun delete(file: File) {
+      events += "delete ${file.name}"
+      deleted += file
+    }
+  }
+
+  private inner class FakePhotoRepository : ProfilePhotoRepository {
+    val uploads = mutableListOf<Pair<String, File>>()
+    var next: suspend () -> Result<String> = { Result.success("url") }
+
+    override suspend fun upload(expectedUid: String, source: File): Result<String> {
+      uploads += expectedUid to source
+      try {
+        return next()
+      } catch (cancelled: CancellationException) {
+        events += "upload cancelled"
+        throw cancelled
+      }
+    }
+  }
+
   private class FakeAuthRepository(session: AuthSession?) : AuthRepository {
     val sessionState = MutableStateFlow(session)
     override val session: Flow<AuthSession?> = sessionState
+    var refreshes = 0
+
+    override fun refreshSession() {
+      refreshes++
+    }
 
     override suspend fun signIn(email: String, password: String) = Unit
 

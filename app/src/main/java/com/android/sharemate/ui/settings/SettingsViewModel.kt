@@ -12,12 +12,19 @@ import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.image.PersonalPhotoFiles
+import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.model.user.trimPseudoPadding
 import com.android.sharemate.model.user.validatePseudo
+import com.android.sharemate.ui.profile.ProfilePhotoError
+import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -26,6 +33,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Why switching to another Google account failed. */
 enum class SettingsAccountError {
@@ -60,6 +68,8 @@ enum class SettingsPseudoError {
  * @property isLoadingPseudo Whether the public pseudo is being loaded.
  * @property isSavingPseudo Whether a pseudo update is in progress.
  * @property pseudoError The last pseudo load or save failure.
+ * @property isUploadingPhoto Whether a new profile photo is being uploaded.
+ * @property photoError The last profile photo failure, cleared by the next attempt.
  * @property canSavePseudo Whether the current pseudo can be saved.
  */
 data class SettingsUiState(
@@ -78,6 +88,8 @@ data class SettingsUiState(
     val isLoadingPseudo: Boolean = false,
     val isSavingPseudo: Boolean = false,
     val pseudoError: SettingsPseudoError? = null,
+    val isUploadingPhoto: Boolean = false,
+    val photoError: ProfilePhotoError? = null,
 ) {
   /** Whether the current pseudo can be saved. */
   val canSavePseudo: Boolean
@@ -96,16 +108,24 @@ data class SettingsUiState(
  * count includes users who joined or left since. If that fetch fails, the loaded household stays.
  * The pseudo is loaded and saved through [PseudoRepository].
  *
+ * A new profile photo is copied into a private file, then uploaded with [ProfilePhotoRepository]. A
+ * failed upload keeps the copy so it can be retried; the copy is deleted once uploaded, replaced or
+ * when this ViewModel is cleared.
+ *
  * @param authRepository Provides the current authenticated session.
  * @param householdRepository Reads the current household.
  * @param pseudoRepository Reads and updates the signed-in user's public pseudo.
  * @param household The household already loaded by the household gate.
+ * @param profilePhotoRepository Uploads a new profile photo and makes it the account photo.
+ * @param photoFiles Copies the picked image into a private JPEG/PNG file of at most 5 MiB.
  */
 class SettingsViewModel(
     private val authRepository: AuthRepository,
     private val householdRepository: HouseholdRepository,
     private val pseudoRepository: PseudoRepository,
     household: Household,
+    private val profilePhotoRepository: ProfilePhotoRepository,
+    private val photoFiles: PersonalPhotoFiles,
 ) : ViewModel() {
   private val householdId = household.id
   private val mutableState = MutableStateFlow(SettingsUiState().withHousehold(household))
@@ -114,6 +134,9 @@ class SettingsViewModel(
 
   private var refreshJob: Job? = null
   private var currentUserId: String? = null
+  private var pendingPhoto: File? = null
+  private var photoUpload: Job? = null
+  private var cleared = false
 
   init {
     // A signed-out session keeps the last profile until the auth gate leaves the screen.
@@ -250,6 +273,79 @@ class SettingsViewModel(
           mutableState.update { it.copy(isSavingPseudo = false) }
         }
       }
+    }
+  }
+
+  /**
+   * Copies the photo confirmed in the camera/gallery dialog, then uploads it as the new profile
+   * photo. The header shows it once the session is refreshed. An unreadable photo shows
+   * [ProfilePhotoError.INVALID_PHOTO]; a failed upload keeps the old photo and shows
+   * [ProfilePhotoError.UPLOAD_FAILED]. Ignored while uploading.
+   *
+   * @param fromCamera True for a camera capture, which is downscaled and encoded as JPEG.
+   */
+  suspend fun changePhoto(uri: String, fromCamera: Boolean) {
+    if (state.value.isUploadingPhoto) return
+    val copy =
+        try {
+          photoFiles.copy(uri, fromCamera)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          mutableState.update { it.copy(photoError = ProfilePhotoError.INVALID_PHOTO) }
+          return
+        }
+    if (cleared || state.value.isUploadingPhoto) {
+      withContext(NonCancellable) { photoFiles.delete(copy) }
+      return
+    }
+    val previous = pendingPhoto
+    pendingPhoto = copy
+    previous?.let { withContext(NonCancellable) { photoFiles.delete(it) } }
+    uploadPhoto()
+  }
+
+  /** Uploads the photo of the last failed upload again. */
+  fun retryPhotoUpload() {
+    if (!state.value.isUploadingPhoto) uploadPhoto()
+  }
+
+  private fun uploadPhoto() {
+    val photo = pendingPhoto ?: return
+    val userId = currentUserId ?: return
+    mutableState.update { it.copy(isUploadingPhoto = true, photoError = null) }
+    photoUpload =
+        viewModelScope.launch {
+          val succeeded =
+              try {
+                profilePhotoRepository.upload(userId, photo).isSuccess
+              } catch (cancelled: CancellationException) {
+                throw cancelled
+              } catch (_: Exception) {
+                false
+              } finally {
+                mutableState.update { it.copy(isUploadingPhoto = false) }
+              }
+          if (succeeded) {
+            pendingPhoto = null
+            authRepository.refreshSession()
+            withContext(NonCancellable) { photoFiles.delete(photo) }
+          } else {
+            mutableState.update { it.copy(photoError = ProfilePhotoError.UPLOAD_FAILED) }
+          }
+        }
+  }
+
+  /** Also deletes a photo not uploaded yet; this outlives [viewModelScope], cancelled here. */
+  override fun onCleared() {
+    cleared = true
+    val pending = photoUpload
+    pending?.cancel()
+    val photo = pendingPhoto ?: return
+    // Let a cancelled upload stop reading the file before it is deleted.
+    CoroutineScope(Dispatchers.Main.immediate).launch {
+      pending?.join()
+      photoFiles.delete(photo)
     }
   }
 
