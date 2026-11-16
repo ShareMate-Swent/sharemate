@@ -17,11 +17,12 @@ import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.ReviewedPurchase
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Receipt save progress. [LOADING] reads the journal and [READY] allows draft review. [SUBMITTING]
@@ -81,6 +82,7 @@ class InventorySaveViewModel(
   private var submissionJob: Job? = null
   private var generation = 0
   private var expenseJob: Job? = null
+  private var expenseRetry = CompletableDeferred<Unit>()
 
   init {
     restore()
@@ -212,6 +214,7 @@ class InventorySaveViewModel(
         expenses == null ||
         (confirmed.expenseProgress == ExpenseProgress.REJECTED && !retryRejected))
         return
+    expenseRetry = CompletableDeferred()
     expenseJob =
         viewModelScope.launch {
           var retained = confirmed
@@ -243,8 +246,9 @@ class InventorySaveViewModel(
               } catch (_: Exception) {
                 /* Original payload remains durable. */
               }
-              if (progress == ExpenseProgress.REJECTED) return@launch
-              delay(backoff)
+              if (progress == ExpenseProgress.REJECTED) expenseRetry.await()
+              else withTimeoutOrNull(backoff) { expenseRetry.await() }
+              expenseRetry = CompletableDeferred()
               backoff = (backoff * 2).coerceAtMost(60_000L)
             }
           }
@@ -265,9 +269,8 @@ class InventorySaveViewModel(
               current.phase == InventorySavePhase.SUBMITTING)
               return
           if (it.inventoryConfirmed) {
-            expenseJob?.cancel()
-            expenseJob = null
-            finishInventory(it, generation, retryRejected = true)
+            if (expenseJob?.isActive == true) expenseRetry.complete(Unit)
+            else finishInventory(it, generation, retryRejected = true)
           } else if (current.phase == InventorySavePhase.FAILED) enqueue(it)
           else if (current.phase == InventorySavePhase.RECOVERY_FAILED) observe(it, generation)
           return

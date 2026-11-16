@@ -11,9 +11,11 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -77,6 +79,29 @@ class PurchaseSaveViewModelTest {
   private val store = Store()
   private val inventory = Inventory()
   private val expenses = Expenses()
+
+  @Test
+  fun retryCannotOvertakeAnInFlightJournalCommit() = runTest {
+    expenses.failure = IOException("response lost")
+    val vm = submit()
+    confirmInventory()
+    val commit = CompletableDeferred<Unit>()
+    store.blockProgress = commit
+    advanceTimeBy(5_000)
+    runCurrent()
+    expenses.failure = null
+    expenses.result.complete(Unit)
+    vm.retry()
+    runCurrent()
+    try {
+      assertEquals(1, expenses.calls.size)
+    } finally {
+      commit.complete(Unit)
+      runCurrent()
+    }
+    assertEquals(2, expenses.calls.size)
+    assertEquals(ExpenseProgress.CONFIRMED, store.saved?.expenseProgress)
+  }
 
   @Before
   fun setUp() {
@@ -268,6 +293,7 @@ class PurchaseSaveViewModelTest {
   }
 
   private class Store : InventorySubmissionStore {
+    var blockProgress: CompletableDeferred<Unit>? = null
     var saved: InventorySubmission? = null
     var failure: Exception? = null
 
@@ -275,6 +301,14 @@ class PurchaseSaveViewModelTest {
         saved?.takeIf { it.ownerId == ownerId && it.householdId == householdId }
 
     override suspend fun save(submission: InventorySubmission) {
+      blockProgress?.let { gate ->
+        blockProgress = null
+        withContext(NonCancellable) {
+          gate.await()
+          saved = submission
+        }
+        return
+      }
       failure?.let { throw it }
       saved = submission
     }
