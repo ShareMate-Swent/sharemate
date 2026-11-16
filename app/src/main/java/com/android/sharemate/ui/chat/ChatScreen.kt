@@ -181,12 +181,15 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
 }
 
 @Composable
-private fun MessageBubble(message: Message, own: Boolean) {
-  if (message.type != MessageType.TEXT) {
-    ActivityBadge(message)
-    return
-  }
+private fun MessageBubble(message: Message, own: Boolean): Unit =
+    when (message.type) {
+      MessageType.TEXT -> TextMessageBubble(message, own)
+      MessageType.EATEN,
+      MessageType.THROWN -> ActivityBadge(message)
+    }
 
+@Composable
+private fun TextMessageBubble(message: Message, own: Boolean) {
   Box(
       Modifier.fillMaxWidth(),
       contentAlignment = if (own) Alignment.CenterEnd else Alignment.CenterStart) {
@@ -219,30 +222,17 @@ private fun MessageBubble(message: Message, own: Boolean) {
 
 @Composable
 private fun ActivityBadge(message: Message) {
+  val isEaten = message.type == MessageType.EATEN
   val actionText =
-      when (message.type) {
-        MessageType.EATEN -> stringResource(R.string.chat_activity_eaten, message.itemName)
-        MessageType.THROWN -> stringResource(R.string.chat_activity_thrown, message.itemName)
-        MessageType.TEXT -> return
-      }
+      if (isEaten) stringResource(R.string.chat_activity_eaten, message.itemName)
+      else stringResource(R.string.chat_activity_thrown, message.itemName)
   val containerColor =
-      when (message.type) {
-        MessageType.EATEN -> MaterialTheme.colorScheme.tertiaryContainer
-        MessageType.THROWN -> MaterialTheme.colorScheme.errorContainer
-        MessageType.TEXT -> return
-      }
+      if (isEaten) MaterialTheme.colorScheme.tertiaryContainer
+      else MaterialTheme.colorScheme.errorContainer
   val contentColor =
-      when (message.type) {
-        MessageType.EATEN -> MaterialTheme.colorScheme.onTertiaryContainer
-        MessageType.THROWN -> MaterialTheme.colorScheme.onErrorContainer
-        MessageType.TEXT -> return
-      }
-  val actionIcon =
-      when (message.type) {
-        MessageType.EATEN -> Icons.Filled.Restaurant
-        MessageType.THROWN -> Icons.Filled.DeleteOutline
-        MessageType.TEXT -> return
-      }
+      if (isEaten) MaterialTheme.colorScheme.onTertiaryContainer
+      else MaterialTheme.colorScheme.onErrorContainer
+  val actionIcon = if (isEaten) Icons.Filled.Restaurant else Icons.Filled.DeleteOutline
   val senderName = message.senderName.ifBlank { stringResource(R.string.chat_default_sender_name) }
 
   Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
