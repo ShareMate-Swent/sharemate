@@ -140,4 +140,52 @@ class PurchaseReviewTest {
     )
     assertNull(PurchaseReview.forUser(null, members).paidBy)
   }
+
+  @Test
+  fun blankAndUnknownPayersAndParticipantsAreRejected() {
+    for (payer in listOf(null, "", " ", "outsider")) {
+      val preview = PurchaseReview(members, payer, setOf("a")).preview(listOf(item()))
+      assertEquals(PurchaseReviewError.INVALID_PAYER, preview.error)
+      assertTrue(preview.shares.isEmpty())
+    }
+    val preview = PurchaseReview(members, "a", setOf(" ")).preview(listOf(item()))
+    assertEquals(PurchaseReviewError.INVALID_PARTICIPANTS, preview.error)
+    assertTrue(preview.shares.isEmpty())
+    val review = PurchaseReview.forUser(" ", members + (" " to "Invalid"))
+    assertNull(review.paidBy)
+    assertEquals(members, review.members)
+  }
+
+  @Test
+  fun membershipSnapshotsFilterBlankIdsAndPreserveReviewRequirement() {
+    val current = members + (" " to "Invalid")
+    val review = PurchaseReview(current, " ", setOf(" ", "b", "outsider")).withMembers(current)
+    assertEquals(members, review.members)
+    assertNull(review.paidBy)
+    assertEquals(setOf("b"), review.participants)
+    assertTrue(review.membershipChanged)
+    val refreshed = review.withMembers(members)
+    assertTrue(refreshed.membershipChanged)
+    assertNull(refreshed.paidBy)
+    assertEquals(setOf("b"), refreshed.participants)
+    val unselected = PurchaseReview(members, null).withMembers(members)
+    assertNull(unselected.paidBy)
+    assertFalse(unselected.membershipChanged)
+    assertTrue(unselected.participants.isEmpty())
+  }
+
+  @Test
+  fun unchangedMembershipKeepsSelectionAndParticipantReviewCanRecover() {
+    val vm = model()
+    vm.toggleParticipant("b")
+    vm.updatePurchaseMembers(members)
+    assertEquals(mapOf("b" to 1000L), vm.confirmedPurchase()?.shares)
+    vm.updatePurchaseMembers(members - "b")
+    assertNull(vm.confirmedPurchase())
+    vm.toggleParticipant("c")
+    val confirmed = checkNotNull(vm.confirmedPurchase())
+    assertEquals("a", confirmed.paidBy)
+    assertEquals(mapOf("c" to 1000L), confirmed.shares)
+    assertEquals(listOf(item()), confirmed.items)
+  }
 }
