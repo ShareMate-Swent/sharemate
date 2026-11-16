@@ -340,7 +340,6 @@ open class MainActivity : ComponentActivity() {
                                             household.id,
                                             session.uid,
                                             session.displayName
-                                                ?: session.email
                                                 ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })

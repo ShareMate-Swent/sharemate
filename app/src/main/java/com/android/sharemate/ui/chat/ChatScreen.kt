@@ -154,14 +154,15 @@ private fun MessageBubble(message: Message, own: Boolean) {
               Column(Modifier.padding(horizontal = Dimens.spacingS, vertical = Dimens.spacingXs)) {
                 if (!own) {
                   Text(
-                      message.senderName,
+                      stringResource(
+                          R.string.chat_sender_identity, message.senderName, message.senderId),
                       style = MaterialTheme.typography.labelMedium,
                       color = MaterialTheme.colorScheme.primary)
                 }
                 Text(message.text)
                 message.timestamp?.let {
                   Text(
-                      DateFormat.getTimeInstance(DateFormat.SHORT).format(it),
+                      DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(it),
                       style = MaterialTheme.typography.labelSmall,
                       color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

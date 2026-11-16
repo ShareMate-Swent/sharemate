@@ -8,7 +8,10 @@ interface ChatRepository {
   /** Streams the household's messages ordered by timestamp, oldest first. */
   fun observeMessages(householdId: String): Flow<List<Message>>
 
-  /** Sends [text] as [senderId]; returns the new message id, or null if invalid or failed. */
+  /**
+   * Sends [text] as [senderId]; returns the new message id, or null if invalid or failed.
+   * [senderName] is retained for compatibility; the stored name comes from the sender's profile.
+   */
   suspend fun sendMessage(
       householdId: String,
       senderId: String,
@@ -18,7 +21,8 @@ interface ChatRepository {
 
   /**
    * Posts a fridge activity ([type] EATEN or THROWN) on [itemName] done by [senderId]; returns the
-   * new message id, or null if invalid or failed.
+   * new message id, or null if invalid or failed. [senderName] is retained for compatibility; the
+   * stored name comes from the sender's profile.
    */
   suspend fun sendActivity(
       householdId: String,

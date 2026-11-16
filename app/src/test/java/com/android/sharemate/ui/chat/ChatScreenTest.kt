@@ -62,11 +62,24 @@ class ChatScreenTest {
                     Message("1", "other", "Sam", "Hi there"), Message("2", "me", "Alex", "Hello"))))
     composeTestRule.onNodeWithText("Hi there").assertIsDisplayed()
     composeTestRule.onNodeWithText("Hello").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Sam").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · other").assertIsDisplayed()
     assertEquals(
         1, composeTestRule.onAllNodesWithTag(ChatTestTags.OWN_MESSAGE).fetchSemanticsNodes().size)
     assertEquals(
         1, composeTestRule.onAllNodesWithTag(ChatTestTags.OTHER_MESSAGE).fetchSemanticsNodes().size)
+  }
+
+  @Test
+  fun identicalPseudosShowDifferentSenderIds() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "user-a", "Sam", "First"),
+                    Message("2", "user-b", "Sam", "Second"))))
+    composeTestRule.onNodeWithText("Sam · user-a").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · user-b").assertIsDisplayed()
   }
 
   @Test
@@ -102,7 +115,8 @@ class ChatScreenTest {
         ChatUiState(
             isLoading = false, messages = listOf(Message("1", "me", "Alex", "Hello", Date(0)))))
     composeTestRule
-        .onNodeWithText(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(0)))
+        .onNodeWithText(
+            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
         .assertIsDisplayed()
   }
 
