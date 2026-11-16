@@ -9,8 +9,8 @@ interface ChatRepository {
   fun observeMessages(householdId: String): Flow<List<Message>>
 
   /**
-   * Sends [text] as [senderId]; returns the new message id, or null if invalid or failed.
-   * [senderName] is retained for compatibility; the stored name comes from the sender's profile.
+   * Sends [text] as [senderId]; returns the new message id after acknowledgement, or null if
+   * invalid or failed. The cached profile name is preferred; [senderName] is used on a cache miss.
    */
   suspend fun sendMessage(
       householdId: String,
@@ -21,8 +21,8 @@ interface ChatRepository {
 
   /**
    * Posts a fridge activity ([type] EATEN or THROWN) on [itemName] done by [senderId]; returns the
-   * new message id, or null if invalid or failed. [senderName] is retained for compatibility; the
-   * stored name comes from the sender's profile.
+   * new message id after acknowledgement, or null if invalid or failed. The cached profile name is
+   * preferred; [senderName] is used on a cache miss.
    */
   suspend fun sendActivity(
       householdId: String,
