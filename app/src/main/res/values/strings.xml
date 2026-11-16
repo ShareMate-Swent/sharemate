@@ -237,6 +237,16 @@
     <string name="personal_photo_remove">Remove personal photo</string>
     <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
     <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
+    <string name="profile_photo_step_title">Add a profile photo</string>
+    <string name="profile_photo_step_subtitle">Help your housemates recognise you. This step is optional.</string>
+    <string name="profile_photo_sources">Take a photo of yourself, or choose one from your gallery.</string>
+    <string name="profile_photo_preview">Selected profile photo</string>
+    <string name="profile_photo_add">Add a photo</string>
+    <string name="profile_photo_change">Change photo</string>
+    <string name="profile_photo_save">Save</string>
+    <string name="profile_photo_retry">Retry</string>
+    <string name="profile_photo_skip">Skip</string>
+    <string name="profile_photo_upload_failed">Your photo could not be uploaded. Your account is ready, so you can retry or skip.</string>
     <string name="balances_back">Back to receipts</string>
     <string name="balances_unknown_member">Household member</string>
     <string name="balances_invalid_data">These expenses could not be calculated. Please check the household’s expense data.</string>

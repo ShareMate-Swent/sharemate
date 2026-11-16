@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import com.android.sharemate.model.auth.*
@@ -115,6 +116,7 @@ class GoogleAuthViewModelTest {
     assertFalse(vm.state.value.isLoading)
     assertEquals("", vm.state.value.password)
     assertNull(vm.state.value.error)
+    assertNull(vm.state.value.profilePhotoStepUid)
   }
 
   @Test
@@ -137,6 +139,8 @@ class GoogleAuthViewModelTest {
     assertNull(vm.state.value.error)
     assertEquals("Student", vm.state.value.session?.displayName)
     assertEquals(listOf("Student"), repository.displayNameUpdates)
+    // Choosing the missing pseudo goes through submit() but is not an email sign-up.
+    assertNull(vm.state.value.profilePhotoStepUid)
   }
 
   @Test

@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import com.android.sharemate.model.auth.AuthError
@@ -584,9 +585,72 @@ class AuthViewModelTest {
     assertEquals("a@b.co", viewModel.state.value.email)
   }
 
+  @Test
+  fun emailSignUpOffersThePhotoStepUntilItIsFinished() = runTest {
+    ready()
+    fillSignUp()
+    viewModel.submit()
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+    repository.sessions.emit(AuthSession("new-user", "student@example.org"))
+    advanceUntilIdle()
+    assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+    viewModel.finishProfilePhotoStep()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+  }
+
+  @Test
+  fun recoveredSignUpOffersThePhotoStepWithOrWithoutAPendingName() = runTest {
+    ready()
+    for (nameFailure in listOf(null, AuthException(AuthError.NETWORK))) {
+      repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+      repository.signUpFailureAfterSession = AuthException(AuthError.NETWORK)
+      repository.profileUpdateFailure = nameFailure
+      fillSignUp()
+      viewModel.submit()
+      advanceUntilIdle()
+      assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+      assertEquals(nameFailure != null, viewModel.state.value.pendingProfileUpdate != null)
+      viewModel.signOut()
+      advanceUntilIdle()
+      assertNull(viewModel.state.value.profilePhotoStepUid)
+    }
+  }
+
+  @Test
+  fun signInNeverOffersThePhotoStepAndAnotherSessionClearsIt() = runTest {
+    ready()
+    fillLogin()
+    viewModel.submit()
+    advanceUntilIdle()
+    repository.sessions.emit(AuthSession("user", "student@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+    viewModel.signOut()
+    advanceUntilIdle()
+    repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+    fillSignUp()
+    viewModel.submit()
+    advanceUntilIdle()
+    repository.sessions.emit(
+        AuthSession("new-user", "student@example.org", displayName = "Student"))
+    advanceUntilIdle()
+    assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+    repository.sessions.emit(AuthSession("other-user", "other@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+  }
+
   private suspend fun ready() {
     repository.sessions.emit(null)
     dispatcher.scheduler.advanceUntilIdle()
+  }
+
+  private fun fillSignUp() {
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updatePseudo("Student")
+    viewModel.updateConfirmPassword("secret")
   }
 
   private fun fillLogin(email: String = "student@example.org", password: String = "secret") {

@@ -30,6 +30,7 @@ import com.android.sharemate.ui.household.HouseholdChoiceTestTags
 import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.JoinHouseholdTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.profile.ProfilePhotoStepTestTags
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
@@ -79,6 +80,7 @@ class MainUserFlowE2ETest {
         .performScrollTo()
         .performTextInput(password)
     compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
+    skipProfilePhotoStep()
 
     waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
@@ -179,6 +181,7 @@ class MainUserFlowE2ETest {
         .performScrollTo()
         .performTextInput(password)
     compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
+    skipProfilePhotoStep()
 
     waitForHouseholdChoice(HouseholdChoiceTestTags.CREATE)
     compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).performClick()
@@ -238,6 +241,7 @@ class MainUserFlowE2ETest {
         .performScrollTo()
         .performTextInput(password)
     compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
+    skipProfilePhotoStep()
     waitForHouseholdChoice(HouseholdChoiceTestTags.JOIN)
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput(inviteCode)
@@ -267,6 +271,14 @@ class MainUserFlowE2ETest {
       compose.onAllNodesWithTag(C.Tag.fridge_add_dialog).fetchSemanticsNodes().isEmpty() &&
           compose.onAllNodesWithText(name).fetchSemanticsNodes().isNotEmpty()
     }
+  }
+
+  /** Skips the optional profile photo step shown after an email sign-up. */
+  private fun skipProfilePhotoStep() {
+    waitUntil("profile photo step") {
+      compose.onAllNodesWithTag(ProfilePhotoStepTestTags.SKIP).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(ProfilePhotoStepTestTags.SKIP).performClick()
   }
 
   private fun waitForHouseholdChoice(testTag: String) {
