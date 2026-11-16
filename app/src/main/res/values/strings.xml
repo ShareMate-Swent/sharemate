@@ -274,4 +274,6 @@
     <string name="inventory_save_success">Items saved to the shared fridge.</string>
     <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
     <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
+    <string name="purchase_set_aside">Set expense aside and scan another receipt</string>
+    <string name="purchase_recover_deferred">Recover saved expense: %1$s</string>
 </resources>

@@ -189,6 +189,73 @@ class InventorySaveFlowTest {
   }
 
   @Test
+  fun listenerFailureAndRetryKeepDraftSelectionsUntilFreshMembershipArrives() {
+    val updates =
+        kotlinx.coroutines.channels.Channel<List<UserProfile>>(
+            kotlinx.coroutines.channels.Channel.UNLIMITED)
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              kotlinx.coroutines.flow.flow {
+                for (members in updates) {
+                  check(members.isNotEmpty()) { "listener failed" }
+                  emit(members)
+                }
+              }
+        }
+    val submission =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = submission
+
+          override suspend fun save(submission: InventorySubmission) = Unit
+        }
+    compose.runOnIdle {
+      compose.activity.viewModelStore.put(
+          "inventory-save_owner_home",
+          InventorySaveViewModel(ControlledItems(), store, "owner", "home"))
+      updates.trySend(listOf(UserProfile("owner"), UserProfile("bob")))
+    }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "owner",
+            "home",
+            true,
+            expenseRepository =
+                object : ExpenseSubmissionRepository {
+                  override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
+                      error("No submission")
+                },
+            profileRepository = profiles)
+      }
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
+    compose.runOnIdle { updates.trySend(emptyList()) }
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    compose.runOnIdle { updates.trySend(listOf(UserProfile("owner"), UserProfile("bob"))) }
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    updates.close()
+  }
+
+  @Test
   fun recoveredDraftKeepsInventoryAvailableAndDefaultsPayerAfterLoading() {
     val review = mutableStateOf(PurchaseReview.forUser("owner", emptyMap()))
     showPurchase(

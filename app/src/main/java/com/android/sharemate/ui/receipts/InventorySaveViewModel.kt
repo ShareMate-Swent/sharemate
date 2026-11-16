@@ -19,6 +19,7 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -78,6 +79,8 @@ class InventorySaveViewModel(
   private val mutableState = MutableStateFlow(InventorySaveState())
   /** Current operation and its retained reviewed rows; server confirmation alone marks success. */
   val state = mutableState.asStateFlow()
+  private val mutableDeferred = MutableStateFlow<List<InventorySubmission>>(emptyList())
+  val deferred = mutableDeferred.asStateFlow()
   private var observation: Job? = null
   private var submissionJob: Job? = null
   private var generation = 0
@@ -94,6 +97,7 @@ class InventorySaveViewModel(
     submissionJob =
         viewModelScope.launch {
           try {
+            mutableDeferred.value = store.deferred(userId, householdId)
             val restored = store.load(userId, householdId)
             if (generation != token) return@launch
             mutableState.value =
@@ -224,6 +228,7 @@ class InventorySaveViewModel(
               // Persist inventory confirmation and uncertainty before crossing the remote boundary.
               retained = retained.withProgress(true, ExpenseProgress.UNKNOWN)
               store.save(retained)
+              if (generation != token) return@launch
               check(expenses.recordExpense(checkNotNull(retained.expense)) == retained.expense)
               retained = retained.withProgress(true, ExpenseProgress.CONFIRMED)
               store.save(retained)
@@ -282,6 +287,51 @@ class InventorySaveViewModel(
         observe(it, generation)
       } ?: restore()
     } else current.submission?.let { confirm(it.items) }
+  }
+
+  /** Releases a rejected purchase only after its immutable payload has been archived durably. */
+  fun setAside() {
+    val retained = state.value.submission ?: return
+    if (!canSave ||
+        state.value.phase != InventorySavePhase.PENDING ||
+        !retained.inventoryConfirmed ||
+        retained.expenseProgress != ExpenseProgress.REJECTED)
+        return
+    mutableState.value = state.value.copy(phase = InventorySavePhase.SUBMITTING)
+    val token = ++generation
+    viewModelScope.launch {
+      observation?.cancelAndJoin()
+      submissionJob?.cancelAndJoin()
+      expenseJob?.cancelAndJoin()
+      try {
+        store.save(retained)
+        store.setAside(retained)
+        mutableDeferred.value = store.deferred(userId, householdId)
+        if (generation == token) mutableState.value = InventorySaveState(InventorySavePhase.READY)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        if (generation == token)
+            mutableState.value = InventorySaveState(InventorySavePhase.RECOVERY_FAILED, retained)
+      }
+    }
+  }
+
+  /** Restores a deferred operation without changing its identity or replaying inventory. */
+  fun recoverDeferred(id: String? = mutableDeferred.value.firstOrNull()?.id) {
+    if (!canSave || !state.value.canStartScan || state.value.submission?.draft == true) return
+    val retained = mutableDeferred.value.firstOrNull { it.id == id } ?: return
+    mutableState.value = state.value.copy(phase = InventorySavePhase.SUBMITTING)
+    viewModelScope.launch {
+      try {
+        store.save(retained)
+        restore()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        mutableState.value = InventorySaveState(InventorySavePhase.RECOVERY_FAILED)
+      }
+    }
   }
 
   /**

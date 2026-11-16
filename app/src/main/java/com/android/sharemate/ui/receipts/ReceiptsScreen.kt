@@ -101,7 +101,7 @@ fun ReceiptsScreen(
       } else null
   val memberState = memberModel?.state?.collectAsStateWithLifecycle()?.value
   val members =
-      if (memberState == null || memberState.isLoading || memberState.hasError) emptyMap()
+      if (memberState == null) emptyMap()
       else memberState.members.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }
   Column {
     if (memberState?.isLoading == true) Text(stringResource(R.string.purchase_members_loading))
@@ -120,7 +120,11 @@ fun ReceiptsScreen(
         sharedHousehold,
         showBalances,
         onOpenBalances,
-        if (sharedHousehold && expenseRepository != null) PurchaseReview.forUser(userId, members)
+        if (sharedHousehold && expenseRepository != null)
+            PurchaseReview.forUser(userId, members)
+                .copy(
+                    membersAvailable =
+                        memberState != null && !memberState.isLoading && !memberState.hasError)
         else null)
   }
 }
@@ -159,9 +163,13 @@ internal fun ReceiptScanFlow(
 
   val reviewed by scan.reviewed.collectAsState()
   val pending by scan.needsReview.collectAsState()
+  val deferred = save?.deferred?.collectAsStateWithLifecycle()?.value.orEmpty()
   val saveState = save?.state?.collectAsStateWithLifecycle()?.value
   LaunchedEffect(saveState?.submission?.id) {
     saveState?.submission?.let { scan.confirm(it.items) }
+    if (saveState?.phase == InventorySavePhase.READY && saveState.submission == null) {
+      nav.popBackStack(RECEIPTS_ROUTE, false)
+    }
   }
   LaunchedEffect(pending) {
     if (pending) {
@@ -187,7 +195,18 @@ internal fun ReceiptScanFlow(
                 }) {
                   Text(stringResource(R.string.scan_receipt))
                 }
-            if (reviewed) {
+            deferred.forEach { retained ->
+              Button(
+                  onClick = { save?.recoverDeferred(retained.id) },
+                  enabled = saveState?.canStartScan == true && saveState.submission?.draft != true,
+                  modifier = Modifier.testTag("purchase_recover_deferred")) {
+                    Text(
+                        stringResource(
+                            R.string.purchase_recover_deferred,
+                            retained.items.joinToString { it.name }))
+                  }
+            }
+            if (reviewed && (save == null || saveState?.submission != null)) {
               if (save == null) Text(stringResource(R.string.receipt_reviewed))
               Button(onClick = { nav.navigate(REVIEW_ROUTE) }) {
                 Text(stringResource(R.string.staging_title))
@@ -199,7 +218,11 @@ internal fun ReceiptScanFlow(
                     Text(stringResource(R.string.balances_title))
                   }
             }
-            InventorySaveFeedback(saveState, sharedHousehold, onRetry = { save?.retry() })
+            InventorySaveFeedback(
+                saveState,
+                sharedHousehold,
+                onRetry = { save?.retry() },
+                onSetAside = { save?.setAside() })
           }
       BarcodePhotoFlow(
           photo,
@@ -227,7 +250,11 @@ internal fun ReceiptScanFlow(
               title = stringResource(R.string.staging_title),
               onBack = { nav.popBackStack() },
               backTestTag = StagingTestTags.BACK)
-          InventorySaveFeedback(saveState, sharedHousehold, onRetry = { save?.retry() })
+          InventorySaveFeedback(
+              saveState,
+              sharedHousehold,
+              onRetry = { save?.retry() },
+              onSetAside = { save?.setAside() })
         }
         return@composable
       }
@@ -244,8 +271,8 @@ internal fun ReceiptScanFlow(
                           purchaseReview.takeIf { saveState?.submission?.expense == null })
                     }
                   })
-      LaunchedEffect(staging, purchaseReview?.members) {
-        purchaseReview?.let { staging.updatePurchaseMembers(it.members) }
+      LaunchedEffect(staging, purchaseReview?.members, purchaseReview?.membersAvailable) {
+        purchaseReview?.let { staging.updatePurchaseMembers(it.members, it.membersAvailable) }
       }
       StagingScreen(
           staging,
@@ -256,11 +283,15 @@ internal fun ReceiptScanFlow(
             }
           },
           onBack = { nav.popBackStack() },
-          actionsEnabled = sharedHousehold && saveState?.canConfirm != false,
+          actionsEnabled =
+              sharedHousehold &&
+                  saveState?.canConfirm != false &&
+                  (save == null || saveState?.submission != null),
           onConfirmPurchase =
               purchaseReview?.let { review ->
                 { purchase ->
-                  if (save?.confirmPurchase(purchase, review.members) == true) {
+                  if (review.membersAvailable &&
+                      save?.confirmPurchase(purchase, review.members) == true) {
                     scan.confirm(purchase.items)
                     nav.popBackStack()
                   }
@@ -279,7 +310,11 @@ internal fun ReceiptScanFlow(
                   {},
                   enabled = false)
             }
-            InventorySaveFeedback(saveState, sharedHousehold, onRetry = { save?.retry() })
+            InventorySaveFeedback(
+                saveState,
+                sharedHousehold,
+                onRetry = { save?.retry() },
+                onSetAside = { save?.setAside() })
           })
     }
   }
@@ -295,8 +330,16 @@ object InventorySaveTestTags {
 internal fun InventorySaveFeedback(
     state: InventorySaveState?,
     sharedHousehold: Boolean,
-    onRetry: () -> Unit
+    onSetAside: () -> Unit = {},
+    onRetry: () -> Unit,
 ) {
+  if (state?.phase == InventorySavePhase.PENDING &&
+      state.submission?.inventoryConfirmed == true &&
+      state.submission.expenseProgress == ExpenseProgress.REJECTED) {
+    Button(onClick = onSetAside, modifier = Modifier.testTag("purchase_set_aside")) {
+      Text(stringResource(R.string.purchase_set_aside))
+    }
+  }
   val message =
       when {
         !sharedHousehold -> R.string.inventory_save_shared_only

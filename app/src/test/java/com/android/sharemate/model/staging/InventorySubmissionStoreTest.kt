@@ -68,6 +68,44 @@ class InventorySubmissionStoreTest {
   }
 
   @Test
+  fun deferredRejectionSurvivesNewDraftAndIsScopedAndRecoverable() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "owner", 1000, mapOf("owner" to 1000L))
+    val rejected =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            expense = expense,
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    store.save(rejected)
+    store.setAside(rejected)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertNull(restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    assertTrue(restored.deferred("other", "home").isEmpty())
+    assertTrue(restored.deferred("owner", "other").isEmpty())
+    val draft =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "owner", "home", rows, draft = true)
+    restored.save(draft)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    restored.save(rejected)
+    assertEquals(rejected, restored.load("owner", "home"))
+    assertTrue(restored.deferred("owner", "home").isEmpty())
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
+  }
+
+  @Test
   fun recreatedStoreRestoresExactPayloadAndSeparatesUserAndHouseholdScopes() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
@@ -162,6 +200,7 @@ class InventorySubmissionStoreTest {
         .thenReturn(preferences)
     `when`(preferences.edit()).thenReturn(editor)
     `when`(editor.putString(anyString(), anyString())).thenReturn(editor)
+    `when`(editor.remove(anyString())).thenReturn(editor)
     `when`(editor.commit()).thenReturn(false)
     val store = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
     val submission =

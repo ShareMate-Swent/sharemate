@@ -66,7 +66,11 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
    * The coordinator supplies current member names through its existing household abstractions.
    * Removed selections are cleared, never replaced with another payer/participant.
    */
-  fun updatePurchaseMembers(members: Map<String, String>) {
+  fun updatePurchaseMembers(members: Map<String, String>, available: Boolean = true) {
+    if (!available) {
+      mutableState.update { it.copy(purchase = it.purchase?.copy(membersAvailable = false)) }
+      return
+    }
     val initialize = !purchaseMembersInitialized && members.isNotEmpty()
     purchaseMembersInitialized = purchaseMembersInitialized || members.isNotEmpty()
     mutableState.update { state ->
@@ -74,7 +78,7 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
           purchase =
               state.purchase?.let {
                 if (initialize) PurchaseReview.forUser(it.currentUserId, members)
-                else it.withMembers(members)
+                else it.withMembers(members).copy(membersAvailable = true)
               })
     }
   }

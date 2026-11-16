@@ -249,6 +249,101 @@ class PurchaseSaveViewModelTest {
   }
 
   @Test
+  fun persistentRejectionCanBeDeferredAcrossRestartAndRecoveredWithOriginalIdentity() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    submit()
+    confirmInventory()
+    val retained = store.saved
+    val restored = restart()
+    restored.setAside()
+    runCurrent()
+    assertTrue(restored.state.value.canStartScan)
+    assertNull(store.saved)
+    assertEquals(listOf(retained), restored.deferred.value)
+    val next = restart()
+    assertTrue(next.state.value.canStartScan)
+    assertEquals(listOf(retained), next.deferred.value)
+    next.recoverDeferred()
+    runCurrent()
+    assertEquals(retained, next.state.value.submission)
+    assertEquals(1, expenses.calls.size)
+    next.retry()
+    runCurrent()
+    assertEquals(listOf(retained?.expense, retained?.expense), expenses.calls)
+    assertEquals(1, inventory.calls.size)
+    assertFalse(next.state.value.canStartScan)
+    next.setAside()
+    runCurrent()
+    assertTrue(next.beginNewScan(rows))
+    assertNotEquals(retained?.id, next.state.value.submission?.id)
+    assertEquals(listOf(retained), next.deferred.value)
+  }
+
+  @Test
+  fun setAsideWaitsForInFlightCommitBeforeReleasingTheSlot() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    confirmInventory()
+    val retained = store.saved
+    val commit = CompletableDeferred<Unit>()
+    store.blockProgress = commit
+    vm.retry()
+    runCurrent()
+    vm.setAside()
+    runCurrent()
+    assertFalse(vm.state.value.canStartScan)
+    assertTrue(store.archived.isEmpty())
+    commit.complete(Unit)
+    runCurrent()
+    assertTrue(vm.state.value.canStartScan)
+    assertNull(store.saved)
+    assertEquals(listOf(retained), store.archived)
+    assertEquals(1, expenses.calls.size)
+  }
+
+  @Test
+  fun anyDeferredReceiptCanBeRecoveredByIdentity() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    confirmInventory()
+    val first = checkNotNull(store.saved)
+    vm.setAside()
+    runCurrent()
+    assertTrue(vm.beginNewScan(rows))
+    assertTrue(vm.confirmPurchase(purchase, members))
+    runCurrent()
+    val second = checkNotNull(store.saved)
+    assertNotEquals(first.id, second.id)
+    vm.setAside()
+    runCurrent()
+    assertEquals(2, vm.deferred.value.size)
+    vm.recoverDeferred(second.id)
+    runCurrent()
+    assertEquals(second, vm.state.value.submission)
+    assertEquals(listOf(first), vm.deferred.value)
+  }
+
+  @Test
+  fun failedArchiveKeepsOriginalPurchaseAndBlocksNewScans() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    confirmInventory()
+    val retained = store.saved
+    store.failure = IOException("disk full")
+    vm.setAside()
+    runCurrent()
+    assertFalse(vm.state.value.canStartScan)
+    assertEquals(retained, store.saved)
+    assertEquals(retained, vm.state.value.submission)
+    assertEquals(InventorySavePhase.RECOVERY_FAILED, vm.state.value.phase)
+    assertTrue(vm.deferred.value.isEmpty())
+  }
+
+  @Test
   fun diskAndTransportFailuresRetainPayloadAndRetryOnlyTheMissingPhase() = runTest {
     store.failure = IOException("disk full")
     val vm = submit()
@@ -344,6 +439,17 @@ class PurchaseSaveViewModelTest {
 
   private class Store : InventorySubmissionStore {
     var blockProgress: CompletableDeferred<Unit>? = null
+    val archived = mutableListOf<InventorySubmission>()
+
+    override suspend fun deferred(ownerId: String, householdId: String) =
+        archived.filter { it.ownerId == ownerId && it.householdId == householdId }
+
+    override suspend fun setAside(submission: InventorySubmission) {
+      failure?.let { throw it }
+      archived += submission
+      saved = null
+    }
+
     var saved: InventorySubmission? = null
     var failure: Exception? = null
 
@@ -360,6 +466,7 @@ class PurchaseSaveViewModelTest {
         return
       }
       failure?.let { throw it }
+      archived.removeAll { it.id == submission.id }
       saved = submission
     }
   }
