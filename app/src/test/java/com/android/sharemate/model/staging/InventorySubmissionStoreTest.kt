@@ -25,6 +25,39 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun expenseNullPurchaseDraftStaysOutsideReceiptHistory() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val purchaseStore = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val historyStore = AndroidInventorySubmissionStore(app, dispatcher)
+    val purchase =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "draft-owner",
+            "draft-home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)
+    purchaseStore.save(purchase)
+
+    assertNull(historyStore.load("draft-owner", "draft-home"))
+    assertNull(historyStore.loadById("draft-owner", "draft-home", purchase.id))
+    assertTrue(historyStore.list("draft-owner", "draft-home").isEmpty())
+
+    val receipt =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "draft-owner",
+            "draft-home",
+            listOf(StagedItem("bread", "Bread", 1, 350)),
+            draft = true)
+    historyStore.save(receipt)
+    assertEquals(listOf(receipt), historyStore.list("draft-owner", "draft-home"))
+    assertNull(historyStore.loadById("draft-owner", "draft-home", purchase.id))
+    assertEquals(purchase, purchaseStore.load("draft-owner", "draft-home"))
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
+  }
+
+  @Test
   fun expenseBearingLegacyEntryStaysOutsideReceiptHistory() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
@@ -284,9 +317,16 @@ class InventorySubmissionStoreTest {
   fun corruptOrMismatchedJournalFailsRatherThanPretendingThereIsNoSubmission() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf("owner", "home")).toString()
-    preferences.edit().putString(key, "not valid json").commit()
     val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val owned =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "owner",
+            "home",
+            listOf(StagedItem("bread", "Bread", 1, 350)))
+    store.save(owned)
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:${owned.id}"
+    preferences.edit().putString(key, "not valid json").commit()
     assertTrue(runCatching { store.load("owner", "home") }.isFailure)
     val other =
         InventorySubmission(

@@ -90,10 +90,7 @@ class AndroidInventorySubmissionStore(
                   ?: error("Missing retained receipt")
           return@withContext decode(value, ownerId, householdId)
         }
-        preferences
-            .getString(scope, null)
-            ?.let { decode(it, ownerId, householdId) }
-            ?.takeIf { it.expense == null }
+        null
       }
 
   override suspend fun list(ownerId: String, householdId: String): List<InventorySubmission> =
@@ -227,15 +224,7 @@ class AndroidInventorySubmissionStore(
           }
           val existing = preferences.getString(indexKey(scope), null)?.let(::JSONArray)
           val ids = mutableListOf<String>()
-          if (existing != null) {
-            repeat(existing.length()) { ids.add(existing.getString(it)) }
-          } else {
-            preferences.getString(scope, null)?.let { legacy ->
-              decode(legacy, submission.ownerId, submission.householdId)
-                  .takeIf { it.expense == null }
-                  ?.let { ids.add(it.id) }
-            }
-          }
+          if (existing != null) repeat(existing.length()) { ids.add(existing.getString(it)) }
           if (submission.id !in ids) ids.add(0, submission.id)
           val editor =
               preferences
@@ -243,11 +232,6 @@ class AndroidInventorySubmissionStore(
                   .putString(receiptKey(scope, submission.id), json.toString())
                   .putString(indexKey(scope), JSONArray(ids).toString())
                   .remove(archiveKey(submission))
-          preferences.getString(scope, null)?.let { legacy ->
-            val old = decode(legacy, submission.ownerId, submission.householdId)
-            if (old.expense == null && old.id != submission.id)
-                editor.putString(receiptKey(scope, old.id), legacy)
-          }
           check(editor.commit()) { "Could not retain the reviewed receipt" }
         }
       }
