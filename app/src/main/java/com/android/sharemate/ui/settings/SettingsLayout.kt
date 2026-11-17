@@ -12,5 +12,8 @@ internal object SettingsLayout {
   val cardIconBoxCornerRadius = 12.dp
   val avatarSize = 72.dp
   val avatarIconSize = 40.dp
+  /** Camera badge on the avatar, showing that tapping it changes the photo. */
+  val photoBadgeSize = 24.dp
+  val photoBadgePadding = 4.dp
   val dialogProgressSize = 24.dp
 }

@@ -309,10 +309,17 @@ service cloud.firestore {
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
             && message.senderId == request.auth.uid
-            && message.senderName is string
+            && message.senderName == chatSenderName()
             && message.text is string
-            && message.timestamp is timestamp
+            && message.timestamp == request.time
             && (isValidTextMessage(message) || isValidActivityMessage(message));
+      }
+
+      function chatSenderName() {
+        let profilePath = documentPath('profiles', request.auth.uid);
+        let name = exists(profilePath) ? get(profilePath).data.get('displayName', null) : null;
+        return name is string && name.matches('[\\s\\S]*\\S[\\s\\S]*')
+            && !name.matches('[\\s\\S]*@[\\s\\S]*') ? name : 'Member';
       }
 
       function hasVisibleText(text) {

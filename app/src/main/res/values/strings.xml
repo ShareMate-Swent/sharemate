@@ -113,6 +113,8 @@
     <string name="household_retry">Try again</string>
     <string name="settings_title">Settings</string>
     <string name="settings_profile_photo">Profile photo</string>
+    <string name="settings_change_photo">Change profile photo</string>
+    <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
     <string name="settings_google_account">Google account</string>
     <string name="settings_email_account">Email account</string>
     <string name="settings_connected">Connected</string>
@@ -228,6 +230,7 @@
     <string name="chat_activity_eaten">Ate %1$s</string>
     <string name="chat_activity_thrown">Threw away %1$s</string>
     <string name="chat_activity_image_description">Image of %1$s</string>
+    <string name="chat_sender_identity">%1$s · Member %2$d</string>
     <string name="fridge_personal">Personal</string>
     <string name="fridge_item_owner">Owner: %1$s</string>
     <string name="fridge_owner_you_named">%1$s (you)</string>

@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -31,6 +32,7 @@ import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
+import com.android.sharemate.ui.profile.ProfilePhotoError
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +56,8 @@ class SettingsScreenTest {
   private var editedPseudo = ""
   private var memberListOpens = 0
   private var notificationSettingsOpens = 0
+  private var photoChanges = 0
+  private var photoRetries = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -88,10 +92,64 @@ class SettingsScreenTest {
             onSavePseudo = { pseudoSaves++ },
             onRetryLoadPseudo = { pseudoRetries++ },
             onOpenNotificationSettings = { notificationSettingsOpens++ },
-            onSignOut = { signOuts++ })
+            onSignOut = { signOuts++ },
+            onChangePhoto = { photoChanges++ },
+            onRetryPhotoUpload = { photoRetries++ })
       }
     }
   }
+
+  @Test
+  fun tappingThePhotoChangesItAndUploadingDisablesIt() {
+    var settings by mutableStateOf(googleState)
+    composeTestRule.setContent {
+      MaterialTheme {
+        SettingsScreen(
+            state = settings,
+            leaveState = LeaveHouseholdUiState(),
+            onLeaveHousehold = {},
+            onCancelLeave = {},
+            onConfirmLeave = {},
+            onLeft = {},
+            onShowMembers = {},
+            onSwitchGoogleAccount = {},
+            onPseudoChanged = {},
+            onSavePseudo = {},
+            onRetryLoadPseudo = {},
+            onSignOut = {},
+            onChangePhoto = { photoChanges++ })
+      }
+    }
+    val photo = composeTestRule.onNodeWithTag(SettingsTestTags.CHANGE_PHOTO)
+    photo.assertContentDescriptionEquals(text(R.string.settings_change_photo)).performClick()
+    assertEquals(1, photoChanges)
+    composeTestRule.onNodeWithTag(SettingsTestTags.PHOTO_UPLOADING).assertDoesNotExist()
+
+    composeTestRule.runOnIdle { settings = googleState.copy(isUploadingPhoto = true) }
+    composeTestRule.onNodeWithTag(SettingsTestTags.PHOTO_UPLOADING).assertIsDisplayed()
+    photo.assertIsNotEnabled()
+  }
+
+  @Test
+  fun photoErrorsShowTheirMessageAndOnlyAFailedUploadOffersRetry() {
+    showSettings(settings = googleState.copy(photoError = ProfilePhotoError.UPLOAD_FAILED))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PHOTO_ERROR)
+        .assertTextEquals(text(R.string.settings_photo_upload_failed))
+    composeTestRule.onNodeWithTag(SettingsTestTags.PHOTO_RETRY).performClick()
+    assertEquals(1, photoRetries)
+  }
+
+  @Test
+  fun invalidPhotoShowsItsMessageWithoutRetry() {
+    showSettings(settings = googleState.copy(photoError = ProfilePhotoError.INVALID_PHOTO))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.PHOTO_ERROR)
+        .assertTextEquals(text(R.string.personal_photo_invalid))
+    composeTestRule.onNodeWithTag(SettingsTestTags.PHOTO_RETRY).assertDoesNotExist()
+  }
+
+  private fun text(id: Int) = composeTestRule.activity.getString(id)
 
   @Test
   fun pseudoCanBeEditedAndSaved() {

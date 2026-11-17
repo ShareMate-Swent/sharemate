@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.profile
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,11 +31,13 @@ private const val PROFILE_PHOTO_CAMERA_KEY = "profile-photo"
  * @param onPhotoConfirmed Receives the confirmed image URI and whether it is a camera capture. The
  *   URI may only be read until this returns.
  * @param camera The dialog's state, retained in the current ViewModel store.
+ * @param title Title of the dialog.
  */
 @Composable
 fun ProfilePhotoPicker(
     onPhotoConfirmed: suspend (uri: String, fromCamera: Boolean) -> Unit,
     camera: BarcodePhotoViewModel = profilePhotoCamera(),
+    @StringRes title: Int = R.string.profile_photo_step_title,
 ) {
   val state by camera.state.collectAsStateWithLifecycle()
   val activity = LocalContext.current.findActivity()
@@ -44,7 +47,7 @@ fun ProfilePhotoPicker(
   LaunchedEffect(state.confirmed) { if (state.confirmed) camera.reset() }
   BarcodePhotoFlow(
       camera,
-      title = R.string.profile_photo_step_title,
+      title = title,
       previewDescription = R.string.profile_photo_preview,
       sourceDescription = R.string.profile_photo_sources,
       onImageConfirmed = { uri -> onPhotoConfirmed(uri, camera.state.value.fromCamera) })
