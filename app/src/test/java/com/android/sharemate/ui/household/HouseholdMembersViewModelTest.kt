@@ -138,4 +138,18 @@ class HouseholdMembersViewModelTest {
     assertEquals(null, photos["sam"])
     assertEquals(alex.photoUrl, photos["alex"])
   }
+
+  @Test
+  fun membersOwnUploadsInOurBucketAreShown() = runTest {
+    val upload = "https://firebasestorage.googleapis.com/v0/b/bucket/o/users%2Fsam%2Favatars%2Fp1"
+    profiles.profiles.value += "sam" to sam.copy(photoUrl = upload)
+    profiles.profiles.value += "me" to me.copy(photoUrl = upload)
+    val viewModel = HouseholdMembersViewModel(profiles, "home", "me", photoBucket = "bucket")
+    advanceUntilIdle()
+
+    val photos = viewModel.state.value.members.associate { it.uid to it.photoUrl }
+    assertEquals(upload, photos["sam"])
+    // Another member's folder: a copied URL does not become someone else's photo.
+    assertEquals(null, photos["me"])
+  }
 }

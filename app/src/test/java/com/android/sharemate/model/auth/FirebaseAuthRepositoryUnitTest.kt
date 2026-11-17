@@ -14,9 +14,12 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserInfo
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 import org.mockito.ArgumentCaptor
@@ -275,6 +278,28 @@ class FirebaseAuthRepositoryUnitTest {
             listOf(null, AuthSession("trusted-uid", "student@example.org")),
             repository.session.take(2).toList())
         verify(auth).removeAuthStateListener(listener)
+      }
+
+  @Test
+  fun refreshSessionEmitsTheUpdatedProfileOfTheCurrentUser() =
+      runBlocking<Unit> {
+        val photo = mock(Uri::class.java)
+        `when`(photo.toString()).thenReturn("https://photos.example/new.jpg")
+        val before = user(providers = listOf("password"))
+        val after = user(providers = listOf("password"), photo = photo)
+        `when`(auth.currentUser).thenReturn(before, after)
+        doAnswer {
+              it.getArgument<FirebaseAuth.AuthStateListener>(0).onAuthStateChanged(auth)
+              null
+            }
+            .`when`(auth)
+            .addAuthStateListener(any(FirebaseAuth.AuthStateListener::class.java))
+        val sessions = async { repository.session.take(2).toList() }
+        repeat(3) { yield() }
+        repository.refreshSession()
+        assertEquals(
+            listOf(before.toAuthSession(), after.toAuthSession()),
+            withTimeout(5_000) { sessions.await() })
       }
 
   @Test

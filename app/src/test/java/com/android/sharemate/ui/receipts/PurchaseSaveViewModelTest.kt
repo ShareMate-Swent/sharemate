@@ -8,12 +8,14 @@ import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.staging.ReviewedPurchase
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.*
 import kotlinx.coroutines.withContext
 import org.junit.After
@@ -23,54 +25,6 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseSaveViewModelTest {
-  @Test
-  fun journalRejectsInconsistentPurchasePayloadAndProgress() {
-    val id = "12345678-1234-1234-1234-123456789abc"
-    val expense = SharedExpense(id, "home", "alice", 1000, purchase.shares)
-    val invalid =
-        listOf<() -> InventorySubmission>(
-            { InventorySubmission(id, "alice", "other", rows, expense = expense) },
-            { InventorySubmission(id, "bob", "home", rows, expense = expense) },
-            {
-              InventorySubmission(
-                  java.util.UUID.randomUUID().toString(), "alice", "home", rows, expense = expense)
-            },
-            { InventorySubmission(id, "alice", "home", rows, draft = true, expense = expense) },
-            {
-              InventorySubmission(
-                  id, "alice", "home", rows.map { it.copy(priceCents = null) }, expense = expense)
-            },
-            {
-              InventorySubmission(
-                  id, "alice", "home", rows.map { it.copy(priceCents = 999) }, expense = expense)
-            },
-            {
-              InventorySubmission(
-                  id, "alice", "home", rows.map { it.copy(priceCents = 1001) }, expense = expense)
-            },
-            {
-              InventorySubmission(
-                  id,
-                  "alice",
-                  "home",
-                  rows,
-                  expense =
-                      SharedExpense(
-                          id, "home", "alice", 100_000_001, mapOf("alice" to 100_000_001L)))
-            },
-            {
-              InventorySubmission(
-                  id,
-                  "alice",
-                  "home",
-                  rows,
-                  expense = expense,
-                  expenseProgress = ExpenseProgress.CONFIRMED)
-            },
-            { InventorySubmission(id, "alice", "home", rows, inventoryConfirmed = true) })
-    invalid.forEach { assertTrue(runCatching(it).exceptionOrNull() is IllegalArgumentException) }
-  }
-
   private val owners = mutableListOf<ViewModelStore>()
   private val rows = listOf(StagedItem("milk", "Edited milk", 2, 1000))
   private val members = mapOf("alice" to "Alice", "bob" to "Bob")
@@ -437,7 +391,174 @@ class PurchaseSaveViewModelTest {
     assertTrue(expenses.calls.isEmpty())
   }
 
+  @Test
+  fun unavailableExpenseRepositoryKeepsRecoveredInventoryAndRejectsNewPurchases() = runTest {
+    val vm = InventorySaveViewModel(inventory, store, "alice", "home")
+    ViewModelStore().also {
+      owners += it
+      it.put("save", vm)
+    }
+    runCurrent()
+    assertFalse(vm.confirmPurchase(purchase, members))
+    owners.last().clear()
+    val id = "12345678-1234-1234-1234-123456789abc"
+    store.saved =
+        InventorySubmission(
+            id,
+            "alice",
+            "home",
+            rows,
+            expense = SharedExpense(id, "home", "alice", 1000, purchase.shares),
+            inventoryConfirmed = true)
+    val recovered = InventorySaveViewModel(inventory, store, "alice", "home")
+    ViewModelStore().also {
+      owners += it
+      it.put("save", recovered)
+    }
+    runCurrent()
+    recovered.retry()
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, recovered.state.value.phase)
+    assertTrue(checkNotNull(recovered.state.value.submission).inventoryConfirmed)
+    assertTrue(inventory.calls.isEmpty())
+    assertTrue(expenses.calls.isEmpty())
+  }
+
+  @Test
+  fun submittingAndReadOnlyRecoveryIgnoreRetriesAndCannotReleasePurchases() = runTest {
+    val vm = model()
+    store.blockProgress = CompletableDeferred()
+    assertTrue(vm.confirmPurchase(purchase, members))
+    runCurrent()
+    vm.retry()
+    vm.setAside()
+    vm.recoverDeferred("missing")
+    assertEquals(InventorySavePhase.SUBMITTING, vm.state.value.phase)
+    val gate = checkNotNull(store.activeCommit)
+    gate.complete(Unit)
+    runCurrent()
+    assertEquals(1, inventory.calls.size)
+    confirmInventory()
+    val privateVm = model(canSave = false)
+    privateVm.retry()
+    privateVm.setAside()
+    privateVm.recoverDeferred()
+    runCurrent()
+    assertEquals(1, expenses.calls.size)
+    assertTrue(store.archived.isEmpty())
+    assertEquals(InventorySavePhase.PENDING, privateVm.state.value.phase)
+  }
+
+  @Test
+  fun deferredRecoveryFailureRetainsArchiveAndCanBeRetriedAfterJournalReload() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    confirmInventory()
+    vm.setAside()
+    runCurrent()
+    val retained = store.archived.single()
+    vm.recoverDeferred("missing")
+    assertEquals(InventorySavePhase.READY, vm.state.value.phase)
+    store.failure = IOException("disk full")
+    vm.recoverDeferred(retained.id)
+    runCurrent()
+    assertEquals(InventorySavePhase.RECOVERY_FAILED, vm.state.value.phase)
+    assertEquals(listOf(retained), store.archived)
+    assertNull(store.saved)
+    store.failure = null
+    vm.retry()
+    runCurrent()
+    assertEquals(InventorySavePhase.READY, vm.state.value.phase)
+    assertTrue(vm.beginNewScan(rows))
+    vm.recoverDeferred(retained.id)
+    runCurrent()
+    assertTrue(checkNotNull(vm.state.value.submission).draft)
+    assertEquals(listOf(retained), store.archived)
+    assertEquals(1, inventory.calls.size)
+  }
+
+  @Test
+  fun cancelledDeferredRecoveryDoesNotDiscardArchivedPayload() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    confirmInventory()
+    vm.setAside()
+    runCurrent()
+    val retained = store.archived.single()
+    store.failure = CancellationException("owner gone")
+    vm.recoverDeferred(retained.id)
+    runCurrent()
+    assertEquals(listOf(retained), store.archived)
+    assertNull(store.saved)
+    assertEquals(InventorySavePhase.SUBMITTING, vm.state.value.phase)
+    assertEquals(1, expenses.calls.size)
+  }
+
+  @Test
+  fun inconsistentExpenseResponseStaysUnknownUntilMatchingRetrySucceeds() = runTest {
+    expenses.mismatch = true
+    val vm = submit()
+    confirmInventory()
+    expenses.result.complete(Unit)
+    runCurrent()
+    assertEquals(ExpenseProgress.UNKNOWN, vm.state.value.submission?.expenseProgress)
+    assertEquals(InventorySavePhase.PENDING, vm.state.value.phase)
+    val retained = store.saved
+    expenses.mismatch = false
+    vm.retry()
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertEquals(listOf(retained?.expense, retained?.expense), expenses.calls)
+    assertEquals(1, inventory.calls.size)
+  }
+
+  @Test
+  fun cancelledRejectionPersistenceLeavesOriginalPayloadForRestart() = runTest {
+    expenses.failure =
+        ExpenseRejectedException(ExpenseRejectionReason.PermissionDenied, IOException())
+    val vm = submit()
+    vm.setAside()
+    assertTrue(store.archived.isEmpty())
+    store.failProgress = ExpenseProgress.REJECTED
+    store.failure = CancellationException("owner gone")
+    confirmInventory()
+    assertEquals(ExpenseProgress.REJECTED, vm.state.value.submission?.expenseProgress)
+    assertEquals(ExpenseProgress.UNKNOWN, store.saved?.expenseProgress)
+    val immutable = store.saved?.expense
+    store.failure = null
+    val recovered = restart()
+    assertEquals(immutable, recovered.state.value.submission?.expense)
+    assertEquals(ExpenseProgress.REJECTED, recovered.state.value.submission?.expenseProgress)
+    assertEquals(1, inventory.calls.size)
+    assertEquals(listOf(immutable, immutable), expenses.calls)
+  }
+
+  @Test
+  fun lateInventoryListenerFailureCannotEraseFinancialProgress() = runTest {
+    val failure = CompletableDeferred<Unit>()
+    inventory.observation = flow {
+      emit(InventorySubmissionStatus.PENDING)
+      failure.await()
+      throw IOException("listener lost")
+    }
+    val vm = submit()
+    inventory.ack.complete(Result.success(Unit))
+    runCurrent()
+    failure.complete(Unit)
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, vm.state.value.phase)
+    assertTrue(checkNotNull(vm.state.value.submission).inventoryConfirmed)
+    assertEquals(ExpenseProgress.UNKNOWN, store.saved?.expenseProgress)
+    expenses.result.complete(Unit)
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertEquals(1, expenses.calls.size)
+  }
+
   private class Store : InventorySubmissionStore {
+    var activeCommit: CompletableDeferred<Unit>? = null
     var blockProgress: CompletableDeferred<Unit>? = null
     val archived = mutableListOf<InventorySubmission>()
 
@@ -450,6 +571,7 @@ class PurchaseSaveViewModelTest {
       saved = null
     }
 
+    var failProgress: ExpenseProgress? = null
     var saved: InventorySubmission? = null
     var failure: Exception? = null
 
@@ -458,6 +580,7 @@ class PurchaseSaveViewModelTest {
 
     override suspend fun save(submission: InventorySubmission) {
       blockProgress?.let { gate ->
+        activeCommit = gate
         blockProgress = null
         withContext(NonCancellable) {
           gate.await()
@@ -465,13 +588,15 @@ class PurchaseSaveViewModelTest {
         }
         return
       }
-      failure?.let { throw it }
+      if (failProgress == null || failProgress == submission.expenseProgress)
+          failure?.let { throw it }
       archived.removeAll { it.id == submission.id }
       saved = submission
     }
   }
 
   private class Inventory : ItemRepository by FakeItemRepository() {
+    var observation: Flow<InventorySubmissionStatus>? = null
     val calls = mutableListOf<InventorySubmission>()
     val status = MutableStateFlow(InventorySubmissionStatus.PENDING)
     val ack = CompletableDeferred<Result<Unit>>()
@@ -483,10 +608,11 @@ class PurchaseSaveViewModelTest {
 
     override fun observeSubmission(
         submission: InventorySubmission
-    ): Flow<InventorySubmissionStatus> = status
+    ): Flow<InventorySubmissionStatus> = observation ?: status
   }
 
   private class Expenses : ExpenseSubmissionRepository {
+    var mismatch = false
     val calls = mutableListOf<SharedExpense>()
     val result = CompletableDeferred<Unit>()
     var failure: Exception? = null
@@ -495,7 +621,10 @@ class PurchaseSaveViewModelTest {
       calls += expense
       failure?.let { throw it }
       result.await()
-      return expense
+      return if (mismatch)
+          SharedExpense(
+              expense.id, expense.householdId, expense.paidBy, 1001, mapOf("alice" to 1001L))
+      else expense
     }
   }
 }

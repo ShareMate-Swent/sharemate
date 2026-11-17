@@ -99,6 +99,8 @@ import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.TopLevelDestination
+import com.android.sharemate.ui.profile.ProfilePhotoPicker
+import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.NotificationSettingsScreen
@@ -108,6 +110,7 @@ import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
@@ -162,11 +165,18 @@ open class MainActivity : ComponentActivity() {
         FirebaseFunctions.getInstance(FirebaseExpenseSubmissionRepository.REGION))
   }
 
-  /** Creates the repository that uploads the photo picked in the post-sign-up step. */
+  /** Creates the repository that uploads the photo picked after sign-up or in Settings. */
   protected open fun createProfilePhotoRepository(): ProfilePhotoRepository =
       FirebaseProfilePhotoRepository.create()
 
   private val profilePhotoRepository by lazy { createProfilePhotoRepository() }
+  /**
+   * Storage bucket of uploaded profile photos, the only one the members list loads from; null
+   * without a Firebase app (as in UI tests), which shows Google photos only.
+   */
+  private val profilePhotoBucket by lazy {
+    FirebaseApp.getApps(this).firstOrNull()?.options?.storageBucket
+  }
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -356,7 +366,6 @@ open class MainActivity : ComponentActivity() {
                                             household.id,
                                             session.uid,
                                             session.displayName
-                                                ?: session.email
                                                 ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })
@@ -385,11 +394,14 @@ open class MainActivity : ComponentActivity() {
                                             authRepository,
                                             householdRepository,
                                             pseudoRepository,
-                                            household)
+                                            household,
+                                            profilePhotoRepository,
+                                            AndroidPersonalPhotoFiles(applicationContext))
                                       }
                                     })
                         val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
                         val settingsScope = rememberCoroutineScope()
+                        val photoCamera = profilePhotoCamera()
                         SettingsScreen(
                             state = settingsState,
                             leaveState = leaveState,
@@ -415,7 +427,13 @@ open class MainActivity : ComponentActivity() {
                             onSignOut = authViewModel::signOut,
                             onOpenNotificationSettings = {
                               navController.navigate(ChildRoutes.NOTIFICATION_SETTINGS)
-                            })
+                            },
+                            onChangePhoto = photoCamera::open,
+                            onRetryPhotoUpload = settingsViewModel::retryPhotoUpload)
+                        ProfilePhotoPicker(
+                            onPhotoConfirmed = settingsViewModel::changePhoto,
+                            camera = photoCamera,
+                            title = R.string.settings_change_photo)
                       }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
                     // Scoped to this screen, so the members listener stops when it is closed.
@@ -425,7 +443,10 @@ open class MainActivity : ComponentActivity() {
                                 viewModelFactory {
                                   initializer {
                                     HouseholdMembersViewModel(
-                                        profileRepository, household.id, session.uid)
+                                        profileRepository,
+                                        household.id,
+                                        session.uid,
+                                        profilePhotoBucket)
                                   }
                                 })
                     val membersState by membersViewModel.state.collectAsStateWithLifecycle()
