@@ -47,6 +47,21 @@ service firebase.storage {
       // No listing, overwrite, metadata update or access to any other path.
     }
 
+    // Incident references are immutable. Membership is checked on each authenticated operation.
+    match /incidentPhotos/{householdId}/{authorId}/{photoId} {
+      function validIncidentPath() {
+        return householdId.matches('[A-Za-z0-9_:-]+')
+            && authorId.matches('[A-Za-z0-9_:-]+')
+            && photoId.matches('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}');
+      }
+      allow get: if request.auth != null && validIncidentPath() && isCurrentMember(householdId);
+      allow create: if resource == null && request.auth != null && validIncidentPath()
+          && authorId == request.auth.uid && isCurrentMember(householdId)
+          && request.resource.size > 0 && request.resource.size <= 5 * 1024 * 1024
+          && request.resource.contentType in ['image/jpeg', 'image/png'];
+      // No list, update (including overwrite/metadata), or client-side delete permission.
+    }
+
     // Profile photos: each upload gets a new path, so the previous photo stays readable until the
     // account photo URL points at the new one; the owner then deletes the older ones. Only the
     // owner can read them through the SDK, list or delete them. The tokenised download URL, shared
