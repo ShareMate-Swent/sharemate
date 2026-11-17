@@ -213,6 +213,47 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun confirmedActivityUsesLatestItemName() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk.copy(name = "Oat milk", status = ItemStatus.EATEN)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, "Oat milk")),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun itemMadePrivateBeforeConfirmationDoesNotPostActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(
+        listOf(
+            milk.copy(
+                ownerId = "test-user", sharing = ItemSharing.PERSONAL, status = ItemStatus.EATEN)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
   fun rejectedStatusAfterRollbackDoesNotPostActivity() = runTest {
     repository.emitItems(listOf(milk))
     repository.statusConfirmation = CompletableDeferred()

@@ -368,7 +368,7 @@ class FridgeViewModel(
                     if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
                   },
                   onSuccess = {
-                    if (latestStatusWrites[itemId] === operation) postActivity(item, status)
+                    if (latestStatusWrites[itemId] === operation) postActivity(itemId, status)
                   })
         }
       } catch (cancelled: CancellationException) {
@@ -381,8 +381,11 @@ class FridgeViewModel(
     }
   }
 
-  private suspend fun postActivity(item: Item, status: ItemStatus) {
+  private suspend fun postActivity(itemId: String, status: ItemStatus) {
     val repository = chatRepository ?: return
+    val item =
+        uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
+            ?: return
     if (fridgeType != FridgeType.SHARED || item.sharing != ItemSharing.SHARED) return
     val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
     try {
