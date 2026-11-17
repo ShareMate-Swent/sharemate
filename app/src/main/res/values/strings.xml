@@ -227,6 +227,9 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
+    <string name="chat_activity_eaten">Ate %1$s</string>
+    <string name="chat_activity_thrown">Threw away %1$s</string>
+    <string name="chat_activity_image_description">Image of %1$s</string>
     <string name="chat_sender_identity">%1$s · Member %2$d</string>
     <string name="fridge_personal">Personal</string>
     <string name="fridge_item_owner">Owner: %1$s</string>

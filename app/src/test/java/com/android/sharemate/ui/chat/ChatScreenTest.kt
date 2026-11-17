@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -193,6 +194,63 @@ class ChatScreenTest {
         .onNodeWithText(
             DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun showsEatenActivityBadgeWithItemImageAndTimestamp() {
+    val message =
+        Message("1", "other", "Sam", "", Date(0), MessageType.EATEN, "Milk", "file:///milk")
+    show(ChatUiState(isLoading = false, messages = listOf(message)))
+
+    composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Ate Milk").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(
+            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Image of Milk").assertIsDisplayed()
+  }
+
+  @Test
+  fun showsThrownActivityBadgeWithActionSpecificLabel() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message(
+                        "1", "other", "Sam", "", type = MessageType.THROWN, itemName = "Bread"))))
+
+    composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Threw away Bread").assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Image of Bread").assertDoesNotExist()
+  }
+
+  @Test
+  fun activityBadgeUsesDisambiguatedSenderName() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message(
+                        "1", "activity", "Sam", "", type = MessageType.EATEN, itemName = "Milk"),
+                    Message("2", "member", "sam", "Hello"))))
+
+    composeTestRule.onNodeWithText("Sam · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("sam · Member 2").assertIsDisplayed()
+  }
+
+  @Test
+  fun showsDefaultSenderNameWhenActivitySenderIsBlank() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(Message(senderName = "", type = MessageType.EATEN, itemName = "Eggs"))))
+
+    composeTestRule.onNodeWithText("Member").assertIsDisplayed()
   }
 
   @Test
