@@ -35,11 +35,11 @@ class FridgeLauncherTest : TestCase() {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         fridgeTitle {
           assertIsDisplayed()
-          assertTextEquals("Fridge")
+          assertTextEquals(composeTestRule.activity.getString(R.string.fridge_title))
         }
         emptyState {
           assertIsDisplayed()
-          assertTextEquals("Your fridge is empty")
+          assertTextEquals(composeTestRule.activity.getString(R.string.fridge_empty))
         }
       }
     }

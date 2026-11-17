@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
 
@@ -9,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.view.WindowCompat
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import kotlinx.coroutines.CompletableDeferred
@@ -93,11 +95,13 @@ class AuthGateTest {
 
     compose.waitUntil { viewModel.state.value.pendingProfileUpdate != null }
     compose.onNodeWithTag(AUTH_PSEUDO_TEST_TAG).assertIsDisplayed()
-    compose.onNodeWithTag("auth_error").assertIsDisplayed()
-    compose.onNodeWithTag("auth_submit").assertTextEquals("Save pseudo and continue")
+    compose.onNodeWithTag(AuthTestTags.ERROR).assertIsDisplayed()
+    compose
+        .onNodeWithTag(AuthTestTags.SUBMIT)
+        .assertTextEquals(compose.activity.getString(R.string.auth_save_pseudo))
     compose.onNodeWithTag("private_content").assertDoesNotExist()
     compose.runOnIdle { repository.profileUpdateFailure = null }
-    compose.onNodeWithTag("auth_submit").performClick()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performClick()
     compose.onNodeWithTag("private_content").assertIsDisplayed()
     compose.runOnIdle {
       assertEquals(1, repository.signUpCalls)
@@ -124,8 +128,8 @@ class AuthGateTest {
       }
     }
     compose.onNodeWithTag("private_content").assertDoesNotExist()
-    compose.onNodeWithTag("auth_restoring").assertIsDisplayed()
-    compose.onNodeWithTag("auth_submit").assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.RESTORING).assertIsDisplayed()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertDoesNotExist()
     compose.runOnIdle {
       assertEquals(0xFFFEF7FF.toInt(), window.statusBarColor)
       assertEquals(0xFFFEF7FF.toInt(), window.navigationBarColor)
@@ -133,13 +137,13 @@ class AuthGateTest {
       assertTrue(controller.isAppearanceLightNavigationBars)
       repository.session.tryEmit(null)
     }
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.onNodeWithTag("private_content").assertDoesNotExist()
-    compose.onNodeWithTag("auth_welcome_login").performScrollTo().performClick()
-    compose.onNodeWithTag("auth_submit").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME_LOGIN).performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertExists()
     compose.runOnIdle { repository.session.tryEmit(AuthSession("user", "student@example.org")) }
     compose.onNodeWithTag("private_content").assertIsDisplayed()
-    compose.onNodeWithTag("auth_submit").assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).assertDoesNotExist()
     compose.runOnIdle {
       assertEquals(Color.BLACK, window.statusBarColor)
       assertEquals(Color.BLACK, window.navigationBarColor)
@@ -148,7 +152,7 @@ class AuthGateTest {
       viewModel.signOut()
     }
     compose.onNodeWithTag("private_content").assertDoesNotExist()
-    compose.onNodeWithTag("auth_welcome").assertExists()
+    compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
   }
 
   private class UiRepository : AuthRepository {

@@ -17,3 +17,10 @@ data class FoodImage(
     val licenseVersion: String?,
     val authorUrl: String?
 )
+
+/** Stored Creative Commons identifiers. */
+internal object FoodImageLicenseIds {
+  const val CC0 = "cc0"
+  const val BY = "by"
+  const val BY_SA = "by-sa"
+}

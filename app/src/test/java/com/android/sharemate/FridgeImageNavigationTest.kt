@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -27,7 +28,9 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
+import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
+import com.android.sharemate.ui.fridge.testPseudoRepository
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -157,14 +160,20 @@ class FridgeImageNavigationTest {
                                 expirationPreferences =
                                     ExpirationPreferencesProvider(
                                         FakeExpirationPreferencesRepository()),
-                                fridgeType = FridgeType.SHARED)
+                                fridgeType = FridgeType.SHARED,
+                                memberNameRepository = testMemberNameRepository(),
+                                currentUserDisplayName = null,
+                                pseudoRepository = testPseudoRepository(),
+                            )
                           }
                         })
-            Text("Fridge")
+            Text(stringResource(R.string.fridge_title))
           }
           TopLevelDestination.entries
               .filterNot { it == TopLevelDestination.FRIDGE }
-              .forEach { destination -> composable(destination.route) { Text(destination.textId) } }
+              .forEach { destination ->
+                composable(destination.route) { Text(stringResource(destination.labelRes)) }
+              }
         }
       } else Text("Signed out")
     }

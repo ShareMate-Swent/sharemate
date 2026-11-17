@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
@@ -34,9 +35,28 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
+import com.android.sharemate.ui.theme.Dimens
+
+/** Tags shared by the authentication screens and their tests. */
+object AuthTestTags {
+  const val BACK = "auth_back"
+  const val EMAIL = "auth_email"
+  const val PASSWORD = "auth_password"
+  const val CONFIRM_PASSWORD = "auth_confirm_password"
+  const val ERROR = "auth_error"
+  const val LOADING = "auth_loading"
+  const val SUBMIT = "auth_submit"
+  const val SWITCH_MODE = "auth_switch_mode"
+  const val WELCOME = "auth_welcome"
+  const val GOOGLE_LOADING = "auth_google_loading"
+  const val GOOGLE_SIGN_IN = "auth_google_sign_in"
+  const val WELCOME_LOGIN = "auth_welcome_login"
+  const val WELCOME_SIGNUP = "auth_welcome_signup"
+  const val RESTORING = "auth_restoring"
+}
 
 /** Test tag for the pseudo input shown during sign-up. */
 internal const val AUTH_PSEUDO_TEST_TAG = "auth_pseudo"
@@ -88,14 +108,17 @@ private fun AuthForm(
   val signingUp = state.mode == AuthMode.SIGN_UP
   Column(
       modifier =
-          Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
-      verticalArrangement = Arrangement.spacedBy(16.dp),
+          Modifier.fillMaxSize()
+              .imePadding()
+              .verticalScroll(rememberScrollState())
+              .padding(Dimens.spacingL),
+      verticalArrangement = Arrangement.spacedBy(Dimens.spacingM),
       horizontalAlignment = Alignment.CenterHorizontally) {
         onBack?.let {
           TextButton(
               onClick = it,
               enabled = !state.isLoading && state.pendingProfileUpdate == null,
-              modifier = Modifier.align(Alignment.Start).testTag("auth_back")) {
+              modifier = Modifier.align(Alignment.Start).testTag(AuthTestTags.BACK)) {
                 Text(stringResource(R.string.auth_back))
               }
         }
@@ -117,7 +140,7 @@ private fun AuthForm(
                 singleLine = true,
                 keyboardOptions =
                     KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth().testTag("auth_email"))
+                modifier = Modifier.fillMaxWidth().testTag(AuthTestTags.EMAIL))
         if (signingUp || pseudoOnly) {
           OutlinedTextField(
               value = state.pseudo,
@@ -134,7 +157,7 @@ private fun AuthForm(
                 onValueChange = onPasswordChange,
                 label = stringResource(R.string.auth_password),
                 enabled = !state.isLoading && state.pendingProfileUpdate == null,
-                tag = "auth_password",
+                tag = AuthTestTags.PASSWORD,
                 mode = state.mode,
                 imeAction = if (signingUp) ImeAction.Next else ImeAction.Done,
                 onSubmit = onSubmit)
@@ -144,33 +167,33 @@ private fun AuthForm(
               onValueChange = onConfirmPasswordChange,
               label = stringResource(R.string.auth_confirm_password),
               enabled = !state.isLoading && state.pendingProfileUpdate == null,
-              tag = "auth_confirm_password",
+              tag = AuthTestTags.CONFIRM_PASSWORD,
               mode = state.mode,
               imeAction = ImeAction.Done,
               onSubmit = onSubmit)
           Text(
-              stringResource(R.string.auth_password_hint),
+              stringResource(
+                  R.string.auth_password_hint, PasswordRules.MIN_LENGTH, TextLimits.PASSWORD),
               style = MaterialTheme.typography.bodySmall)
         }
         state.error?.let {
           Text(
-              text =
-                  if (it == AuthUiError.PSEUDO_TOO_LONG)
-                      stringResource(it.messageResource(), MAX_PSEUDO_LENGTH)
-                  else stringResource(it.messageResource()),
+              text = it.messageText(),
               color = MaterialTheme.colorScheme.error,
               modifier =
-                  Modifier.testTag("auth_error").semantics { liveRegion = LiveRegionMode.Polite })
+                  Modifier.testTag(AuthTestTags.ERROR).semantics {
+                    liveRegion = LiveRegionMode.Polite
+                  })
         }
         if (state.isLoading || state.isRestoringSession)
-            CircularProgressIndicator(Modifier.testTag("auth_loading"))
+            CircularProgressIndicator(Modifier.testTag(AuthTestTags.LOADING))
         Button(
             onClick = onSubmit,
             enabled =
                 !state.isLoading &&
                     !state.isRestoringSession &&
                     (state.pendingProfileUpdate == null || state.session != null),
-            modifier = Modifier.fillMaxWidth().testTag("auth_submit")) {
+            modifier = Modifier.fillMaxWidth().testTag(AuthTestTags.SUBMIT)) {
               Text(
                   stringResource(
                       if (pseudoOnly) R.string.auth_save_pseudo
@@ -180,7 +203,7 @@ private fun AuthForm(
           TextButton(
               onClick = onSwitchMode,
               enabled = !state.isLoading,
-              modifier = Modifier.testTag("auth_switch_mode")) {
+              modifier = Modifier.testTag(AuthTestTags.SWITCH_MODE)) {
                 Text(
                     stringResource(
                         if (signingUp) R.string.auth_have_account else R.string.auth_need_account))
@@ -222,6 +245,15 @@ private fun PasswordField(
       modifier = Modifier.fillMaxWidth().testTag(tag))
 }
 
+/** The message of this error, including the limit for the errors that name one. */
+@Composable
+internal fun AuthUiError.messageText(): String =
+    when (this) {
+      AuthUiError.PSEUDO_TOO_LONG -> stringResource(messageResource(), MAX_PSEUDO_LENGTH)
+      AuthUiError.PASSWORD_TOO_LONG -> stringResource(messageResource(), TextLimits.PASSWORD)
+      else -> stringResource(messageResource())
+    }
+
 internal fun AuthUiError.messageResource(): Int =
     when (this) {
       AuthUiError.INVALID_EMAIL -> R.string.auth_error_email
@@ -230,6 +262,7 @@ internal fun AuthUiError.messageResource(): Int =
       AuthUiError.PSEUDO_TOO_LONG -> R.string.auth_error_pseudo_too_long
       AuthUiError.PASSWORD_REQUIRED -> R.string.auth_error_password_required
       AuthUiError.WEAK_PASSWORD -> R.string.auth_error_weak_password
+      AuthUiError.PASSWORD_TOO_LONG -> R.string.auth_error_password_too_long
       AuthUiError.PASSWORD_MISMATCH -> R.string.auth_error_password_mismatch
       AuthUiError.INVALID_CREDENTIALS -> R.string.auth_error_credentials
       AuthUiError.EMAIL_IN_USE -> R.string.auth_error_email_in_use

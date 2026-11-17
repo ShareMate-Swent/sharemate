@@ -11,6 +11,8 @@ mockito = "5.13.0"
 firebaseBom = "34.19.0"
 # Core & Plugins
 agp = "8.4.2"
+googleServices = "4.5.0"
+jacoco = "0.8.13"
 kotlin = "1.9.23"
 coreKtx = "1.13.1"
 ktfmt = "0.17.0"
@@ -104,3 +106,4 @@ jetbrainsKotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "k
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
 sonar = { id = "org.sonarqube", version.ref = "sonar" }
+googleServices = { id = "com.google.gms.google-services", version.ref = "googleServices" }

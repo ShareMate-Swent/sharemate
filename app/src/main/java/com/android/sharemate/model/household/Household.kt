@@ -27,3 +27,10 @@ data class Household(
     val createdAt: Date? = null,
     val type: FridgeType = FridgeType.SHARED
 )
+
+/** Fields used to read household membership and type from Firestore. */
+internal object HouseholdFields {
+  const val MEMBER_IDS = "memberIds"
+  const val TYPE = "type"
+  const val CREATED_BY = "createdBy"
+}

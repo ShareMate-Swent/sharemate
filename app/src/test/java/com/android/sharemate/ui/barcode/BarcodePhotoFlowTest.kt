@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import android.Manifest
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
+import com.android.sharemate.R
 import com.android.sharemate.model.image.BarcodePhotoStore
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
@@ -69,10 +71,10 @@ class BarcodePhotoFlowTest {
       }
     }
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag("barcode_photo_camera").performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
     compose.onNodeWithText("Camera access is needed", substring = true).assertExists()
     compose
-        .onNodeWithTag("barcode_photo_gallery")
+        .onNodeWithTag(BarcodePhotoTestTags.GALLERY)
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
@@ -83,7 +85,11 @@ class BarcodePhotoFlowTest {
       assertFalse(vm.state.value.failed)
       assertFalse(vm.state.value.busy)
     }
-    compose.onNodeWithText("Open app settings").performScrollTo().performClick()
+    compose
+        .onNodeWithText(
+            RuntimeEnvironment.getApplication().getString(R.string.barcode_camera_settings))
+        .performScrollTo()
+        .performClick()
     compose.runOnIdle {
       val intent = shadowOf(RuntimeEnvironment.getApplication()).nextStartedActivity
       assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, intent.action)
@@ -118,7 +124,7 @@ class BarcodePhotoFlowTest {
       compose.runOnIdle { vm.open() }
       compose.onNodeWithTag(tag).performScrollTo().performClick()
       compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
-      compose.onNodeWithTag("barcode_photo_cancel").assertIsEnabled()
+      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).assertIsEnabled()
       compose.runOnIdle {
         assertNull(vm.state.value.uri)
         assertFalse(vm.state.value.busy)
@@ -151,20 +157,20 @@ class BarcodePhotoFlowTest {
       vm.open()
       vm.select("content://photos/selected")
     }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertTrue(consumed.isEmpty()) }
-    compose.onNodeWithTag("barcode_photo_confirm").performScrollTo().performClick()
-    compose.onNodeWithTag("barcode_photo_confirm").assertIsNotEnabled()
-    compose.onNodeWithTag("barcode_photo_gallery").assertIsNotEnabled()
-    compose.onNodeWithTag("barcode_photo_camera").assertIsNotEnabled()
-    compose.onNodeWithTag("barcode_photo_cancel").assertIsNotEnabled()
-    compose.onNodeWithTag("barcode_photo_loading").assertExists()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.LOADING).assertExists()
     compose.runOnIdle {
       assertEquals(listOf(store.uri), consumed)
       assertTrue(File(Uri.parse(store.uri).path!!).exists())
       pending.complete(Unit)
     }
-    compose.onNodeWithTag("barcode_photo_preview").assertDoesNotExist()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertDoesNotExist()
     compose.runOnIdle { assertTrue(vm.state.value.confirmed) }
   }
 
@@ -179,10 +185,10 @@ class BarcodePhotoFlowTest {
       vm.open()
       vm.select("content://photos/selected")
     }
-    compose.onNodeWithTag("barcode_photo_cancel").performScrollTo().performClick()
-    compose.onNodeWithTag("barcode_photo_preview").assertDoesNotExist()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertDoesNotExist()
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertEquals(store.uri, vm.state.value.uri) }
   }
 
@@ -194,11 +200,11 @@ class BarcodePhotoFlowTest {
       vm.open()
       vm.reportFailure()
     }
-    compose.onNodeWithTag("barcode_photo_camera").assertIsEnabled()
-    compose.onNodeWithTag("barcode_photo_gallery").assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsEnabled()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
     compose.runOnIdle { vm.select("content://photos/retry") }
-    compose.onNodeWithTag("barcode_photo_preview").assertIsDisplayed()
+    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertDoesNotExist()
   }
 

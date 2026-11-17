@@ -1,11 +1,14 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.product
 
+import com.android.sharemate.model.HttpHeaders
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.NotFound
 import com.android.sharemate.model.product.ProductLookupResult.Reason
 import java.io.IOException
+import java.net.HttpURLConnection.HTTP_NOT_FOUND
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.currentCoroutineContext
@@ -31,24 +34,25 @@ internal constructor(
   override suspend fun lookupByBarcode(barcode: String): ProductLookupResult {
     currentCoroutineContext().ensureActive()
     val normalizedBarcode = barcode.trim()
-    if (normalizedBarcode.length !in 8..14 || normalizedBarcode.any { it !in '0'..'9' }) {
+    if (normalizedBarcode.length !in SUPPORTED_BARCODE_LENGTHS ||
+        normalizedBarcode.any { it !in '0'..'9' }) {
       return Failure(Reason.INVALID_BARCODE)
     }
 
     val url =
         baseUrl
             .newBuilder()
-            .addPathSegment("api")
-            .addPathSegment("v2")
-            .addPathSegment("product")
+            .addPathSegment(API_SEGMENT)
+            .addPathSegment(VERSION_SEGMENT)
+            .addPathSegment(PRODUCT)
             .addPathSegment(normalizedBarcode)
-            .addQueryParameter("fields", "product_name,brands")
+            .addQueryParameter(FIELDS, "$PRODUCT_NAME,$BRANDS")
             .build()
     val request =
         Request.Builder()
             .url(url)
-            .header("Accept", "application/json")
-            .header("User-Agent", "ShareMate/1.0 (Android)")
+            .header(HttpHeaders.ACCEPT, HttpHeaders.JSON_MEDIA_TYPE)
+            .header(HttpHeaders.USER_AGENT, USER_AGENT)
             .build()
 
     return try {
@@ -74,7 +78,7 @@ internal constructor(
                 val result = runCatching {
                   response.use {
                     continuation.context.ensureActive()
-                    if (it.code == 404) {
+                    if (it.code == HTTP_NOT_FOUND) {
                       val parsed =
                           runCatching { parseResponse(it.body?.string().orEmpty(), barcode) }
                               .getOrNull()
@@ -90,20 +94,20 @@ internal constructor(
 
   private fun parseResponse(body: String, barcode: String): ProductLookupResult {
     val response = JSONObject(body)
-    val status = response.get("status") as? Number ?: throw JSONException("Missing product status")
+    val status = response.get(STATUS) as? Number ?: throw JSONException("Missing product status")
     val integerStatus =
         status.toLong().takeIf { status.toDouble() == it.toDouble() }
             ?: throw JSONException("Invalid product status")
     return when (integerStatus) {
-      0L -> NotFound
-      1L -> {
+      PRODUCT_NOT_FOUND -> NotFound
+      PRODUCT_FOUND -> {
         val product =
-            response.get("product") as? JSONObject ?: throw JSONException("Missing product details")
+            response.get(PRODUCT) as? JSONObject ?: throw JSONException("Missing product details")
         Found(
             ProductDetails(
                 barcode = barcode,
-                name = product.optionalString("product_name"),
-                brand = product.optionalString("brands")))
+                name = product.optionalString(PRODUCT_NAME),
+                brand = product.optionalString(BRANDS)))
       }
       else -> throw JSONException("Unknown product status")
     }
@@ -116,13 +120,25 @@ internal constructor(
   }
 
   private companion object {
+    const val API_SEGMENT = "api"
+    const val VERSION_SEGMENT = "v2"
+    const val PRODUCT = "product"
+    const val STATUS = "status"
+    const val FIELDS = "fields"
+    const val PRODUCT_NAME = "product_name"
+    const val BRANDS = "brands"
+    const val USER_AGENT = "ShareMate/1.0 (Android)"
+    const val TIMEOUT_SECONDS = 20L
+    const val PRODUCT_NOT_FOUND = 0L
+    const val PRODUCT_FOUND = 1L
+    val SUPPORTED_BARCODE_LENGTHS = 8..14
     val openFoodFactsUrl = "https://world.openfoodfacts.org/".toHttpUrl()
 
     val client =
         OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .followRedirects(false)
             .followSslRedirects(false)
             .build()

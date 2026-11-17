@@ -27,6 +27,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.model.item.ItemWrite
@@ -78,14 +79,18 @@ class FridgeEditTest {
             expirationPreferences =
                 ExpirationPreferencesProvider(
                     FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
     compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
     openEdit()
   }
 
   private fun openEdit() {
-    compose.onNodeWithTag("fridge_item_actions_${item.id}").performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeItemActions(item.id)).performScrollTo().performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_edit_prefix + item.id)
         .performScrollTo()
@@ -120,12 +125,12 @@ class FridgeEditTest {
         }
   }
 
-  private fun assertError(resource: Int) {
+  private fun assertError(resource: Int, vararg args: Any) {
     compose
         .onNodeWithTag(C.Tag.fridge_form_error)
         .performScrollTo()
         .assertIsDisplayed()
-        .assertTextEquals(compose.activity.getString(resource))
+        .assertTextEquals(compose.activity.getString(resource, *args))
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertIsDisplayed()
   }
 
@@ -176,7 +181,7 @@ class FridgeEditTest {
     replace(C.Tag.fridge_name_input, "Milk")
     replace(C.Tag.fridge_quantity_input, "0")
     save()
-    assertError(R.string.fridge_quantity_invalid)
+    assertError(R.string.fridge_quantity_invalid, ItemQuantity.MIN, ItemQuantity.MAX)
     replace(C.Tag.fridge_quantity_input, "2")
     replace(C.Tag.fridge_expiration_input, "2026-02-30")
     save()

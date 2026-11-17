@@ -57,6 +57,7 @@ interface PersonalPhotoRepository {
   suspend fun deleteAttached(itemId: String): Result<Unit>
 
   companion object {
-    const val MAX_BYTES = 5 * 1024 * 1024
+    internal const val MAX_MEBIBYTES = 5
+    const val MAX_BYTES = MAX_MEBIBYTES * 1024 * 1024
   }
 }

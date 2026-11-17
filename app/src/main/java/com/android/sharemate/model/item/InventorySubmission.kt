@@ -1,7 +1,11 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
+import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import java.util.Collections
 import java.util.UUID
 
@@ -13,10 +17,31 @@ class InventorySubmission(
     items: List<StagedItem>,
     /** Local journal only: reviewed input retained before submission-size validation. */
     val draft: Boolean = false,
+    val expense: SharedExpense? = null,
+    val inventoryConfirmed: Boolean = false,
+    val expenseProgress: ExpenseProgress = ExpenseProgress.QUEUED,
 ) {
   val items: List<StagedItem> = Collections.unmodifiableList(ArrayList(items))
 
   init {
+    require(expenseProgress == ExpenseProgress.QUEUED || inventoryConfirmed)
+    expense?.let {
+      require(it.totalAmountCents <= 100_000_000L)
+      var remaining = it.totalAmountCents
+      items.forEach { row ->
+        val cents = requireNotNull(row.priceCents)
+        require(cents in 0..remaining)
+        remaining -= cents
+      }
+      require(remaining == 0L)
+    }
+    require(
+        expense == null ||
+            (!draft &&
+                expense.id == id &&
+                expense.householdId == householdId &&
+                expense.paidBy == ownerId))
+    require(expense != null || (!inventoryConfirmed && expenseProgress == ExpenseProgress.QUEUED))
     require(UUID.fromString(id).toString() == id)
     require(ownerId.isNotBlank() && '/' !in ownerId)
     require(householdId.isNotBlank() && '/' !in householdId)
@@ -26,7 +51,9 @@ class InventorySubmission(
         draft ||
             (this.items.size <= MAX_ITEMS &&
                 this.items.all {
-                  it.name.length <= MAX_NAME_LENGTH && it.id.length <= MAX_NAME_LENGTH
+                  !it.name.exceeds(TextLimits.ITEM_NAME) &&
+                      it.quantity <= ItemQuantity.MAX &&
+                      it.id.length <= MAX_ID_LENGTH
                 }))
   }
 
@@ -39,15 +66,31 @@ class InventorySubmission(
           ownerId == other.ownerId &&
           householdId == other.householdId &&
           items == other.items &&
-          draft == other.draft
+          draft == other.draft &&
+          expense == other.expense &&
+          inventoryConfirmed == other.inventoryConfirmed &&
+          expenseProgress == other.expenseProgress
 
-  override fun hashCode(): Int = listOf(id, ownerId, householdId, items, draft).hashCode()
+  override fun hashCode(): Int =
+      listOf(id, ownerId, householdId, items, draft, expense, inventoryConfirmed, expenseProgress)
+          .hashCode()
+
+  fun withProgress(confirmed: Boolean, progress: ExpenseProgress = expenseProgress) =
+      InventorySubmission(id, ownerId, householdId, items, draft, expense, confirmed, progress)
 
   companion object {
     /** Product policy keeps one atomic batch and its retained receipt comfortably bounded. */
     const val MAX_ITEMS = 100
-    const val MAX_NAME_LENGTH = 1000
+    const val MAX_ID_LENGTH = 1000
   }
+}
+
+/** Local purchase progress; a transport failure never proves that no expense was committed. */
+enum class ExpenseProgress {
+  QUEUED,
+  CONFIRMED,
+  REJECTED,
+  UNKNOWN
 }
 
 /** Cached absence is pending; only a server snapshot can confirm presence or absence. */
@@ -68,4 +111,7 @@ object InventorySubmissionFields {
   const val QUANTITY = "quantity"
   const val PRICE = "priceCents"
   const val DRAFT = "draft"
+  const val EXPENSE = "expense"
+  const val INVENTORY_CONFIRMED = "inventoryConfirmed"
+  const val EXPENSE_PROGRESS = "expenseProgress"
 }

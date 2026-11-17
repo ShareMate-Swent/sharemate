@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.android.sharemate.R
 import com.android.sharemate.model.finance.BalanceCalculator
 import com.android.sharemate.model.finance.HouseholdFinanceSnapshot
 import com.android.sharemate.model.finance.SharedExpense
@@ -42,11 +43,13 @@ class BalancesScreenTest {
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
     compose.runOnIdle { state = BalancesUiState.Error }
     compose.onNodeWithTag(BalancesTestTags.LOADING).assertDoesNotExist()
-    compose.onNodeWithText("Could not load balances. Please try again.").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.balances_error)).assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.RETRY).performClick()
     assertEquals(1, retries)
     compose.runOnIdle { state = BalancesUiState.Unavailable }
-    compose.onNodeWithText("Balances are available for shared households.").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.balances_unavailable))
+        .assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.RETRY).assertDoesNotExist()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
   }
@@ -81,7 +84,7 @@ class BalancesScreenTest {
                 HouseholdFinanceSnapshot("home", emptyList(), emptyList()), listOf("alice")))
     show()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
-    compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.balances_empty)).assertIsDisplayed()
   }
 
   @Test

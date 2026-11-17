@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.household
 
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +16,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.Household
+import com.android.sharemate.ui.theme.Dimens
+
+object HouseholdGateTestTags {
+  const val LOADING = "household_loading"
+  const val RETRY = "household_retry"
+  const val SIGN_OUT = "household_sign_out"
+}
 
 /** Displays household onboarding or application content according to membership state. */
 @Composable
@@ -33,7 +40,7 @@ fun HouseholdGate(
   Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
     when (val current = state) {
       HouseholdGateState.Loading ->
-          CircularProgressIndicator(modifier = Modifier.testTag("household_loading"))
+          CircularProgressIndicator(modifier = Modifier.testTag(HouseholdGateTestTags.LOADING))
       HouseholdGateState.NeedsHousehold ->
           HouseholdChoiceScreen(
               onCreateHousehold = onCreateHousehold,
@@ -42,9 +49,9 @@ fun HouseholdGate(
       is HouseholdGateState.Ready -> content(current.household)
       HouseholdGateState.Error ->
           Column(
-              modifier = Modifier.padding(24.dp),
+              modifier = Modifier.padding(Dimens.spacingL),
               horizontalAlignment = Alignment.CenterHorizontally,
-              verticalArrangement = Arrangement.spacedBy(16.dp),
+              verticalArrangement = Arrangement.spacedBy(Dimens.spacingM),
           ) {
             Text(
                 text = stringResource(R.string.household_generic_error),
@@ -52,7 +59,7 @@ fun HouseholdGate(
             )
             Button(
                 onClick = viewModel::refresh,
-                modifier = Modifier.testTag("household_retry"),
+                modifier = Modifier.testTag(HouseholdGateTestTags.RETRY),
             ) {
               Text(stringResource(R.string.household_retry))
             }

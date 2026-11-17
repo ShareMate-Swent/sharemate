@@ -38,6 +38,8 @@ object BalancesTestTags {
   const val SUMMARY = "balances_summary"
   /** Retry action after observation failure or a server timeout. */
   const val RETRY = "balances_retry"
+  const val SETTLEMENT_AMOUNT = "settlement_amount"
+  const val SETTLEMENT_CONFIRM = "settlement_confirm"
 }
 
 private val ScreenPadding = 20.dp
@@ -137,7 +139,7 @@ internal fun formatFinanceAmount(cents: Long, locale: Locale): String =
     NumberFormat.getCurrencyInstance(locale)
         .apply {
           currency = Currency.getInstance(FinanceAmounts.CURRENCY_CODE)
-          minimumFractionDigits = 2
-          maximumFractionDigits = 2
+          minimumFractionDigits = FinanceAmounts.DECIMAL_SCALE
+          maximumFractionDigits = FinanceAmounts.DECIMAL_SCALE
         }
-        .format(BigDecimal.valueOf(cents, 2))
+        .format(BigDecimal.valueOf(cents, FinanceAmounts.DECIMAL_SCALE))

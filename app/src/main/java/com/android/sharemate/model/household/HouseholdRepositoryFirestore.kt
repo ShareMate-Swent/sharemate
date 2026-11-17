@@ -1,9 +1,12 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.exceeds
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -28,8 +31,11 @@ class HouseholdRepositoryFirestore(
       operationId: String
   ): Household {
     require(name.isNotBlank()) { "Household name must not be blank" }
+    require(!name.exceeds(TextLimits.HOUSEHOLD_NAME)) {
+      "Household name must have at most ${TextLimits.HOUSEHOLD_NAME} characters"
+    }
     require(creatorId.isNotBlank()) { "Creator ID must not be blank" }
-    require(operationId.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "Invalid creation operation ID" }
+    require(operationId.matches(CREATION_OPERATION_ID_PATTERN)) { "Invalid creation operation ID" }
     val householdReference =
         firestore.collection(FirestoreCollections.HOUSEHOLDS).document("$creatorId:$operationId")
 
@@ -134,7 +140,7 @@ class HouseholdRepositoryFirestore(
 
     firestore
         .batch()
-        .update(householdReference, MEMBER_IDS_FIELD, FieldValue.arrayUnion(userId))
+        .update(householdReference, HouseholdFields.MEMBER_IDS, FieldValue.arrayUnion(userId))
         // The rules only accept a join that carries the household's invite code, so knowing a
         // household ID is not enough to become a member.
         .set(
@@ -154,10 +160,12 @@ class HouseholdRepositoryFirestore(
     val memberships =
         firestore
             .collection(FirestoreCollections.HOUSEHOLDS)
-            .whereArrayContains(MEMBER_IDS_FIELD, userId)
+            .whereArrayContains(HouseholdFields.MEMBER_IDS, userId)
             .get()
             .await()
-    if (memberships.documents.any { it.getString(TYPE_FIELD) == FridgeType.PRIVATE.name }) {
+    if (memberships.documents.any {
+      it.getString(HouseholdFields.TYPE) == FridgeType.PRIVATE.name
+    }) {
       throw PrivateHouseholdLeaveException()
     }
     val userReference = firestore.collection(FirestoreCollections.USERS).document(userId)
@@ -168,7 +176,7 @@ class HouseholdRepositoryFirestore(
 
     val batch = firestore.batch()
     memberships.documents.forEach {
-      batch.update(it.reference, MEMBER_IDS_FIELD, FieldValue.arrayRemove(userId))
+      batch.update(it.reference, HouseholdFields.MEMBER_IDS, FieldValue.arrayRemove(userId))
     }
     batch
         .set(
@@ -190,7 +198,7 @@ class HouseholdRepositoryFirestore(
     val snapshot =
         firestore
             .collection(FirestoreCollections.HOUSEHOLDS)
-            .whereArrayContains(MEMBER_IDS_FIELD, userId)
+            .whereArrayContains(HouseholdFields.MEMBER_IDS, userId)
             .limit(1)
             .get()
             .await()
@@ -201,8 +209,7 @@ class HouseholdRepositoryFirestore(
     const val HOUSEHOLD_ID_FIELD = "householdId"
     const val INVITE_CODE_FIELD = "inviteCode"
     const val JOIN_CODE_FIELD = "joinCode"
-    const val MEMBER_IDS_FIELD = "memberIds"
-    const val TYPE_FIELD = "type"
     const val MAX_INVITE_CODE_ATTEMPTS = 10
+    val CREATION_OPERATION_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
   }
 }

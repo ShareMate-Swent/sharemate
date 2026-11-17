@@ -1,10 +1,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
 import androidx.lifecycle.ViewModel
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.staging.PriceInput
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +35,11 @@ data class StagedItemDraft(
 data class StagingUiState(
     val items: List<StagedItem> = emptyList(),
     val draft: StagedItemDraft? = null,
+    val purchase: PurchaseReview? = null,
 ) {
+  val purchasePreview: PurchasePreview?
+    get() = purchase?.preview(items)
+
   /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
     get() = items.isNotEmpty() && draft == null
@@ -41,15 +49,82 @@ data class StagingUiState(
  * Lets the user review scanned items before they are saved. It neither knows where the items come
  * from nor saves them: the screen receives [initialItems] and hands [confirmedItems] back.
  */
-class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
+class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseReview? = null) :
+    ViewModel() {
   init {
     require(initialItems.map { it.id }.toSet().size == initialItems.size) {
       "Staged item ids must be unique"
     }
   }
 
-  private val mutableState = MutableStateFlow(StagingUiState(items = initialItems))
+  private val mutableState =
+      MutableStateFlow(StagingUiState(items = initialItems, purchase = purchaseReview))
   val state: StateFlow<StagingUiState> = mutableState.asStateFlow()
+  private var purchaseMembersInitialized = purchaseReview?.members?.isNotEmpty() == true
+
+  /**
+   * The coordinator supplies current member names through its existing household abstractions.
+   * Removed selections are cleared, never replaced with another payer/participant.
+   */
+  fun updatePurchaseMembers(members: Map<String, String>, available: Boolean = true) {
+    if (!available) {
+      mutableState.update { it.copy(purchase = it.purchase?.copy(membersAvailable = false)) }
+      return
+    }
+    val initialize = !purchaseMembersInitialized && members.isNotEmpty()
+    purchaseMembersInitialized = purchaseMembersInitialized || members.isNotEmpty()
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (initialize) PurchaseReview.forUser(it.currentUserId, members)
+                else it.withMembers(members).copy(membersAvailable = true)
+              })
+    }
+  }
+
+  fun selectPayer(userId: String) {
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (userId in it.members) it.copy(paidBy = userId, membershipChanged = false)
+                else it
+              })
+    }
+  }
+
+  fun toggleParticipant(userId: String) {
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (userId !in it.members) it
+                else
+                    it.copy(
+                        membershipChanged = false,
+                        participants =
+                            if (userId in it.participants) it.participants - userId
+                            else it.participants + userId,
+                    )
+              })
+    }
+  }
+
+  /** Snapshot for Task 37.3; this review layer performs no persistence. */
+  fun confirmedPurchase(): ReviewedPurchase? {
+    val current = state.value
+    if (!current.canConfirm) return null
+    val review = current.purchase ?: return null
+    val preview = current.purchasePreview ?: return null
+    if (preview.error != null) return null
+    return ReviewedPurchase(
+        current.items.toList(),
+        checkNotNull(review.paidBy),
+        checkNotNull(preview.totalCents),
+        preview.shares,
+    )
+  }
 
   /** Opens a blank draft with the default quantity, leaving the current list unchanged. */
   fun startAdding() {
@@ -71,14 +146,19 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
                   itemId = item.id,
                   name = item.name,
                   quantity = item.quantity.toString(),
-                  price = Prices.format(item.priceCents)))
+                  price = Prices.format(item.priceCents),
+              ))
     }
   }
 
-  fun updateDraftName(name: String) = updateDraft { it.copy(name = name, error = null) }
+  /** Updates the name, cut to [TextLimits.ITEM_NAME] characters so a paste cannot exceed it. */
+  fun updateDraftName(name: String) = updateDraft {
+    it.copy(name = name.limitedTo(TextLimits.ITEM_NAME), error = null)
+  }
 
+  /** Updates the quantity, cut to [ItemQuantity.MAX_INPUT_LENGTH] characters. */
   fun updateDraftQuantity(quantity: String) = updateDraft {
-    it.copy(quantity = quantity, error = null)
+    it.copy(quantity = quantity.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), error = null)
   }
 
   fun updateDraftPrice(price: String) = updateDraft { it.copy(price = price, error = null) }
@@ -92,7 +172,7 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state ->
       val draft = state.draft ?: return@update state
       val name = draft.name.trim()
-      val quantity = draft.quantity.trim().toIntOrNull()?.takeIf { it > 0 }
+      val quantity = ItemQuantity.parse(draft.quantity)
       val price = Prices.parse(draft.price)
       val error =
           when {
@@ -107,7 +187,8 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
               id = draft.itemId ?: UUID.randomUUID().toString(),
               name = name,
               quantity = checkNotNull(quantity),
-              priceCents = (price as? PriceInput.Valid)?.cents)
+              priceCents = (price as? PriceInput.Valid)?.cents,
+          )
       val items =
           if (draft.itemId == null) state.items + updated
           else state.items.map { if (it.id == updated.id) updated else it }
@@ -125,7 +206,8 @@ class StagingViewModel(initialItems: List<StagedItem>) : ViewModel() {
     mutableState.update { state ->
       state.copy(
           items = state.items.filterNot { it.id == itemId },
-          draft = state.draft?.takeIf { it.itemId != itemId })
+          draft = state.draft?.takeIf { it.itemId != itemId },
+      )
     }
   }
 

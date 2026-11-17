@@ -53,7 +53,7 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         }
         // Verify that the image can be decoded without allocating its full size.
         ImageDecoder.decodeBitmap(ImageDecoder.createSource(target)) { decoder, info, _ ->
-              require(info.mimeType == "image/jpeg" || info.mimeType == "image/png")
+              require(info.mimeType == PhotoMimeTypes.JPEG || info.mimeType == PhotoMimeTypes.PNG)
               decoder.setTargetSize(1, 1)
             }
             .recycle()
@@ -69,17 +69,20 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
     require(source.length() in 1..AndroidBarcodePhotoStore.MAX_BYTES)
     val bitmap =
         ImageDecoder.decodeBitmap(ImageDecoder.createSource(source)) { decoder, info, _ ->
-          require(info.mimeType == "image/jpeg" || info.mimeType == "image/png")
+          require(info.mimeType == PhotoMimeTypes.JPEG || info.mimeType == PhotoMimeTypes.PNG)
           require(
               info.size.width.toLong() * info.size.height <= AndroidBarcodePhotoStore.MAX_PIXELS)
-          val scale = minOf(1.0, 1280.0 / maxOf(info.size.width, info.size.height))
+          val scale =
+              minOf(1.0, CAPTURE_MAX_DIMENSION_PX / maxOf(info.size.width, info.size.height))
           decoder.setTargetSize(
               (info.size.width * scale).roundToInt().coerceAtLeast(1),
               (info.size.height * scale).roundToInt().coerceAtLeast(1))
           decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
     try {
-      target.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it)) }
+      target.outputStream().use {
+        check(bitmap.compress(Bitmap.CompressFormat.JPEG, CAPTURE_JPEG_QUALITY, it))
+      }
       require(target.length() in 1..PersonalPhotoRepository.MAX_BYTES.toLong())
     } finally {
       bitmap.recycle()
@@ -95,3 +98,6 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         Unit
       }
 }
+
+private const val CAPTURE_MAX_DIMENSION_PX = 1280.0
+private const val CAPTURE_JPEG_QUALITY = 85

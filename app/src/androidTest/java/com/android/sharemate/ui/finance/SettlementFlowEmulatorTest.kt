@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
@@ -56,7 +57,7 @@ class SettlementFlowEmulatorTest {
         "households/${home.id}/expenses/e",
         """{"id":{"stringValue":"e"},"householdId":{"stringValue":"${home.id}"},"paidBy":{"stringValue":"bob"},"totalAmountCents":{"integerValue":"1500"},"shares":{"mapValue":{"fields":{"$payer":{"integerValue":"1500"}}}}}""")
     val functions = FirebaseFunctions.getInstance(FirebaseSettlementRepository.REGION)
-    functions.useEmulator(FirebaseEmulator.HOST, 5001)
+    functions.useEmulator(FirebaseEmulator.HOST, FirebaseEmulator.FUNCTIONS_PORT)
     val finances =
         FirestoreHouseholdFinanceRepository(firestore, FirebaseSettlementRepository(functions))
     val profiles =
@@ -80,17 +81,22 @@ class SettlementFlowEmulatorTest {
     }
     awaitText("You owe Bob", substring = true)
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("15.00", substring = true)
-    compose.onNodeWithText("Settle up").performClick()
-    compose.onNodeWithTag("settlement_amount").assertTextContains("15.00", substring = true)
+    compose.onNodeWithText(compose.activity.getString(R.string.settlement_action)).performClick()
+    compose
+        .onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT)
+        .assertTextContains("15.00", substring = true)
     compose
         .onNode(hasText("You owe Bob", substring = true) and hasAnyAncestor(isDialog()))
         .assertExists()
     screenshot("settlement-dialog", dialog = true)
-    compose.onNodeWithTag("settlement_amount").performTextReplacement("6.00")
-    compose.onNodeWithTag("settlement_confirm").performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT).performTextReplacement("6.00")
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).performClick()
     try {
       compose.waitUntil(SERVER_TIMEOUT_MS) {
-        compose.onAllNodesWithText("Settle up").fetchSemanticsNodes().isNotEmpty() &&
+        compose
+            .onAllNodesWithText(compose.activity.getString(R.string.settlement_action))
+            .fetchSemanticsNodes()
+            .isNotEmpty() &&
             compose
                 .onAllNodes(
                     hasTestTag(BalancesTestTags.SUMMARY) and hasText("9.00", substring = true))
@@ -102,18 +108,22 @@ class SettlementFlowEmulatorTest {
     }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("9.00", substring = true)
     screenshot("settlement-partial")
-    compose.onNodeWithText("Settle up").performClick()
-    compose.onNodeWithTag("settlement_amount").assertTextContains("9.00", substring = true)
-    compose.onNodeWithTag("settlement_confirm").performClick()
-    awaitText("No outstanding debts.")
+    compose.onNodeWithText(compose.activity.getString(R.string.settlement_action)).performClick()
+    compose
+        .onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT)
+        .assertTextContains("9.00", substring = true)
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).performClick()
+    awaitText(compose.activity.getString(R.string.balances_empty))
     compose.waitUntil(SERVER_TIMEOUT_MS) {
       compose
-          .onAllNodesWithText("Recording payment. Waiting for confirmation…")
+          .onAllNodesWithText(compose.activity.getString(R.string.settlement_pending))
           .fetchSemanticsNodes()
           .isEmpty()
     }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
-    compose.onNodeWithText("Settle up").assertDoesNotExist()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.settlement_action))
+        .assertDoesNotExist()
     screenshot("settlement-complete")
   }
 
@@ -127,7 +137,7 @@ class SettlementFlowEmulatorTest {
     val project = FirebaseApp.getInstance().options.projectId
     val connection =
         URL(
-                "http://${FirebaseEmulator.HOST}:8080/v1/projects/$project/databases/(default)/documents/$path")
+                "http://${FirebaseEmulator.HOST}:${FirebaseEmulator.FIRESTORE_PORT}/v1/projects/$project/databases/(default)/documents/$path")
             .openConnection() as HttpURLConnection
     try {
       connection.connectTimeout = 10_000

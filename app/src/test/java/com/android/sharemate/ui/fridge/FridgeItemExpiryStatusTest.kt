@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
@@ -31,11 +32,17 @@ class FridgeItemExpiryStatusTest {
           householdId = "household-1")
 
   private fun show(status: ExpiryStatus) {
-    compose.setContent { FridgeItem(item, expiryStatus = status) }
+    compose.setContent {
+      FridgeItem(
+          item,
+          expiryStatus = status,
+          ownership = ItemOwnership(item.sharing),
+      )
+    }
   }
 
   private fun description(prefix: String): String =
-      "Milk, $prefix${ExpirationDates.formatCompact(item.expirationDate as Date)}"
+      "Milk, Personal, Owner: Unknown owner, $prefix${ExpirationDates.formatCompact(item.expirationDate as Date)}"
 
   @Test
   fun expiredStatusIsFlaggedAsExpired() {

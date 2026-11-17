@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.receipt
 
@@ -22,7 +23,7 @@ class FirebaseReceiptRepository(private val firestore: FirebaseFirestore) : Rece
       if (userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(receipts.whereEqualTo("ownerId", userId)) {
+        observe(receipts.whereEqualTo(ReceiptFields.OWNER_ID, userId)) {
           it.filter { receipt -> receipt.householdId == null }
         }
       }
@@ -31,7 +32,7 @@ class FirebaseReceiptRepository(private val firestore: FirebaseFirestore) : Rece
       if (householdId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(receipts.whereEqualTo("householdId", householdId))
+        observe(receipts.whereEqualTo(ReceiptFields.HOUSEHOLD_ID, householdId))
       }
 
   override suspend fun addReceipt(receipt: Receipt): String? {
@@ -84,13 +85,22 @@ class FirebaseReceiptRepository(private val firestore: FirebaseFirestore) : Rece
 }
 
 internal fun DocumentSnapshot.toReceiptOrNull(): Receipt? {
-  val storeName = getString("storeName")?.takeIf { it.isNotBlank() } ?: return null
-  val ownerId = getString("ownerId")?.takeIf { it.isNotBlank() } ?: return null
+  val storeName = getString(ReceiptFields.STORE_NAME)?.takeIf { it.isNotBlank() } ?: return null
+  val ownerId = getString(ReceiptFields.OWNER_ID)?.takeIf { it.isNotBlank() } ?: return null
   return Receipt(
       id = id,
       storeName = storeName,
-      totalAmountCents = getLong("totalAmountCents") ?: 0L,
-      date = getTimestamp("date")?.toDate(),
+      totalAmountCents = getLong(ReceiptFields.TOTAL_AMOUNT_CENTS) ?: 0L,
+      date = getTimestamp(ReceiptFields.DATE)?.toDate(),
       ownerId = ownerId,
-      householdId = getString("householdId")?.takeIf { it.isNotBlank() })
+      householdId = getString(ReceiptFields.HOUSEHOLD_ID)?.takeIf { it.isNotBlank() })
+}
+
+/** Fields of a receipt document in Firestore. */
+private object ReceiptFields {
+  const val OWNER_ID = "ownerId"
+  const val HOUSEHOLD_ID = "householdId"
+  const val STORE_NAME = "storeName"
+  const val TOTAL_AMOUNT_CENTS = "totalAmountCents"
+  const val DATE = "date"
 }

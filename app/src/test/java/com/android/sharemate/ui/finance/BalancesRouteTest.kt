@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
@@ -80,7 +81,7 @@ class BalancesRouteTest {
       compose.onAllNodesWithTag(BalancesTestTags.SUMMARY).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
-    compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.balances_empty)).assertIsDisplayed()
     assertEquals(listOf("home"), requests)
     assertEquals(requests, observed)
   }
@@ -89,7 +90,9 @@ class BalancesRouteTest {
   fun privateHouseholdChecksMembershipButDoesNotReadExpenses() {
     household = household.copy(type = FridgeType.PRIVATE)
     show()
-    compose.onNodeWithText("Balances are available for shared households.").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.balances_unavailable))
+        .assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
     assertEquals(listOf("home"), requests)
     assertTrue(observed.isEmpty())
@@ -106,7 +109,10 @@ class BalancesRouteTest {
     compose.onNodeWithText("You owe Household member", substring = true).assertIsDisplayed()
     compose.runOnIdle { records.value = emptyList() }
     compose.waitUntil(5000) {
-      compose.onAllNodesWithText("No outstanding debts.").fetchSemanticsNodes().isNotEmpty()
+      compose
+          .onAllNodesWithText(compose.activity.getString(R.string.balances_empty))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
     }
     compose.runOnIdle {
       records.value = listOf(SharedExpense("one", "home", "alice", 1500, mapOf("bob" to 1500L)))
@@ -122,9 +128,12 @@ class BalancesRouteTest {
       household = household.copy(id = "new-home")
     }
     compose.waitUntil(5000) {
-      compose.onAllNodesWithText("No outstanding debts.").fetchSemanticsNodes().isNotEmpty()
+      compose
+          .onAllNodesWithText(compose.activity.getString(R.string.balances_empty))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
     }
-    compose.onNodeWithText("No outstanding debts.").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.balances_empty)).assertIsDisplayed()
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertTextContains("0.00", substring = true)
     compose.onNodeWithText("You owe Household member", substring = true).assertDoesNotExist()
     assertEquals(listOf("home", "new-home"), requests)

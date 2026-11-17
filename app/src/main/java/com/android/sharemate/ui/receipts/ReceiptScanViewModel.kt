@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import android.os.Bundle
@@ -7,6 +8,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 
 /** Holds OCR results across Activity recreation; the photo ViewModel owns and cancels the read. */
 class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved: SavedStateHandle) :
@@ -31,7 +34,11 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
     val items =
         products.mapIndexed { index, item ->
           StagedItem(
-              index.toString(), item.name, quantity = item.quantity, priceCents = item.priceCents)
+              index.toString(),
+              // A scanned line can be longer than an item name may be saved.
+              item.name.trim().limitedTo(TextLimits.ITEM_NAME).trimEnd(),
+              quantity = item.quantity,
+              priceCents = item.priceCents)
         }
     beforePublish(items)
     save(items)

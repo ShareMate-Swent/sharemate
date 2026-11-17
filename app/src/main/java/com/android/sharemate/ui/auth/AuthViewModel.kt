@@ -1,5 +1,7 @@
 // Co-authored-by: Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +10,8 @@ import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.PseudoValidationError
 import com.android.sharemate.model.user.trimPseudoPadding
 import com.android.sharemate.model.user.validatePseudo as validateModelPseudo
@@ -34,6 +38,8 @@ enum class AuthUiError {
   PSEUDO_TOO_LONG,
   PASSWORD_REQUIRED,
   WEAK_PASSWORD,
+  /** A new password is longer than [TextLimits.PASSWORD]. */
+  PASSWORD_TOO_LONG,
   PASSWORD_MISMATCH,
   INVALID_CREDENTIALS,
   EMAIL_IN_USE,
@@ -55,6 +61,8 @@ data class AuthUiState(
     val isRestoringSession: Boolean = true,
     val session: AuthSession? = null,
     val pendingProfileUpdate: PendingProfileUpdate? = null,
+    /** The user who just signed up by email and may still add a profile photo, if any. */
+    val profilePhotoStepUid: String? = null,
     val error: AuthUiError? = null
 )
 
@@ -78,6 +86,8 @@ class AuthViewModel(
           it.copy(
               session = updatedSession,
               pendingProfileUpdate = pendingProfileUpdate,
+              profilePhotoStepUid =
+                  it.profilePhotoStepUid?.takeIf { uid -> updatedSession?.uid == uid },
               isRestoringSession = false,
               password = if (updatedSession != null) "" else it.password,
               confirmPassword = if (updatedSession != null) "" else it.confirmPassword,
@@ -88,7 +98,10 @@ class AuthViewModel(
     }
   }
 
-  fun updateEmail(value: String) = edit { it.copy(email = value, error = null) }
+  /** Updates the email, cut to [TextLimits.EMAIL] characters so a paste cannot exceed it. */
+  fun updateEmail(value: String) = edit {
+    it.copy(email = value.limitedTo(TextLimits.EMAIL), error = null)
+  }
 
   fun updatePseudo(value: String) = edit { it.copy(pseudo = value, error = null) }
 
@@ -136,10 +149,8 @@ class AuthViewModel(
           !EMAIL_PATTERN.matches(email) -> AuthUiError.INVALID_EMAIL
           pseudoError != null -> pseudoError
           current.password.isEmpty() -> AuthUiError.PASSWORD_REQUIRED
-          current.mode == AuthMode.SIGN_UP && current.password.length < MIN_PASSWORD_LENGTH ->
-              AuthUiError.WEAK_PASSWORD
-          current.mode == AuthMode.SIGN_UP && current.password != current.confirmPassword ->
-              AuthUiError.PASSWORD_MISMATCH
+          current.mode == AuthMode.SIGN_UP ->
+              PasswordRules.signUpError(current.password, current.confirmPassword)
           else -> null
         }
     if (error != null) {
@@ -157,7 +168,9 @@ class AuthViewModel(
           repository.signUp(email, current.password, pseudo)
           val observedSession = state.first { it.session != null }.session!!
           mutableState.update {
-            it.withDisplayNameForUid(observedSession.uid, pseudo).copy(pendingProfileUpdate = null)
+            it.withDisplayNameForUid(observedSession.uid, pseudo)
+                .copy(pendingProfileUpdate = null)
+                .withProfilePhotoStep(observedSession.uid)
           }
         }
       } catch (cancelled: CancellationException) {
@@ -173,6 +186,8 @@ class AuthViewModel(
 
   private suspend fun retryProfileUpdateIfSignedIn(pseudo: String): Boolean {
     val observedSession = state.value.session ?: return false
+    // submit() only signs up without a session, so this account was just created.
+    mutableState.update { it.withProfilePhotoStep(observedSession.uid) }
     return try {
       repository.updateCurrentUserDisplayName(observedSession.uid, pseudo)
       markProfileUpdated(observedSession.uid, pseudo)
@@ -294,6 +309,13 @@ class AuthViewModel(
     }
   }
 
+  /** Ends the optional profile photo step shown after an email sign-up. */
+  fun finishProfilePhotoStep() {
+    mutableState.update { it.copy(profilePhotoStepUid = null) }
+    // A photo saved in the step changed the profile, which the session does not report by itself.
+    repository.refreshSession()
+  }
+
   fun signOut() {
     if (state.value.isLoading) return
     repository.signOut()
@@ -312,7 +334,6 @@ class AuthViewModel(
   }
 
   private companion object {
-    const val MIN_PASSWORD_LENGTH = 6
     val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
   }
 }
@@ -335,6 +356,10 @@ internal fun AuthUiState.withDisplayNameForUid(uid: String, displayName: String)
   val currentSession = session?.takeIf { it.uid == uid } ?: return this
   return copy(session = currentSession.copy(displayName = displayName))
 }
+
+/** Offers the profile photo step to [uid], only while the UI still holds that user. */
+internal fun AuthUiState.withProfilePhotoStep(uid: String): AuthUiState =
+    if (session?.uid == uid) copy(profilePhotoStepUid = uid) else this
 
 /** Returns the validation error for a sign-up pseudo, or null when it is acceptable. */
 internal fun validatePseudo(pseudo: String): AuthUiError? =

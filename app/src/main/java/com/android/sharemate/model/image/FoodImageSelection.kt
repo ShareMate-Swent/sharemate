@@ -8,6 +8,7 @@ import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTE
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import java.io.IOException
+import java.net.HttpURLConnection.HTTP_CLIENT_TIMEOUT
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -78,5 +79,10 @@ class FoodImageSelector(private val repository: FoodImageRepository) {
   private fun FoodImageSearchResult.Failure.isRetryable(): Boolean =
       reason == FoodImageSearchResult.Reason.NETWORK ||
           (reason == FoodImageSearchResult.Reason.HTTP &&
-              (httpStatus == 408 || httpStatus == 429 || (httpStatus ?: 0) in 500..599))
+              (httpStatus == HTTP_CLIENT_TIMEOUT ||
+                  httpStatus == HTTP_TOO_MANY_REQUESTS ||
+                  (httpStatus ?: 0) in HTTP_SERVER_ERROR_CODES))
 }
+
+private const val HTTP_TOO_MANY_REQUESTS = 429
+private val HTTP_SERVER_ERROR_CODES = 500..599

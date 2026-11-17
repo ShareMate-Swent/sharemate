@@ -38,7 +38,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
@@ -46,8 +45,10 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImageOrigin
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.theme.Dimens
 
 /**
  * Compact inventory tile reusing the shared image renderer and attribution components.
@@ -66,8 +67,15 @@ fun FridgeItem(
     statusEnabled: Boolean = false,
     onStatusChange: (ItemStatus) -> Unit = {},
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
+    ownership: ItemOwnership,
     personalPhotos: PersonalPhotoController? = null,
 ) {
+  val sharingLabel =
+      stringResource(
+          if (ownership.sharing == ItemSharing.SHARED) R.string.fridge_shared
+          else R.string.fridge_personal)
+  val ownerLabel = ownerLabel(ownership.name, ownership.isCurrentUser)
+  val ownerDescription = stringResource(R.string.fridge_item_owner, ownerLabel)
   val expiryColor =
       when (expiryStatus) {
         ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
@@ -89,12 +97,16 @@ fun FridgeItem(
   Column(
       modifier =
           modifier.fillMaxWidth().testTag(C.Tag.fridge_item_prefix + item.id).semantics {
-            contentDescription = listOfNotNull(item.name, expiryDescription).joinToString(", ")
+            contentDescription =
+                listOfNotNull(item.name, sharingLabel, ownerDescription, expiryDescription)
+                    .joinToString(", ")
           },
-      verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      verticalArrangement = Arrangement.spacedBy(FridgeLayout.productContentSpacing)) {
         Surface(
             modifier =
-                Modifier.fillMaxWidth().aspectRatio(1f).testTag("fridge_product_square_${item.id}"),
+                Modifier.fillMaxWidth()
+                    .aspectRatio(FridgeLayout.productImageAspectRatio)
+                    .testTag(C.Tag.fridgeProductSquare(item.id)),
             shape = RoundedCornerShape(FridgeLayout.productCornerRadius),
             color = MaterialTheme.colorScheme.surfaceVariant) {
               Box(contentAlignment = Alignment.Center) {
@@ -112,23 +124,33 @@ fun FridgeItem(
               }
             }
         val ownershipColor =
-            if (item.isShared) MaterialTheme.colorScheme.outline
+            if (ownership.sharing == ItemSharing.SHARED) MaterialTheme.colorScheme.outline
             else MaterialTheme.colorScheme.primary
         Surface(
             modifier = Modifier.align(Alignment.End),
-            shape = RoundedCornerShape(50),
-            border = BorderStroke(1.dp, ownershipColor),
+            shape = RoundedCornerShape(FridgeLayout.ownershipBadgeCornerPercent),
+            border = BorderStroke(Dimens.borderWidth, ownershipColor),
             color = MaterialTheme.colorScheme.surface,
             contentColor = ownershipColor) {
               Text(
-                  stringResource(
-                      if (item.isShared) R.string.fridge_shared else R.string.fridge_yours),
-                  modifier = Modifier.padding(horizontal = 6.dp),
+                  sharingLabel,
+                  modifier =
+                      Modifier.padding(horizontal = FridgeLayout.ownershipLabelSpacing)
+                          .testTag(C.Tag.fridge_sharing_badge_prefix + item.id),
                   style = MaterialTheme.typography.labelSmall)
             }
         Text(
             item.name,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            maxLines = FridgeLayout.productTextMaxLines,
+            overflow = TextOverflow.Ellipsis)
+        Text(
+            ownerDescription,
+            modifier = Modifier.testTag(C.Tag.fridge_owner_name_prefix + item.id),
+            style = MaterialTheme.typography.labelSmall,
+            color =
+                if (ownership.isCurrentUser) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis)
         expiryText?.let {
@@ -136,17 +158,27 @@ fun FridgeItem(
               it,
               color = expiryColor,
               style = MaterialTheme.typography.bodySmall,
-              maxLines = 1,
+              maxLines = FridgeLayout.productTextMaxLines,
               overflow = TextOverflow.Ellipsis)
         }
         Text(
             pluralStringResource(R.plurals.fridge_card_quantity, item.quantity, item.quantity),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
+            maxLines = FridgeLayout.productTextMaxLines,
             overflow = TextOverflow.Ellipsis)
       }
 }
+
+/** Presentation-only formatting; no identifiers or email fallback. */
+@Composable
+internal fun ownerLabel(name: String?, currentUser: Boolean): String =
+    when {
+      name != null && currentUser -> stringResource(R.string.fridge_owner_you_named, name)
+      name != null -> name
+      currentUser -> stringResource(R.string.fridge_owner_you)
+      else -> stringResource(R.string.fridge_item_owner_unknown)
+    }
 
 @Composable
 private fun ItemActions(
@@ -165,7 +197,7 @@ private fun ItemActions(
   val removeDescription = stringResource(R.string.fridge_remove_description, item.name)
   IconButton(
       onClick = { expanded = true },
-      modifier = Modifier.testTag("fridge_item_actions_${item.id}")) {
+      modifier = Modifier.testTag(C.Tag.fridgeItemActions(item.id))) {
         Icon(Icons.Default.MoreVert, stringResource(R.string.fridge_card_actions, item.name))
       }
   DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

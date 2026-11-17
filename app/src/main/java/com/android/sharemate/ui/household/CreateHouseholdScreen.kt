@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import android.content.Intent
@@ -57,6 +58,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [CreateHouseholdScreen]. */
@@ -155,6 +158,7 @@ private fun ColumnScope.CreateHouseholdForm(
       onValueChange = viewModel::updateName,
       label = { Text(stringResource(R.string.household_name)) },
       placeholder = { Text(stringResource(R.string.household_name_placeholder)) },
+      supportingText = { TextLengthCounter(state.name, TextLimits.HOUSEHOLD_NAME) },
       modifier = Modifier.fillMaxWidth().testTag(CreateHouseholdTestTags.NAME),
       enabled = !state.isLoading && !state.hasCreationOperation,
       singleLine = true,

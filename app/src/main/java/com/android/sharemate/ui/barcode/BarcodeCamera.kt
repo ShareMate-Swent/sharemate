@@ -20,7 +20,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -83,7 +82,7 @@ internal fun BarcodeCamera(
       factory = { previewView },
       modifier =
           Modifier.fillMaxWidth()
-              .height(300.dp)
+              .height(PhotoFrameHeight)
               .clipToBounds()
               .testTag(BarcodePhotoTestTags.VIEWFINDER))
   Button(
@@ -110,7 +109,7 @@ internal fun BarcodeCamera(
         }
       },
       enabled = enabled && ready,
-      modifier = Modifier.fillMaxWidth().testTag("barcode_photo_capture")) {
+      modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CAPTURE)) {
         Text(stringResource(R.string.barcode_photo_capture))
       }
 }

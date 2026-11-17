@@ -35,7 +35,9 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.model.HttpHeaders
 import com.android.sharemate.model.image.FoodImageHttp
+import com.android.sharemate.model.image.FoodImageLicenseIds
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
@@ -53,7 +55,7 @@ internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): 
         .data(source)
         .size(pixels, pixels)
         // Wikimedia rejects a generic library User-Agent for thumbnail downloads too.
-        .setHeader("User-Agent", FoodImageHttp.USER_AGENT)
+        .setHeader(HttpHeaders.USER_AGENT, FoodImageHttp.USER_AGENT)
         .crossfade(false)
         .build()
 
@@ -105,7 +107,9 @@ internal fun FridgeItemImage(
             is AsyncImagePainter.State.Loading,
             AsyncImagePainter.State.Empty ->
                 CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp).testTag(C.Tag.fridge_image_loading))
+                    modifier =
+                        Modifier.size(FridgeLayout.imageProgressSize)
+                            .testTag(C.Tag.fridge_image_loading))
           }
         }
       }
@@ -172,9 +176,9 @@ internal fun FridgeImageCredits(image: ItemImage?) {
   if (image == null || image.origin != ItemImageOrigin.REMOTE_IMAGE) return
   val license =
       when (image.license?.lowercase()) {
-        "by" -> "CC BY"
-        "by-sa" -> "CC BY-SA"
-        "cc0" -> "CC0"
+        FoodImageLicenseIds.BY -> stringResource(R.string.fridge_image_license_cc_by)
+        FoodImageLicenseIds.BY_SA -> stringResource(R.string.fridge_image_license_cc_by_sa)
+        FoodImageLicenseIds.CC0 -> stringResource(R.string.fridge_image_license_cc0)
         else -> image.license
       }
   val credits =

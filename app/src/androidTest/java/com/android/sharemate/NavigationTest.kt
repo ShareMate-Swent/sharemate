@@ -44,37 +44,43 @@ class MainActivityTest : TestCase() {
     step("Select each bottom-bar destination") {
       val destinations =
           listOf(
-              NavigationTestTags.FRIDGE_TAB to "Fridge",
-              NavigationTestTags.RECIPES_TAB to "Recipes",
-              NavigationTestTags.RECEIPTS_TAB to "Receipts",
-              NavigationTestTags.SETTINGS_TAB to "Settings",
+              NavigationTestTags.FRIDGE_TAB to R.string.fridge_title,
+              NavigationTestTags.RECIPES_TAB to R.string.recipes_title,
+              NavigationTestTags.RECEIPTS_TAB to R.string.receipts_title,
+              NavigationTestTags.SETTINGS_TAB to R.string.settings_title,
           )
 
       composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsNotEnabled()
-      destinations.forEach { (testTag, label) ->
+      destinations.forEach { (testTag, labelRes) ->
         composeTestRule.onNodeWithTag(testTag).performClick()
         composeTestRule.onNodeWithTag(testTag).assertIsSelected()
         if (testTag == NavigationTestTags.FRIDGE_TAB) {
           composeTestRule
               .onNodeWithTag(C.Tag.fridge_title)
               .assertIsDisplayed()
-              .assertTextEquals("Fridge")
+              .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_title))
           composeTestRule
               .onNodeWithTag(C.Tag.fridge_empty)
               .assertIsDisplayed()
-              .assertTextEquals("Your fridge is empty")
+              .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_empty))
         } else {
-          composeTestRule.onNodeWithTag(NavigationTestTags.PAGE_CONTENT).assertTextEquals(label)
+          composeTestRule
+              .onNodeWithTag(NavigationTestTags.PAGE_CONTENT)
+              .assertTextEquals(composeTestRule.activity.getString(labelRes))
         }
-        if (label == composeTestRule.activity.getString(R.string.receipts_title)) {
+        if (testTag == NavigationTestTags.RECEIPTS_TAB) {
           composeTestRule
               .onNodeWithText(composeTestRule.activity.getString(R.string.scan_receipt))
               .assertIsDisplayed()
         }
-        if (label == "Recipes") {
-          composeTestRule.onNodeWithText("Coming soon").assertExists()
+        if (testTag == NavigationTestTags.RECIPES_TAB) {
+          composeTestRule
+              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_coming_soon))
+              .assertExists()
         } else {
-          composeTestRule.onNodeWithText("Coming soon").assertDoesNotExist()
+          composeTestRule
+              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_coming_soon))
+              .assertDoesNotExist()
         }
       }
     }

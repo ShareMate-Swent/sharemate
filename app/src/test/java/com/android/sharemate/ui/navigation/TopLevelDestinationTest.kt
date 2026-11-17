@@ -1,6 +1,8 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
+import com.android.sharemate.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,8 +21,13 @@ class TopLevelDestinationTest {
         TopLevelDestination.entries.map { it.route },
     )
     assertEquals(
-        listOf("Fridge", "Recipes", "Receipts", "Chat", "Settings"),
-        TopLevelDestination.entries.map { it.textId },
+        listOf(
+            R.string.fridge_title,
+            R.string.recipes_title,
+            R.string.receipts_title,
+            R.string.chat_title,
+            R.string.settings_title),
+        TopLevelDestination.entries.map { it.labelRes },
     )
     assertEquals(
         listOf(

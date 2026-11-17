@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.barcode
 
 import androidx.camera.core.CameraSelector
@@ -58,11 +59,11 @@ class BarcodeCameraTest {
   fun waitsForProviderHonorsDisabledStateAndUnbindsOnlyItsOwnUseCases() {
     enabled.value = false
     show()
-    compose.onNodeWithTag("barcode_photo_capture").assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsNotEnabled()
     compose.runOnIdle { future.set(provider) }
-    compose.onNodeWithTag("barcode_photo_capture").assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsNotEnabled()
     compose.runOnIdle { enabled.value = true }
-    compose.onNodeWithTag("barcode_photo_capture").assertIsEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsEnabled()
     val binding =
         mockingDetails(provider).invocations.single { it.method.name == "bindToLifecycle" }
     assertSame(CameraSelector.DEFAULT_BACK_CAMERA, binding.rawArguments[1])
@@ -94,13 +95,13 @@ class BarcodeCameraTest {
       scope.launch { results += runCatching { takePicture("file:///private/photo.jpg") } }
     }
     compose.runOnIdle { future.set(provider) }
-    compose.onNodeWithTag("barcode_photo_capture").performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performClick()
     compose.runOnIdle {
       assertTrue(results.isEmpty())
       requireNotNull(callback).onImageSaved(ImageCapture.OutputFileResults(null))
     }
     compose.runOnIdle { assertTrue(results.single().isSuccess) }
-    compose.onNodeWithTag("barcode_photo_capture").performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performClick()
     val error = ImageCaptureException(ImageCapture.ERROR_CAMERA_CLOSED, "Camera disconnected", null)
     compose.runOnIdle {
       assertEquals(1, results.size)
@@ -115,7 +116,7 @@ class BarcodeCameraTest {
   fun providerFailureReportsErrorAndNeverEnablesCapture() {
     show()
     compose.runOnIdle { future.setException(IOException("Camera unavailable")) }
-    compose.onNodeWithTag("barcode_photo_capture").assertIsNotEnabled()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsNotEnabled()
     compose.runOnIdle { assertEquals(1, failures) }
     verifyNoInteractions(provider)
   }

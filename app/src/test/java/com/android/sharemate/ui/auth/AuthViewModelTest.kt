@@ -1,10 +1,13 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -520,9 +523,135 @@ class AuthViewModelTest {
     }
   }
 
+  @Test
+  fun signupRefusesANewPasswordOverTheLimitAndAcceptsOneAtTheLimit() = runTest {
+    ready()
+    viewModel.switchMode()
+    viewModel.updateEmail("student@example.org")
+    viewModel.updatePseudo("Student")
+    for (password in
+        listOf("a".repeat(TextLimits.PASSWORD + 1), "😀".repeat(TextLimits.PASSWORD + 1))) {
+      viewModel.updatePassword(password)
+      viewModel.updateConfirmPassword(password)
+      viewModel.submit()
+      advanceUntilIdle()
+      assertEquals(AuthUiError.PASSWORD_TOO_LONG, viewModel.state.value.error)
+      assertFalse(viewModel.state.value.isLoading)
+    }
+    assertTrue(repository.calls.isEmpty())
+    val limit = "a".repeat(TextLimits.PASSWORD)
+    viewModel.updatePassword(limit)
+    viewModel.updateConfirmPassword(limit)
+    viewModel.submit()
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.error)
+    assertEquals(listOf(limit), repository.calls.map { it.password })
+  }
+
+  @Test
+  fun tooLongPasswordIsReportedAfterTheLengthAndBeforeTheConfirmation() = runTest {
+    ready()
+    viewModel.switchMode()
+    viewModel.updateEmail("student@example.org")
+    viewModel.updatePseudo("Student")
+    viewModel.updatePassword("a".repeat(TextLimits.PASSWORD + 1))
+    viewModel.updateConfirmPassword("different")
+    viewModel.submit()
+    assertEquals(AuthUiError.PASSWORD_TOO_LONG, viewModel.state.value.error)
+    viewModel.updatePassword("short")
+    viewModel.submit()
+    assertEquals(AuthUiError.WEAK_PASSWORD, viewModel.state.value.error)
+  }
+
+  @Test
+  fun loginSendsALongPasswordAsTypedSoOlderAccountsCanStillLogIn() = runTest {
+    ready()
+    val password = "p".repeat(TextLimits.PASSWORD * 2)
+    fillLogin(password = password)
+    viewModel.submit()
+    advanceUntilIdle()
+    assertEquals(listOf(password), repository.calls.map { it.password })
+    assertFalse(repository.calls.single().signup)
+  }
+
+  @Test
+  fun pastedEmailIsCutToTheLimit() = runTest {
+    ready()
+    viewModel.updateEmail("e".repeat(TextLimits.EMAIL * 3))
+    assertEquals("e".repeat(TextLimits.EMAIL), viewModel.state.value.email)
+    viewModel.updateEmail("e".repeat(TextLimits.EMAIL))
+    assertEquals("e".repeat(TextLimits.EMAIL), viewModel.state.value.email)
+    viewModel.updateEmail("a@b.co")
+    assertEquals("a@b.co", viewModel.state.value.email)
+  }
+
+  @Test
+  fun emailSignUpOffersThePhotoStepUntilItIsFinished() = runTest {
+    ready()
+    fillSignUp()
+    viewModel.submit()
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+    repository.sessions.emit(AuthSession("new-user", "student@example.org"))
+    advanceUntilIdle()
+    assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+    viewModel.finishProfilePhotoStep()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+    assertEquals(1, repository.refreshCalls)
+  }
+
+  @Test
+  fun recoveredSignUpOffersThePhotoStepWithOrWithoutAPendingName() = runTest {
+    ready()
+    for (nameFailure in listOf(null, AuthException(AuthError.NETWORK))) {
+      repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+      repository.signUpFailureAfterSession = AuthException(AuthError.NETWORK)
+      repository.profileUpdateFailure = nameFailure
+      fillSignUp()
+      viewModel.submit()
+      advanceUntilIdle()
+      assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+      assertEquals(nameFailure != null, viewModel.state.value.pendingProfileUpdate != null)
+      viewModel.signOut()
+      advanceUntilIdle()
+      assertNull(viewModel.state.value.profilePhotoStepUid)
+    }
+  }
+
+  @Test
+  fun signInNeverOffersThePhotoStepAndAnotherSessionClearsIt() = runTest {
+    ready()
+    fillLogin()
+    viewModel.submit()
+    advanceUntilIdle()
+    repository.sessions.emit(AuthSession("user", "student@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+    viewModel.signOut()
+    advanceUntilIdle()
+    repository.sessionOnSignUp = AuthSession("new-user", "student@example.org")
+    fillSignUp()
+    viewModel.submit()
+    advanceUntilIdle()
+    repository.sessions.emit(
+        AuthSession("new-user", "student@example.org", displayName = "Student"))
+    advanceUntilIdle()
+    assertEquals("new-user", viewModel.state.value.profilePhotoStepUid)
+    repository.sessions.emit(AuthSession("other-user", "other@example.org"))
+    advanceUntilIdle()
+    assertNull(viewModel.state.value.profilePhotoStepUid)
+  }
+
   private suspend fun ready() {
     repository.sessions.emit(null)
     dispatcher.scheduler.advanceUntilIdle()
+  }
+
+  private fun fillSignUp() {
+    viewModel.selectMode(AuthMode.SIGN_UP)
+    fillLogin()
+    viewModel.updatePseudo("Student")
+    viewModel.updateConfirmPassword("secret")
   }
 
   private fun fillLogin(email: String = "student@example.org", password: String = "secret") {
@@ -548,6 +677,11 @@ class AuthViewModelTest {
     var signUpFailureAfterSession: Exception? = null
     var profileUpdateFailure: Exception? = null
     val profileUpdateCalls = mutableListOf<String>()
+    var refreshCalls = 0
+
+    override fun refreshSession() {
+      refreshCalls++
+    }
 
     override suspend fun signIn(email: String, password: String) =
         authenticate(false, email, password)

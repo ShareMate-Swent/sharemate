@@ -1,10 +1,14 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { after, before, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { initializeApp, deleteApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 
-const projectId = "demo-sharemate";
-const functionsHost = process.env.SETTLEMENT_FUNCTIONS_HOST || "127.0.0.1:5001";
+const { functions: functionsEmulator } = require("../firebase.json").emulators;
+const projectId = process.env.GCLOUD_PROJECT || "demo-sharemate";
+const functionsHost = process.env.SETTLEMENT_FUNCTIONS_HOST ||
+  `${functionsEmulator.host}:${functionsEmulator.port}`;
+const settlementRoute = "europe-west6/recordSettlement";
 const householdId = "settlement-tests";
 const emulatorReady = process.env.FIRESTORE_EMULATOR_HOST && process.env.FIREBASE_AUTH_EMULATOR_HOST;
 if (!emulatorReady) throw new Error("Run with the Auth, Firestore and Functions emulators.");
@@ -29,7 +33,7 @@ async function account() {
 
 async function call(payment, user = payer) {
   const response = await fetch(
-    `http://${functionsHost}/${projectId}/europe-west6/recordSettlement`,
+    `http://${functionsHost}/${projectId}/${settlementRoute}`,
     { method: "POST",
       headers: { "content-type": "application/json",
         ...(user && { authorization: `Bearer ${user.idToken}` }) },

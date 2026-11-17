@@ -1,11 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.staging.StagedItem
 import org.junit.Assert.assertEquals
@@ -24,6 +27,64 @@ class InventorySaveFeedbackTest {
           "owner",
           "home",
           listOf(StagedItem("milk", "Milk", 2, 480)))
+
+  @Test
+  fun financialProgressShowsItsMessageAndOnlyUncertainOrRejectedPurchasesCanRetry() {
+    val expense = SharedExpense(retained.id, "home", "owner", 480, mapOf("owner" to 480L))
+    val purchase =
+        InventorySubmission(
+            retained.id,
+            "owner",
+            "home",
+            retained.items,
+            expense = expense,
+            inventoryConfirmed = true)
+    val state = mutableStateOf(InventorySaveState(InventorySavePhase.PENDING, purchase))
+    var retries = 0
+    var deferred = 0
+    compose.setContent {
+      MaterialTheme {
+        Column {
+          InventorySaveFeedback(state.value, true, onSetAside = { deferred++ }) { retries++ }
+        }
+      }
+    }
+    val app = RuntimeEnvironment.getApplication()
+    val messages =
+        listOf(
+            ExpenseProgress.QUEUED to R.string.purchase_save_pending,
+            ExpenseProgress.UNKNOWN to R.string.purchase_save_unknown,
+            ExpenseProgress.REJECTED to R.string.purchase_save_rejected,
+            ExpenseProgress.CONFIRMED to R.string.purchase_save_success)
+    for ((progress, message) in messages) {
+      compose.runOnIdle {
+        state.value =
+            InventorySaveState(
+                if (progress == ExpenseProgress.CONFIRMED) InventorySavePhase.CONFIRMED
+                else InventorySavePhase.PENDING,
+                purchase.withProgress(true, progress))
+      }
+      compose
+          .onNodeWithTag(InventorySaveTestTags.STATUS)
+          .assertTextEquals(app.getString(message, InventorySubmission.MAX_ITEMS))
+          .assertIsDisplayed()
+      if (progress == ExpenseProgress.UNKNOWN || progress == ExpenseProgress.REJECTED) {
+        compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertIsDisplayed().performClick()
+      } else {
+        compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertDoesNotExist()
+      }
+    }
+    compose.runOnIdle {
+      state.value =
+          InventorySaveState(
+              InventorySavePhase.PENDING, purchase.withProgress(true, ExpenseProgress.REJECTED))
+    }
+    compose.onNodeWithTag("purchase_set_aside").performClick()
+    compose.runOnIdle {
+      assertEquals(1, deferred)
+      assertEquals(2, retries)
+    }
+  }
 
   @Test
   fun saveProgressAndFailuresRenderTheirOwnMessageWithoutPrematureSuccess() {

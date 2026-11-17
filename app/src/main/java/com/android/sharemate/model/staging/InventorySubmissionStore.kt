@@ -2,6 +2,9 @@
 package com.android.sharemate.model.staging
 
 import android.content.Context
+import com.android.sharemate.model.finance.FinanceFields
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import kotlinx.coroutines.CoroutineDispatcher
@@ -41,6 +44,15 @@ interface InventorySubmissionStore {
    * durable and throws if persistence fails.
    */
   suspend fun save(submission: InventorySubmission)
+
+  /** Atomically retains a rejected operation separately and releases the active slot. */
+  suspend fun setAside(submission: InventorySubmission) {
+    error("Recovery archive unavailable")
+  }
+
+  /** Retained operations scoped to their original owner and household. */
+  suspend fun deferred(ownerId: String, householdId: String): List<InventorySubmission> =
+      emptyList()
 }
 
 data class ReceiptDetails(
@@ -56,15 +68,20 @@ data class ReceiptDetails(
 class AndroidInventorySubmissionStore(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val legacyActive: Boolean = false,
 ) : InventorySubmissionStore {
   private val applicationContext = context.applicationContext
-  private val mutex = Mutex()
   private val preferences
     get() = applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
   override suspend fun load(ownerId: String, householdId: String): InventorySubmission? =
       withContext(dispatcher) {
         val scope = key(ownerId, householdId)
+        if (legacyActive) {
+          return@withContext preferences.getString(scope, null)?.let {
+            decode(it, ownerId, householdId)
+          }
+        }
         val ids = preferences.getString(indexKey(scope), null)?.let(::JSONArray)
         if (ids != null) {
           if (ids.length() == 0) return@withContext null
@@ -73,12 +90,15 @@ class AndroidInventorySubmissionStore(
                   ?: error("Missing retained receipt")
           return@withContext decode(value, ownerId, householdId)
         }
-        preferences.getString(scope, null)?.let { decode(it, ownerId, householdId) }
+        preferences
+            .getString(scope, null)
+            ?.let { decode(it, ownerId, householdId) }
+            ?.takeIf { it.expense == null }
       }
 
   override suspend fun list(ownerId: String, householdId: String): List<InventorySubmission> =
       withContext(dispatcher) {
-        mutex.withLock {
+        mutationMutex.withLock {
           val scope = key(ownerId, householdId)
           val ids = preferences.getString(indexKey(scope), null)?.let(::JSONArray)
           if (ids == null) {
@@ -109,7 +129,7 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun deleteDraft(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
-        mutex.withLock {
+        mutationMutex.withLock {
           val scope = key(ownerId, householdId)
           val submission = loadById(ownerId, householdId, id) ?: return@withLock
           require(submission.draft)
@@ -165,7 +185,7 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun save(submission: InventorySubmission) =
       withContext(dispatcher) {
-        mutex.withLock {
+        mutationMutex.withLock {
           val json =
               JSONObject()
                   .put(Fields.ID, submission.id)
@@ -182,14 +202,38 @@ class AndroidInventorySubmissionStore(
                                 .put(Fields.QUANTITY, row.quantity)
                                 .put(Fields.PRICE, row.priceCents ?: JSONObject.NULL)
                           }))
+          submission.expense?.let { expense ->
+            json
+                .put(
+                    Fields.EXPENSE,
+                    JSONObject()
+                        .put(FinanceFields.PAID_BY, expense.paidBy)
+                        .put(FinanceFields.TOTAL_AMOUNT_CENTS, expense.totalAmountCents)
+                        .put(FinanceFields.SHARES, JSONObject(expense.shares)))
+                .put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
+                .put(Fields.EXPENSE_PROGRESS, submission.expenseProgress.name)
+          }
           val scope = key(submission.ownerId, submission.householdId)
+          if (legacyActive) {
+            check(
+                preferences
+                    .edit()
+                    .putString(scope, json.toString())
+                    .remove(archiveKey(submission))
+                    .commit()) {
+                  "Could not retain the reviewed receipt"
+                }
+            return@withLock
+          }
           val existing = preferences.getString(indexKey(scope), null)?.let(::JSONArray)
           val ids = mutableListOf<String>()
           if (existing != null) {
             repeat(existing.length()) { ids.add(existing.getString(it)) }
           } else {
             preferences.getString(scope, null)?.let { legacy ->
-              ids.add(decode(legacy, submission.ownerId, submission.householdId).id)
+              decode(legacy, submission.ownerId, submission.householdId)
+                  .takeIf { it.expense == null }
+                  ?.let { ids.add(it.id) }
             }
           }
           if (submission.id !in ids) ids.add(0, submission.id)
@@ -198,9 +242,11 @@ class AndroidInventorySubmissionStore(
                   .edit()
                   .putString(receiptKey(scope, submission.id), json.toString())
                   .putString(indexKey(scope), JSONArray(ids).toString())
+                  .remove(archiveKey(submission))
           preferences.getString(scope, null)?.let { legacy ->
             val old = decode(legacy, submission.ownerId, submission.householdId)
-            if (old.id != submission.id) editor.putString(receiptKey(scope, old.id), legacy)
+            if (old.expense == null && old.id != submission.id)
+                editor.putString(receiptKey(scope, old.id), legacy)
           }
           check(editor.commit()) { "Could not retain the reviewed receipt" }
         }
@@ -228,7 +274,23 @@ class AndroidInventorySubmissionStore(
                   (quantity as Number).toInt(),
                   (price as? Number)?.toLong())
             },
-            draft)
+            draft,
+            if (json.has(Fields.EXPENSE))
+                json.getJSONObject(Fields.EXPENSE).let { expense ->
+                  val shares = expense.getJSONObject(FinanceFields.SHARES)
+                  SharedExpense(
+                      json.requiredString(Fields.ID),
+                      json.requiredString(Fields.HOUSEHOLD),
+                      expense.requiredString(FinanceFields.PAID_BY),
+                      expense.requiredLong(FinanceFields.TOTAL_AMOUNT_CENTS),
+                      shares.keys().asSequence().associateWith { shares.requiredLong(it) })
+                }
+            else null,
+            if (json.has(Fields.EXPENSE)) json.get(Fields.INVENTORY_CONFIRMED) as Boolean
+            else false,
+            if (json.has(Fields.EXPENSE))
+                ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))
+            else ExpenseProgress.QUEUED)
         .also { require(it.ownerId == ownerId && it.householdId == householdId) }
   }
 
@@ -238,16 +300,66 @@ class AndroidInventorySubmissionStore(
 
   private fun detailsKey(scope: String, id: String) = "details:$scope:$id"
 
+  override suspend fun setAside(submission: InventorySubmission) =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          require(
+              submission.inventoryConfirmed &&
+                  submission.expenseProgress == ExpenseProgress.REJECTED)
+          val scope = key(submission.ownerId, submission.householdId)
+          if (legacyActive) {
+            val value = checkNotNull(preferences.getString(scope, null))
+            check(decode(value, submission.ownerId, submission.householdId) == submission)
+            check(
+                preferences.edit().putString(archiveKey(submission), value).remove(scope).commit())
+            return@withLock
+          }
+          val value = checkNotNull(preferences.getString(receiptKey(scope, submission.id), null))
+          check(decode(value, submission.ownerId, submission.householdId) == submission)
+          val index = JSONArray(checkNotNull(preferences.getString(indexKey(scope), null)))
+          val remaining =
+              (0 until index.length()).map(index::getString).filterNot { it == submission.id }
+          check(
+              preferences
+                  .edit()
+                  .putString(archiveKey(submission), value)
+                  .remove(receiptKey(scope, submission.id))
+                  .putString(indexKey(scope), JSONArray(remaining).toString())
+                  .commit())
+        }
+      }
+
+  override suspend fun deferred(ownerId: String, householdId: String): List<InventorySubmission> =
+      withContext(dispatcher) {
+        val prefix = "deferred:${key(ownerId, householdId)}:"
+        preferences.all
+            .filterKeys { it.startsWith(prefix) }
+            .values
+            .map { decode(it as String, ownerId, householdId) }
+      }
+
+  private fun archiveKey(submission: InventorySubmission) =
+      "deferred:${key(submission.ownerId, submission.householdId)}:${submission.id}"
+
   private fun key(ownerId: String, householdId: String) =
       JSONArray(listOf(ownerId, householdId)).toString()
 
   private fun JSONObject.requiredString(field: String): String =
       get(field) as? String ?: error("Invalid submission field")
 
+  private fun JSONObject.requiredLong(field: String): Long {
+    val value = get(field)
+    require(value is Int || value is Long)
+    return (value as Number).toLong()
+  }
+
   private companion object {
     const val FILE = "inventory-submissions"
     const val PHOTO_URI = "photoUri"
     const val SCANNED_AT = "scannedAtMillis"
     const val SAVED_AT = "savedAtMillis"
+
+    // All instances write the same preferences file within this application process.
+    val mutationMutex = Mutex()
   }
 }

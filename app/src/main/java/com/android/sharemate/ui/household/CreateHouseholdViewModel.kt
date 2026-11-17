@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.SavedStateHandle
@@ -8,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.text.TextLimits
+import com.android.sharemate.model.text.limitedTo
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,11 +54,15 @@ class CreateHouseholdViewModel(
               hasCreationOperation = savedStateHandle.contains(OPERATION)))
   val state = mutableState.asStateFlow()
 
-  /** Updates the name before submission; retries stay bound to the original request. */
+  /**
+   * Updates the name before submission, cut to [TextLimits.HOUSEHOLD_NAME] characters so a pasted
+   * text cannot exceed it; retries stay bound to the original request.
+   */
   fun updateName(name: String) {
     if (!state.value.isLoading && !state.value.hasCreationOperation) {
-      savedStateHandle[NAME] = name
-      mutableState.update { it.copy(name = name, error = null) }
+      val limited = name.limitedTo(TextLimits.HOUSEHOLD_NAME)
+      savedStateHandle[NAME] = limited
+      mutableState.update { it.copy(name = limited, error = null) }
     }
   }
 

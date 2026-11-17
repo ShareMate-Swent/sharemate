@@ -39,6 +39,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.theme.Dimens
+
+private val WelcomeMaxWidth = 520.dp
+private val WelcomeTopSpacing = 56.dp
+private val FridgeIllustrationMaxWidth = 312.dp
+private val FridgeIllustrationCornerRadius = 28.dp
+private const val FRIDGE_ILLUSTRATION_ASPECT_RATIO = 624f / 560f
+
+private val GoogleButtonTextColor = Color(0xFF1F1F1F)
+private val GoogleButtonBorderColor = Color(0xFF747775)
+private val GoogleButtonIconSize = 20.dp
+private val GoogleButtonIconSpacing = 10.dp
 
 @Composable
 fun AuthWelcomeScreen(
@@ -54,31 +66,31 @@ fun AuthWelcomeScreen(
       BoxWithConstraints(contentAlignment = Alignment.TopCenter) {
         Column(
             modifier =
-                Modifier.widthIn(max = 520.dp)
+                Modifier.widthIn(max = WelcomeMaxWidth)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .heightIn(min = this@BoxWithConstraints.maxHeight)
-                    .padding(horizontal = 24.dp, vertical = 24.dp)
-                    .testTag("auth_welcome"),
+                    .padding(Dimens.spacingL)
+                    .testTag(AuthTestTags.WELCOME),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween) {
               Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(56.dp))
+                Spacer(Modifier.height(WelcomeTopSpacing))
                 Image(
                     painter = painterResource(R.drawable.auth_fridge),
                     contentDescription = null,
                     modifier =
-                        Modifier.widthIn(max = 312.dp)
+                        Modifier.widthIn(max = FridgeIllustrationMaxWidth)
                             .fillMaxWidth()
-                            .aspectRatio(624f / 560f)
-                            .clip(RoundedCornerShape(28.dp)))
-                Spacer(Modifier.height(32.dp))
+                            .aspectRatio(FRIDGE_ILLUSTRATION_ASPECT_RATIO)
+                            .clip(RoundedCornerShape(FridgeIllustrationCornerRadius)))
+                Spacer(Modifier.height(Dimens.spacingXl))
                 Text(
                     text = stringResource(R.string.auth_welcome_title),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center)
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(Dimens.spacingM))
                 Text(
                     text = stringResource(R.string.auth_welcome_description),
                     style = MaterialTheme.typography.bodyLarge,
@@ -86,49 +98,49 @@ fun AuthWelcomeScreen(
                     textAlign = TextAlign.Center)
               }
               Column(
-                  modifier = Modifier.padding(top = 32.dp),
+                  modifier = Modifier.padding(top = Dimens.spacingXl),
                   horizontalAlignment = Alignment.CenterHorizontally) {
                     error?.let {
                       Text(
                           stringResource(it.messageResource()),
                           color = MaterialTheme.colorScheme.error,
-                          modifier = Modifier.testTag("auth_error"))
+                          modifier = Modifier.testTag(AuthTestTags.ERROR))
                     }
                     if (isLoading) {
-                      CircularProgressIndicator(Modifier.testTag("auth_google_loading"))
+                      CircularProgressIndicator(Modifier.testTag(AuthTestTags.GOOGLE_LOADING))
                     }
                     OutlinedButton(
                         onClick = onGoogleSignIn,
                         enabled = !isLoading,
                         colors =
                             ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White, contentColor = Color(0xFF1F1F1F)),
-                        border = BorderStroke(1.dp, Color(0xFF747775)),
+                                containerColor = Color.White, contentColor = GoogleButtonTextColor),
+                        border = BorderStroke(Dimens.borderWidth, GoogleButtonBorderColor),
                         modifier =
                             Modifier.fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("auth_google_sign_in")) {
+                                .heightIn(min = Dimens.buttonHeight)
+                                .testTag(AuthTestTags.GOOGLE_SIGN_IN)) {
                           Image(
                               painterResource(R.drawable.google_g),
                               contentDescription = null,
-                              modifier = Modifier.size(20.dp))
-                          Spacer(Modifier.width(10.dp))
+                              modifier = Modifier.size(GoogleButtonIconSize))
+                          Spacer(Modifier.width(GoogleButtonIconSpacing))
                           Text(stringResource(R.string.auth_google_sign_in))
                         }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(Dimens.spacingS))
                     Button(
                         onClick = onLogIn,
                         enabled = !isLoading,
                         modifier =
                             Modifier.fillMaxWidth()
-                                .heightIn(min = 48.dp)
-                                .testTag("auth_welcome_login")) {
+                                .heightIn(min = Dimens.buttonHeight)
+                                .testTag(AuthTestTags.WELCOME_LOGIN)) {
                           Text(stringResource(R.string.auth_log_in))
                         }
                     TextButton(
                         onClick = onCreateAccount,
                         enabled = !isLoading,
-                        modifier = Modifier.testTag("auth_welcome_signup")) {
+                        modifier = Modifier.testTag(AuthTestTags.WELCOME_SIGNUP)) {
                           Text(stringResource(R.string.auth_create_account))
                         }
                     Text(

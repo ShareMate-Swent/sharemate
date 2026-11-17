@@ -60,6 +60,11 @@ jobs:
       - name: Install settlement function dependencies
         run: npm --prefix functions install --ignore-scripts --no-package-lock
 
+      - name: Run settlement function emulator tests
+        run: >-
+          firebase emulators:exec --only auth,firestore,functions
+          --project demo-sharemate-ci "npm --prefix functions test"
+
       - name: Run instrumented tests
         timeout-minutes: 40
         uses: reactivecircus/android-emulator-runner@v2

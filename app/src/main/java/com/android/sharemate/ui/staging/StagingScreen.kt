@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
 
@@ -44,6 +45,8 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.theme.Dimens
 
+private const val ITEM_NAME_MAX_LINES = 1
+
 object StagingTestTags {
   const val BACK = "staging_back"
   const val LIST = "staging_list"
@@ -67,6 +70,7 @@ fun StagingScreen(
     onBack: () -> Unit,
     actionsEnabled: Boolean = true,
     statusContent: @Composable () -> Unit = {},
+    onConfirmPurchase: ((ReviewedPurchase) -> Unit)? = null,
 ) {
   val state = viewModel.state.collectAsState().value
   StagingContent(
@@ -76,7 +80,29 @@ fun StagingScreen(
       onConfirm = { if (actionsEnabled) viewModel.confirmedItems()?.let(onConfirm) },
       onBack = onBack,
       actionsEnabled = actionsEnabled,
-      statusContent = statusContent,
+      statusContent = {
+        state.purchase?.let {
+          PurchaseReviewContent(
+              state.purchasePreview,
+              it,
+              viewModel::selectPayer,
+              viewModel::toggleParticipant,
+              actionsEnabled,
+          )
+          Button(
+              onClick = { viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) } },
+              enabled =
+                  actionsEnabled &&
+                      state.canConfirm &&
+                      state.purchasePreview?.error == null &&
+                      onConfirmPurchase != null,
+              modifier = Modifier.fillMaxWidth().testTag("staging_confirm_purchase"),
+          ) {
+            Text(stringResource(R.string.purchase_confirm))
+          }
+        }
+        statusContent()
+      },
       onAddItem = viewModel::startAdding,
   )
   state.draft
@@ -111,46 +137,47 @@ fun StagingContent(
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
               .padding(
                   horizontal = Dimens.screenHorizontalPadding,
-                  vertical = Dimens.screenVerticalPadding),
-  ) {
-    HouseholdTopBar(
-        title = stringResource(R.string.staging_title),
-        onBack = onBack,
-        backTestTag = StagingTestTags.BACK,
-        actions = {
-          if (onAddItem != null) {
-            TextButton(
-                onClick = onAddItem,
-                enabled = actionsEnabled,
-                modifier = Modifier.testTag(StagingTestTags.ADD),
-            ) {
-              Text(stringResource(R.string.staging_add_item))
+                  vertical = Dimens.screenVerticalPadding,
+              )) {
+        HouseholdTopBar(
+            title = stringResource(R.string.staging_title),
+            onBack = onBack,
+            backTestTag = StagingTestTags.BACK,
+            actions = {
+              if (onAddItem != null) {
+                TextButton(
+                    onClick = onAddItem,
+                    enabled = actionsEnabled,
+                    modifier = Modifier.testTag(StagingTestTags.ADD),
+                ) {
+                  Text(stringResource(R.string.staging_add_item))
+                }
+              }
+            },
+        )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+          LazyColumn(
+              modifier =
+                  Modifier.fillMaxSize()
+                      .then(
+                          if (state.items.isEmpty()) Modifier
+                          else Modifier.testTag(StagingTestTags.LIST)),
+              verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+          ) {
+            item(key = DESCRIPTION_KEY) {
+              Text(
+                  text = stringResource(R.string.staging_description),
+                  style = MaterialTheme.typography.bodyLarge,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+              Spacer(Modifier.height(Dimens.spacingM))
             }
-          }
-        },
-    )
-    Box(Modifier.weight(1f).fillMaxWidth()) {
-      LazyColumn(
-          modifier =
-              Modifier.fillMaxSize()
-                  .then(
-                      if (state.items.isEmpty()) Modifier
-                      else Modifier.testTag(StagingTestTags.LIST)),
-          verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-      ) {
-        item(key = DESCRIPTION_KEY) {
-          Text(
-              text = stringResource(R.string.staging_description),
-              style = MaterialTheme.typography.bodyLarge,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-          Spacer(Modifier.height(Dimens.spacingM))
-        }
-        if (state.items.isEmpty()) {
-          item(key = EMPTY_KEY) {
-            Box(
-                Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
-                contentAlignment = Alignment.Center) {
+            if (state.items.isEmpty()) {
+              item(key = EMPTY_KEY) {
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
+                    contentAlignment = Alignment.Center,
+                ) {
                   Text(
                       text = stringResource(R.string.staging_empty),
                       style = MaterialTheme.typography.bodyLarge,
@@ -158,29 +185,32 @@ fun StagingContent(
                       modifier = Modifier.testTag(StagingTestTags.EMPTY),
                   )
                 }
-          }
-        } else {
-          items(state.items, key = { it.id }) { item ->
-            StagedItemRow(
-                item,
-                onClick = { onItemClick(item.id) },
-                onDelete = { onDeleteItem(item.id) },
-                enabled = actionsEnabled,
-            )
+              }
+            } else {
+              items(state.items, key = { it.id }) { item ->
+                StagedItemRow(
+                    item,
+                    onClick = { onItemClick(item.id) },
+                    onDelete = { onDeleteItem(item.id) },
+                    enabled = actionsEnabled,
+                )
+              }
+            }
+            item(key = STATUS_KEY) { statusContent() }
           }
         }
-        item(key = STATUS_KEY) { statusContent() }
+        Spacer(Modifier.height(Dimens.spacingM))
+        Button(
+            onClick = onConfirm,
+            enabled = state.canConfirm && actionsEnabled,
+            modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
+        ) {
+          Text(
+              stringResource(
+                  if (state.purchase != null) R.string.purchase_save_inventory_only
+                  else R.string.staging_confirm))
+        }
       }
-    }
-    Spacer(Modifier.height(Dimens.spacingM))
-    Button(
-        onClick = onConfirm,
-        enabled = state.canConfirm && actionsEnabled,
-        modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
-    ) {
-      Text(stringResource(R.string.staging_confirm))
-    }
-  }
 }
 
 // Section keys are integers, distinct from the String identifiers of reviewed rows.
@@ -195,7 +225,7 @@ private fun StagedItemRow(
     item: StagedItem,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
 ) {
   val currentOnDelete by rememberUpdatedState(onDelete)
   val currentEnabled by rememberUpdatedState(enabled)
@@ -239,7 +269,7 @@ private fun StagedItemCard(
     item: StagedItem,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
 ) {
   Card(
       onClick = onClick,
@@ -256,7 +286,7 @@ private fun StagedItemCard(
             text = item.name,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
+            maxLines = ITEM_NAME_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
@@ -278,13 +308,14 @@ private fun StagedItemCard(
       IconButton(
           onClick = onDelete,
           enabled = enabled,
-          modifier = Modifier.testTag(StagingTestTags.delete(item.id))) {
-            Icon(
-                imageVector = Icons.Outlined.Delete,
-                contentDescription = stringResource(R.string.staging_delete_item, item.name),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
+          modifier = Modifier.testTag(StagingTestTags.delete(item.id)),
+      ) {
+        Icon(
+            imageVector = Icons.Outlined.Delete,
+            contentDescription = stringResource(R.string.staging_delete_item, item.name),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
     }
   }
 }

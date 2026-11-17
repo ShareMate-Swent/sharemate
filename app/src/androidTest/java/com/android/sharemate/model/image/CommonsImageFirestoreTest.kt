@@ -21,7 +21,9 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.fridgeImageRequest
+import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
+import com.android.sharemate.ui.fridge.testPseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CompletableDeferred
@@ -126,7 +128,11 @@ class CommonsImageFirestoreTest {
                   expirationPreferences =
                       ExpirationPreferencesProvider(
                           FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
-                  fridgeType = FridgeType.SHARED)
+                  fridgeType = FridgeType.SHARED,
+                  memberNameRepository = testMemberNameRepository(),
+                  currentUserDisplayName = null,
+                  pseudoRepository = testPseudoRepository(),
+              )
               .also { store.put("commons", it) }
         }
     var id: String? = null

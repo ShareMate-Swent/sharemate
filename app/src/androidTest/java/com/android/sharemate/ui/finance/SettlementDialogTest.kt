@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
 import androidx.activity.ComponentActivity
@@ -5,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.R
 import com.android.sharemate.model.finance.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -34,8 +36,8 @@ class SettlementDialogTest {
             formatFinanceAmount(debt.amountCents, java.util.Locale.forLanguageTag("fr-CH")),
             substring = true)
         .assertIsDisplayed()
-    compose.onNodeWithTag("settlement_amount").performTextReplacement("6,00")
-    compose.onNodeWithTag("settlement_confirm").assertIsEnabled().performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT).performTextReplacement("6,00")
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).assertIsEnabled().performClick()
     assertEquals(600L, amount)
   }
 
@@ -47,7 +49,7 @@ class SettlementDialogTest {
       MaterialTheme { SettleUpDialog(debt, "Bob", { dismissals++ }, { amounts += it }) }
     }
     compose.onNodeWithText("You owe Bob", substring = true).assertIsDisplayed()
-    compose.onNodeWithTag("settlement_confirm").performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).performClick()
     assertEquals(listOf(1500L), amounts)
     for (input in
         listOf(
@@ -63,8 +65,8 @@ class SettlementDialogTest {
             "15,01",
             "0,00",
             "92233720368547758.08")) {
-      compose.onNodeWithTag("settlement_amount").performTextReplacement(input)
-      compose.onNodeWithTag("settlement_confirm").assertIsNotEnabled()
+      compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT).performTextReplacement(input)
+      compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).assertIsNotEnabled()
     }
     for ((input, expected) in
         listOf(
@@ -75,11 +77,11 @@ class SettlementDialogTest {
             "6,00" to 600L,
             "0,01" to 1L,
             "15,00" to 1500L)) {
-      compose.onNodeWithTag("settlement_amount").performTextReplacement(input)
-      compose.onNodeWithTag("settlement_confirm").assertIsEnabled().performClick()
+      compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT).performTextReplacement(input)
+      compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).assertIsEnabled().performClick()
       assertEquals(expected, amounts.last())
     }
-    compose.onNodeWithText("Cancel").performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.cancel)).performClick()
     assertEquals(1, dismissals)
   }
 
@@ -96,29 +98,37 @@ class SettlementDialogTest {
     compose.setContent {
       MaterialTheme { SettlementBalances(state.value, {}, { _, _ -> accepted }, { retries++ }) }
     }
-    compose.onNodeWithText("Settle up").assertDoesNotExist()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.settlement_action))
+        .assertDoesNotExist()
     compose.runOnIdle {
       state.value = (state.value as SettlementUiState.Ready).copy(currentUserId = "alice")
     }
-    compose.onNodeWithText("Settle up").performClick()
-    compose.onNodeWithTag("settlement_confirm").performClick()
-    compose.onNodeWithTag("settlement_amount").assertIsDisplayed()
-    compose.onNodeWithText("Cancel").performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.settlement_action)).performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_AMOUNT).assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.cancel)).performClick()
     compose.runOnIdle {
       state.value =
           (state.value as SettlementUiState.Ready).copy(
               submission = SettlementSubmission(SettlementPhase.FAILED))
     }
-    compose.onNodeWithText("Settle up").assertDoesNotExist()
-    compose.onNodeWithText("Try again").performClick()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.settlement_action))
+        .assertDoesNotExist()
+    compose.onNodeWithText(compose.activity.getString(R.string.household_retry)).performClick()
     assertEquals(1, retries)
     for (phase in listOf(SettlementPhase.SUBMITTING, SettlementPhase.AWAITING_CONFIRMATION)) {
       compose.runOnIdle {
         state.value =
             (state.value as SettlementUiState.Ready).copy(submission = SettlementSubmission(phase))
       }
-      compose.onNodeWithText("Settle up").assertDoesNotExist()
-      compose.onNodeWithText("Recording payment. Waiting for confirmation…").assertIsDisplayed()
+      compose
+          .onNodeWithText(compose.activity.getString(R.string.settlement_action))
+          .assertDoesNotExist()
+      compose
+          .onNodeWithText(compose.activity.getString(R.string.settlement_pending))
+          .assertIsDisplayed()
     }
     compose.runOnIdle {
       state.value =
@@ -126,20 +136,20 @@ class SettlementDialogTest {
               submission = SettlementSubmission(SettlementPhase.REJECTED))
       accepted = true
     }
-    compose.onNodeWithText("Settle up").performClick()
-    compose.onNodeWithTag("settlement_confirm").performClick()
-    compose.onNodeWithTag("settlement_confirm").assertDoesNotExist()
+    compose.onNodeWithText(compose.activity.getString(R.string.settlement_action)).performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).performClick()
+    compose.onNodeWithTag(BalancesTestTags.SETTLEMENT_CONFIRM).assertDoesNotExist()
     compose.runOnIdle {
       state.value = (state.value as SettlementUiState.Ready).copy(isSynced = false)
     }
     compose
-        .onNodeWithText("Showing cached balances. Waiting for the server to confirm them.")
+        .onNodeWithText(compose.activity.getString(R.string.settlement_cached_balances))
         .assertIsDisplayed()
     compose.runOnIdle {
       state.value = (state.value as SettlementUiState.Ready).copy(isSynced = true)
     }
     compose
-        .onNodeWithText("Showing cached balances. Waiting for the server to confirm them.")
+        .onNodeWithText(compose.activity.getString(R.string.settlement_cached_balances))
         .assertDoesNotExist()
     for (unavailable in
         listOf(
@@ -150,7 +160,9 @@ class SettlementDialogTest {
             SettlementUiState.Unavailable)) {
       compose.runOnIdle { state.value = unavailable }
       compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
-      compose.onNodeWithText("Settle up").assertDoesNotExist()
+      compose
+          .onNodeWithText(compose.activity.getString(R.string.settlement_action))
+          .assertDoesNotExist()
     }
   }
 }

@@ -24,6 +24,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
+import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
@@ -33,6 +34,7 @@ import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.product.ProductLookupResult.Failure
 import com.android.sharemate.model.product.ProductLookupResult.Found
 import com.android.sharemate.model.product.ProductLookupResult.Reason
+import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferences
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
@@ -47,9 +49,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -474,17 +474,17 @@ class FridgeViewModelTest {
     vm.saveItem()
     assertEquals(FridgeFormError.INVALID_EXPIRATION_DATE, vm.uiState.value.formError)
     vm.updateExpirationDate("")
-    listOf("", "0", "-1", "1.5", "abc", "2147483648").forEach {
+    listOf("", "0", "-1", "1.5", "abc", "10000", "2147483648").forEach {
       vm.updateQuantity(it)
       vm.saveItem()
       assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
     }
     assertTrue(repository.edits.isEmpty())
-    vm.updateQuantity("2147483647")
+    vm.updateQuantity(ItemQuantity.MAX.toString())
     vm.updateCategory(" ")
     vm.saveItem()
     runCurrent()
-    assertEquals(milk.copy(quantity = Int.MAX_VALUE), vm.uiState.value.items.single())
+    assertEquals(milk.copy(quantity = ItemQuantity.MAX), vm.uiState.value.items.single())
   }
 
   @Test
@@ -1272,7 +1272,8 @@ class FridgeViewModelTest {
   private fun viewModel(
       householdId: String = "test-household",
       fridgeType: FridgeType = FridgeType.SHARED,
-      pseudos: PseudoRepository? = null,
+      directory: TestMemberNames = testMemberNameRepository(),
+      profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
   ): FridgeViewModel =
       FridgeViewModel(
@@ -1283,9 +1284,12 @@ class FridgeViewModelTest {
               barcodeScanner,
               productCatalogRepository,
               expirationPreferences = ExpirationPreferencesProvider(preferences),
-              pseudoRepository = pseudos,
+              pseudoRepository = profiles,
               fridgeType = fridgeType,
-              today = { STATUS_TODAY })
+              today = { STATUS_TODAY },
+              memberNameRepository = directory,
+              currentUserDisplayName = null,
+          )
           .also { viewModelStore.put("fridge", it) }
 
   private fun TestScope.observedStatuses(vm: FridgeViewModel): Map<String, ExpiryStatus> {
@@ -1391,7 +1395,8 @@ class FridgeViewModelTest {
   fun ownerOptionsShowPseudosSortedWithoutLeakingMissingOnesFirst() = runTest {
     val vm =
         viewModel(
-            pseudos = FakePseudoRepository(mapOf("u1" to "zoe", "u2" to "Alice", "u3" to "  ")))
+            directory =
+                testMemberNameRepository(mapOf("u1" to "zoe", "u2" to "Alice", "u3" to "  ")))
     repository.emitItems(
         listOf(
             item("a", ownerId = "u1"),
@@ -1407,33 +1412,49 @@ class FridgeViewModelTest {
 
   @Test
   fun ownerOptionsFollowPseudoChanges() = runTest {
-    val pseudos = FakePseudoRepository(mapOf("u1" to "Old"))
-    val vm = viewModel(pseudos = pseudos)
+    val directory = testMemberNameRepository(mapOf("u1" to "Old"))
+    val vm = viewModel(directory = directory)
     repository.emitItems(listOf(item("a", ownerId = "u1")))
     observedOwners(vm)
 
-    pseudos.setPseudo("u1", "New")
+    directory.names.value = mapOf("u1" to "New")
     runCurrent()
 
     assertEquals(listOf(OwnerOption("u1", "New")), vm.ownerOptions.value)
   }
 
   @Test
-  fun ownerOptionsHaveNoPseudoWithoutARepositoryOrWhenItFails() = runTest {
+  fun suspendedNamePublicationDoesNotBlockUiStateAndCancelsStaleQueue() = runTest {
+    val directory = testMemberNameRepository().also { it.queueGate = CompletableDeferred() }
+    val profiles = FakePseudoRepository(mapOf("test-user" to "First"))
+    val vm = viewModel(directory = directory, profiles = profiles)
+    val milk =
+        Item(id = "milk", name = "Milk", ownerId = "test-user", householdId = "test-household")
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    assertEquals(1, directory.queueAttempts)
+    assertEquals("First", vm.uiState.value.ownerNames["test-user"])
+    profiles.setPseudo("test-user", "Second")
+    directory.names.value = mapOf("peer" to "Peer")
+    runCurrent()
+    assertEquals("Second", vm.uiState.value.ownerNames["test-user"])
+    assertEquals("Peer", vm.uiState.value.ownerNames["peer"])
+    assertEquals(listOf(milk), vm.uiState.value.items)
+    assertEquals(2, directory.queueAttempts)
+    assertEquals(1, directory.cancelledQueues)
+    assertTrue(directory.published.isEmpty())
+    viewModelStore.clear()
+    runCurrent()
+    assertEquals(2, directory.cancelledQueues)
+    assertFalse(checkNotNull(directory.queueGate).isCompleted)
+  }
+
+  @Test
+  fun ownerOptionsUseFallbackWhenDirectoryIsEmptyOrFails() = runTest {
     repository.emitItems(listOf(item("a", ownerId = "u1")))
     assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel()))
-
-    val failing =
-        object : PseudoRepository {
-          override fun observePseudos(userIds: Set<String>): Flow<Map<String, String>> = flow {
-            throw IllegalStateException("denied")
-          }
-
-          override suspend fun getPseudo(userId: String): String? = null
-
-          override suspend fun setPseudo(userId: String, pseudo: String) = Unit
-        }
-    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel(pseudos = failing)))
+    val denied = testMemberNameRepository().also { it.failure = IllegalStateException("denied") }
+    assertEquals(listOf(OwnerOption("u1", null)), observedOwners(viewModel(directory = denied)))
   }
 
   @Test
@@ -1448,7 +1469,11 @@ class FridgeViewModelTest {
           productCatalogRepository,
           expirationPreferences =
               ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-          fridgeType = FridgeType.SHARED)
+          fridgeType = FridgeType.SHARED,
+          memberNameRepository = testMemberNameRepository(),
+          currentUserDisplayName = null,
+          pseudoRepository = testPseudoRepository(),
+      )
     }
     assertThrows(IllegalArgumentException::class.java) {
       FridgeViewModel(
@@ -1460,7 +1485,11 @@ class FridgeViewModelTest {
           productCatalogRepository,
           expirationPreferences =
               ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-          fridgeType = FridgeType.SHARED)
+          fridgeType = FridgeType.SHARED,
+          memberNameRepository = testMemberNameRepository(),
+          currentUserDisplayName = null,
+          pseudoRepository = testPseudoRepository(),
+      )
     }
 
     assertTrue(repository.requestedHouseholdIds.isEmpty())
@@ -1718,7 +1747,7 @@ class FridgeViewModelTest {
   fun addSavesPositiveTrimmedAndMaximumQuantities() = runTest {
     val vm = viewModel()
     runCurrent()
-    listOf("2", " 12 ", Int.MAX_VALUE.toString()).forEach { input ->
+    listOf("2", " 12 ", ItemQuantity.MAX.toString()).forEach { input ->
       vm.openAddItemDialog()
       assertEquals("1", vm.uiState.value.itemQuantity)
       vm.updateName("Milk")
@@ -1739,19 +1768,20 @@ class FridgeViewModelTest {
     runCurrent()
     vm.openAddItemDialog()
     vm.updateName("Milk")
-    listOf("", " ", "abc", "1.5", "0", "-1", "2147483648", "999999999999999999999").forEach { input
-      ->
-      vm.updateQuantity(input)
-      assertNull(vm.uiState.value.formError)
-      vm.saveItem()
-      runCurrent()
-      assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
-      assertEquals(input, vm.uiState.value.itemQuantity)
-      assertTrue(vm.uiState.value.isAddItemDialogOpen)
-      assertFalse(vm.uiState.value.isSaving)
-      assertTrue(repository.addedItems.isEmpty())
-      assertTrue(vm.uiState.value.items.isEmpty())
-    }
+    listOf("", " ", "abc", "1.5", "0", "-1", "10000", "2147483648", "999999999999999999999")
+        .forEach { input ->
+          vm.updateQuantity(input)
+          assertNull(vm.uiState.value.formError)
+          vm.saveItem()
+          runCurrent()
+          assertEquals(FridgeFormError.INVALID_QUANTITY, vm.uiState.value.formError)
+          assertEquals(
+              input.limitedTo(ItemQuantity.MAX_INPUT_LENGTH), vm.uiState.value.itemQuantity)
+          assertTrue(vm.uiState.value.isAddItemDialogOpen)
+          assertFalse(vm.uiState.value.isSaving)
+          assertTrue(repository.addedItems.isEmpty())
+          assertTrue(vm.uiState.value.items.isEmpty())
+        }
   }
 
   @Test
@@ -2257,7 +2287,11 @@ class FridgeViewModelTest {
             productCatalogRepository,
             expirationPreferences =
                 ExpirationPreferencesProvider(FakeExpirationPreferencesRepository()),
-            fridgeType = FridgeType.SHARED)
+            fridgeType = FridgeType.SHARED,
+            memberNameRepository = testMemberNameRepository(),
+            currentUserDisplayName = null,
+            pseudoRepository = testPseudoRepository(),
+        )
     viewModelStore.put("fridge", vm)
     vm.openAddItemDialog()
     vm.updateName("Milk")

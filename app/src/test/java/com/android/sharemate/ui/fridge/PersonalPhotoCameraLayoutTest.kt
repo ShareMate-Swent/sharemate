@@ -57,7 +57,8 @@ class PersonalPhotoCameraLayoutTest {
     viewfinder.assertHeightIsEqualTo(300.dp)
     val bounds = viewfinder.fetchSemanticsNode().boundsInRoot
     val header = compose.onNodeWithTag("photo_header").fetchSemanticsNode().boundsInRoot
-    val capture = compose.onNodeWithTag("barcode_photo_capture").fetchSemanticsNode().boundsInRoot
+    val capture =
+        compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
     assertTrue(bounds.top >= header.bottom)
     assertTrue(bounds.bottom <= capture.top)
   }

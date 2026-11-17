@@ -1,16 +1,20 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
+import androidx.annotation.StringRes
+import com.android.sharemate.R
+
 enum class TopLevelDestination(
     val route: String,
-    val textId: String,
+    @StringRes val labelRes: Int,
     val testTag: String,
 ) {
-  FRIDGE("fridge", "Fridge", NavigationTestTags.FRIDGE_TAB),
-  RECIPES("recipes", "Recipes", NavigationTestTags.RECIPES_TAB),
-  RECEIPTS("receipts", "Receipts", NavigationTestTags.RECEIPTS_TAB),
-  CHAT("chat", "Chat", NavigationTestTags.CHAT_TAB),
-  SETTINGS("settings", "Settings", NavigationTestTags.SETTINGS_TAB);
+  FRIDGE("fridge", R.string.fridge_title, NavigationTestTags.FRIDGE_TAB),
+  RECIPES("recipes", R.string.recipes_title, NavigationTestTags.RECIPES_TAB),
+  RECEIPTS("receipts", R.string.receipts_title, NavigationTestTags.RECEIPTS_TAB),
+  CHAT("chat", R.string.chat_title, NavigationTestTags.CHAT_TAB),
+  SETTINGS("settings", R.string.settings_title, NavigationTestTags.SETTINGS_TAB);
 
   /** Whether this tab should show as selected while [route] is the current screen. */
   fun isSelected(route: String?): Boolean = route == this.route || isParentOf(route)

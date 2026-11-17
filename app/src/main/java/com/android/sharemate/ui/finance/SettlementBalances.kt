@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
 import androidx.compose.foundation.layout.Column
@@ -81,7 +82,8 @@ internal fun SettleUpDialog(
 ) {
   var input by
       rememberSaveable(debt.creditorId, debt.amountCents) {
-        mutableStateOf(BigDecimal.valueOf(debt.amountCents, 2).toPlainString())
+        mutableStateOf(
+            BigDecimal.valueOf(debt.amountCents, FinanceAmounts.DECIMAL_SCALE).toPlainString())
       }
   val cents = FinanceAmounts.parseCents(input.replace(',', '.'))?.takeIf { it <= debt.amountCents }
   val locale = LocalConfiguration.current.locales[0]
@@ -99,7 +101,7 @@ internal fun SettleUpDialog(
           OutlinedTextField(
               value = input,
               onValueChange = { input = it },
-              modifier = Modifier.testTag("settlement_amount"),
+              modifier = Modifier.testTag(BalancesTestTags.SETTLEMENT_AMOUNT),
               singleLine = true,
               label = { Text(stringResource(R.string.settlement_amount)) },
               keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -116,7 +118,7 @@ internal fun SettleUpDialog(
         TextButton(
             onClick = { cents?.let(onConfirm) },
             enabled = cents != null,
-            modifier = Modifier.testTag("settlement_confirm")) {
+            modifier = Modifier.testTag(BalancesTestTags.SETTLEMENT_CONFIRM)) {
               Text(stringResource(R.string.settlement_confirm))
             }
       },

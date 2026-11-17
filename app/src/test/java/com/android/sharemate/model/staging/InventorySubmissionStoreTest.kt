@@ -1,11 +1,16 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.staging
 
 import android.content.Context
 import android.content.SharedPreferences
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemQuantity
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +24,47 @@ import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
+  @Test
+  fun expenseBearingLegacyEntryStaysOutsideReceiptHistory() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val purchaseStore = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val historyStore = AndroidInventorySubmissionStore(app, dispatcher)
+    val purchaseId = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val purchase =
+        InventorySubmission(
+            purchaseId,
+            "purchase-owner",
+            "purchase-home",
+            rows,
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    purchaseId,
+                    "purchase-home",
+                    "purchase-owner",
+                    1000,
+                    mapOf("purchase-owner" to 1000L)))
+    purchaseStore.save(purchase)
+
+    assertNull(historyStore.load("purchase-owner", "purchase-home"))
+    assertNull(historyStore.loadById("purchase-owner", "purchase-home", purchaseId))
+    assertTrue(historyStore.list("purchase-owner", "purchase-home").isEmpty())
+
+    val draft =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "purchase-owner",
+            "purchase-home",
+            rows,
+            draft = true)
+    historyStore.save(draft)
+    assertEquals(listOf(draft), historyStore.list("purchase-owner", "purchase-home"))
+    assertNull(historyStore.loadById("purchase-owner", "purchase-home", purchaseId))
+    assertEquals(purchase, purchaseStore.load("purchase-owner", "purchase-home"))
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
+  }
+
   @Test
   fun multipleReceiptsSurviveRestartAndStayInTheirOwnScope() = runTest {
     val app = RuntimeEnvironment.getApplication()
@@ -57,6 +103,144 @@ class InventorySubmissionStoreTest {
     restored.save(edited)
     assertEquals(edited, store.loadById("multi-owner", "multi-home", first.id))
     assertEquals(second, store.loadById("multi-owner", "multi-home", second.id))
+  }
+
+  @Test
+  @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+  fun concurrentSaveAcrossStoresCannotBeRemovedBySetAside() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    val writer = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val rejected =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    id, "home", "owner", 1000, mapOf("owner" to 1000L)),
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    val draft =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "owner", "home", rows, draft = true)
+    writer.save(rejected)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val intercepted =
+        mock(
+            SharedPreferences::class.java,
+            org.mockito.AdditionalAnswers.delegatesTo<SharedPreferences>(preferences))
+    val context = mock(Context::class.java)
+    `when`(context.applicationContext).thenReturn(context)
+    `when`(context.getSharedPreferences(anyString(), eq(Context.MODE_PRIVATE)))
+        .thenReturn(intercepted)
+    lateinit var replacement: Job
+    doAnswer { invocation ->
+          // Start the competing save after the archive has read the old active value.
+          val value = preferences.getString(invocation.getArgument(0), null)
+          replacement =
+              launch(dispatcher, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                writer.save(draft)
+              }
+          value
+        }
+        .`when`(intercepted)
+        .getString(anyString(), isNull())
+    AndroidInventorySubmissionStore(context, dispatcher).setAside(rejected)
+    replacement.join()
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    assertTrue(runCatching { restored.setAside(rejected) }.isFailure)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+  }
+
+  @Test
+  fun purchaseProgressSurvivesRestartAndLegacyRowsStayInventoryOnly() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "owner", 1000, mapOf("owner" to 500L, "bob" to 500L))
+    for (progress in com.android.sharemate.model.item.ExpenseProgress.entries) {
+      val purchase =
+          InventorySubmission(
+              id,
+              "owner",
+              "home",
+              rows,
+              expense = expense,
+              inventoryConfirmed = true,
+              expenseProgress = progress)
+      store.save(purchase)
+      assertEquals(purchase, AndroidInventorySubmissionStore(app, dispatcher).load("owner", "home"))
+    }
+    store.save(InventorySubmission(id, "owner", "home", rows))
+    assertNull(store.load("owner", "home")?.expense)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:$id"
+    val json = JSONObject(checkNotNull(preferences.getString(key, null)))
+    assertFalse(json.has(Fields.EXPENSE))
+    val purchase = InventorySubmission(id, "owner", "home", rows, expense = expense)
+    store.save(purchase)
+    val original = checkNotNull(preferences.getString(key, null))
+    for (mutate in
+        listOf<(JSONObject) -> Unit>(
+            { it.put(Fields.INVENTORY_CONFIRMED, "true") },
+            { it.put(Fields.EXPENSE_PROGRESS, "invalid") },
+            { it.getJSONObject(Fields.EXPENSE).put("totalAmountCents", "1000") },
+            { it.getJSONObject(Fields.EXPENSE).put("paidBy", "other") },
+            { it.getJSONObject(Fields.EXPENSE).getJSONObject("shares").put("bob", 1.5) })) {
+      val corrupt = JSONObject(original).also(mutate)
+      preferences.edit().putString(key, corrupt.toString()).commit()
+      assertTrue(runCatching { store.load("owner", "home") }.isFailure)
+    }
+    preferences.edit().clear().commit()
+  }
+
+  @Test
+  fun deferredRejectionSurvivesNewDraftAndIsScopedAndRecoverable() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "owner", 1000, mapOf("owner" to 1000L))
+    val rejected =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            expense = expense,
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    store.save(rejected)
+    store.setAside(rejected)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertNull(restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    assertTrue(restored.deferred("other", "home").isEmpty())
+    assertTrue(restored.deferred("owner", "other").isEmpty())
+    val draft =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "owner", "home", rows, draft = true)
+    restored.save(draft)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    restored.save(rejected)
+    assertEquals(rejected, restored.load("owner", "home"))
+    assertTrue(restored.deferred("owner", "home").isEmpty())
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
   }
 
   @Test
@@ -154,6 +338,7 @@ class InventorySubmissionStoreTest {
         .thenReturn(preferences)
     `when`(preferences.edit()).thenReturn(editor)
     `when`(editor.putString(anyString(), anyString())).thenReturn(editor)
+    `when`(editor.remove(anyString())).thenReturn(editor)
     `when`(editor.commit()).thenReturn(false)
     val store = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
     val submission =
@@ -175,7 +360,7 @@ class InventorySubmissionStoreTest {
             "12345678-1234-1234-1234-123456789abc",
             "owner",
             "home",
-            listOf(StagedItem("milk", "Milk", Int.MAX_VALUE, Long.MAX_VALUE)))
+            listOf(StagedItem("milk", "Milk", ItemQuantity.MAX, Long.MAX_VALUE)))
     store.save(saved)
     assertEquals(saved, store.load("owner", "home"))
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)

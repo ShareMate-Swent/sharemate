@@ -1,9 +1,11 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.model.text.TextLimits
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.firebase.firestore.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -101,6 +103,27 @@ class FirebaseInventorySubmissionTest {
   }
 
   @Test
+  fun submissionAcceptsNamesUpToTheItemNameLimit() {
+    for (name in listOf("a", "a".repeat(TextLimits.ITEM_NAME), "😀".repeat(TextLimits.ITEM_NAME))) {
+      val row = StagedItem("row", name, 1, 100)
+      assertEquals(listOf(row), InventorySubmission(ID, "owner", "home", listOf(row)).items)
+    }
+  }
+
+  @Test
+  fun submissionAcceptsQuantitiesUpToTheMaximumAndRefusesMore() {
+    for (quantity in listOf(ItemQuantity.MIN, ItemQuantity.MAX)) {
+      val row = StagedItem("row", "Milk", quantity, 100)
+      assertEquals(listOf(row), InventorySubmission(ID, "owner", "home", listOf(row)).items)
+    }
+    for (quantity in listOf(ItemQuantity.MAX + 1, Int.MAX_VALUE)) {
+      assertThrows(IllegalArgumentException::class.java) {
+        InventorySubmission(ID, "owner", "home", listOf(StagedItem("row", "Milk", quantity, 100)))
+      }
+    }
+  }
+
+  @Test
   fun submissionValidationRejectsUnsupportedPayloadsBeforeRepositoryWrites() {
     val row = StagedItem("row", "Milk", 2, 480)
     for (count in listOf(InventorySubmission.MAX_ITEMS - 1, InventorySubmission.MAX_ITEMS)) {
@@ -113,8 +136,9 @@ class FirebaseInventorySubmissionTest {
             emptyList(),
             listOf(row, row),
             List(InventorySubmission.MAX_ITEMS + 1) { row.copy(id = "$it") },
-            listOf(row.copy(name = "a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))),
-            listOf(row.copy(id = "a".repeat(InventorySubmission.MAX_NAME_LENGTH + 1))))) {
+            listOf(row.copy(name = "a".repeat(TextLimits.ITEM_NAME + 1))),
+            listOf(row.copy(name = "😀".repeat(TextLimits.ITEM_NAME + 1))),
+            listOf(row.copy(id = "a".repeat(InventorySubmission.MAX_ID_LENGTH + 1))))) {
       assertThrows(IllegalArgumentException::class.java) {
         InventorySubmission(ID, "owner", "home", rows)
       }
