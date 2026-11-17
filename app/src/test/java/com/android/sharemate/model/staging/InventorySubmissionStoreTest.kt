@@ -20,6 +20,46 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun multipleReceiptsSurviveRestartAndStayInTheirOwnScope() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val first =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "multi-owner",
+            "multi-home",
+            listOf(StagedItem("a", "Apple", 1, 100)),
+            draft = true)
+    val second =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "multi-owner",
+            "multi-home",
+            listOf(StagedItem("b", "Bread", 2, 350)),
+            draft = true)
+    store.save(first)
+    store.save(second)
+
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(listOf(second, first), restored.list("multi-owner", "multi-home"))
+    assertEquals(first, restored.loadById("multi-owner", "multi-home", first.id))
+    assertNull(restored.loadById("another-owner", "multi-home", first.id))
+    assertNull(restored.loadById("multi-owner", "another-home", first.id))
+
+    val edited =
+        InventorySubmission(
+            first.id,
+            first.ownerId,
+            first.householdId,
+            listOf(first.items.single().copy(name = "Green apple")),
+            draft = true)
+    restored.save(edited)
+    assertEquals(edited, store.loadById("multi-owner", "multi-home", first.id))
+    assertEquals(second, store.loadById("multi-owner", "multi-home", second.id))
+  }
+
+  @Test
   fun recreatedStoreRestoresExactPayloadAndSeparatesUserAndHouseholdScopes() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
@@ -71,7 +111,7 @@ class InventorySubmissionStoreTest {
             "home",
             listOf(StagedItem("milk", "Milk", 2, Long.MAX_VALUE)))
     store.save(other)
-    val foreignKey = JSONArray(listOf("other", "home")).toString()
+    val foreignKey = "receipt:${JSONArray(listOf("other", "home"))}:${other.id}"
     preferences.edit().putString(key, preferences.getString(foreignKey, null)).commit()
     assertTrue(runCatching { store.load("owner", "home") }.isFailure)
     assertEquals(other, store.load("other", "home"))
@@ -91,7 +131,7 @@ class InventorySubmissionStoreTest {
             draft = true)
     store.save(draft)
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf(draft.ownerId, draft.householdId)).toString()
+    val key = "receipt:${JSONArray(listOf(draft.ownerId, draft.householdId))}:${draft.id}"
     val original = checkNotNull(preferences.getString(key, null))
 
     for (value in listOf(null, JSONObject.NULL, "true", "false", 1)) {
@@ -139,7 +179,7 @@ class InventorySubmissionStoreTest {
     store.save(saved)
     assertEquals(saved, store.load("owner", "home"))
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf("owner", "home")).toString()
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:${saved.id}"
     val original = checkNotNull(preferences.getString(key, null))
     for ((field, value) in
         listOf(
