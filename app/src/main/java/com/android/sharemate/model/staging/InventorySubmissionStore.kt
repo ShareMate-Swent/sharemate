@@ -9,6 +9,8 @@ import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -99,52 +101,61 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun save(submission: InventorySubmission) =
       withContext(dispatcher) {
-        val json =
-            JSONObject()
-                .put(Fields.ID, submission.id)
-                .put(Fields.OWNER, submission.ownerId)
-                .put(Fields.HOUSEHOLD, submission.householdId)
-                .put(Fields.DRAFT, submission.draft)
+        mutationMutex.withLock {
+          val json =
+              JSONObject()
+                  .put(Fields.ID, submission.id)
+                  .put(Fields.OWNER, submission.ownerId)
+                  .put(Fields.HOUSEHOLD, submission.householdId)
+                  .put(Fields.DRAFT, submission.draft)
+                  .put(
+                      Fields.ROWS,
+                      JSONArray(
+                          submission.items.map { row ->
+                            JSONObject()
+                                .put(Fields.ID, row.id)
+                                .put(Fields.NAME, row.name)
+                                .put(Fields.QUANTITY, row.quantity)
+                                .put(Fields.PRICE, row.priceCents ?: JSONObject.NULL)
+                          }))
+          submission.expense?.let { expense ->
+            json
                 .put(
-                    Fields.ROWS,
-                    JSONArray(
-                        submission.items.map { row ->
-                          JSONObject()
-                              .put(Fields.ID, row.id)
-                              .put(Fields.NAME, row.name)
-                              .put(Fields.QUANTITY, row.quantity)
-                              .put(Fields.PRICE, row.priceCents ?: JSONObject.NULL)
-                        }))
-        submission.expense?.let { expense ->
-          json
-              .put(
-                  Fields.EXPENSE,
-                  JSONObject()
-                      .put(FinanceFields.PAID_BY, expense.paidBy)
-                      .put(FinanceFields.TOTAL_AMOUNT_CENTS, expense.totalAmountCents)
-                      .put(FinanceFields.SHARES, JSONObject(expense.shares)))
-              .put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
-              .put(Fields.EXPENSE_PROGRESS, submission.expenseProgress.name)
+                    Fields.EXPENSE,
+                    JSONObject()
+                        .put(FinanceFields.PAID_BY, expense.paidBy)
+                        .put(FinanceFields.TOTAL_AMOUNT_CENTS, expense.totalAmountCents)
+                        .put(FinanceFields.SHARES, JSONObject(expense.shares)))
+                .put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
+                .put(Fields.EXPENSE_PROGRESS, submission.expenseProgress.name)
+          }
+          check(
+              preferences
+                  .edit()
+                  .putString(key(submission.ownerId, submission.householdId), json.toString())
+                  .remove(archiveKey(submission))
+                  .commit()) {
+                "Could not retain the reviewed receipt"
+              }
         }
-        check(
-            preferences
-                .edit()
-                .putString(key(submission.ownerId, submission.householdId), json.toString())
-                .remove(archiveKey(submission))
-                .commit()) {
-              "Could not retain the reviewed receipt"
-            }
       }
 
   override suspend fun setAside(submission: InventorySubmission) =
       withContext(dispatcher) {
-        require(
-            submission.inventoryConfirmed && submission.expenseProgress == ExpenseProgress.REJECTED)
-        val activeKey = key(submission.ownerId, submission.householdId)
-        val value = checkNotNull(preferences.getString(activeKey, null))
-        check(decode(value, submission.ownerId, submission.householdId) == submission)
-        check(
-            preferences.edit().putString(archiveKey(submission), value).remove(activeKey).commit())
+        mutationMutex.withLock {
+          require(
+              submission.inventoryConfirmed &&
+                  submission.expenseProgress == ExpenseProgress.REJECTED)
+          val activeKey = key(submission.ownerId, submission.householdId)
+          val value = checkNotNull(preferences.getString(activeKey, null))
+          check(decode(value, submission.ownerId, submission.householdId) == submission)
+          check(
+              preferences
+                  .edit()
+                  .putString(archiveKey(submission), value)
+                  .remove(activeKey)
+                  .commit())
+        }
       }
 
   override suspend fun deferred(ownerId: String, householdId: String): List<InventorySubmission> =
@@ -173,5 +184,8 @@ class AndroidInventorySubmissionStore(
 
   private companion object {
     const val FILE = "inventory-submissions"
+
+    // All instances write the same preferences file within this application process.
+    val mutationMutex = Mutex()
   }
 }

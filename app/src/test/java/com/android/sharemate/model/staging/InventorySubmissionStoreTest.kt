@@ -7,7 +7,10 @@ import android.content.SharedPreferences
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
 import com.android.sharemate.model.item.ItemQuantity
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -21,6 +24,60 @@ import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
+  @Test
+  @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+  fun concurrentSaveAcrossStoresCannotBeRemovedBySetAside() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    val writer = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val rejected =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    id, "home", "owner", 1000, mapOf("owner" to 1000L)),
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    val draft =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "owner", "home", rows, draft = true)
+    writer.save(rejected)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val intercepted =
+        mock(
+            SharedPreferences::class.java,
+            org.mockito.AdditionalAnswers.delegatesTo<SharedPreferences>(preferences))
+    val context = mock(Context::class.java)
+    `when`(context.applicationContext).thenReturn(context)
+    `when`(context.getSharedPreferences(anyString(), eq(Context.MODE_PRIVATE)))
+        .thenReturn(intercepted)
+    lateinit var replacement: Job
+    doAnswer { invocation ->
+          // Start the competing save after the archive has read the old active value.
+          val value = preferences.getString(invocation.getArgument(0), null)
+          replacement =
+              launch(dispatcher, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                writer.save(draft)
+              }
+          value
+        }
+        .`when`(intercepted)
+        .getString(anyString(), isNull())
+    AndroidInventorySubmissionStore(context, dispatcher).setAside(rejected)
+    replacement.join()
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+    assertTrue(runCatching { restored.setAside(rejected) }.isFailure)
+    assertEquals(draft, restored.load("owner", "home"))
+    assertEquals(listOf(rejected), restored.deferred("owner", "home"))
+  }
+
   @Test
   fun purchaseProgressSurvivesRestartAndLegacyRowsStayInventoryOnly() = runTest {
     val app = RuntimeEnvironment.getApplication()
