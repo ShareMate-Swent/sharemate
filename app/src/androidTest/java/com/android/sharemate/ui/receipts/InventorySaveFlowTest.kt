@@ -365,6 +365,105 @@ class InventorySaveFlowTest {
     compose.runOnIdle { assertEquals(2, attempts) }
   }
 
+  @Test
+  fun unavailablePurchaseServicesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
+    val shared = mutableStateOf(false)
+    val profilesAvailable = mutableStateOf(false)
+    val expensesAvailable = mutableStateOf(false)
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              flowOf(listOf(UserProfile("owner", displayName = "Alice")))
+        }
+    val expenses =
+        object : ExpenseSubmissionRepository {
+          override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
+              error("No purchase expected")
+        }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "services-owner",
+            "services-home",
+            shared.value,
+            expenseRepository = expenses.takeIf { expensesAvailable.value },
+            profileRepository = profiles.takeIf { profilesAvailable.value })
+      }
+    }
+    val app = compose.activity
+    compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+    compose.runOnIdle { shared.value = true }
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.runOnIdle { expensesAvailable.value = true }
+    compose.onNodeWithText(app.getString(R.string.purchase_members_loading)).assertDoesNotExist()
+    compose.runOnIdle { profilesAvailable.value = true }
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.runOnIdle { shared.value = false }
+    compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+  }
+
+  @Test
+  fun deferredPurchaseCanBeReopenedAndSetAsideFromTheReviewScreen() {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val retained =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            expense = SharedExpense(id, "home", "owner", 1000, mapOf("owner" to 1000L)),
+            inventoryConfirmed = true,
+            expenseProgress = ExpenseProgress.REJECTED)
+    var active: InventorySubmission? = null
+    val archived = mutableListOf(retained)
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = active
+
+          override suspend fun save(submission: InventorySubmission) {
+            active = submission
+            archived.remove(submission)
+          }
+
+          override suspend fun deferred(ownerId: String, householdId: String) = archived.toList()
+
+          override suspend fun setAside(submission: InventorySubmission) {
+            archived.add(submission)
+            active = null
+          }
+        }
+    lateinit var save: InventorySaveViewModel
+    compose.runOnIdle {
+      save = InventorySaveViewModel(ControlledItems(), store, "owner", "home")
+      owner.put("save", save)
+    }
+    val photo =
+        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    owner.put("photo", photo)
+    compose.setContent {
+      MaterialTheme { ReceiptScanFlow(photo, ReceiptReader { error("No scan") }, save) }
+    }
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsEnabled().performClick()
+    compose.onNodeWithTag("purchase_recover_deferred").assertDoesNotExist()
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(InventorySaveTestTags.RETRY).performScrollTo().performClick()
+    compose.onNodeWithTag("purchase_set_aside").performScrollTo().performClick()
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsEnabled()
+    compose.runOnIdle {
+      assertEquals(listOf(retained), archived)
+      assertEquals(null, active)
+    }
+    compose.runOnIdle { assertTrue(save.confirm(listOf(StagedItem("bread", "Bread", 1, 200)))) }
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsNotEnabled()
+    compose.runOnIdle { assertEquals(listOf(retained), archived) }
+  }
+
   private fun showPurchase(submission: InventorySubmission, review: () -> PurchaseReview) {
     val store =
         object : InventorySubmissionStore {

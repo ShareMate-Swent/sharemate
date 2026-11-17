@@ -40,7 +40,12 @@ class InventorySaveFeedbackTest {
             inventoryConfirmed = true)
     val state = mutableStateOf(InventorySaveState(InventorySavePhase.PENDING, purchase))
     var retries = 0
-    compose.setContent { MaterialTheme { InventorySaveFeedback(state.value, true) { retries++ } } }
+    var deferred = 0
+    compose.setContent {
+      MaterialTheme {
+        InventorySaveFeedback(state.value, true, onSetAside = { deferred++ }) { retries++ }
+      }
+    }
     val app = RuntimeEnvironment.getApplication()
     val messages =
         listOf(
@@ -66,7 +71,16 @@ class InventorySaveFeedbackTest {
         compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertDoesNotExist()
       }
     }
-    assertEquals(2, retries)
+    compose.runOnIdle {
+      state.value =
+          InventorySaveState(
+              InventorySavePhase.PENDING, purchase.withProgress(true, ExpenseProgress.REJECTED))
+    }
+    compose.onNodeWithTag("purchase_set_aside").performClick()
+    compose.runOnIdle {
+      assertEquals(1, deferred)
+      assertEquals(2, retries)
+    }
   }
 
   @Test
