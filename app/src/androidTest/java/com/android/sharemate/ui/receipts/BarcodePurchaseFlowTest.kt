@@ -49,15 +49,22 @@ class BarcodePurchaseFlowTest {
             override suspend fun delete(uri: String) = Unit
           }
       var lookups = 0
+      var unreadable = false
       val barcode =
           PurchaseBarcodeViewModel(
-              BarcodeScanner { BarcodeScanResult.Found("7612345678901") },
+              BarcodeScanner {
+                if (unreadable) BarcodeScanResult.NotFound
+                else BarcodeScanResult.Found("7612345678901")
+              },
               object : ProductCatalogRepository {
                 override suspend fun lookupByBarcode(barcode: String): ProductLookupResult {
                   lookups++
-                  return if (lookups == 1)
-                      ProductLookupResult.Found(ProductDetails(barcode, "Scanned milk", null))
-                  else ProductLookupResult.NotFound
+                  return when (lookups) {
+                    1 -> ProductLookupResult.Found(ProductDetails(barcode, "Scanned milk", null))
+                    2 -> ProductLookupResult.NotFound
+                    3 -> ProductLookupResult.Found(ProductDetails(barcode, null, null))
+                    else -> ProductLookupResult.Failure(ProductLookupResult.Reason.NETWORK)
+                  }
                 }
               },
               SavedStateHandle())
@@ -98,12 +105,27 @@ class BarcodePurchaseFlowTest {
           .assertExists()
       compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
       compose.onNodeWithText("Scanned milk").assertExists()
+      for (message in
+          listOf(
+              R.string.barcode_lookup_no_details,
+              R.string.barcode_lookup_failed,
+              R.string.barcode_lookup_unreadable)) {
+        if (message == R.string.barcode_lookup_unreadable) compose.runOnIdle { unreadable = true }
+        openScan()
+        confirmPhoto()
+        compose.waitUntil(10_000) {
+          photo.state.value.confirmationFailed && !photo.state.value.busy
+        }
+        compose.onAllNodesWithText(compose.activity.getString(message)).onFirst().assertExists()
+        compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+        compose.onNodeWithText("Scanned milk").assertExists()
+      }
       compose.onNodeWithTag(StagingTestTags.ADD).performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextInput("Manual bread")
       compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
       compose.onNodeWithText("Manual bread").assertExists()
       compose.onNodeWithText("Scanned milk").assertExists()
-      assertEquals(2, lookups)
+      assertEquals(4, lookups)
       compose.onNodeWithTag(StagingTestTags.BACK).performClick()
       compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Manual bread").assertExists()

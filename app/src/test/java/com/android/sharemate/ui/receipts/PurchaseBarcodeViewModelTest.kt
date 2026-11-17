@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.item.InventorySubmission
@@ -26,6 +27,40 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseBarcodeViewModelTest {
+  @Test
+  fun restoredCompletedScanCannotReplayAndClearedOwnerRejectsLateLookup() = runTest {
+    val saved = SavedStateHandle()
+    val first =
+        PurchaseBarcodeViewModel(BarcodeScanner { BarcodeScanResult.Found("123") }, catalog, saved)
+    first.startScan()
+    assertNotNull(first.read("image"))
+    val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+    val waiting = CompletableDeferred<BarcodeScanResult>()
+    var closed = false
+    val scanner =
+        object : BarcodeScanner {
+          override suspend fun scan(imageUri: String) = waiting.await()
+
+          override fun close() {
+            closed = true
+          }
+        }
+    val recreated = PurchaseBarcodeViewModel(scanner, catalog, restored)
+    assertNull(recreated.read("replayed image"))
+    recreated.startScan()
+    val late = async { recreated.read("new image") }
+    runCurrent()
+    ViewModelStore().apply {
+      put("barcode", recreated)
+      clear()
+    }
+    assertTrue(closed)
+    waiting.complete(BarcodeScanResult.Found("123"))
+    assertNull(late.await())
+    assertNull(recreated.error.value)
+    assertEquals(2, calls)
+  }
+
   @Test
   fun timeoutAndUnexpectedFailuresRemainRetryable() = runTest {
     var hang = true
@@ -111,6 +146,9 @@ class PurchaseBarcodeViewModelTest {
     staging.startEditing(first.id)
     staging.updateDraftName("Corrected milk")
     staging.updateDraftPrice("10.00")
+    staging.appendBarcode(second)
+    assertEquals("Corrected milk", staging.state.value.draft?.name)
+    assertEquals(1, staging.state.value.items.size)
     staging.saveDraft()
     staging.appendBarcode(first)
     staging.appendBarcode(second)
