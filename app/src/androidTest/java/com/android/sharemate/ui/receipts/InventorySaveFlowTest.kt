@@ -414,7 +414,10 @@ class InventorySaveFlowTest {
           ViewModelProvider(
               compose.activity,
               viewModelFactory {
-                initializer { ReceiptScanViewModel(reader, SavedStateHandle()) }
+                initializer {
+                  ReceiptScanViewModel(
+                      reader, SavedStateHandle(mapOf("receiptReviewPending" to true)))
+                }
               })[ReceiptScanViewModel::class.java]
       scan.confirm(oldRows)
       save = InventorySaveViewModel(repository, store, "owner", "home")
@@ -434,7 +437,7 @@ class InventorySaveFlowTest {
             SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent { MaterialTheme { ReceiptScanFlow(photo, reader, save) } }
-    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.BACK).assertIsDisplayed()
     compose.onNodeWithText("Old receipt A").assertDoesNotExist()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertDoesNotExist()
     compose.runOnIdle { gate.complete(recovered) }
