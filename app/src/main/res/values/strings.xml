@@ -2,6 +2,11 @@
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <!-- Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com> -->
 <resources>
+    <string name="purchase_members_loading">Loading household members…</string>
+    <string name="purchase_save_success">Inventory saved and expense confirmed.</string>
+    <string name="purchase_save_pending">Inventory saved. Waiting for expense confirmation.</string>
+    <string name="purchase_save_unknown">Inventory saved. Expense outcome unknown; retrying safely when connected.</string>
+    <string name="purchase_save_rejected">Inventory saved. Expense attempt rejected. Check your membership and retry; an earlier attempt may have succeeded.</string>
     <string name="app_name">ShareMate</string>
     <string name="title_activity_second">SecondActivity</string>
     <string name="greeting_robo_name" translatable="false">Robolectric</string>
@@ -275,4 +280,6 @@
     <string name="inventory_save_success">Items saved to the shared fridge.</string>
     <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
     <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
+    <string name="purchase_set_aside">Set expense aside and scan another receipt</string>
+    <string name="purchase_recover_deferred">Recover saved expense: %1$s</string>
 </resources>

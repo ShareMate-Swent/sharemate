@@ -60,13 +60,27 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
   private val mutableState =
       MutableStateFlow(StagingUiState(items = initialItems, purchase = purchaseReview))
   val state: StateFlow<StagingUiState> = mutableState.asStateFlow()
+  private var purchaseMembersInitialized = purchaseReview?.members?.isNotEmpty() == true
 
   /**
    * The coordinator supplies current member names through its existing household abstractions.
    * Removed selections are cleared, never replaced with another payer/participant.
    */
-  fun updatePurchaseMembers(members: Map<String, String>) {
-    mutableState.update { state -> state.copy(purchase = state.purchase?.withMembers(members)) }
+  fun updatePurchaseMembers(members: Map<String, String>, available: Boolean = true) {
+    if (!available) {
+      mutableState.update { it.copy(purchase = it.purchase?.copy(membersAvailable = false)) }
+      return
+    }
+    val initialize = !purchaseMembersInitialized && members.isNotEmpty()
+    purchaseMembersInitialized = purchaseMembersInitialized || members.isNotEmpty()
+    mutableState.update { state ->
+      state.copy(
+          purchase =
+              state.purchase?.let {
+                if (initialize) PurchaseReview.forUser(it.currentUserId, members)
+                else it.withMembers(members).copy(membersAvailable = true)
+              })
+    }
   }
 
   fun selectPayer(userId: String) {

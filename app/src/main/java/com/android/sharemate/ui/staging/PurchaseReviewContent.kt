@@ -68,6 +68,7 @@ internal fun PurchaseReviewContent(
     preview?.error?.let { error ->
       val message =
           when (error) {
+            PurchaseReviewError.MEMBERS_UNAVAILABLE -> R.string.purchase_members_loading
             PurchaseReviewError.MISSING_PRICE -> R.string.purchase_missing_price
             PurchaseReviewError.TOTAL_TOO_LARGE -> R.string.purchase_overflow
             PurchaseReviewError.MEMBERSHIP_CHANGED -> R.string.purchase_membership_changed

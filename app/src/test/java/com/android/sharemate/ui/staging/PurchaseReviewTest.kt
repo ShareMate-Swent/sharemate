@@ -6,6 +6,53 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PurchaseReviewTest {
+  @Test
+  fun unavailableMembersPreserveDraftAndBlockOnlyPurchaseUntilFreshSnapshot() {
+    val vm = model()
+    vm.toggleParticipant("b")
+    val original = vm.confirmedPurchase()
+    vm.updatePurchaseMembers(emptyMap(), available = false)
+    assertEquals("a", vm.state.value.purchase?.paidBy)
+    assertEquals(setOf("b"), vm.state.value.purchase?.participants)
+    assertEquals(members, vm.state.value.purchase?.members)
+    assertNull(vm.confirmedPurchase())
+    assertNotNull(vm.confirmedItems())
+    vm.updatePurchaseMembers(members, available = false)
+    assertNull(vm.confirmedPurchase())
+    vm.updatePurchaseMembers(members)
+    assertEquals(original, vm.confirmedPurchase())
+    vm.updatePurchaseMembers(emptyMap(), available = false)
+    vm.updatePurchaseMembers(members - "b")
+    assertTrue(vm.state.value.purchase?.membershipChanged == true)
+    assertTrue(vm.state.value.purchase?.participants?.isEmpty() == true)
+    assertNull(vm.confirmedPurchase())
+  }
+
+  @Test
+  fun freshEmptySnapshotClearsSelectionsAfterListenerRecovery() {
+    val vm = model()
+    vm.toggleParticipant("b")
+    vm.updatePurchaseMembers(members, available = false)
+    vm.updatePurchaseMembers(emptyMap())
+    assertNull(vm.state.value.purchase?.paidBy)
+    assertTrue(vm.state.value.purchase?.participants?.isEmpty() == true)
+    assertNull(vm.confirmedPurchase())
+  }
+
+  @Test
+  fun firstMemberSnapshotDefaultsPayerWithoutResettingLaterSelections() {
+    val vm = StagingViewModel(emptyList(), PurchaseReview.forUser("a", emptyMap()))
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertEquals("a", vm.state.value.purchase?.paidBy)
+    vm.selectPayer("b")
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertEquals("b", vm.state.value.purchase?.paidBy)
+    vm.updatePurchaseMembers(emptyMap())
+    vm.updatePurchaseMembers(mapOf("a" to "Alice", "b" to "Bob"))
+    assertNull(vm.state.value.purchase?.paidBy)
+    assertTrue(vm.state.value.purchase?.membershipChanged == true)
+  }
+
   private val members = mapOf("c" to "Chris", "a" to "Alex", "b" to "Blair")
 
   private fun item(cents: Long? = 1000L, id: String = "row") =
