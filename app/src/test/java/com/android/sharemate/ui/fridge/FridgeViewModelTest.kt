@@ -254,6 +254,30 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun itemMadeSharedBeforeConfirmationPostsActivity() = runTest {
+    val privateItem = milk.copy(ownerId = "test-user", sharing = ItemSharing.PERSONAL)
+    repository.emitItems(listOf(privateItem))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(privateItem.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(
+        listOf(privateItem.copy(sharing = ItemSharing.SHARED, status = ItemStatus.EATEN)))
+    runCurrent()
+    assertTrue(chatRepository.activities.isEmpty())
+
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, privateItem.name)),
+        chatRepository.activities)
+  }
+
+  @Test
   fun rejectedStatusAfterRollbackDoesNotPostActivity() = runTest {
     repository.emitItems(listOf(milk))
     repository.statusConfirmation = CompletableDeferred()
