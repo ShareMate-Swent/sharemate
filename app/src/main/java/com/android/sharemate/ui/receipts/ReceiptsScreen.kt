@@ -245,8 +245,11 @@ internal fun ReceiptScanFlow(
                   onClick = {
                     scope.launch {
                       try {
-                        if (save == null || save.beginNewScan(emptyList())) {
-                          scan.confirm(emptyList())
+                        val draft = saveState?.submission?.takeIf { it.draft }
+                        if (save == null || draft != null || save.beginNewScan(emptyList())) {
+                          scan.confirm(
+                              draft?.items
+                                  ?: if (save == null) scan.currentItems() else emptyList())
                           openBarcode = true
                           nav.navigate(REVIEW_ROUTE) { launchSingleTop = true }
                         }
@@ -302,6 +305,7 @@ internal fun ReceiptScanFlow(
           })
     }
     composable(REVIEW_ROUTE) { entry ->
+      var retainingEdits by rememberSaveable { mutableStateOf(false) }
       val recovering =
           saveState?.let {
             it.phase == InventorySavePhase.LOADING ||
@@ -310,10 +314,11 @@ internal fun ReceiptScanFlow(
       if (recovering) {
         // SavedStateHandle may contain an older receipt than the durable journal. Do not create
         // the editable review ViewModel until its authoritative payload has been recovered.
+        BackHandler(enabled = retainingEdits) {}
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
           HouseholdTopBar(
               title = stringResource(R.string.staging_title),
-              onBack = { nav.popBackStack() },
+              onBack = { if (!retainingEdits) nav.popBackStack() },
               backTestTag = StagingTestTags.BACK)
           InventorySaveFeedback(
               saveState,
@@ -354,10 +359,13 @@ internal fun ReceiptScanFlow(
           sharedHousehold &&
               saveState?.canConfirm != false &&
               (save == null || saveState?.submission != null)
-      val leaveReview: () -> Unit = {
+      val leaveReview: () -> Unit = leave@{
+        if (saveState?.phase == InventorySavePhase.SUBMITTING) return@leave
         barcode?.cancelScan()
         scope.launch {
           try {
+            // Keep this entry's editable rows alive if writing the journal fails.
+            retainingEdits = true
             if (!editable ||
                 save == null ||
                 saveState?.canStartScan != true ||

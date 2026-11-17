@@ -56,7 +56,7 @@ class PurchaseBarcodeViewModel(
       val item =
           withTimeout(LOOKUP_TIMEOUT_MS) {
             val barcode = (scanner.scan(uri) as? BarcodeScanResult.Found)?.value?.trim()
-            if (barcode.isNullOrEmpty()) fail(PurchaseBarcodeError.UNREADABLE)
+            if (barcode.isNullOrEmpty()) throw LookupFailure(PurchaseBarcodeError.UNREADABLE)
             when (val result = catalog.lookupByBarcode(barcode)) {
               is ProductLookupResult.Found -> {
                 val name =
@@ -64,11 +64,12 @@ class PurchaseBarcodeViewModel(
                         ?.trim()
                         ?.limitedTo(TextLimits.ITEM_NAME)
                         ?.trimEnd()
-                if (name.isNullOrEmpty()) fail(PurchaseBarcodeError.NO_DETAILS)
+                if (name.isNullOrEmpty()) throw LookupFailure(PurchaseBarcodeError.NO_DETAILS)
                 StagedItem(token, name, priceCents = null)
               }
-              ProductLookupResult.NotFound -> fail(PurchaseBarcodeError.NOT_FOUND)
-              is ProductLookupResult.Failure -> fail(PurchaseBarcodeError.LOOKUP_FAILED)
+              ProductLookupResult.NotFound -> throw LookupFailure(PurchaseBarcodeError.NOT_FOUND)
+              is ProductLookupResult.Failure ->
+                  throw LookupFailure(PurchaseBarcodeError.LOOKUP_FAILED)
             }
           }
       currentCoroutineContext().ensureActive()
@@ -88,10 +89,6 @@ class PurchaseBarcodeViewModel(
     } finally {
       busy = false
     }
-  }
-
-  private fun fail(error: PurchaseBarcodeError): Nothing {
-    throw LookupFailure(error)
   }
 
   private class LookupFailure(val error: PurchaseBarcodeError) : IllegalStateException(error.name)

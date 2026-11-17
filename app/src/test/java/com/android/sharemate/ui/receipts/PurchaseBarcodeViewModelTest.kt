@@ -69,6 +69,11 @@ class PurchaseBarcodeViewModelTest {
     vm.startScan()
     assertTrue(runCatching { vm.read("timeout") }.isFailure)
     assertEquals(PurchaseBarcodeError.LOOKUP_FAILED, vm.error.value)
+    val old = async { vm.read("superseded timeout") }
+    runCurrent()
+    vm.startScan()
+    assertNull(old.await())
+    assertNull(vm.error.value)
     hang = false
     assertNotNull(vm.read("retry"))
     val broken = model(BarcodeScanner { throw IllegalArgumentException("decode failed") })
@@ -178,6 +183,11 @@ class PurchaseBarcodeViewModelTest {
     unreadable.startScan()
     assertTrue(runCatching { unreadable.read("image") }.isFailure)
     assertEquals(PurchaseBarcodeError.UNREADABLE, unreadable.error.value)
+    val blank = model(BarcodeScanner { BarcodeScanResult.Found("  ") })
+    blank.startScan()
+    assertTrue(runCatching { blank.read("blank") }.isFailure)
+    assertEquals(PurchaseBarcodeError.UNREADABLE, blank.error.value)
+    assertEquals(0, calls)
     val vm = model()
     for ((outcome, error) in
         listOf(
@@ -185,6 +195,8 @@ class PurchaseBarcodeViewModelTest {
             ProductLookupResult.Failure(ProductLookupResult.Reason.NETWORK) to
                 PurchaseBarcodeError.LOOKUP_FAILED,
             ProductLookupResult.Found(ProductDetails("123", "  ", null)) to
+                PurchaseBarcodeError.NO_DETAILS,
+            ProductLookupResult.Found(ProductDetails("123", null, null)) to
                 PurchaseBarcodeError.NO_DETAILS)) {
       result = outcome
       vm.startScan()

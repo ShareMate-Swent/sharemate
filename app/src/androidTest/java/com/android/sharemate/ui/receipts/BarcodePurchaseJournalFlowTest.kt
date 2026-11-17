@@ -15,6 +15,7 @@ import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.staging.InventorySubmissionStore
+import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
@@ -29,13 +30,34 @@ class BarcodePurchaseJournalFlowTest {
   @get:Rule val compose = createAndroidComposeRule<ReceiptToFridgeTestActivity>()
 
   @Test
-  fun startAndBackJournalFailuresKeepReviewRecoverableUntilEditsAreDurable() {
+  fun cancellingFirstScanPreservesExistingJournalDraft() {
+    val original =
+        InventorySubmission(
+            "00000000-0000-0000-0000-000000000001",
+            "alice",
+            "home",
+            listOf(StagedItem("milk", "Existing milk", 2, 600)),
+            draft = true)
+    val journal = Journal().apply { retained = original }
+    withJournalFlow(journal) { _ ->
+      compose.onNodeWithTag(PurchaseBarcodeTestTags.START).performClick()
+      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+      compose.onNodeWithText("Existing milk").assertExists()
+      assertEquals(original, journal.retained)
+      compose.onNodeWithTag(StagingTestTags.BACK).performClick()
+      assertEquals(original.items, checkNotNull(journal.retained).items)
+      compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+      compose.onNodeWithText("Existing milk").assertExists()
+      compose.onNodeWithText("CHF 6.00").assertExists()
+    }
+  }
+
+  private fun withJournalFlow(journal: Journal, verify: (InventorySaveViewModel) -> Unit) {
     val owners = ViewModelStore()
-    val journal = Journal()
-    lateinit var save: InventorySaveViewModel
     val receipt = photo()
     val barcodePhoto = photo()
     val barcode = barcode()
+    lateinit var save: InventorySaveViewModel
     compose.runOnIdle {
       save = InventorySaveViewModel(UnusedItems(), journal, "alice", "home")
       owners.put("save", save)
@@ -51,6 +73,16 @@ class BarcodePurchaseJournalFlowTest {
         }
       }
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.READY }
+      verify(save)
+    } finally {
+      compose.runOnIdle { owners.clear() }
+    }
+  }
+
+  @Test
+  fun startAndBackJournalFailuresKeepReviewRecoverableUntilEditsAreDurable() {
+    val journal = Journal()
+    withJournalFlow(journal) { save ->
       compose.runOnIdle { journal.fail = true }
       compose.onNodeWithTag(PurchaseBarcodeTestTags.START).performClick()
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.RECOVERY_FAILED }
@@ -71,6 +103,10 @@ class BarcodePurchaseJournalFlowTest {
       compose.onNodeWithTag(StagingTestTags.BACK).performClick()
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.RECOVERY_FAILED }
       compose.onNodeWithTag(InventorySaveTestTags.STATUS).assertExists()
+      compose.onNodeWithTag(StagingTestTags.BACK).performClick()
+      compose.onNodeWithTag(PurchaseBarcodeTestTags.START).assertDoesNotExist()
+      compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+      compose.onNodeWithTag(PurchaseBarcodeTestTags.START).assertDoesNotExist()
       compose.runOnIdle { journal.fail = false }
       compose.onNodeWithTag(InventorySaveTestTags.RETRY).performClick()
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.READY }
@@ -83,8 +119,6 @@ class BarcodePurchaseJournalFlowTest {
       compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Retained milk").assertExists()
       compose.onNodeWithText("CHF 10.00").assertExists()
-    } finally {
-      compose.runOnIdle { owners.clear() }
     }
   }
 
