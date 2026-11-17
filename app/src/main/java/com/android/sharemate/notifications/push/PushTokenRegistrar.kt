@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.push
 
 import android.util.Log
@@ -38,23 +39,29 @@ class PushTokenRegistrar(
     saveToken(userId, token)
   }
 
-  /** Saves a [token] FCM just issued or rotated, for whoever is signed in right now, if anyone. */
-  suspend fun onTokenRefreshed(token: String) {
-    val userId = signedInUserId() ?: return
-    saveToken(userId, token)
+  /**
+   * Saves a [token] FCM just issued or rotated, for whoever is signed in right now, if anyone.
+   *
+   * @return false only when saving failed and is worth retrying; true when the token was saved or
+   *   there was nobody to save it for ([registerCurrentToken] picks it up at the next sign-in).
+   */
+  suspend fun onTokenRefreshed(token: String): Boolean {
+    val userId = signedInUserId() ?: return true
+    return saveToken(userId, token)
   }
 
   private suspend fun signedInUserId(): String? = authRepository.session.first()?.uid
 
-  private suspend fun saveToken(userId: String, token: String) {
-    try {
-      tokenRepository.saveToken(userId, deviceId, token)
-    } catch (cancelled: CancellationException) {
-      throw cancelled
-    } catch (error: Exception) {
-      Log.w(TAG, "Unable to save the push token", error)
-    }
-  }
+  private suspend fun saveToken(userId: String, token: String): Boolean =
+      try {
+        tokenRepository.saveToken(userId, deviceId, token)
+        true
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (error: Exception) {
+        Log.w(TAG, "Unable to save the push token", error)
+        false
+      }
 
   private companion object {
     const val TAG = "PushTokenRegistrar"

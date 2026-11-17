@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.push
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,18 +78,31 @@ class PushTokenRegistrarTest {
   fun onTokenRefreshedSavesTheGivenTokenForTheSignedInUser() = runTest {
     val tokens = RecordingTokenRepository()
 
-    registrar(AuthSession("bob", "bob@example.org"), tokens).onTokenRefreshed("token-2")
+    val outcome =
+        registrar(AuthSession("bob", "bob@example.org"), tokens).onTokenRefreshed("token-2")
 
     assertEquals(listOf(Triple("bob", DEVICE_ID, "token-2")), tokens.saved)
+    assertTrue(outcome)
   }
 
   @Test
-  fun onTokenRefreshedDoesNothingWhenSignedOut() = runTest {
+  fun onTokenRefreshedDoesNothingWhenSignedOutAndAsksForNoRetry() = runTest {
     val tokens = RecordingTokenRepository()
 
-    registrar(null, tokens).onTokenRefreshed("token-2")
+    val outcome = registrar(null, tokens).onTokenRefreshed("token-2")
 
     assertTrue(tokens.saved.isEmpty())
+    assertTrue(outcome)
+  }
+
+  @Test
+  fun onTokenRefreshedReportsAFailedSaveSoItCanBeRetried() = runTest {
+    val tokens = RecordingTokenRepository(fail = true)
+
+    val outcome =
+        registrar(AuthSession("bob", "bob@example.org"), tokens).onTokenRefreshed("token-2")
+
+    assertFalse(outcome)
   }
 
   private companion object {
