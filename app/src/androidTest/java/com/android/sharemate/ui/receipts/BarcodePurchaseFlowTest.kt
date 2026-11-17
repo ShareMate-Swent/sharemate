@@ -4,6 +4,7 @@ package com.android.sharemate.ui.receipts
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.SavedStateHandle
@@ -131,7 +132,7 @@ class BarcodePurchaseFlowTest {
       compose.onNodeWithText("Manual bread").assertExists()
       compose.onNodeWithText("Scanned milk").assertExists()
       val instrumentation = InstrumentationRegistry.getInstrumentation()
-      val screenshot = instrumentation.uiAutomation.takeScreenshot()
+      val screenshot = compose.onRoot().captureToImage().asAndroidBitmap()
       File(instrumentation.targetContext.getExternalFilesDir(null), "barcode-purchase.png")
           .outputStream()
           .use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
