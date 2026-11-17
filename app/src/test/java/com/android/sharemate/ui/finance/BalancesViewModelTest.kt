@@ -141,4 +141,48 @@ class BalancesViewModelTest {
   }
 
   private fun snapshot(vararg expenses: SharedExpense) = expenses.toList()
+
+  @Test
+  fun retryWhileLoadingDoesNotStartAnotherSubscription() = runTest {
+    val vm = create()
+    vm.retry()
+    vm.retry()
+    advanceUntilIdle()
+    assertTrue(vm.state.value is BalancesUiState.Ready)
+    assertEquals(1, subscriptions)
+    assertEquals(1, active)
+    session.value = null
+    advanceUntilIdle()
+    assertEquals(0, active)
+  }
+
+  @Test
+  fun retryAfterMembershipRevocationDoesNotReopenExpenses() = runTest {
+    failure = true
+    val vm = create()
+    advanceUntilIdle()
+    assertEquals(BalancesUiState.Error, vm.state.value)
+    `when`(households.getHousehold("home")).thenReturn(home.copy(memberIds = listOf("bob")))
+    failure = false
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(BalancesUiState.Unavailable, vm.state.value)
+    assertEquals(1, subscriptions)
+    assertEquals(0, active)
+  }
+
+  @Test
+  fun clearingViewModelCancelsExpenseListener() = runTest {
+    val store = androidx.lifecycle.ViewModelStore()
+    val vm = create()
+    store.put("balances", vm)
+    advanceUntilIdle()
+    assertEquals(1, active)
+    store.clear()
+    advanceUntilIdle()
+    assertEquals(0, active)
+    ledger.value = snapshot(SharedExpense("later", "home", "alice", 100, mapOf("bob" to 100L)))
+    advanceUntilIdle()
+    assertTrue((vm.state.value as BalancesUiState.Ready).summary.debts.isEmpty())
+  }
 }
