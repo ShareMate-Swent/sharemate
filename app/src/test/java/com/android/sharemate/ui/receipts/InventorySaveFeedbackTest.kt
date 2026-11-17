@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -43,7 +44,9 @@ class InventorySaveFeedbackTest {
     var deferred = 0
     compose.setContent {
       MaterialTheme {
-        InventorySaveFeedback(state.value, true, onSetAside = { deferred++ }) { retries++ }
+        Column {
+          InventorySaveFeedback(state.value, true, onSetAside = { deferred++ }) { retries++ }
+        }
       }
     }
     val app = RuntimeEnvironment.getApplication()
