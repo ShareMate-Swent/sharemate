@@ -23,6 +23,7 @@ import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import java.util.UUID
@@ -30,6 +31,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -134,6 +136,28 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     compose.onAllNodesWithText(view)[1].performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
+  }
+
+  @Test
+  fun emptyHistoryExposesScanAndBalancesActions() {
+    val balancesOpened = booleanArrayOf(false)
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            showBalances = true,
+            onOpenBalances = { balancesOpened[0] = true })
+      }
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
+    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
+    compose.runOnIdle { assertTrue(balancesOpened[0]) }
   }
 
   private fun saveScreenshot(name: String, tag: String? = null) {
