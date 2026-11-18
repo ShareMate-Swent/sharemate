@@ -25,6 +25,26 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun purchaseStoreRestoresLegacyPendingReceiptAndPreservesItsIdentity() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val receipt =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "migration-owner",
+            "home",
+            listOf(StagedItem("a", "Apple", 1, 100)))
+    AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true).save(receipt)
+    val store = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    assertEquals(receipt, store.load(receipt.ownerId, receipt.householdId))
+    assertEquals(listOf(receipt), store.list(receipt.ownerId, receipt.householdId))
+    assertEquals(
+        receipt,
+        AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+            .load(receipt.ownerId, receipt.householdId))
+  }
+
+  @Test
   fun missingIndexedReceiptFailsBothLoadAndList() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
