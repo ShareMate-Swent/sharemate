@@ -1,10 +1,10 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ enum class PhotoPage {
   PREVIEW
 }
 
-data class BarcodePhotoState(
+data class PhotoPickerState(
     val uri: String? = null,
     val visible: Boolean = false,
     val page: PhotoPage = PhotoPage.SOURCE,
@@ -33,13 +33,13 @@ data class BarcodePhotoState(
     val fromCamera: Boolean = false,
 )
 
-class BarcodePhotoViewModel(
-    private val store: BarcodePhotoStore,
+class PhotoPickerViewModel(
+    private val store: TemporaryPhotoStore,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
   private val mutableState =
       MutableStateFlow(
-          BarcodePhotoState(
+          PhotoPickerState(
               uri = savedState[IMAGE_KEY],
               fromCamera = savedState[CAMERA_KEY] ?: false,
               confirmed = savedState[CONFIRMED_KEY] ?: false,
@@ -143,7 +143,7 @@ class BarcodePhotoViewModel(
     savedState[CAMERA_KEY] = null
     savedState[CONFIRMED_KEY] = false
     savedState[VISIBLE_KEY] = false
-    mutableState.value = BarcodePhotoState()
+    mutableState.value = PhotoPickerState()
     if (uri != null) CoroutineScope(Dispatchers.Main.immediate).launch { store.delete(uri) }
   }
 

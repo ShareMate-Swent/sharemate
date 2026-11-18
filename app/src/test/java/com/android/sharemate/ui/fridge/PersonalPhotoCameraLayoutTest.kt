@@ -19,8 +19,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.core.view.descendants
-import com.android.sharemate.ui.barcode.BarcodeCamera
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
+import com.android.sharemate.ui.photo.CameraCapture
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.google.common.util.concurrent.SettableFuture
 import org.junit.Assert.*
 import org.junit.Rule
@@ -43,7 +43,7 @@ class PersonalPhotoCameraLayoutTest {
       MaterialTheme {
         Column(Modifier.verticalScroll(rememberScrollState())) {
           Text("Photo", Modifier.testTag("photo_header"))
-          BarcodeCamera(
+          CameraCapture(
               true, {}, { fail("Unexpected camera error") }, providerLoader = { provider })
         }
       }
@@ -53,12 +53,12 @@ class PersonalPhotoCameraLayoutTest {
       assertTrue(preview.clipToOutline)
       assertSame(ViewOutlineProvider.BOUNDS, preview.outlineProvider)
     }
-    val viewfinder = compose.onNodeWithTag(BarcodePhotoTestTags.VIEWFINDER)
+    val viewfinder = compose.onNodeWithTag(PhotoPickerTestTags.VIEWFINDER)
     viewfinder.assertHeightIsEqualTo(300.dp)
     val bounds = viewfinder.fetchSemanticsNode().boundsInRoot
     val header = compose.onNodeWithTag("photo_header").fetchSemanticsNode().boundsInRoot
     val capture =
-        compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
     assertTrue(bounds.top >= header.bottom)
     assertTrue(bounds.bottom <= capture.top)
   }

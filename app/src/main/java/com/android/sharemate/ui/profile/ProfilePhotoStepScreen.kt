@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.profile
 
@@ -29,7 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags of the profile photo step. */
@@ -66,7 +67,7 @@ object ProfilePhotoStepTestTags {
 fun ProfilePhotoStepScreen(
     viewModel: ProfilePhotoViewModel,
     onDone: () -> Unit,
-    camera: BarcodePhotoViewModel = profilePhotoCamera(),
+    camera: PhotoPickerViewModel = profilePhotoCamera(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   LaunchedEffect(state.done) { if (state.done) onDone() }

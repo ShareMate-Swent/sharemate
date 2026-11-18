@@ -24,8 +24,8 @@ import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +45,7 @@ class BarcodeFormFlowTest {
       object : ViewModelStoreOwner {
         override val viewModelStore = ViewModelStore()
       }
-  private lateinit var photo: BarcodePhotoViewModel
+  private lateinit var photo: PhotoPickerViewModel
   private lateinit var fridge: FridgeViewModel
   private var result: ProductLookupResult =
       ProductLookupResult.Found(ProductDetails("123", "Milk", "Farm"))
@@ -108,7 +108,7 @@ class BarcodeFormFlowTest {
         .onAllNodesWithText(compose.activity.getString(R.string.barcode_lookup_failed))
         .onLast()
         .assertExists()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Manual food")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("3")
     compose.onNodeWithTag(C.Tag.fridge_category_input).assertTextContains("Dairy")
@@ -121,12 +121,12 @@ class BarcodeFormFlowTest {
   }
 
   private fun confirm() {
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
   }
 
   private fun showFormAndPhoto() {
     compose.runOnIdle {
-      photo = BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+      photo = PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
       fridge =
           FridgeViewModel(
               EmptyItems(),
@@ -170,7 +170,7 @@ class BarcodeFormFlowTest {
       fridge.updateQuantity("3")
       fridge.updateCategory("Dairy")
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.OPEN).performScrollTo().performClick()
     compose.runOnIdle {
       photo.capture { uri ->
         withContext(Dispatchers.IO) {

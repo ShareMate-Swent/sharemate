@@ -1,5 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import android.Manifest
 import android.content.Context
@@ -30,7 +30,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.fridge.AddItemDialog
 import com.android.sharemate.ui.fridge.FridgeFormError
@@ -47,13 +47,13 @@ import org.junit.runner.RunWith
 
 /** Real CameraX smoke test; camera-less CI devices cannot exercise physical capture. */
 @RunWith(AndroidJUnit4::class)
-class BarcodeCameraCaptureTest {
+class CameraCaptureDeviceTest {
   @get:Rule(order = 0) val permission = GrantPermissionRule.grant(Manifest.permission.CAMERA)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<ComponentActivity>()
 
   @Test
   fun invalidManualSaveDoesNotDiscardConfirmedPhoto() {
-    val vm = BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    val vm = PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
     val owner =
         object : ViewModelStoreOwner {
           override val viewModelStore = ViewModelStore().apply { put("add-item-barcode-photo", vm) }
@@ -124,8 +124,8 @@ class BarcodeCameraCaptureTest {
         }
       }
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).performScrollTo().performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.OPEN).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("2")
     compose.onNodeWithTag(C.Tag.fridge_category_input).assertTextContains("Dairy")
@@ -142,28 +142,28 @@ class BarcodeCameraCaptureTest {
           camera.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) ==
               CameraCharacteristics.LENS_FACING_BACK
         })
-    val store = AndroidBarcodePhotoStore(compose.activity)
-    val vm = BarcodePhotoViewModel(store, SavedStateHandle())
+    val store = AndroidTemporaryPhotoStore(compose.activity)
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
     var handedOff: String? = null
     compose.setContent {
       MaterialTheme {
-        BarcodePhotoFlow(vm) { uri ->
+        PhotoPickerDialog(vm) { uri ->
           store.validate(uri)
           handedOff = uri
         }
       }
     }
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).performScrollTo().performClick()
     compose.waitUntil(20_000) {
-      runCatching { compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsEnabled() }
+      runCatching { compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled() }
           .isSuccess
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performScrollTo().performClick()
     compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertEquals(null, handedOff) }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
     compose.runOnIdle {
       assertEquals(vm.state.value.uri, handedOff)

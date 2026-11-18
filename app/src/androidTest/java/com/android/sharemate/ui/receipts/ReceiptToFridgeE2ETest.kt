@@ -29,7 +29,7 @@ import com.android.sharemate.ReceiptToFridgeTestActivity
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
@@ -46,8 +46,8 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeUiState
 import com.android.sharemate.ui.fridge.FridgeViewModel
@@ -157,7 +157,7 @@ class ReceiptToFridgeE2ETest {
       val context = compose.activity
       val ownerFridge = createOwnerFridge(ownerId, household.id)
       val store = AndroidInventorySubmissionStore(context)
-      val photo = BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), SavedStateHandle())
+      val photo = PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), SavedStateHandle())
       val save =
           InventorySaveViewModel(FirebaseItemRepository(firestore), store, ownerId, household.id)
       compose.runOnIdle {
@@ -187,7 +187,7 @@ class ReceiptToFridgeE2ETest {
         }
       }
       compose.waitUntil(TIMEOUT) { photo.state.value.uri != null && !photo.state.value.busy }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(TIMEOUT) { save.state.value.submission?.draft == true }
       verifyDraft(checkNotNull(save.state.value.submission).items)
       editReview()
@@ -258,14 +258,14 @@ class ReceiptToFridgeE2ETest {
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag("barcode_photo_open").performScrollTo().performClick()
     compose.runOnUiThread { compose.activity.galleryImage = image }
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performScrollTo().performClick()
     compose.waitUntil(TIMEOUT) {
       compose
-          .onAllNodes(hasTestTag(BarcodePhotoTestTags.CONFIRM) and isEnabled())
+          .onAllNodes(hasTestTag(PhotoPickerTestTags.CONFIRM) and isEnabled())
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(TIMEOUT) { fridge.uiState.value.itemName == OLIVE_OIL_NAME }
     compose.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()

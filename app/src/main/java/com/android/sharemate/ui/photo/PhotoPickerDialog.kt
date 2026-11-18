@@ -1,5 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import android.Manifest
 import android.app.Activity
@@ -38,8 +38,8 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Captures/selects an image only; #139 supplies the optional recognition consumer. */
 @Composable
-fun BarcodePhotoFlow(
-    viewModel: BarcodePhotoViewModel,
+fun PhotoPickerDialog(
+    viewModel: PhotoPickerViewModel,
     confirmationError: String? = null,
     receipt: Boolean = false,
     title: Int = if (receipt) R.string.scan_receipt else R.string.barcode_photo_title,
@@ -90,7 +90,7 @@ fun BarcodePhotoFlow(
                 Text(stringResource(title), style = MaterialTheme.typography.headlineSmall)
                 if (state.busy)
                     LinearProgressIndicator(
-                        Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.LOADING))
+                        Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
                 if (state.failed)
                     Text(
                         confirmationError.takeIf { state.confirmationFailed }
@@ -98,7 +98,7 @@ fun BarcodePhotoFlow(
                         color = MaterialTheme.colorScheme.error)
                 when (state.page) {
                   PhotoPage.CAMERA ->
-                      BarcodeCamera(
+                      CameraCapture(
                           enabled = !state.busy,
                           onCapture = viewModel::capture,
                           onFailure = {
@@ -117,12 +117,12 @@ fun BarcodePhotoFlow(
                         modifier =
                             Modifier.fillMaxWidth()
                                 .height(PhotoFrameHeight)
-                                .testTag(BarcodePhotoTestTags.PREVIEW),
+                                .testTag(PhotoPickerTestTags.PREVIEW),
                         onError = { viewModel.reportFailure() })
                     Button(
                         onClick = { viewModel.confirm(onImageConfirmed) },
                         enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CONFIRM)) {
+                        modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CONFIRM)) {
                           Text(stringResource(R.string.barcode_photo_confirm))
                         }
                   }
@@ -165,7 +165,7 @@ fun BarcodePhotoFlow(
                               }
                         },
                         enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CAMERA)) {
+                        modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAMERA)) {
                           Text(stringResource(R.string.barcode_photo_camera))
                         }
                 OutlinedButton(
@@ -179,13 +179,13 @@ fun BarcodePhotoFlow(
                       }
                     },
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.GALLERY)) {
+                    modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
                       Text(stringResource(R.string.barcode_photo_gallery))
                     }
                 TextButton(
                     onClick = viewModel::closePreview,
                     enabled = !state.busy,
-                    modifier = Modifier.testTag(BarcodePhotoTestTags.CANCEL)) {
+                    modifier = Modifier.testTag(PhotoPickerTestTags.CANCEL)) {
                       Text(stringResource(R.string.fridge_cancel))
                     }
               }
@@ -204,7 +204,7 @@ internal tailrec fun Context.findActivity(): Activity? =
       else -> null
     }
 
-object BarcodePhotoTestTags {
+object PhotoPickerTestTags {
   const val VIEWFINDER = "barcode_photo_viewfinder"
   const val LOADING = "barcode_photo_loading"
   const val PREVIEW = "barcode_photo_preview"

@@ -37,16 +37,16 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.TextLengthCounter
-import com.android.sharemate.ui.barcode.BarcodePhotoFlow
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
-import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.theme.Dimens
 
 @Composable
@@ -63,13 +63,13 @@ fun AddItemDialog(
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val context = LocalContext.current.applicationContext
-  val photoViewModel: BarcodePhotoViewModel =
+  val photoViewModel: PhotoPickerViewModel =
       viewModel(
           key = "add-item-barcode-photo",
           factory =
               viewModelFactory {
                 initializer {
-                  BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
+                  PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
                 }
               })
   val photo by photoViewModel.state.collectAsState()
@@ -112,7 +112,7 @@ fun AddItemDialog(
                 FilledTonalButton(
                     onClick = photoViewModel::open,
                     enabled = inputEnabled,
-                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.OPEN)) {
+                    modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.OPEN)) {
                       Text(stringResource(R.string.barcode_photo_scanner))
                     }
                 if (photo.confirmed && !photo.failed)
@@ -125,7 +125,7 @@ fun AddItemDialog(
                   Text(
                       it,
                       color = MaterialTheme.colorScheme.error,
-                      modifier = Modifier.testTag(BarcodePhotoTestTags.LOOKUP_ERROR))
+                      modifier = Modifier.testTag(PhotoPickerTestTags.LOOKUP_ERROR))
                 }
               }
               OutlinedTextField(
@@ -250,7 +250,7 @@ fun AddItemDialog(
               Text(stringResource(R.string.fridge_cancel))
             }
       })
-  BarcodePhotoFlow(
+  PhotoPickerDialog(
       photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
 }
 

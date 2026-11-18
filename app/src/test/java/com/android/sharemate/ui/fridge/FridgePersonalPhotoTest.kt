@@ -13,7 +13,7 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -191,8 +191,8 @@ class FridgePersonalPhotoTest {
       copy.await()
     }
     val camera =
-        BarcodePhotoViewModel(
-            object : BarcodePhotoStore {
+        PhotoPickerViewModel(
+            object : TemporaryPhotoStore {
               override suspend fun createCapture() = uri
 
               override suspend fun importImage(uri: String): String = error("Unexpected gallery")

@@ -21,10 +21,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
 import com.android.sharemate.R
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
-import com.android.sharemate.ui.barcode.BarcodePhotoFlow
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
-import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
+import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.findActivity
 
 private val PreviewSize = 80.dp
 
@@ -33,7 +33,7 @@ internal fun PersonalPhotoPicker(
     draft: PersonalPhotoDraft,
     photos: PersonalPhotoController,
     enabled: Boolean,
-    camera: BarcodePhotoViewModel = personalPhotoCamera(),
+    camera: PhotoPickerViewModel = personalPhotoCamera(),
 ) {
   val state by camera.state.collectAsState()
   val activity = LocalContext.current.findActivity()
@@ -60,7 +60,7 @@ internal fun PersonalPhotoPicker(
   if (draft.rejected) {
     Text(stringResource(R.string.personal_photo_invalid), color = MaterialTheme.colorScheme.error)
   }
-  BarcodePhotoFlow(
+  PhotoPickerDialog(
       camera,
       title = R.string.personal_photo_add,
       previewDescription = R.string.personal_photo_preview,
@@ -69,14 +69,14 @@ internal fun PersonalPhotoPicker(
 }
 
 @Composable
-private fun personalPhotoCamera(): BarcodePhotoViewModel {
+private fun personalPhotoCamera(): PhotoPickerViewModel {
   val context = LocalContext.current.applicationContext
   return viewModel(
       key = "add-item-personal-photo",
       factory =
           viewModelFactory {
             initializer {
-              BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
+              PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
             }
           })
 }

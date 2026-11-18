@@ -1,5 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -19,7 +19,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.R
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
@@ -31,13 +31,13 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
-class BarcodePhotoFlowTest {
+class PhotoPickerDialogTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
   fun deniedCameraKeepsGalleryAvailableAndPickerCancellationIsSilent() {
     shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
-    val vm = BarcodePhotoViewModel(TestPhotoStore(), SavedStateHandle())
+    val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
     var permissionRequests = 0
     var galleryRequests = 0
     val owner =
@@ -67,14 +67,14 @@ class BarcodePhotoFlowTest {
         }
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-        MaterialTheme { BarcodePhotoFlow(vm) }
+        MaterialTheme { PhotoPickerDialog(vm) }
       }
     }
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).performScrollTo().performClick()
     compose.onNodeWithText("Camera access is needed", substring = true).assertExists()
     compose
-        .onNodeWithTag(BarcodePhotoTestTags.GALLERY)
+        .onNodeWithTag(PhotoPickerTestTags.GALLERY)
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
@@ -100,7 +100,7 @@ class BarcodePhotoFlowTest {
   @Test
   fun unavailableCameraPermissionOrGalleryActivityShowsRecoverableError() {
     shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
-    val vm = BarcodePhotoViewModel(TestPhotoStore(), SavedStateHandle())
+    val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
     val owner =
         object : ActivityResultRegistryOwner {
           override val activityResultRegistry =
@@ -117,14 +117,14 @@ class BarcodePhotoFlowTest {
         }
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-        MaterialTheme { BarcodePhotoFlow(vm) }
+        MaterialTheme { PhotoPickerDialog(vm) }
       }
     }
     for (tag in listOf("barcode_photo_camera", "barcode_photo_gallery")) {
       compose.runOnIdle { vm.open() }
       compose.onNodeWithTag(tag).performScrollTo().performClick()
       compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).assertIsEnabled()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsEnabled()
       compose.runOnIdle {
         assertNull(vm.state.value.uri)
         assertFalse(vm.state.value.busy)
@@ -142,12 +142,12 @@ class BarcodePhotoFlowTest {
   @Test
   fun previewWaitsForConfirmationAndLocksActionsUntilConsumerFinishes() {
     val store = TestPhotoStore()
-    val vm = BarcodePhotoViewModel(store, SavedStateHandle())
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
     val consumed = mutableListOf<String>()
     val pending = CompletableDeferred<Unit>()
     compose.setContent {
       MaterialTheme {
-        BarcodePhotoFlow(vm) {
+        PhotoPickerDialog(vm) {
           consumed += it
           pending.await()
         }
@@ -157,58 +157,58 @@ class BarcodePhotoFlowTest {
       vm.open()
       vm.select("content://photos/selected")
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertTrue(consumed.isEmpty()) }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).assertIsNotEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsNotEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsNotEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).assertIsNotEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.LOADING).assertExists()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.LOADING).assertExists()
     compose.runOnIdle {
       assertEquals(listOf(store.uri), consumed)
       assertTrue(File(Uri.parse(store.uri).path!!).exists())
       pending.complete(Unit)
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertDoesNotExist()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertDoesNotExist()
     compose.runOnIdle { assertTrue(vm.state.value.confirmed) }
   }
 
   @Test
   fun previewCancellationDoesNotSubmitAndCanReopenSameImage() {
     val store = TestPhotoStore()
-    val vm = BarcodePhotoViewModel(store, SavedStateHandle())
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
     compose.setContent {
-      MaterialTheme { BarcodePhotoFlow(vm) { fail("Cancelled preview submitted") } }
+      MaterialTheme { PhotoPickerDialog(vm) { fail("Cancelled preview submitted") } }
     }
     compose.runOnIdle {
       vm.open()
       vm.select("content://photos/selected")
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertDoesNotExist()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertDoesNotExist()
     compose.runOnIdle { vm.open() }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertEquals(store.uri, vm.state.value.uri) }
   }
 
   @Test
   fun sourceScreenOffersCameraAndGalleryAndRecoversAfterError() {
-    val vm = BarcodePhotoViewModel(TestPhotoStore(), SavedStateHandle())
-    compose.setContent { MaterialTheme { BarcodePhotoFlow(vm) } }
+    val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
+    compose.setContent { MaterialTheme { PhotoPickerDialog(vm) } }
     compose.runOnIdle {
       vm.open()
       vm.reportFailure()
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsEnabled()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
     compose.runOnIdle { vm.select("content://photos/retry") }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertDoesNotExist()
   }
 
-  private class TestPhotoStore : BarcodePhotoStore {
+  private class TestPhotoStore : TemporaryPhotoStore {
     val uri: String
 
     init {

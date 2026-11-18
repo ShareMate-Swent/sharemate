@@ -12,7 +12,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Owns temporary copies only. A confirmed URI remains readable until its form is dismissed. */
-interface BarcodePhotoStore {
+interface TemporaryPhotoStore {
   /**
    * Returns a private file URI for in-process CameraX output. Never send it to an external camera
    * intent; external sharing would require a FileProvider content URI instead.
@@ -26,9 +26,9 @@ interface BarcodePhotoStore {
   suspend fun delete(uri: String)
 }
 
-class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
+class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
   private val resolver = context.applicationContext.contentResolver
-  private val directory = barcodePhotoDirectory(context)
+  private val directory = temporaryPhotoDirectory(context)
 
   override suspend fun createCapture(): String {
     var created: File? = null
@@ -99,7 +99,7 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
   }
 }
 
-internal fun barcodePhotoDirectory(context: Context): File =
+internal fun temporaryPhotoDirectory(context: Context): File =
     File(context.applicationContext.cacheDir, "barcode-photos")
 
 internal fun requireOwnedPhotoFile(uri: Uri, directory: File): File {

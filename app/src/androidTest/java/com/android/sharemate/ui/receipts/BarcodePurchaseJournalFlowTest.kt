@@ -10,14 +10,14 @@ import com.android.sharemate.R
 import com.android.sharemate.ReceiptToFridgeTestActivity
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.IOException
@@ -41,7 +41,7 @@ class BarcodePurchaseJournalFlowTest {
     val journal = Journal().apply { retained = original }
     withJournalFlow(journal) { _ ->
       compose.onNodeWithTag(PurchaseBarcodeTestTags.START).performClick()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
       compose.onNodeWithText("Existing milk").assertExists()
       assertEquals(original, journal.retained)
       compose.onNodeWithTag(StagingTestTags.BACK).performClick()
@@ -86,13 +86,13 @@ class BarcodePurchaseJournalFlowTest {
       compose.runOnIdle { journal.fail = true }
       compose.onNodeWithTag(PurchaseBarcodeTestTags.START).performClick()
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.RECOVERY_FAILED }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).assertDoesNotExist()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
       assertNull(journal.retained)
       compose.runOnIdle { journal.fail = false }
       compose.onNodeWithTag(InventorySaveTestTags.RETRY).performClick()
       compose.waitUntil(10_000) { save.state.value.phase == InventorySavePhase.READY }
       compose.onNodeWithTag(PurchaseBarcodeTestTags.START).performClick()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
       assertTrue(checkNotNull(journal.retained).draft)
       assertTrue(checkNotNull(journal.retained).items.isEmpty())
       compose.onNodeWithTag(StagingTestTags.ADD).performClick()
@@ -153,8 +153,8 @@ class BarcodePurchaseJournalFlowTest {
   }
 
   private fun photo() =
-      BarcodePhotoViewModel(
-          object : BarcodePhotoStore {
+      PhotoPickerViewModel(
+          object : TemporaryPhotoStore {
             override suspend fun createCapture(): String = error("unused")
 
             override suspend fun importImage(uri: String): String = error("unused")
