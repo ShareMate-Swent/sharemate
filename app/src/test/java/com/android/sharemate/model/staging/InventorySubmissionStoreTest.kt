@@ -25,6 +25,70 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun receiptDetailsAndEditsSurviveRestartAndStayScoped() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val draft =
+        InventorySubmission(
+            id,
+            "details-owner",
+            "details-home",
+            listOf(StagedItem("a", "Apple", 1, 125)),
+            draft = true)
+    val details = ReceiptDetails(id, "details-owner", "details-home", "file:///receipt.jpg", 100L)
+
+    assertTrue(runCatching { store.saveDetails(details) }.isFailure)
+    store.save(draft)
+    store.saveDetails(details)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(details, restored.details("details-owner", "details-home", id))
+    assertNull(restored.details("other-owner", "details-home", id))
+    assertNull(restored.details("details-owner", "other-home", id))
+
+    val saved = details.copy(savedAtMillis = 250L)
+    restored.saveDetails(saved)
+    assertEquals(saved, store.details("details-owner", "details-home", id))
+    assertEquals(draft, store.loadById("details-owner", "details-home", id))
+  }
+
+  @Test
+  fun deletingOneDraftRemovesItsMetadataWithoutTouchingOtherReceipts() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val first =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "delete-owner",
+            "delete-home",
+            listOf(StagedItem("a", "Apple", 1, 125)),
+            draft = true)
+    val second =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "delete-owner",
+            "delete-home",
+            listOf(StagedItem("b", "Bread", 2, 350)),
+            draft = true)
+    store.save(first)
+    store.save(second)
+    val metadata =
+        ReceiptDetails(first.id, first.ownerId, first.householdId, "file:///first.jpg", 100L)
+    store.saveDetails(metadata)
+
+    store.deleteDraft(first.ownerId, first.householdId, first.id)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(listOf(second), restored.list(first.ownerId, first.householdId))
+    assertNull(restored.loadById(first.ownerId, first.householdId, first.id))
+    assertNull(restored.details(first.ownerId, first.householdId, first.id))
+    assertEquals(second, restored.loadById(second.ownerId, second.householdId, second.id))
+    store.deleteDraft(first.ownerId, first.householdId, first.id)
+    assertEquals(listOf(second), restored.list(first.ownerId, first.householdId))
+  }
+
+  @Test
   fun expenseNullPurchaseDraftStaysOutsideReceiptHistory() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
