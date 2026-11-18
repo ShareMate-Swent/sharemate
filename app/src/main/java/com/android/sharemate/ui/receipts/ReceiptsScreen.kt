@@ -35,7 +35,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -272,7 +271,7 @@ private fun ReceiptHistoryFlow(
                 }
                 if (editFailed) {
                   Text(stringResource(R.string.receipt_edit_failed))
-                  Button(onClick = { history.viewModelScope.launch { history.refresh() } }) {
+                  Button(onClick = history::reload) {
                     Text(stringResource(R.string.household_retry))
                   }
                 }
@@ -293,7 +292,7 @@ private fun ReceiptHistoryFlow(
                         contentDescription = stringResource(R.string.receipt_photo_preview),
                         modifier =
                             Modifier.fillMaxWidth()
-                                .height(200.dp)
+                                .height(ReceiptLayout.CardPhotoHeight)
                                 .clickable { expandedPhotoUri = uri }
                                 .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW),
                         contentScale = ContentScale.Fit)
@@ -301,14 +300,7 @@ private fun ReceiptHistoryFlow(
                   receipt.details?.let { details ->
                     Text(DateFormat.getDateInstance().format(Date(details.scannedAtMillis)))
                   }
-                  Text(
-                      stringResource(
-                          when (receipt.phase) {
-                            InventorySavePhase.READY -> R.string.receipt_status_draft
-                            InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
-                            InventorySavePhase.FAILED -> R.string.inventory_save_failed
-                            else -> R.string.inventory_save_pending
-                          }))
+                  Text(stringResource(receipt.phase.labelResource()))
                   receipt.details?.savedAtMillis?.let {
                     Text(DateFormat.getDateInstance().format(Date(it)))
                   }
@@ -329,7 +321,7 @@ private fun ReceiptHistoryFlow(
           receipt = true,
           confirmationError = stringResource(R.string.receipt_unreadable),
           onImageConfirmed = { uri ->
-            scan.read(uri) { items -> newReceiptId = history.addDraft(uri, items) }
+            scan.read(uri) { items -> newReceiptId = history.retainScan(uri, items) }
           })
     }
     composable("receipt/{id}") { entry ->
@@ -350,16 +342,20 @@ private fun ReceiptHistoryFlow(
         val stagingState by staging.state.collectAsStateWithLifecycle()
         LaunchedEffect(receipt.submission.id, stagingState.items) {
           if (receipt.submission.draft && stagingState.items != receipt.submission.items) {
-            history.editDraft(receipt.submission.id, stagingState.items)
+            history.updateDraft(receipt.submission.id, stagingState.items)
+          }
+        }
+        val savedReview by history.savedReview.collectAsStateWithLifecycle()
+        DisposableEffect(entry) { onDispose { history.clearSavedReview() } }
+        LaunchedEffect(savedReview) {
+          if (savedReview == receipt.submission.id) {
+            history.clearSavedReview()
+            nav.popBackStack()
           }
         }
         val leaveReview = {
           if (receipt.submission.draft) {
-            history.viewModelScope.launch {
-              if (history.editDraft(receipt.submission.id, staging.state.value.items)) {
-                nav.popBackStack()
-              }
-            }
+            history.saveAndLeave(receipt.submission.id, staging.state.value.items)
           } else {
             nav.popBackStack()
           }
@@ -383,18 +379,11 @@ private fun ReceiptHistoryFlow(
                     contentDescription = stringResource(R.string.receipt_photo_preview),
                     modifier =
                         Modifier.fillMaxWidth()
-                            .height(160.dp)
+                            .height(ReceiptLayout.ReviewPhotoHeight)
                             .clickable { expandedPhotoUri = uri }
                             .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
               }
-              Text(
-                  stringResource(
-                      when (receipt.phase) {
-                        InventorySavePhase.READY -> R.string.receipt_status_draft
-                        InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
-                        InventorySavePhase.FAILED -> R.string.inventory_save_failed
-                        else -> R.string.inventory_save_pending
-                      }))
+              Text(stringResource(receipt.phase.labelResource()))
               if (editFailed) Text(stringResource(R.string.receipt_edit_failed))
               if (receipt.phase == InventorySavePhase.FAILED) {
                 Button(onClick = { history.retry(receipt.submission.id) }) {
@@ -423,6 +412,20 @@ private fun ReceiptHistoryFlow(
         }
   }
 }
+
+/** Photo dimensions shared by retained receipt surfaces. */
+private object ReceiptLayout {
+  val CardPhotoHeight = 200.dp
+  val ReviewPhotoHeight = 160.dp
+}
+
+private fun InventorySavePhase.labelResource(): Int =
+    when (this) {
+      InventorySavePhase.READY -> R.string.receipt_status_draft
+      InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
+      InventorySavePhase.FAILED -> R.string.inventory_save_failed
+      else -> R.string.inventory_save_pending
+    }
 
 /** Stable semantics for opening a retained receipt photo. */
 object ReceiptHistoryTestTags {

@@ -97,7 +97,7 @@ class ReceiptHistoryViewModelTest {
   }
 
   @Test
-  fun twoPendingReceiptsReplaySeparatelyAndConfirmIndependently() = runTest {
+  fun twoPendingReceiptsAreObservedWithoutReplayAndConfirmIndependently() = runTest {
     val store = MemoryStore()
     val photos =
         object : ReceiptPhotoStore {
@@ -136,8 +136,8 @@ class ReceiptHistoryViewModelTest {
     owners.first().clear()
     val restored = model()
     runCurrent()
-    assertEquals(2, submittedIds.count { it == firstId })
-    assertEquals(2, submittedIds.count { it == secondId })
+    assertEquals(1, submittedIds.count { it == firstId })
+    assertEquals(1, submittedIds.count { it == secondId })
     assertTrue(restored.receipts.value.all { it.phase == InventorySavePhase.PENDING })
     assertEquals(
         setOf("photo-a", "photo-b"),
@@ -180,6 +180,8 @@ class ReceiptHistoryViewModelTest {
     runCurrent()
     val id = history.addDraft("photo", listOf(StagedItem("row", "Milk", 2, 450)))
     history.confirm(id, history.receipts.value.single().submission.items)
+    runCurrent()
+    statuses.emit(InventorySubmissionStatus.MISSING)
     runCurrent()
     assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
     assertEquals("Milk", history.receipts.value.single().submission.items.single().name)
@@ -347,13 +349,16 @@ class ReceiptHistoryViewModelTest {
       else if (attempts.size == 2) throw IllegalStateException("transport unavailable")
       else ItemWrite.Queued(CompletableDeferred())
     }
-    `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
+    val statuses = MutableSharedFlow<InventorySubmissionStatus>()
+    `when`(repository.observeSubmission(anyK())).thenReturn(statuses)
     val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
     val id = history.addDraft("photo", rows)
     history.confirm(id, rows)
+    runCurrent()
+    statuses.emit(InventorySubmissionStatus.MISSING)
     runCurrent()
     assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
 
@@ -462,6 +467,70 @@ class ReceiptHistoryViewModelTest {
     } catch (_: kotlinx.coroutines.CancellationException) {}
     assertFalse(history.error.value)
     assertEquals(rows, history.receipts.value.single().submission.items)
+  }
+
+  @Test
+  fun acknowledgedReceiptRefreshNeverReplaysAndRejectedRetryChecksMarker() = runTest {
+    val store = MemoryStore()
+    val id = java.util.UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    store.save(InventorySubmission(id, "owner", "home", rows))
+    val repository = mock(ItemRepository::class.java)
+    `when`(repository.addItems(anyK()))
+        .thenReturn(ItemWrite.Rejected(IllegalStateException("already acknowledged")))
+    `when`(repository.observeSubmission(anyK()))
+        .thenReturn(kotlinx.coroutines.flow.flowOf(InventorySubmissionStatus.CONFIRMED))
+    val history =
+        ReceiptHistoryViewModel(
+            repository, store, mock(ReceiptPhotoStore::class.java), "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    history.refresh()
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, history.receipts.value.single().phase)
+    verify(repository, never()).addItems(anyK())
+    val rejectedId = java.util.UUID.randomUUID().toString()
+    store.save(InventorySubmission(rejectedId, "owner", "home", rows, draft = true))
+    history.refresh()
+    history.confirm(rejectedId, rows)
+    runCurrent()
+    assertEquals(
+        InventorySavePhase.CONFIRMED,
+        history.receipts.value.first { it.submission.id == rejectedId }.phase)
+    verify(repository, times(1)).addItems(anyK())
+  }
+
+  @Test
+  fun photoFailureIsExposedAndAbandonedSaveDoesNotRequestNavigation() = runTest {
+    val store = MemoryStore()
+    val id = java.util.UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    store.save(InventorySubmission(id, "owner", "home", rows, draft = true))
+    val photos = mock(ReceiptPhotoStore::class.java)
+    `when`(photos.retain(anyK(), anyK())).thenThrow(IllegalStateException("disk full"))
+    val history =
+        ReceiptHistoryViewModel(mock(ItemRepository::class.java), store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    try {
+      history.retainScan("photo", rows)
+      fail("Expected photo failure")
+    } catch (_: IllegalStateException) {}
+    assertTrue(history.error.value)
+    assertEquals(id, history.receipts.value.single().submission.id)
+    history.saveAndLeave(id, rows)
+    history.clearSavedReview()
+    runCurrent()
+    assertNull(history.savedReview.value)
+    store.failSave = true
+    history.saveAndLeave(id, rows)
+    runCurrent()
+    assertNull(history.savedReview.value)
+    assertTrue(history.error.value)
+    store.failSave = false
+    history.saveAndLeave(id, rows)
+    runCurrent()
+    assertEquals(id, history.savedReview.value)
   }
 
   private class MemoryStore : InventorySubmissionStore {

@@ -204,12 +204,15 @@ class ReceiptHistoryFlowTest {
     val store = AndroidInventorySubmissionStore(compose.activity)
     runBlocking { store.save(InventorySubmission(id, owner, household, rows)) }
     var attempts = 0
+    val status = kotlinx.coroutines.flow.MutableStateFlow(InventorySubmissionStatus.MISSING)
     val repository =
         object : ItemRepository by UnusedItems {
+          override fun observeSubmission(submission: InventorySubmission) = status
+
           override fun addItems(submission: InventorySubmission): ItemWrite {
             attempts++
-            return if (attempts == 1) ItemWrite.Rejected(IllegalStateException("refused"))
-            else ItemWrite.Queued(CompletableDeferred())
+            status.value = InventorySubmissionStatus.PENDING
+            return ItemWrite.Queued(CompletableDeferred())
           }
         }
     compose.setContent {
@@ -220,11 +223,11 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithText(view).performClick()
     val retry = compose.activity.getString(R.string.household_retry)
     compose.onNodeWithText(retry).performClick()
-    compose.waitUntil(5_000) { attempts == 2 }
+    compose.waitUntil(5_000) { attempts == 1 }
     compose
         .onNodeWithText(compose.activity.getString(R.string.inventory_save_pending))
         .assertIsDisplayed()
-    compose.runOnIdle { org.junit.Assert.assertEquals(2, attempts) }
+    compose.runOnIdle { org.junit.Assert.assertEquals(1, attempts) }
   }
 
   private fun saveScreenshot(name: String, tag: String? = null) {

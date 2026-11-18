@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModel
@@ -21,6 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+/** One locally retained receipt and its last known server acknowledgement state. */
 data class RetainedReceipt(
     val submission: InventorySubmission,
     val details: ReceiptDetails?,
@@ -37,12 +39,64 @@ class ReceiptHistoryViewModel(
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
+  /** Receipts belonging to this account and household, including pending and failed saves. */
   val receipts = mutableReceipts.asStateFlow()
   private val observations = mutableMapOf<String, Job>()
   private val submissions = mutableSetOf<String>()
   private val editMutex = Mutex()
   private val mutableError = MutableStateFlow(false)
+  /** True when local history could not be read or edited; successful operations clear it. */
   val error = mutableError.asStateFlow()
+  private val mutableSavedReview = MutableStateFlow<String?>(null)
+  private var reviewRequest = 0
+  /**
+   * Receipt whose edits were saved successfully; the visible review consumes this navigation
+   * request.
+   */
+  val savedReview = mutableSavedReview.asStateFlow()
+
+  /**
+   * Refreshes history in this ViewModel's lifetime and exposes storage failures through [error].
+   */
+  fun reload() {
+    viewModelScope.launch { refresh() }
+  }
+
+  /** Persists draft rows without navigating; cancellation follows the ViewModel lifetime. */
+  fun updateDraft(id: String, items: List<StagedItem>) {
+    viewModelScope.launch { editDraft(id, items) }
+  }
+
+  /**
+   * Saves edits and requests leaving this receipt only on success; failures keep the review open.
+   */
+  fun saveAndLeave(id: String, items: List<StagedItem>) {
+    val request = ++reviewRequest
+    mutableSavedReview.value = null
+    viewModelScope.launch {
+      if (editDraft(id, items) && request == reviewRequest) mutableSavedReview.value = id
+    }
+  }
+
+  /** Clears a consumed or abandoned review navigation request. */
+  fun clearSavedReview() {
+    reviewRequest++
+    mutableSavedReview.value = null
+  }
+
+  /**
+   * Retains a scan before the picker releases its source; exposes failures and propagates them to
+   * the picker.
+   */
+  suspend fun retainScan(uri: String, items: List<StagedItem>): String =
+      try {
+        addDraft(uri, items)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        mutableError.value = true
+        throw failure
+      }
 
   init {
     viewModelScope.launch { refresh() }
@@ -64,7 +118,7 @@ class ReceiptHistoryViewModel(
                     else InventorySavePhase.PENDING)
           }
       mutableReceipts.value = entries
-      entries.filter { it.phase == InventorySavePhase.PENDING }.forEach { retry(it.submission.id) }
+      entries.filter { it.phase == InventorySavePhase.PENDING }.forEach { observe(it.submission) }
       mutableError.value = false
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -144,7 +198,7 @@ class ReceiptHistoryViewModel(
         setPhase(id, InventorySavePhase.PENDING, submission)
         val write = repository.addItems(submission)
         when (write) {
-          is ItemWrite.Rejected -> setPhase(id, InventorySavePhase.FAILED, submission)
+          is ItemWrite.Rejected -> observe(submission, restart = true)
           is ItemWrite.Queued -> {
             observe(submission)
             if (write.confirmation.await().isSuccess) confirmSaved(submission)
@@ -177,7 +231,7 @@ class ReceiptHistoryViewModel(
       try {
         val write = repository.addItems(submission)
         when (write) {
-          is ItemWrite.Rejected -> setPhase(id, InventorySavePhase.FAILED)
+          is ItemWrite.Rejected -> observe(submission, restart = true)
           is ItemWrite.Queued -> {
             observe(submission)
             if (write.confirmation.await().isSuccess) confirmSaved(submission)
@@ -193,7 +247,8 @@ class ReceiptHistoryViewModel(
     }
   }
 
-  private fun observe(submission: InventorySubmission) {
+  private fun observe(submission: InventorySubmission, restart: Boolean = false) {
+    if (restart) observations.remove(submission.id)?.cancel()
     if (observations[submission.id]?.isActive == true) return
     observations[submission.id] =
         viewModelScope.launch {
