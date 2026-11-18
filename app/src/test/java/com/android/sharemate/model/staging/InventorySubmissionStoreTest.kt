@@ -25,6 +25,138 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun purchaseStoreRestoresLegacyPendingReceiptAndPreservesItsIdentity() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val receipt =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "migration-owner",
+            "home",
+            listOf(StagedItem("a", "Apple", 1, 100)))
+    AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true).save(receipt)
+    val store = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    assertEquals(receipt, store.load(receipt.ownerId, receipt.householdId))
+    assertEquals(listOf(receipt), store.list(receipt.ownerId, receipt.householdId))
+    assertEquals(
+        receipt,
+        AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+            .load(receipt.ownerId, receipt.householdId))
+  }
+
+  @Test
+  fun missingIndexedReceiptFailsBothLoadAndList() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val receipt =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abe",
+            "missing-record-owner",
+            "home",
+            listOf(StagedItem("a", "Apple", 1, 100)),
+            draft = true)
+    store.save(receipt)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val scope = JSONArray(listOf(receipt.ownerId, receipt.householdId))
+    assertTrue(preferences.edit().remove("receipt:$scope:${receipt.id}").commit())
+
+    assertTrue(runCatching { store.load(receipt.ownerId, receipt.householdId) }.isFailure)
+    assertTrue(runCatching { store.list(receipt.ownerId, receipt.householdId) }.isFailure)
+    assertTrue(
+        runCatching { store.loadById(receipt.ownerId, receipt.householdId, receipt.id) }.isFailure)
+  }
+
+  @Test
+  fun legacyArchiveReleasesActiveSlotAndPreservesRejectedOperation() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val id = "12345678-1234-1234-1234-123456789abf"
+    val rejected =
+        InventorySubmission(
+            id,
+            "legacy-archive-owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 1, 100)),
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    id, "home", "legacy-archive-owner", 100, mapOf("legacy-archive-owner" to 100L)),
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    store.save(rejected)
+    store.setAside(rejected)
+
+    val restored = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    assertNull(restored.load(rejected.ownerId, rejected.householdId))
+    assertEquals(listOf(rejected), restored.deferred(rejected.ownerId, rejected.householdId))
+    assertTrue(runCatching { restored.setAside(rejected) }.isFailure)
+  }
+
+  @Test
+  fun receiptDetailsAndEditsSurviveRestartAndStayScoped() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val draft =
+        InventorySubmission(
+            id,
+            "details-owner",
+            "details-home",
+            listOf(StagedItem("a", "Apple", 1, 125)),
+            draft = true)
+    val details = ReceiptDetails(id, "details-owner", "details-home", "file:///receipt.jpg", 100L)
+
+    assertTrue(runCatching { store.saveDetails(details) }.isFailure)
+    store.save(draft)
+    store.saveDetails(details)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(details, restored.details("details-owner", "details-home", id))
+    assertNull(restored.details("other-owner", "details-home", id))
+    assertNull(restored.details("details-owner", "other-home", id))
+
+    val saved = details.copy(savedAtMillis = 250L)
+    restored.saveDetails(saved)
+    assertEquals(saved, store.details("details-owner", "details-home", id))
+    assertEquals(draft, store.loadById("details-owner", "details-home", id))
+  }
+
+  @Test
+  fun deletingOneDraftRemovesItsMetadataWithoutTouchingOtherReceipts() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val first =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "delete-owner",
+            "delete-home",
+            listOf(StagedItem("a", "Apple", 1, 125)),
+            draft = true)
+    val second =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "delete-owner",
+            "delete-home",
+            listOf(StagedItem("b", "Bread", 2, 350)),
+            draft = true)
+    store.save(first)
+    store.save(second)
+    val metadata =
+        ReceiptDetails(first.id, first.ownerId, first.householdId, "file:///first.jpg", 100L)
+    store.saveDetails(metadata)
+
+    store.deleteDraft(first.ownerId, first.householdId, first.id)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(listOf(second), restored.list(first.ownerId, first.householdId))
+    assertNull(restored.loadById(first.ownerId, first.householdId, first.id))
+    assertNull(restored.details(first.ownerId, first.householdId, first.id))
+    assertEquals(second, restored.loadById(second.ownerId, second.householdId, second.id))
+    store.deleteDraft(first.ownerId, first.householdId, first.id)
+    assertEquals(listOf(second), restored.list(first.ownerId, first.householdId))
+  }
+
+  @Test
   fun expenseNullPurchaseDraftStaysOutsideReceiptHistory() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)

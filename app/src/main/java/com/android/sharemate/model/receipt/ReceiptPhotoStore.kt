@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.receipt
 
 import android.content.Context
@@ -12,11 +13,14 @@ import kotlinx.coroutines.withContext
 
 /** Copies a scanned photo into private durable storage before its temporary source is released. */
 interface ReceiptPhotoStore {
+  /** Retains a private copy under the receipt ID, or throws without replacing an existing copy. */
   suspend fun retain(sourceUri: String, receiptId: String): String
 
+  /** Deletes the private copy for this receipt; never deletes its original source. */
   suspend fun delete(receiptId: String)
 }
 
+/** Stores receipt photos in app-private files using the supplied I/O dispatcher. */
 class AndroidReceiptPhotoStore(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -56,6 +60,6 @@ class AndroidReceiptPhotoStore(
       }
 
   private companion object {
-    const val MAX_PHOTO_BYTES = 20L * 1024 * 1024
+    const val MAX_PHOTO_BYTES = com.android.sharemate.model.image.AndroidBarcodePhotoStore.MAX_BYTES
   }
 }
