@@ -2,11 +2,17 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
+import android.util.Log
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.UserProfileFields
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
-import java.util.Date
+import com.google.firebase.firestore.Source
+import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -48,13 +54,9 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
     return try {
       val document = messages(householdId).document()
       val message =
-          Message(
-              id = document.id,
-              senderId = senderId,
-              senderName = senderName,
-              text = Message.normalizeText(text),
-              timestamp = Date())
-      document.set(message).await()
+          messageData(document.id, senderId, senderName) +
+              mapOf(MessageFields.TEXT to Message.normalizeText(text))
+      writeMessage(document, message, senderId)
       document.id
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -79,15 +81,13 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
     return try {
       val document = messages(householdId).document()
       val message =
-          Message(
-              id = document.id,
-              senderId = senderId,
-              senderName = senderName,
-              timestamp = Date(),
-              type = type,
-              itemName = itemName.trim(),
-              itemImageUrl = itemImageUrl?.takeIf { it.isNotBlank() })
-      document.set(message).await()
+          messageData(document.id, senderId, senderName) +
+              mapOf(
+                  MessageFields.TEXT to "",
+                  MessageFields.TYPE to type.name,
+                  MessageFields.ITEM_NAME to itemName.trim(),
+                  MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() })
+      writeMessage(document, message, senderId)
       document.id
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -95,7 +95,69 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
       null
     }
   }
+
+  private suspend fun messageData(
+      id: String,
+      senderId: String,
+      senderName: String
+  ): Map<String, Any> {
+    val name =
+        try {
+          val profile =
+              firestore
+                  .collection(FirestoreCollections.PROFILES)
+                  .document(senderId)
+                  .get(Source.CACHE)
+                  .await()
+          if (profile.exists()) profile.getString(UserProfileFields.DISPLAY_NAME) else null
+        } catch (error: FirebaseFirestoreException) {
+          if (error.code == FirebaseFirestoreException.Code.UNAVAILABLE) senderName else throw error
+        }
+    return mapOf(
+        MessageFields.ID to id,
+        MessageFields.SENDER_ID to senderId,
+        MessageFields.SENDER_NAME to safeSenderName(name),
+        MessageFields.TIMESTAMP to FieldValue.serverTimestamp())
+  }
+
+  private suspend fun writeMessage(
+      document: DocumentReference,
+      message: Map<String, Any?>,
+      senderId: String
+  ) {
+    try {
+      document.set(message).await()
+    } catch (error: FirebaseFirestoreException) {
+      if (error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+        try {
+          firestore
+              .collection(FirestoreCollections.PROFILES)
+              .document(senderId)
+              .get(Source.SERVER)
+              .addOnFailureListener(Executor { it.run() }) { failure ->
+                Log.w(TAG, "Unable to refresh the chat sender profile", failure)
+              }
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (failure: RuntimeException) {
+          Log.w(TAG, "Unable to refresh the chat sender profile", failure)
+        }
+      }
+      throw error
+    }
+  }
+
+  private companion object {
+    const val TAG = "FirebaseChatRepository"
+  }
 }
+
+internal const val DEFAULT_CHAT_SENDER_NAME = "Member"
+
+private val visibleCharacter = Regex("\\S")
+
+internal fun safeSenderName(name: String?): String =
+    name?.takeIf { visibleCharacter.containsMatchIn(it) && '@' !in it } ?: DEFAULT_CHAT_SENDER_NAME
 
 internal fun DocumentSnapshot.toMessageOrNull(): Message? =
     try {
@@ -109,9 +171,12 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
         Message(
             id = id,
             senderId = senderId,
-            senderName = getString(MessageFields.SENDER_NAME).orEmpty(),
+            senderName = safeSenderName(getString(MessageFields.SENDER_NAME)),
             text = text,
-            timestamp = getTimestamp(MessageFields.TIMESTAMP)?.toDate(),
+            timestamp =
+                getTimestamp(
+                        MessageFields.TIMESTAMP, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                    ?.toDate(),
             type = type,
             itemName = itemName,
             itemImageUrl = getString(MessageFields.ITEM_IMAGE_URL)?.takeIf { it.isNotBlank() })
@@ -123,6 +188,7 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
 
 /** Fields of a chat message document in Firestore. */
 private object MessageFields {
+  const val ID = "id"
   const val SENDER_ID = "senderId"
   const val SENDER_NAME = "senderName"
   const val TIMESTAMP = "timestamp"

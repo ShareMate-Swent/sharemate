@@ -8,7 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
@@ -19,8 +21,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
+import com.android.sharemate.model.finance.SharedExpense
+import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.profile.UserProfile
+import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.InventorySubmissionStore
@@ -28,6 +35,7 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
@@ -45,6 +53,453 @@ import org.junit.runner.RunWith
 class InventorySaveFlowTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val owner = ViewModelStore()
+
+  @Test
+  fun confirmingReviewedPurchaseRetainsSelectedSplitAndReturnsToReceipts() {
+    val items = ControlledItems()
+    val store =
+        object : InventorySubmissionStore {
+          var retained =
+              InventorySubmission(
+                  "12345678-1234-1234-1234-123456789abc",
+                  "owner",
+                  "home",
+                  listOf(StagedItem("milk", "Milk", 2, 1001)),
+                  draft = true)
+
+          override suspend fun load(ownerId: String, householdId: String) = retained
+
+          override suspend fun save(submission: InventorySubmission) {
+            retained = submission
+          }
+        }
+    val recorded = CompletableDeferred<SharedExpense>()
+    val expenses =
+        object : ExpenseSubmissionRepository {
+          override suspend fun recordExpense(expense: SharedExpense): SharedExpense {
+            recorded.complete(expense)
+            return expense
+          }
+        }
+    lateinit var save: InventorySaveViewModel
+    compose.runOnIdle {
+      save = InventorySaveViewModel(items, store, "owner", "home", true, expenses)
+      owner.put("save", save)
+    }
+    val photo =
+        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    owner.put("photo", photo)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptScanFlow(
+            photo,
+            ReceiptReader { error("No scan") },
+            save,
+            purchaseReview =
+                PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob")))
+      }
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag("staging_participant_owner").performScrollTo().performClick()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
+    compose
+        .onNodeWithTag("staging_confirm_purchase")
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+    compose.waitUntil(TIMEOUT) { items.calls.size == 1 }
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(mapOf("bob" to 501L, "owner" to 500L), store.retained.expense?.shares)
+      assertEquals("owner", store.retained.expense?.paidBy)
+      assertTrue(!recorded.isCompleted)
+      items.status.value = InventorySubmissionStatus.CONFIRMED
+    }
+    compose.waitUntil(TIMEOUT) { recorded.isCompleted }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.purchase_save_success))
+        .assertIsDisplayed()
+    compose.runOnIdle { assertEquals(ExpenseProgress.CONFIRMED, store.retained.expenseProgress) }
+  }
+
+  @Test
+  fun memberLoadingKeepsInventoryAvailableAndResolvesDisplayNameEmailAndUid() {
+    val profiles = CompletableDeferred<List<UserProfile>>()
+    val repository =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              kotlinx.coroutines.flow.flow { emit(profiles.await()) }
+        }
+    val submission =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = submission
+
+          override suspend fun save(submission: InventorySubmission) = Unit
+        }
+    compose.runOnIdle {
+      compose.activity.viewModelStore.put(
+          "inventory-save_owner_home",
+          InventorySaveViewModel(ControlledItems(), store, "owner", "home"))
+    }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "owner",
+            "home",
+            true,
+            expenseRepository =
+                object : ExpenseSubmissionRepository {
+                  override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
+                      error("No submission")
+                },
+            profileRepository = repository)
+      }
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.purchase_members_loading))
+        .assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.runOnIdle {
+      profiles.complete(
+          listOf(
+              UserProfile("owner", displayName = "Alice"),
+              UserProfile("bob", email = "bob@example.org"),
+              UserProfile("charlie")))
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.purchase_members_loading))
+        .assertDoesNotExist()
+    compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
+    compose.onAllNodesWithText("Alice").assertCountEquals(2)
+    compose.onAllNodesWithText("bob@example.org").assertCountEquals(2)
+    compose.onAllNodesWithText("charlie").assertCountEquals(2)
+  }
+
+  @Test
+  fun listenerFailureAndRetryKeepDraftSelectionsUntilFreshMembershipArrives() {
+    val updates =
+        kotlinx.coroutines.channels.Channel<List<UserProfile>>(
+            kotlinx.coroutines.channels.Channel.UNLIMITED)
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              kotlinx.coroutines.flow.flow {
+                for (members in updates) {
+                  check(members.isNotEmpty()) { "listener failed" }
+                  emit(members)
+                }
+              }
+        }
+    val submission =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = submission
+
+          override suspend fun save(submission: InventorySubmission) = Unit
+        }
+    compose.runOnIdle {
+      compose.activity.viewModelStore.put(
+          "inventory-save_owner_home",
+          InventorySaveViewModel(ControlledItems(), store, "owner", "home"))
+      updates.trySend(listOf(UserProfile("owner"), UserProfile("bob")))
+    }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "owner",
+            "home",
+            true,
+            expenseRepository =
+                object : ExpenseSubmissionRepository {
+                  override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
+                      error("No submission")
+                },
+            profileRepository = profiles)
+      }
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
+    compose.runOnIdle { updates.trySend(emptyList()) }
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    compose.runOnIdle { updates.trySend(listOf(UserProfile("owner"), UserProfile("bob"))) }
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
+    compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
+    updates.close()
+  }
+
+  @Test
+  fun recoveredDraftKeepsInventoryAvailableAndDefaultsPayerAfterLoading() {
+    val review = mutableStateOf(PurchaseReview.forUser("owner", emptyMap()))
+    showPurchase(
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)) {
+          review.value
+        }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
+    compose.runOnIdle {
+      review.value = PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob"))
+    }
+    compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
+  }
+
+  @Test
+  fun retainedPurchaseDisplaysImmutableSplitAndFinancialStatus() {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val expense = SharedExpense(id, "home", "owner", 1000, mapOf("owner" to 500L, "bob" to 500L))
+    showPurchase(
+        InventorySubmission(
+            id, "owner", "home", listOf(StagedItem("milk", "Milk", 2, 1000)), expense = expense)) {
+          PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob"))
+        }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose
+        .onNodeWithTag("staging_participant_bob")
+        .performScrollTo()
+        .assertIsOn()
+        .assertIsNotEnabled()
+    compose.onNodeWithTag("staging_share_bob").assertIsDisplayed()
+    compose.onNodeWithTag("staging_purchase_error").assertDoesNotExist()
+    val screenshot = compose.onRoot().captureToImage().asAndroidBitmap()
+    File(compose.activity.getExternalFilesDir(null), "purchase-recovery.png").outputStream().use {
+      screenshot.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it)
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.purchase_save_success))
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun retainedPurchaseStillShowsUidAndExactShareWhenMemberNamesAreUnavailable() {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    showPurchase(
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            expense = SharedExpense(id, "home", "owner", 1000, mapOf("bob" to 1000L)))) {
+          PurchaseReview.forUser("owner", emptyMap())
+        }
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose
+        .onNodeWithTag("staging_payer_owner")
+        .performScrollTo()
+        .assertIsSelected()
+        .assertIsNotEnabled()
+    compose
+        .onNodeWithTag("staging_participant_bob")
+        .performScrollTo()
+        .assertIsOn()
+        .assertIsNotEnabled()
+    compose
+        .onNodeWithTag("staging_share_bob")
+        .assertTextEquals(compose.activity.getString(R.string.staging_price, "10.00"))
+    compose.onAllNodesWithText("bob").assertCountEquals(2)
+  }
+
+  @Test
+  fun memberListenerFailureOffersWorkingRetry() {
+    var attempts = 0
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              kotlinx.coroutines.flow.flow<List<UserProfile>> {
+                if (attempts++ == 0) error("offline")
+                emit(listOf(UserProfile("owner", displayName = "Alice")))
+              }
+        }
+    val expenses =
+        object : ExpenseSubmissionRepository {
+          override suspend fun recordExpense(expense: SharedExpense) =
+              error("No submission expected")
+        }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "member-retry-owner",
+            "member-retry-home",
+            true,
+            expenseRepository = expenses,
+            profileRepository = profiles)
+      }
+    }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
+    compose.waitUntil(TIMEOUT) {
+      compose.onAllNodesWithTag("purchase_members_retry").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+    compose.runOnIdle { assertEquals(2, attempts) }
+  }
+
+  @Test
+  fun unavailablePurchaseServicesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
+    val shared = mutableStateOf(false)
+    val profilesAvailable = mutableStateOf(false)
+    val expensesAvailable = mutableStateOf(false)
+    val profiles =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String) =
+              flowOf(listOf(UserProfile("owner", displayName = "Alice")))
+        }
+    val expenses =
+        object : ExpenseSubmissionRepository {
+          override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
+              error("No purchase expected")
+        }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            ControlledItems(),
+            "services-owner",
+            "services-home",
+            shared.value,
+            expenseRepository = expenses.takeIf { expensesAvailable.value },
+            profileRepository = profiles.takeIf { profilesAvailable.value })
+      }
+    }
+    val app = compose.activity
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertDoesNotExist()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+    compose.runOnIdle { shared.value = true }
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.runOnIdle { expensesAvailable.value = true }
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertIsDisplayed()
+    compose.onNodeWithText(app.getString(R.string.purchase_members_loading)).assertDoesNotExist()
+    compose.runOnIdle { profilesAvailable.value = true }
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.runOnIdle { shared.value = false }
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).performClick()
+    compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
+    compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
+  }
+
+  @Test
+  fun deferredPurchaseCanBeReopenedAndSetAsideFromTheReviewScreen() {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val retained =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            expense = SharedExpense(id, "home", "owner", 1000, mapOf("owner" to 1000L)),
+            inventoryConfirmed = true,
+            expenseProgress = ExpenseProgress.REJECTED)
+    var active: InventorySubmission? = null
+    val archived = mutableListOf(retained)
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = active
+
+          override suspend fun save(submission: InventorySubmission) {
+            active = submission
+            archived.remove(submission)
+          }
+
+          override suspend fun deferred(ownerId: String, householdId: String) = archived.toList()
+
+          override suspend fun setAside(submission: InventorySubmission) {
+            archived.add(submission)
+            active = null
+          }
+        }
+    lateinit var save: InventorySaveViewModel
+    compose.runOnIdle {
+      save = InventorySaveViewModel(ControlledItems(), store, "owner", "home")
+      owner.put("save", save)
+    }
+    val photo =
+        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    owner.put("photo", photo)
+    compose.setContent {
+      MaterialTheme { ReceiptScanFlow(photo, ReceiptReader { error("No scan") }, save) }
+    }
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsEnabled().performClick()
+    compose.onNodeWithTag("purchase_recover_deferred").assertDoesNotExist()
+    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(InventorySaveTestTags.RETRY).performScrollTo().performClick()
+    compose.onNodeWithTag("purchase_set_aside").performScrollTo().performClick()
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsEnabled()
+    compose.runOnIdle {
+      assertEquals(listOf(retained), archived)
+      assertEquals(null, active)
+    }
+    compose.runOnIdle { assertTrue(save.confirm(listOf(StagedItem("bread", "Bread", 1, 200)))) }
+    compose.onNodeWithTag("purchase_recover_deferred").assertIsNotEnabled()
+    compose.runOnIdle { assertEquals(listOf(retained), archived) }
+  }
+
+  private fun showPurchase(submission: InventorySubmission, review: () -> PurchaseReview) {
+    val store =
+        object : InventorySubmissionStore {
+          override suspend fun load(ownerId: String, householdId: String) = submission
+
+          override suspend fun save(submission: InventorySubmission) = Unit
+        }
+    lateinit var save: InventorySaveViewModel
+    compose.runOnIdle {
+      save = InventorySaveViewModel(ControlledItems(), store, "owner", "home")
+      owner.put("save", save)
+    }
+    val photo =
+        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    owner.put("photo", photo)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptScanFlow(photo, ReceiptReader { error("No scan") }, save, purchaseReview = review())
+      }
+    }
+  }
 
   @After
   fun tearDown() {
@@ -73,7 +528,10 @@ class InventorySaveFlowTest {
           ViewModelProvider(
               compose.activity,
               viewModelFactory {
-                initializer { ReceiptScanViewModel(reader, SavedStateHandle()) }
+                initializer {
+                  ReceiptScanViewModel(
+                      reader, SavedStateHandle(mapOf("receiptReviewPending" to true)))
+                }
               })[ReceiptScanViewModel::class.java]
       scan.confirm(oldRows)
       save = InventorySaveViewModel(repository, store, "owner", "home")
@@ -93,7 +551,7 @@ class InventorySaveFlowTest {
             SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent { MaterialTheme { ReceiptScanFlow(photo, reader, save) } }
-    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.BACK).assertIsDisplayed()
     compose.onNodeWithText("Old receipt A").assertDoesNotExist()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertDoesNotExist()
     compose.runOnIdle { gate.complete(recovered) }

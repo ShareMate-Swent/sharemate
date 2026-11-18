@@ -3,7 +3,6 @@
 package com.android.sharemate
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -13,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
@@ -47,10 +47,10 @@ class MainActivityTest : TestCase() {
               NavigationTestTags.FRIDGE_TAB to R.string.fridge_title,
               NavigationTestTags.RECIPES_TAB to R.string.recipes_title,
               NavigationTestTags.RECEIPTS_TAB to R.string.receipts_title,
+              NavigationTestTags.CHAT_TAB to R.string.chat_title,
               NavigationTestTags.SETTINGS_TAB to R.string.settings_title,
           )
 
-      composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsNotEnabled()
       destinations.forEach { (testTag, labelRes) ->
         composeTestRule.onNodeWithTag(testTag).performClick()
         composeTestRule.onNodeWithTag(testTag).assertIsSelected()
@@ -63,6 +63,8 @@ class MainActivityTest : TestCase() {
               .onNodeWithTag(C.Tag.fridge_empty)
               .assertIsDisplayed()
               .assertTextEquals(composeTestRule.activity.getString(R.string.fridge_empty))
+        } else if (testTag == NavigationTestTags.CHAT_TAB) {
+          composeTestRule.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
         } else {
           composeTestRule
               .onNodeWithTag(NavigationTestTags.PAGE_CONTENT)

@@ -1,18 +1,22 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
 import com.android.sharemate.model.FirestoreCollections
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.Source
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +24,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -29,12 +32,15 @@ import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 
 class FirebaseChatRepositoryUnitTest {
   private lateinit var collection: CollectionReference
   private lateinit var document: DocumentReference
+  private lateinit var profileReference: DocumentReference
+  private lateinit var profile: DocumentSnapshot
   private lateinit var repository: FirebaseChatRepository
 
   @Before
@@ -44,11 +50,20 @@ class FirebaseChatRepositoryUnitTest {
     collection = mock(CollectionReference::class.java)
     document = mock(DocumentReference::class.java)
     val households = mock(CollectionReference::class.java)
+    val profiles = mock(CollectionReference::class.java)
+    profileReference = mock(DocumentReference::class.java)
+    profile = mock(DocumentSnapshot::class.java)
     `when`(households.document("h1")).thenReturn(household)
     `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(households)
     `when`(household.collection(FirestoreCollections.MESSAGES)).thenReturn(collection)
     `when`(collection.document()).thenReturn(document)
     `when`(document.id).thenReturn("m1")
+    `when`(firestore.collection(FirestoreCollections.PROFILES)).thenReturn(profiles)
+    `when`(profiles.document("u1")).thenReturn(profileReference)
+    `when`(profileReference.get(Source.CACHE)).thenReturn(Tasks.forResult(profile))
+    `when`(profileReference.get(Source.SERVER)).thenReturn(Tasks.forResult(profile))
+    `when`(profile.exists()).thenReturn(true)
+    `when`(profile.getString("displayName")).thenReturn("Ann")
     repository = FirebaseChatRepository(firestore)
   }
 
@@ -80,7 +95,8 @@ class FirebaseChatRepositoryUnitTest {
         `when`(valid.getString("senderId")).thenReturn("u1")
         `when`(valid.getString("senderName")).thenReturn("Ann")
         `when`(valid.getString("text")).thenReturn("hi")
-        `when`(valid.getTimestamp("timestamp")).thenReturn(Timestamp(date))
+        `when`(valid.getTimestamp("timestamp", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE))
+            .thenReturn(Timestamp(date))
         val invalid = mock(DocumentSnapshot::class.java)
         val snapshot = mock(QuerySnapshot::class.java)
         `when`(snapshot.documents).thenReturn(listOf(valid, invalid))
@@ -104,13 +120,28 @@ class FirebaseChatRepositoryUnitTest {
   fun sendMessage_writesTrimmedMessageWithDocumentId() =
       runBlocking<Unit> {
         `when`(document.set(any())).thenReturn(Tasks.forResult(null))
-        assertEquals("m1", repository.sendMessage("h1", "u1", "Ann", "  hi  "))
-        val captor = ArgumentCaptor.forClass(Message::class.java)
+        assertEquals("m1", repository.sendMessage("h1", "u1", "Impersonated", "  hi  "))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
         verify(document).set(captor.capture())
-        assertEquals("m1", captor.value.id)
-        assertEquals("hi", captor.value.text)
-        assertEquals("u1", captor.value.senderId)
-        assertNotNull(captor.value.timestamp)
+        assertEquals("m1", captor.value["id"])
+        assertEquals("hi", captor.value["text"])
+        assertEquals("u1", captor.value["senderId"])
+        assertEquals("Ann", captor.value["senderName"])
+        assertEquals(FieldValue.serverTimestamp(), captor.value["timestamp"])
+        verify(profileReference).get(Source.CACHE)
+      }
+
+  @Test
+  fun sendMessage_usesProfileInsteadOfSuppliedNameAndHidesMissingOrEmailNames() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        for (name in listOf(null, "   ", "person@example.com")) {
+          `when`(profile.getString("displayName")).thenReturn(name)
+          assertEquals("m1", repository.sendMessage("h1", "u1", "Impersonated", "hello"))
+        }
+        verify(document, org.mockito.Mockito.times(3)).set(captor.capture())
+        assertTrue(captor.allValues.all { it["senderName"] == DEFAULT_CHAT_SENDER_NAME })
       }
 
   @Test
@@ -119,6 +150,101 @@ class FirebaseChatRepositoryUnitTest {
         `when`(document.set(any())).thenReturn(Tasks.forException(RuntimeException("x")))
         assertNull(repository.sendMessage("h1", "u1", "Ann", "hi"))
       }
+
+  @Test
+  fun sendMessage_rejectionRefreshesProfileWithoutWaitingAndNextSendUsesUpdatedCache() =
+      runBlocking<Unit> {
+        val refresh = TaskCompletionSource<DocumentSnapshot>()
+        `when`(profileReference.get(Source.SERVER)).thenReturn(refresh.task)
+        `when`(document.set(any()))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)),
+                Tasks.forResult(null))
+        assertNull(repository.sendMessage("h1", "u1", "New name", "hi"))
+        verify(profileReference).get(Source.SERVER)
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals("Ann", captor.value["senderName"])
+        `when`(profile.getString("displayName")).thenReturn("New name")
+        refresh.setResult(profile)
+        assertEquals("m1", repository.sendMessage("h1", "u1", "New name", "hi again"))
+        verify(document, org.mockito.Mockito.times(2)).set(captor.capture())
+        assertEquals("New name", captor.allValues.last()["senderName"])
+      }
+
+  @Test
+  fun sendMessage_rejectionStillFailsWhenRefreshCannotStart() =
+      runBlocking<Unit> {
+        `when`(profileReference.get(Source.SERVER)).thenThrow(IllegalStateException("terminated"))
+        `when`(document.set(any()))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+        assertNull(repository.sendMessage("h1", "u1", "Ann", "hi"))
+        verify(profileReference).get(Source.SERVER)
+      }
+
+  @Test
+  fun sendMessage_cacheFailureUsesSanitizedSuppliedName() =
+      runBlocking<Unit> {
+        `when`(profileReference.get(Source.CACHE))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "cache unavailable", FirebaseFirestoreException.Code.UNAVAILABLE)))
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        assertEquals("m1", repository.sendMessage("h1", "u1", "person@example.com", "hi"))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals(DEFAULT_CHAT_SENDER_NAME, captor.value["senderName"])
+      }
+
+  @Test
+  fun sendMessage_knownAbsentProfileUsesMemberAndWaitsForWriteRejection() =
+      runBlocking<Unit> {
+        `when`(profile.exists()).thenReturn(false)
+        val write = TaskCompletionSource<Void>()
+        `when`(document.set(any())).thenReturn(write.task)
+        var result: String? = "pending"
+        val job =
+            launch(Dispatchers.Unconfined) {
+              result = repository.sendMessage("h1", "u1", "Ann", "hi")
+            }
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals(DEFAULT_CHAT_SENDER_NAME, captor.value["senderName"])
+        assertEquals("pending", result)
+        assertTrue(job.isActive)
+        write.setException(RuntimeException("permission denied"))
+        job.join()
+        assertNull(result)
+      }
+
+  @Test
+  fun sendMessage_unexpectedProfileReadFailureDoesNotWrite() =
+      runBlocking<Unit> {
+        `when`(profileReference.get(Source.CACHE))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+        assertNull(repository.sendMessage("h1", "u1", "Ann", "hi"))
+        verify(document, never()).set(any())
+        verify(profileReference, never()).get(Source.SERVER)
+      }
+
+  @Test
+  fun sendMessage_cacheReadCancellationIsRethrownWithoutWriting() {
+    `when`(profileReference.get(Source.CACHE)).thenThrow(CancellationException("cancelled"))
+    try {
+      runBlocking { repository.sendMessage("h1", "u1", "Ann", "hi") }
+      org.junit.Assert.fail("expected cancellation")
+    } catch (_: CancellationException) {}
+    verify(document, never()).set(any())
+  }
 
   @Test
   fun sendActivity_invalidInput_returnsNullWithoutWriting() =
@@ -136,15 +262,90 @@ class FirebaseChatRepositoryUnitTest {
         `when`(document.set(any())).thenReturn(Tasks.forResult(null))
         assertEquals(
             "m1",
-            repository.sendActivity("h1", "u1", "Ann", MessageType.THROWN, " Milk ", "http://i"))
-        val captor = ArgumentCaptor.forClass(Message::class.java)
+            repository.sendActivity(
+                "h1", "u1", "Impersonated", MessageType.THROWN, " Milk ", "http://i"))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
         verify(document).set(captor.capture())
-        assertEquals(MessageType.THROWN, captor.value.type)
-        assertEquals("Milk", captor.value.itemName)
-        assertEquals("http://i", captor.value.itemImageUrl)
-        assertEquals("", captor.value.text)
-        assertNotNull(captor.value.timestamp)
+        assertEquals(
+            mapOf(
+                "id" to "m1",
+                "senderId" to "u1",
+                "senderName" to "Ann",
+                "text" to "",
+                "timestamp" to FieldValue.serverTimestamp(),
+                "type" to "THROWN",
+                "itemName" to "Milk",
+                "itemImageUrl" to "http://i"),
+            captor.value)
+        verify(profileReference).get(Source.CACHE)
       }
+
+  @Test
+  fun sendActivity_normalizesBlankImageUrlsToNull() =
+      runBlocking<Unit> {
+        val blankUrls = listOf("", " \t\n")
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        blankUrls.forEach { url ->
+          assertEquals(
+              "m1", repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk", url))
+        }
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document, times(blankUrls.size)).set(captor.capture())
+        captor.allValues.forEach { activity ->
+          assertNull(activity["itemImageUrl"])
+          assertEquals(FieldValue.serverTimestamp(), activity["timestamp"])
+        }
+      }
+
+  @Test
+  fun sendActivity_cacheFailureUsesSuppliedNameAndReportsWriteRejection() =
+      runBlocking<Unit> {
+        `when`(profileReference.get(Source.CACHE))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "cache unavailable", FirebaseFirestoreException.Code.UNAVAILABLE)))
+        `when`(document.set(any()))
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+        assertNull(repository.sendActivity("h1", "u1", "Alex", MessageType.EATEN, "Milk"))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals("Alex", captor.value["senderName"])
+        verify(profileReference).get(Source.SERVER)
+      }
+
+  @Test
+  fun sendActivity_knownAbsentProfileUsesMember() =
+      runBlocking<Unit> {
+        `when`(profile.exists()).thenReturn(false)
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        assertEquals("m1", repository.sendActivity("h1", "u1", "Alex", MessageType.EATEN, "Milk"))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals(DEFAULT_CHAT_SENDER_NAME, captor.value["senderName"])
+      }
+
+  @Test
+  fun sendActivity_unexpectedProfileReadFailureDoesNotWrite() =
+      runBlocking<Unit> {
+        `when`(profileReference.get(Source.CACHE))
+            .thenReturn(Tasks.forException(IllegalStateException("invalid profile")))
+        assertNull(repository.sendActivity("h1", "u1", "Alex", MessageType.EATEN, "Milk"))
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendActivity_cacheReadCancellationIsRethrownWithoutWriting() {
+    `when`(profileReference.get(Source.CACHE)).thenThrow(CancellationException("cancelled"))
+    try {
+      runBlocking { repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk") }
+      org.junit.Assert.fail("expected cancellation")
+    } catch (_: CancellationException) {}
+    verify(document, never()).set(any())
+  }
 
   @Test
   fun sendActivity_returnsNullOnFailure() =
@@ -171,7 +372,8 @@ class FirebaseChatRepositoryUnitTest {
     `when`(activity.getString("itemName")).thenReturn("Milk")
     `when`(activity.getString("itemImageUrl")).thenReturn("http://i")
     assertEquals(
-        Message("a", "u1", "", "", null, MessageType.EATEN, "Milk", "http://i"),
+        Message(
+            "a", "u1", DEFAULT_CHAT_SENDER_NAME, "", null, MessageType.EATEN, "Milk", "http://i"),
         activity.toMessageOrNull())
 
     val noItem = mock(DocumentSnapshot::class.java)
@@ -184,7 +386,8 @@ class FirebaseChatRepositoryUnitTest {
     `when`(unknown.getString("senderId")).thenReturn("u1")
     `when`(unknown.getString("type")).thenReturn("???")
     `when`(unknown.getString("text")).thenReturn("hi")
-    assertEquals(Message("b", "u1", "", "hi", null), unknown.toMessageOrNull())
+    assertEquals(
+        Message("b", "u1", DEFAULT_CHAT_SENDER_NAME, "hi", null), unknown.toMessageOrNull())
   }
 
   @Suppress("UNCHECKED_CAST")
@@ -253,7 +456,10 @@ class FirebaseChatRepositoryUnitTest {
     `when`(minimal.id).thenReturn("x")
     `when`(minimal.getString("senderId")).thenReturn("u1")
     `when`(minimal.getString("text")).thenReturn("hi")
-    assertEquals(Message("x", "u1", "", "hi", null), minimal.toMessageOrNull())
+    assertEquals(
+        Message("x", "u1", DEFAULT_CHAT_SENDER_NAME, "hi", null), minimal.toMessageOrNull())
+    `when`(minimal.getString("senderName")).thenReturn("legacy@example.com")
+    assertEquals(DEFAULT_CHAT_SENDER_NAME, minimal.toMessageOrNull()?.senderName)
   }
 
   @Test
@@ -267,7 +473,10 @@ class FirebaseChatRepositoryUnitTest {
     val badTimestamp = mock(DocumentSnapshot::class.java)
     `when`(badTimestamp.getString("senderId")).thenReturn("u1")
     `when`(badTimestamp.getString("text")).thenReturn("hi")
-    `when`(badTimestamp.getTimestamp("timestamp")).thenThrow(RuntimeException("bad"))
+    `when`(
+            badTimestamp.getTimestamp(
+                "timestamp", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE))
+        .thenThrow(RuntimeException("bad"))
     assertNull(badTimestamp.toMessageOrNull())
   }
 }

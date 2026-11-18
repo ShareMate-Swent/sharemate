@@ -45,4 +45,12 @@ class MainActivityAuthTest {
     verify(firebase.auth).signOut()
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
   }
+
+  @Test
+  fun sessionWithoutEmailUsesDefaultActivitySenderName() {
+    firebase.setSession("trusted-student-id", email = null)
+
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.fridge_title).assertIsDisplayed()
+  }
 }

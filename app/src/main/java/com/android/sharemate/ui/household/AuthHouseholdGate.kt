@@ -14,6 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -101,6 +102,7 @@ fun AuthHouseholdGate(
         }
         val gateViewModel: HouseholdGateViewModel = viewModel(factory = factory)
         val state by gateViewModel.state.collectAsStateWithLifecycle()
+        LaunchedEffect(session) { gateViewModel.updateSession(session) }
         val navController = rememberNavController()
         val complete = {
           gateViewModel.refresh()

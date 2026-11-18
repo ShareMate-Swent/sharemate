@@ -73,6 +73,13 @@ interface AuthRepository {
     throw AuthException(AuthError.UNKNOWN)
   }
 
+  /**
+   * Makes [session] emit the signed-in user's current profile again, e.g. after their photo
+   * changed, since a profile change is not an authentication change. Repositories whose session
+   * never goes stale need not implement it.
+   */
+  fun refreshSession() {}
+
   /** Exchanges a Google ID token without storing it. */
   suspend fun signInWithGoogle(idToken: String)
 

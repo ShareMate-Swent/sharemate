@@ -332,10 +332,17 @@ service cloud.firestore {
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
             && message.senderId == request.auth.uid
-            && message.senderName is string
+            && message.senderName == chatSenderName()
             && message.text is string
-            && message.timestamp is timestamp
+            && message.timestamp == request.time
             && (isValidTextMessage(message) || isValidActivityMessage(message));
+      }
+
+      function chatSenderName() {
+        let profilePath = documentPath('profiles', request.auth.uid);
+        let name = exists(profilePath) ? get(profilePath).data.get('displayName', null) : null;
+        return name is string && name.matches('[\\s\\S]*\\S[\\s\\S]*')
+            && !name.matches('[\\s\\S]*@[\\s\\S]*') ? name : 'Member';
       }
 
       function hasVisibleText(text) {
@@ -354,6 +361,8 @@ service cloud.firestore {
 
       function isValidActivityMessage(message) {
         return message.get('type', null) in ['EATEN', 'THROWN']
+            // A server timestamp transform resolves to request.time; a client clock is not trusted.
+            && message.timestamp == request.time
             && message.text == ''
             && message.get('itemName', null) is string
             && hasVisibleText(message.itemName)

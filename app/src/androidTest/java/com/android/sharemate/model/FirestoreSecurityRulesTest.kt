@@ -919,11 +919,18 @@ class FirestoreSecurityRulesTest {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
     val chat = FirebaseChatRepository(firestore)
+    Tasks.await(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(senderId)
+            .set(mapOf("displayName" to "Alice")))
 
-    val textId = chat.sendMessage(household.id, senderId, "Sender", " hello ")
+    val textId = chat.sendMessage(household.id, senderId, "Impersonated", " hello ")
     assertNotNull(textId)
-    assertEquals(
-        "hello", Tasks.await(messageReference(household.id, textId!!).get()).getString("text"))
+    val text = Tasks.await(messageReference(household.id, textId!!).get(Source.SERVER))
+    assertEquals("hello", text.getString("text"))
+    assertEquals("Alice", text.getString("senderName"))
+    assertNotNull(text.getTimestamp("timestamp"))
 
     for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
       val activityId =
@@ -936,20 +943,58 @@ class FirestoreSecurityRulesTest {
     }
 
     assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+    val ordered =
+        Tasks.await(
+            householdReference(household.id)
+                .collection(FirestoreCollections.MESSAGES)
+                .orderBy("timestamp")
+                .get(Source.SERVER))
+    val timestamps = ordered.documents.map { checkNotNull(it.getTimestamp("timestamp")) }
+    assertEquals(timestamps.sorted(), timestamps)
+    assertEquals(textId, ordered.documents.first().id)
+  }
+
+  @Test
+  fun chatRequiresProfileNameAndServerTime() {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val profile = firestore.collection(FirestoreCollections.PROFILES).document(senderId)
+    val ref = messageReference(household.id, "m1")
+
+    Tasks.await(profile.set(mapOf("displayName" to "Alice")))
+    val base = messageData("m1", senderId) + ("senderName" to "Alice")
+    assertDenied(ref.set(base + ("senderName" to "Bob")))
+    assertDenied(ref.set(base + ("timestamp" to Date(0))))
+    assertDenied(ref.set(base + ("timestamp" to Date(System.currentTimeMillis() + 86_400_000L))))
+    Tasks.await(ref.set(base))
+
+    Tasks.await(profile.set(mapOf("displayName" to "")))
+    Tasks.await(messageReference(household.id, "m2").set(messageData("m2", senderId)))
+    assertDenied(
+        messageReference(household.id, "m3")
+            .set(messageData("m3", senderId) + ("senderName" to "person@example.com")))
+    Tasks.await(profile.set(mapOf("displayName" to "person@example.com")))
+    Tasks.await(messageReference(household.id, "m4").set(messageData("m4", senderId)))
+    assertDenied(
+        messageReference(household.id, "m5")
+            .set(messageData("m5", senderId) + ("senderName" to "person@example.com")))
   }
 
   @Test
   fun invalidTypedMessagesAreDenied() {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
-    val base = messageData("bad", senderId)
+    val base = messageData("bad", senderId) + ("timestamp" to FieldValue.serverTimestamp())
     val ref = messageReference(household.id, "bad")
 
     assertDenied(ref.set(base + ("type" to "UNKNOWN")))
     assertDenied(
         ref.set(
             messageData("bad", "someone-else", text = "") +
-                mapOf("type" to "THROWN", "itemName" to "Milk")))
+                mapOf(
+                    "type" to "THROWN",
+                    "itemName" to "Milk",
+                    "timestamp" to FieldValue.serverTimestamp())))
     assertDenied(ref.set(base + ("type" to "TEXT") + ("itemName" to "Milk")))
     assertDenied(ref.set(base + ("type" to "EATEN") + ("itemName" to "Milk")))
     assertDenied(ref.set(base + mapOf("type" to "EATEN", "text" to "", "itemName" to " ")))
@@ -972,7 +1017,10 @@ class FirestoreSecurityRulesTest {
     assertDenied(
         messageRef.set(
             messageData("m1", outsiderId, text = "") +
-                mapOf("type" to "EATEN", "itemName" to "Milk")))
+                mapOf(
+                    "type" to "EATEN",
+                    "itemName" to "Milk",
+                    "timestamp" to FieldValue.serverTimestamp())))
     assertDenied(messageReference(household.id, "m1").get())
   }
 
@@ -1007,13 +1055,150 @@ class FirestoreSecurityRulesTest {
             .set(messageData("m4", creatorId, text = "line one\n\tline two\n")))
   }
 
+  @Test fun memberCanCreateEatenActivity() = assertMemberCanCreateActivity(MessageType.EATEN)
+
+  @Test fun memberCanCreateThrownActivity() = assertMemberCanCreateActivity(MessageType.THROWN)
+
+  @Test
+  fun activityCannotForgeItsAuthor() {
+    val home = createHouseholdAs("creator")
+    assertDenied(messageReference(home.id, "forged").set(activityData("forged", "another-user")))
+  }
+
+  @Test
+  fun activityCannotForgeItsTimestamp() {
+    val home = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val data = activityData("forged", senderId)
+    for (timestamp in listOf(Date(0), Date(4102444800000L))) {
+      assertDenied(messageReference(home.id, "forged").set(data + ("timestamp" to timestamp)))
+    }
+  }
+
+  @Test
+  fun activityRejectsUnsupportedTypesAndTextDisguises() {
+    val home = createHouseholdAs("creator")
+    val data = activityData("invalid", checkNotNull(FirebaseEmulator.auth.uid))
+    for (type in listOf("UNKNOWN", "eaten", "thrown", "TEXT", 123, null)) {
+      assertDenied(messageReference(home.id, "invalid").set(data + ("type" to type)))
+    }
+  }
+
+  @Test
+  fun activityRequiresEveryMandatoryField() {
+    val home = createHouseholdAs("creator")
+    val data = activityData("missing", checkNotNull(FirebaseEmulator.auth.uid))
+    for (field in listOf("id", "senderId", "senderName", "text", "timestamp", "type", "itemName")) {
+      assertDenied(messageReference(home.id, "missing").set(data - field))
+    }
+  }
+
+  @Test
+  fun activityRejectsWrongFieldTypesAndUnknownFields() {
+    val home = createHouseholdAs("creator")
+    val data = activityData("invalid", checkNotNull(FirebaseEmulator.auth.uid))
+    for (field in data.keys) {
+      assertDenied(messageReference(home.id, "invalid").set(data + (field to 123)))
+    }
+    assertDenied(messageReference(home.id, "invalid").set(data + ("extra" to true)))
+    assertDenied(messageReference(home.id, "invalid").set(data + ("itemName" to null)))
+  }
+
+  @Test
+  fun nonMemberCannotCreateActivityAsThemselves() {
+    val home = createHouseholdAs("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+    assertDenied(messageReference(home.id, "outsider").set(activityData("outsider", outsiderId)))
+  }
+
+  @Test
+  fun unauthenticatedUserCannotCreateActivity() {
+    val home = createHouseholdAs("creator")
+    val data = activityData("signed-out", checkNotNull(FirebaseEmulator.auth.uid))
+    FirebaseEmulator.signOut()
+    assertDenied(messageReference(home.id, "signed-out").set(data))
+  }
+
+  @Test
+  fun activityCannotBeUpdatedReplacedOrDeletedEvenByItsAuthor() {
+    val home = createHouseholdAs("creator")
+    val data = activityData("immutable", checkNotNull(FirebaseEmulator.auth.uid))
+    val ref = messageReference(home.id, "immutable")
+    Tasks.await(ref.set(data))
+    assertDenied(ref.update("itemName", "Forged item"))
+    assertDenied(ref.set(data + ("type" to "THROWN")))
+    assertDenied(ref.set(mapOf("type" to "THROWN"), SetOptions.merge()))
+    assertDenied(ref.delete())
+    assertEquals("EATEN", Tasks.await(ref.get(Source.SERVER)).getString("type"))
+  }
+
+  @Test
+  fun textCannotBeConvertedToActivityThroughAnUpdate() {
+    val home = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val ref = messageReference(home.id, "text")
+    Tasks.await(ref.set(messageData("text", senderId)))
+    assertDenied(ref.update(activityData("text", senderId)))
+    assertEquals("hello", Tasks.await(ref.get(Source.SERVER)).getString("text"))
+  }
+
+  @Test
+  fun formerMemberCannotCreateActivity() {
+    val home = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking {
+      repository.joinHousehold(home.inviteCode, memberId)
+      repository.leaveHousehold(memberId)
+    }
+    assertDenied(messageReference(home.id, "revoked").set(activityData("revoked", memberId)))
+  }
+
+  @Test
+  fun privateFridgeDoesNotAllowActivityOrOrdinaryChat() {
+    val creatorId = FirebaseEmulator.signInAs("creator")
+    val home = runBlocking { repository.createHousehold("Private", creatorId, FridgeType.PRIVATE) }
+    val ref = messageReference(home.id, "private")
+    assertDenied(ref.set(activityData("private", creatorId)))
+    assertDenied(ref.set(messageData("private", creatorId)))
+  }
+
+  /**
+   * Exercises real membership and allows the image to be omitted or set as in the Message model.
+   */
+  private fun assertMemberCanCreateActivity(type: MessageType) {
+    val home = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(home.inviteCode, memberId) }
+    val ref = messageReference(home.id, "valid")
+    val data = activityData("valid", memberId, type)
+    Tasks.await(ref.set(if (type == MessageType.EATEN) data - "itemImageUrl" else data))
+    val stored = Tasks.await(ref.get(Source.SERVER))
+    assertEquals(memberId, stored.getString("senderId"))
+    assertEquals(type.name, stored.getString("type"))
+    assertEquals("Milk", stored.getString("itemName"))
+    assertNotNull(stored.getTimestamp("timestamp"))
+  }
+
+  /** Existing activity schema, using the server transform required by request.time validation. */
+  private fun activityData(
+      id: String,
+      senderId: String,
+      type: MessageType = MessageType.EATEN
+  ): Map<String, Any?> =
+      messageData(id, senderId, text = "") +
+          mapOf(
+              "type" to type.name,
+              "timestamp" to FieldValue.serverTimestamp(),
+              "itemName" to "Milk",
+              "itemImageUrl" to null)
+
   private fun messageData(id: String, senderId: String, text: String = "hello"): Map<String, Any> =
       mapOf(
           "id" to id,
           "senderId" to senderId,
-          "senderName" to "Sender",
+          "senderName" to "Member",
           "text" to text,
-          "timestamp" to Date())
+          "timestamp" to FieldValue.serverTimestamp())
 
   private fun messageReference(householdId: String, messageId: String): DocumentReference =
       householdReference(householdId).collection(FirestoreCollections.MESSAGES).document(messageId)

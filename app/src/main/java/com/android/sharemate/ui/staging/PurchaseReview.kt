@@ -4,6 +4,7 @@ package com.android.sharemate.ui.staging
 import com.android.sharemate.model.staging.StagedItem
 
 enum class PurchaseReviewError {
+  MEMBERS_UNAVAILABLE,
   MISSING_PRICE,
   TOTAL_OVERFLOW,
   TOTAL_TOO_LARGE,
@@ -40,6 +41,7 @@ data class PurchaseReview(
     val participants: Set<String> = emptySet(),
     val membershipChanged: Boolean = false,
     val currentUserId: String? = null,
+    val membersAvailable: Boolean = true,
 ) {
   fun withMembers(current: Map<String, String>): PurchaseReview =
       copy(
@@ -64,6 +66,7 @@ data class PurchaseReview(
     }
     val error =
         when {
+          !membersAvailable -> PurchaseReviewError.MEMBERS_UNAVAILABLE
           membershipChanged -> PurchaseReviewError.MEMBERSHIP_CHANGED
           total > MAX_PURCHASE_CENTS -> PurchaseReviewError.TOTAL_TOO_LARGE
           total <= 0 -> PurchaseReviewError.NONPOSITIVE_TOTAL
