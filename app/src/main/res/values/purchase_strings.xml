@@ -14,4 +14,7 @@
     <string name="purchase_no_participants">Select at least one participant.</string>
     <string name="purchase_invalid_participants">Select participants from the current household members.</string>
     <string name="purchase_membership_changed">Household membership changed. Review the payer and participants, then select them again.</string>
+    <string name="purchase_barcode_start">Start barcode purchase</string>
+    <string name="purchase_barcode_add">Scan another product barcode</string>
+    <string name="purchase_barcode_price_hint">Enter the actual line total for each product before sharing the cost. You can also add products manually.</string>
 </resources>

@@ -29,6 +29,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -249,7 +250,6 @@ open class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
                             selected = destination.isSelected(currentRoute),
-                            enabled = destination != TopLevelDestination.CHAT,
                             onClick = {
                               if (destination.isParentOf(currentRoute)) {
                                 // Tapping the tab of the open screen goes back to the tab itself.
@@ -344,7 +344,10 @@ open class MainActivity : ComponentActivity() {
                               showBalances = household.canViewBalances(session.uid),
                               onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
                               expenseRepository = expenseRepository,
-                              profileRepository = profileRepository)
+                              profileRepository = profileRepository,
+                              barcodeScanner = remember { createBarcodeScanner() },
+                              productCatalogRepository =
+                                  remember { createProductCatalogRepository() })
                         }
                       }
                   composable(BALANCES_ROUTE) {

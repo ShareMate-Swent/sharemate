@@ -338,6 +338,8 @@ service cloud.firestore {
 
       function isValidActivityMessage(message) {
         return message.get('type', null) in ['EATEN', 'THROWN']
+            // A server timestamp transform resolves to request.time; a client clock is not trusted.
+            && message.timestamp == request.time
             && message.text == ''
             && message.get('itemName', null) is string
             && hasVisibleText(message.itemName)

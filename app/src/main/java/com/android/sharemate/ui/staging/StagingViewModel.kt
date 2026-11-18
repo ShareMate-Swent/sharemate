@@ -126,6 +126,14 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
     )
   }
 
+  /** Appends a photo handoff once without replacing corrected rows or an open manual draft. */
+  fun appendBarcode(item: StagedItem) {
+    mutableState.update { state ->
+      if (state.draft != null || state.items.any { it.id == item.id }) state
+      else state.copy(items = state.items + item)
+    }
+  }
+
   /** Opens a blank draft with the default quantity, leaving the current list unchanged. */
   fun startAdding() {
     mutableState.update {

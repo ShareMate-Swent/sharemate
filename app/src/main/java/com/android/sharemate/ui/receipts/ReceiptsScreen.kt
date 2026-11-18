@@ -42,11 +42,13 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.*
 import coil.compose.AsyncImage
 import com.android.sharemate.R
+import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
@@ -68,6 +70,7 @@ import com.android.sharemate.ui.staging.StagingViewModel
 import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -89,9 +92,32 @@ fun ReceiptsScreen(
     onOpenBalances: () -> Unit = {},
     expenseRepository: ExpenseSubmissionRepository? = null,
     profileRepository: UserProfileRepository? = null,
+    barcodeScanner: BarcodeScanner? = null,
+    productCatalogRepository: ProductCatalogRepository? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
+  val barcode: PurchaseBarcodeViewModel? =
+      if (barcodeScanner != null && productCatalogRepository != null) {
+        viewModel(
+            key = "purchase-barcode_${userId}_$householdId",
+            factory =
+                viewModelFactory {
+                  initializer {
+                    PurchaseBarcodeViewModel(
+                        barcodeScanner, productCatalogRepository, createSavedStateHandle())
+                  }
+                })
+      } else null
+  val barcodePhoto: BarcodePhotoViewModel =
+      viewModel(
+          key = "purchase-barcode-photo_${userId}_$householdId",
+          factory =
+              viewModelFactory {
+                initializer {
+                  BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
+                }
+              })
   val photo: BarcodePhotoViewModel =
       viewModel(
           key = "receipt-photo_${userId}_$householdId",
@@ -170,7 +196,9 @@ fun ReceiptsScreen(
                     .copy(
                         membersAvailable =
                             memberState != null && !memberState.isLoading && !memberState.hasError)
-            else null)
+            else null,
+            barcode,
+            barcodePhoto)
       }
     } else {
       ReceiptHistoryFlow(
@@ -421,11 +449,23 @@ internal fun ReceiptScanFlow(
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
     purchaseReview: PurchaseReview? = null,
+    barcode: PurchaseBarcodeViewModel? = null,
+    barcodePhoto: BarcodePhotoViewModel? = null,
 ) {
   val nav = rememberNavController()
+  val scope = rememberCoroutineScope()
+  var openBarcode by rememberSaveable { mutableStateOf(false) }
   val activity = LocalContext.current.findActivity()
   DisposableEffect(photo) {
     onDispose { if (activity?.isChangingConfigurations != true) photo.discard() }
+  }
+  DisposableEffect(barcode, barcodePhoto) {
+    onDispose {
+      if (activity?.isChangingConfigurations != true) {
+        barcode?.cancelScan()
+        barcodePhoto?.discard()
+      }
+    }
   }
   val scan: ReceiptScanViewModel =
       viewModel(
@@ -468,6 +508,31 @@ internal fun ReceiptScanFlow(
                 }) {
                   Text(stringResource(R.string.scan_receipt))
                 }
+            if (barcode != null && barcodePhoto != null) {
+              Button(
+                  enabled = sharedHousehold && saveState?.canStartScan != false,
+                  modifier = Modifier.testTag(PurchaseBarcodeTestTags.START),
+                  onClick = {
+                    scope.launch {
+                      try {
+                        val draft = saveState?.submission?.takeIf { it.draft }
+                        if (save == null || draft != null || save.beginNewScan(emptyList())) {
+                          scan.confirm(
+                              draft?.items
+                                  ?: if (save == null) scan.currentItems() else emptyList())
+                          openBarcode = true
+                          nav.navigate(REVIEW_ROUTE) { launchSingleTop = true }
+                        }
+                      } catch (cancelled: CancellationException) {
+                        throw cancelled
+                      } catch (_: Exception) {
+                        // The coordinator exposes journal failure through its recovery feedback.
+                      }
+                    }
+                  }) {
+                    Text(stringResource(R.string.purchase_barcode_start))
+                  }
+            }
             deferred.forEach { retained ->
               Button(
                   onClick = { save?.recoverDeferred(retained.id) },
@@ -510,6 +575,7 @@ internal fun ReceiptScanFlow(
           })
     }
     composable(REVIEW_ROUTE) { entry ->
+      var retainingEdits by rememberSaveable { mutableStateOf(false) }
       val recovering =
           saveState?.let {
             it.phase == InventorySavePhase.LOADING ||
@@ -518,10 +584,11 @@ internal fun ReceiptScanFlow(
       if (recovering) {
         // SavedStateHandle may contain an older receipt than the durable journal. Do not create
         // the editable review ViewModel until its authoritative payload has been recovered.
+        BackHandler(enabled = retainingEdits) {}
         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
           HouseholdTopBar(
               title = stringResource(R.string.staging_title),
-              onBack = { nav.popBackStack() },
+              onBack = { if (!retainingEdits) nav.popBackStack() },
               backTestTag = StagingTestTags.BACK)
           InventorySaveFeedback(
               saveState,
@@ -547,6 +614,51 @@ internal fun ReceiptScanFlow(
       LaunchedEffect(staging, purchaseReview?.members, purchaseReview?.membersAvailable) {
         purchaseReview?.let { staging.updatePurchaseMembers(it.members, it.membersAvailable) }
       }
+      val stagingState by staging.state.collectAsStateWithLifecycle()
+      val barcodePhotoState = barcodePhoto?.state?.collectAsStateWithLifecycle()?.value
+      val barcodeError = barcode?.error?.collectAsStateWithLifecycle()?.value
+      LaunchedEffect(staging, barcode, barcodePhoto) {
+        if (openBarcode && barcode != null && barcodePhoto != null) {
+          openBarcode = false
+          barcode.startScan()
+          barcodePhoto.reset()
+          barcodePhoto.open()
+        }
+      }
+      val editable =
+          sharedHousehold &&
+              saveState?.canConfirm != false &&
+              (save == null || saveState?.submission != null)
+      val leaveReview: () -> Unit = leave@{
+        if (saveState?.phase == InventorySavePhase.SUBMITTING) return@leave
+        barcode?.cancelScan()
+        scope.launch {
+          try {
+            // Keep this entry's editable rows alive if writing the journal fails.
+            retainingEdits = true
+            if (!editable ||
+                save == null ||
+                saveState?.canStartScan != true ||
+                save.beginNewScan(stagingState.items)) {
+              scan.confirm(stagingState.items)
+              nav.popBackStack()
+            }
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            // Retain the editable rows until journal recovery succeeds.
+          }
+        }
+      }
+      BackHandler { leaveReview() }
+      if (barcode != null && barcodePhoto != null) {
+        BarcodePhotoFlow(
+            barcodePhoto,
+            confirmationError = stringResource(barcodeError.messageResource()),
+            onImageConfirmed = { uri ->
+              barcode.read(uri)?.let { item -> if (editable) staging.appendBarcode(item) }
+            })
+      }
       StagingScreen(
           staging,
           onConfirm = { confirmed ->
@@ -555,11 +667,8 @@ internal fun ReceiptScanFlow(
               nav.popBackStack()
             }
           },
-          onBack = { nav.popBackStack() },
-          actionsEnabled =
-              sharedHousehold &&
-                  saveState?.canConfirm != false &&
-                  (save == null || saveState?.submission != null),
+          onBack = leaveReview,
+          actionsEnabled = editable && barcodePhotoState?.busy != true,
           onConfirmPurchase =
               purchaseReview?.let { review ->
                 { purchase ->
@@ -571,6 +680,23 @@ internal fun ReceiptScanFlow(
                 }
               },
           statusContent = {
+            if (barcode != null && barcodePhoto != null) {
+              Text(stringResource(R.string.purchase_barcode_price_hint))
+              Button(
+                  enabled =
+                      editable && stagingState.draft == null && barcodePhotoState?.busy != true,
+                  modifier = Modifier.testTag(PurchaseBarcodeTestTags.ADD),
+                  onClick = {
+                    barcode.startScan()
+                    barcodePhoto.reset()
+                    barcodePhoto.open()
+                  }) {
+                    Text(stringResource(R.string.purchase_barcode_add))
+                  }
+              barcodeError?.let {
+                Text(stringResource(it.messageResource()), color = MaterialTheme.colorScheme.error)
+              }
+            }
             saveState?.submission?.expense?.let { expense ->
               val names =
                   (expense.shares.keys + expense.paidBy).associateWith {
@@ -652,3 +778,16 @@ private const val RECEIPTS_ROUTE = "receipts"
 private const val REVIEW_ROUTE = "review"
 private const val REVIEW_MODEL_KEY = "receipt-review"
 private const val UNSUBMITTED_REVIEW = "unsubmitted"
+
+object PurchaseBarcodeTestTags {
+  const val START = "purchase_barcode_start"
+  const val ADD = "purchase_barcode_add"
+}
+
+private fun PurchaseBarcodeError?.messageResource(): Int =
+    when (this) {
+      PurchaseBarcodeError.UNREADABLE -> R.string.barcode_lookup_unreadable
+      PurchaseBarcodeError.NOT_FOUND -> R.string.barcode_lookup_not_found
+      PurchaseBarcodeError.NO_DETAILS -> R.string.barcode_lookup_no_details
+      else -> R.string.barcode_lookup_failed
+    }
