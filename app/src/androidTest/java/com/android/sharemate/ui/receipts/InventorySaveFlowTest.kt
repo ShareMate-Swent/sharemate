@@ -167,6 +167,9 @@ class InventorySaveFlowTest {
       }
     }
     compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
+    compose
         .onNodeWithText(compose.activity.getString(R.string.purchase_members_loading))
         .assertIsDisplayed()
     compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
@@ -239,6 +242,9 @@ class InventorySaveFlowTest {
             profileRepository = profiles)
       }
     }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
     compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
     compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
@@ -360,6 +366,12 @@ class InventorySaveFlowTest {
             profileRepository = profiles)
       }
     }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
+        .performClick()
+    compose.waitUntil(TIMEOUT) {
+      compose.onAllNodesWithTag("purchase_members_retry").fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag("purchase_members_retry").performClick()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { assertEquals(2, attempts) }
@@ -394,15 +406,18 @@ class InventorySaveFlowTest {
       }
     }
     val app = compose.activity
-    compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertDoesNotExist()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { shared.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
     compose.runOnIdle { expensesAvailable.value = true }
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertIsDisplayed()
     compose.onNodeWithText(app.getString(R.string.purchase_members_loading)).assertDoesNotExist()
     compose.runOnIdle { profilesAvailable.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
     compose.runOnIdle { shared.value = false }
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).performClick()
     compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
   }
