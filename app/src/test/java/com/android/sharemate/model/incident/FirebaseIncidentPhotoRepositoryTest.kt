@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.*
 import org.robolectric.RobolectricTestRunner
 
+/** Tests transfers, session validation and cancellation with mocked Storage and Auth. */
 @RunWith(RobolectricTestRunner::class)
 class FirebaseIncidentPhotoRepositoryTest {
   @get:Rule val temporary = TemporaryFolder()
@@ -116,10 +117,14 @@ class FirebaseIncidentPhotoRepositoryTest {
   @Test
   fun missingSessionOrForgedAuthorFailsBeforeStorageAccess() = runTest {
     val source = photo(png)
-    assertTrue(repository.upload("home", "bob", source).isFailure)
+    val forged = repository.upload("home", "bob", source).exceptionOrNull()
+    assertTrue(forged is IllegalStateException)
+    assertEquals("Unexpected photo author", forged?.message)
     `when`(auth.currentUser).thenReturn(null)
-    assertTrue(repository.upload("home", "alice", source).isFailure)
-    assertTrue(repository.load(reference).isFailure)
+    val signedOut = repository.upload("home", "alice", source).exceptionOrNull()
+    assertTrue(signedOut is IllegalStateException)
+    assertEquals("No signed-in user", signedOut?.message)
+    assertEquals("No signed-in user", repository.load(reference).exceptionOrNull()?.message)
     verifyNoInteractions(root)
   }
 
@@ -156,6 +161,7 @@ class FirebaseIncidentPhotoRepositoryTest {
     val result = repository.upload("home", "alice", source)
 
     assertTrue(result.exceptionOrNull() is IllegalStateException)
+    assertEquals("The signed-in user changed", result.exceptionOrNull()?.message)
     verifyNoInteractions(root)
     assertArrayEquals(original, source.readBytes())
   }

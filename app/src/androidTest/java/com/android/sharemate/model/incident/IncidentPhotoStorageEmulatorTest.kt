@@ -70,7 +70,8 @@ class IncidentPhotoStorageEmulatorTest {
     return reference
   }
 
-  private fun path(author: String = owner) = "incidentPhotos/$home/$author/${UUID.randomUUID()}"
+  private fun path(author: String = owner) =
+      "${IncidentPhotoReference.ROOT}/$home/$author/${UUID.randomUUID()}"
 
   private suspend fun rawUpload(path: String, bytes: ByteArray = png, mime: String = "image/png") {
     storage.reference
@@ -169,7 +170,7 @@ class IncidentPhotoStorageEmulatorTest {
   @Test
   fun authorCannotListIncidentPhotos() = runBlocking {
     upload()
-    denied { storage.reference.child("incidentPhotos/$home").listAll().await() }
+    denied { storage.reference.child("${IncidentPhotoReference.ROOT}/$home").listAll().await() }
   }
 
   @Test
@@ -183,7 +184,7 @@ class IncidentPhotoStorageEmulatorTest {
   fun malformedPathsCannotBypassRules() = runBlocking {
     for (invalid in
         listOf(
-            "incidentPhotos/$home/$owner/not-a-uuid",
+            "${IncidentPhotoReference.ROOT}/$home/$owner/not-a-uuid",
             "${path()}/extra",
             "incidents/$home/$owner/${UUID.randomUUID()}")) {
       denied { rawUpload(invalid) }

@@ -71,7 +71,7 @@ internal constructor(
       }
 
   private fun checkSession(uid: String) {
-    check(auth.currentUser?.uid == uid) { "The signed-in user changed" }
+    check(auth.currentUser?.uid == uid) { SESSION_CHANGED }
   }
 
   private suspend fun <T> inSession(
@@ -80,8 +80,8 @@ internal constructor(
   ): Result<T> =
       try {
         currentCoroutineContext().ensureActive()
-        val uid = checkNotNull(auth.currentUser?.uid) { "No signed-in user" }
-        check(expectedUid == null || uid == expectedUid) { "Unexpected photo author" }
+        val uid = checkNotNull(auth.currentUser?.uid) { NO_SESSION }
+        check(expectedUid == null || uid == expectedUid) { INVALID_AUTHOR }
         val value = action(uid)
         checkSession(uid)
         currentCoroutineContext().ensureActive()
@@ -92,4 +92,10 @@ internal constructor(
         currentCoroutineContext().ensureActive()
         Result.failure(failure)
       }
+
+  private companion object {
+    const val SESSION_CHANGED = "The signed-in user changed"
+    const val NO_SESSION = "No signed-in user"
+    const val INVALID_AUTHOR = "Unexpected photo author"
+  }
 }

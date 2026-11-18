@@ -14,7 +14,7 @@ import java.util.UUID
  */
 data class IncidentPhotoReference(val path: String) {
   init {
-    require(PATH.matches(path)) { "Invalid incident photo path" }
+    require(PATH.matches(path)) { INVALID_PATH }
   }
 
   val householdId: String
@@ -24,12 +24,14 @@ data class IncidentPhotoReference(val path: String) {
     get() = path.split('/')[2]
 
   companion object {
+    internal const val ROOT = "incidentPhotos"
+    private const val INVALID_PATH = "Invalid incident photo path"
     // Household IDs also use ':' between the creator UID and the creation operation ID.
     private const val SEGMENT = "[A-Za-z0-9_:-]+"
     private const val PHOTO_ID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    private val PATH = Regex("incidentPhotos/$SEGMENT/$SEGMENT/$PHOTO_ID")
+    private val PATH = Regex("$ROOT/$SEGMENT/$SEGMENT/$PHOTO_ID")
 
     internal fun forUpload(home: String, author: String, id: UUID): IncidentPhotoReference =
-        IncidentPhotoReference("incidentPhotos/$home/$author/$id")
+        IncidentPhotoReference("$ROOT/$home/$author/$id")
   }
 }
