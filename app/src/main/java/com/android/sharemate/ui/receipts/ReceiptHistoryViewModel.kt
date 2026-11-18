@@ -203,8 +203,10 @@ class ReceiptHistoryViewModel(
                 InventorySubmissionStatus.CONFIRMED -> confirmSaved(submission)
                 InventorySubmissionStatus.MISSING ->
                     if (receipts.value.firstOrNull { it.submission.id == submission.id }?.phase !=
-                        InventorySavePhase.CONFIRMED)
-                        setPhase(submission.id, InventorySavePhase.FAILED)
+                        InventorySavePhase.CONFIRMED) {
+                      setPhase(submission.id, InventorySavePhase.FAILED)
+                      submissions.remove(submission.id)
+                    }
                 InventorySubmissionStatus.PENDING -> Unit
               }
             }

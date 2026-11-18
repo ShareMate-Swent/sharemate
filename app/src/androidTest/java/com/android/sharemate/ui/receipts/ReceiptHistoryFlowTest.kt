@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -74,6 +75,11 @@ class ReceiptHistoryFlowTest {
     val review = compose.activity.getString(R.string.receipt_review_items)
     compose.waitUntil(5_000) { compose.onAllNodesWithText(review).fetchSemanticsNodes().size == 2 }
     compose.onAllNodesWithText(review).assertCountEquals(2)
+    compose.onAllNodesWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW)[0].performClick()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertIsDisplayed()
+    saveScreenshot("receipt-photo-large.png", ReceiptHistoryTestTags.PHOTO_EXPANDED)
+    compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).performClick()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertDoesNotExist()
     compose.onAllNodesWithText(review)[0].performClick()
     compose.onNodeWithText("Bread").assertIsDisplayed()
     saveScreenshot("receipt-review.png")
@@ -84,11 +90,10 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
-  private fun saveScreenshot(name: String) {
+  private fun saveScreenshot(name: String, tag: String? = null) {
     val output = File(compose.activity.getExternalFilesDir(null), name)
     output.outputStream().use { stream ->
-      compose
-          .onRoot()
+      (if (tag == null) compose.onRoot() else compose.onNodeWithTag(tag))
           .captureToImage()
           .asAndroidBitmap()
           .compress(Bitmap.CompressFormat.PNG, 100, stream)

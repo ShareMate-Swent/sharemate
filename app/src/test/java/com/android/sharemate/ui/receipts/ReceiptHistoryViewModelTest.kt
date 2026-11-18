@@ -190,9 +190,66 @@ class ReceiptHistoryViewModelTest {
     assertEquals(attempts[0].items, attempts[1].items)
   }
 
+  @Test
+  fun failedMetadataWriteRollsBackDraftAndPhoto() = runTest {
+    val store = MemoryStore().apply { failDetails = true }
+    val deleted = mutableListOf<String>()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) {
+            deleted += receiptId
+          }
+        }
+    val history =
+        ReceiptHistoryViewModel(mock(ItemRepository::class.java), store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+
+    assertTrue(
+        runCatching { history.addDraft("photo", listOf(StagedItem("a", "Apple", 1, 100))) }
+            .isFailure)
+    assertTrue(store.list("owner", "home").isEmpty())
+    assertEquals(1, deleted.size)
+    assertTrue(history.receipts.value.isEmpty())
+  }
+
+  @Test
+  fun serverMissingKeepsReviewedRowsAvailableForRetry() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val statuses = MutableSharedFlow<InventorySubmissionStatus>(extraBufferCapacity = 1)
+    val repository = mock(ItemRepository::class.java)
+    `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(CompletableDeferred()))
+    `when`(repository.observeSubmission(anyK())).thenReturn(statuses)
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val id = history.addDraft("photo", rows)
+    history.confirm(id, rows)
+    runCurrent()
+
+    statuses.emit(InventorySubmissionStatus.MISSING)
+    runCurrent()
+    assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
+    assertEquals(rows, history.receipts.value.single().submission.items)
+    history.retry(id)
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    verify(repository, times(2)).addItems(anyK())
+  }
+
   private class MemoryStore : InventorySubmissionStore {
     private val submissions = mutableMapOf<String, InventorySubmission>()
     private val metadata = mutableMapOf<String, ReceiptDetails>()
+    var failDetails = false
 
     override suspend fun load(ownerId: String, householdId: String) =
         list(ownerId, householdId).firstOrNull()
@@ -210,7 +267,12 @@ class ReceiptHistoryViewModelTest {
         metadata[id]?.takeIf { it.ownerId == ownerId && it.householdId == householdId }
 
     override suspend fun saveDetails(details: ReceiptDetails) {
+      if (failDetails) error("metadata unavailable")
       metadata[details.id] = details
+    }
+
+    override suspend fun deleteDraft(ownerId: String, householdId: String, id: String) {
+      submissions.remove(id)
     }
   }
 

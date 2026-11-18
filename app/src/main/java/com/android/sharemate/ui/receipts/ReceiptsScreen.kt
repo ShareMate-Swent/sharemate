@@ -2,11 +2,20 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -17,10 +26,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -187,6 +199,7 @@ private fun ReceiptHistoryFlow(
     onPurchase: (() -> Unit)?,
 ) {
   val nav = rememberNavController()
+  var expandedPhotoUri by remember { mutableStateOf<String?>(null) }
   val activity = LocalContext.current.findActivity()
   DisposableEffect(photo) {
     onDispose { if (activity?.isChangingConfigurations != true) photo.discard() }
@@ -206,39 +219,56 @@ private fun ReceiptHistoryFlow(
   }
   NavHost(nav, startDestination = RECEIPTS_ROUTE) {
     composable(RECEIPTS_ROUTE) {
-      Column(
-          modifier = Modifier.verticalScroll(rememberScrollState()),
+      LazyVerticalGrid(
+          columns = GridCells.Fixed(2),
+          contentPadding = PaddingValues(Dimens.spacingXs),
+          horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
           verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
-            Text(
-                stringResource(R.string.receipts_title),
-                modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
-                style = MaterialTheme.typography.headlineMedium)
-            Button(
-                onClick = {
-                  photo.reset()
-                  photo.open()
-                }) {
-                  Text(stringResource(R.string.scan_receipt))
+            item(span = { GridItemSpan(maxLineSpan) }) {
+              Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+                Text(
+                    stringResource(R.string.receipts_title),
+                    modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
+                    style = MaterialTheme.typography.headlineMedium)
+                Button(
+                    onClick = {
+                      photo.reset()
+                      photo.open()
+                    }) {
+                      Text(stringResource(R.string.scan_receipt))
+                    }
+                onPurchase?.let { open ->
+                  OutlinedButton(onClick = open) {
+                    Text(stringResource(R.string.receipt_scan_purchase))
+                  }
                 }
-            onPurchase?.let { open ->
-              OutlinedButton(onClick = open) {
-                Text(stringResource(R.string.receipt_scan_purchase))
+                if (editFailed) {
+                  Text(stringResource(R.string.receipt_edit_failed))
+                  Button(onClick = { history.viewModelScope.launch { history.refresh() } }) {
+                    Text(stringResource(R.string.household_retry))
+                  }
+                }
+                if (showBalances)
+                    Button(
+                        onClick = onOpenBalances,
+                        modifier = Modifier.testTag(BalancesTestTags.ENTRY)) {
+                          Text(stringResource(R.string.balances_title))
+                        }
               }
             }
-            if (editFailed) {
-              Text(stringResource(R.string.receipt_edit_failed))
-              Button(onClick = { history.viewModelScope.launch { history.refresh() } }) {
-                Text(stringResource(R.string.household_retry))
-              }
-            }
-            receipts.forEach { receipt ->
+            items(receipts, key = { it.submission.id }) { receipt ->
               Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(Dimens.spacingXs)) {
                   receipt.details?.photoUri?.let { uri ->
                     AsyncImage(
                         model = uri,
                         contentDescription = stringResource(R.string.receipt_photo_preview),
-                        modifier = Modifier.fillMaxWidth().height(120.dp))
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .height(200.dp)
+                                .clickable { expandedPhotoUri = uri }
+                                .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW),
+                        contentScale = ContentScale.Fit)
                   }
                   receipt.details?.let { details ->
                     Text(DateFormat.getDateInstance().format(Date(details.scannedAtMillis)))
@@ -254,20 +284,17 @@ private fun ReceiptHistoryFlow(
                   receipt.details?.savedAtMillis?.let {
                     Text(DateFormat.getDateInstance().format(Date(it)))
                   }
-                  OutlinedButton(onClick = { nav.navigate("receipt/${receipt.submission.id}") }) {
-                    Text(
-                        stringResource(
-                            if (receipt.submission.draft) R.string.receipt_review_items
-                            else R.string.receipt_view_receipt))
-                  }
+                  OutlinedButton(
+                      onClick = { nav.navigate("receipt/${receipt.submission.id}") },
+                      modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(
+                                if (receipt.submission.draft) R.string.receipt_review_items
+                                else R.string.receipt_view_receipt))
+                      }
                 }
               }
             }
-            if (showBalances)
-                Button(
-                    onClick = onOpenBalances, modifier = Modifier.testTag(BalancesTestTags.ENTRY)) {
-                      Text(stringResource(R.string.balances_title))
-                    }
           }
       BarcodePhotoFlow(
           photo,
@@ -326,7 +353,11 @@ private fun ReceiptHistoryFlow(
                 AsyncImage(
                     model = uri,
                     contentDescription = stringResource(R.string.receipt_photo_preview),
-                    modifier = Modifier.fillMaxWidth().height(160.dp))
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .height(160.dp)
+                            .clickable { expandedPhotoUri = uri }
+                            .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
               }
               Text(
                   stringResource(
@@ -346,6 +377,29 @@ private fun ReceiptHistoryFlow(
       }
     }
   }
+  expandedPhotoUri?.let { uri ->
+    Dialog(
+        onDismissRequest = { expandedPhotoUri = null },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+          Box(
+              Modifier.fillMaxSize()
+                  .background(MaterialTheme.colorScheme.scrim)
+                  .clickable { expandedPhotoUri = null }
+                  .testTag(ReceiptHistoryTestTags.PHOTO_EXPANDED)) {
+                AsyncImage(
+                    model = uri,
+                    contentDescription = stringResource(R.string.receipt_photo_preview),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit)
+              }
+        }
+  }
+}
+
+/** Stable semantics for opening a retained receipt photo. */
+object ReceiptHistoryTestTags {
+  const val PHOTO_PREVIEW = "receipt_photo_preview"
+  const val PHOTO_EXPANDED = "receipt_photo_expanded"
 }
 
 @Composable
