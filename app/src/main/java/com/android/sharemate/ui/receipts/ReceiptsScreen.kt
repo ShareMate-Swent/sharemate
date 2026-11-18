@@ -2,25 +2,44 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.*
+import coil.compose.AsyncImage
 import com.android.sharemate.R
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.finance.ExpenseSubmissionRepository
@@ -30,6 +49,7 @@ import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -47,6 +67,8 @@ import com.android.sharemate.ui.staging.StagingScreen
 import com.android.sharemate.ui.staging.StagingTestTags
 import com.android.sharemate.ui.staging.StagingViewModel
 import com.android.sharemate.ui.theme.Dimens
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -97,28 +119,44 @@ fun ReceiptsScreen(
               })
   val photo: BarcodePhotoViewModel =
       viewModel(
-          key = "receipt-photo",
+          key = "receipt-photo_${userId}_$householdId",
           factory =
               viewModelFactory {
                 initializer {
                   BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
                 }
               })
-  val save: InventorySaveViewModel =
+  val history: ReceiptHistoryViewModel =
       viewModel(
-          key = "inventory-save_${userId}_$householdId",
+          key = "receipt-history_${userId}_$householdId",
           factory =
               viewModelFactory {
                 initializer {
-                  InventorySaveViewModel(
+                  ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = true),
+                      AndroidInventorySubmissionStore(context, legacyActive = false),
+                      AndroidReceiptPhotoStore(context),
                       userId,
-                      householdId,
-                      sharedHousehold,
-                      expenseRepository)
+                      householdId)
                 }
               })
+  val purchaseSave: InventorySaveViewModel? =
+      if (expenseRepository != null) {
+        viewModel(
+            key = "inventory-save_${userId}_$householdId",
+            factory =
+                viewModelFactory {
+                  initializer {
+                    InventorySaveViewModel(
+                        itemRepository,
+                        AndroidInventorySubmissionStore(context, legacyActive = true),
+                        userId,
+                        householdId,
+                        sharedHousehold,
+                        expenseRepository)
+                  }
+                })
+      } else null
   val memberModel: HouseholdMembersViewModel? =
       if (sharedHousehold && profileRepository != null) {
         viewModel(
@@ -130,34 +168,269 @@ fun ReceiptsScreen(
       } else null
   val memberState = memberModel?.state?.collectAsStateWithLifecycle()?.value
   val members =
-      if (memberState == null) emptyMap()
-      else memberState.members.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }
-  Column {
-    if (memberState?.isLoading == true) Text(stringResource(R.string.purchase_members_loading))
-    if (memberState?.hasError == true) {
-      Text(stringResource(R.string.household_members_error))
-      Button(
-          onClick = { memberModel.retry() },
-          modifier = Modifier.testTag("purchase_members_retry")) {
-            Text(stringResource(R.string.household_retry))
-          }
+      memberState?.members?.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }.orEmpty()
+  var purchaseMode by rememberSaveable(userId, householdId) { mutableStateOf(false) }
+  key(userId, householdId) {
+    if (purchaseMode && purchaseSave != null) {
+      Column {
+        Button(onClick = { purchaseMode = false }) { Text(stringResource(R.string.receipts_title)) }
+        if (memberState?.isLoading == true) Text(stringResource(R.string.purchase_members_loading))
+        if (memberState?.hasError == true) {
+          Text(stringResource(R.string.household_members_error))
+          Button(
+              onClick = { memberModel.retry() },
+              modifier = Modifier.testTag("purchase_members_retry")) {
+                Text(stringResource(R.string.household_retry))
+              }
+        }
+        ReceiptScanFlow(
+            photo,
+            reader,
+            purchaseSave,
+            sharedHousehold,
+            showBalances,
+            onOpenBalances,
+            if (sharedHousehold)
+                PurchaseReview.forUser(userId, members)
+                    .copy(
+                        membersAvailable =
+                            memberState != null && !memberState.isLoading && !memberState.hasError)
+            else null,
+            barcode,
+            barcodePhoto)
+      }
+    } else {
+      ReceiptHistoryFlow(
+          photo,
+          reader,
+          history,
+          sharedHousehold,
+          showBalances,
+          onOpenBalances,
+          onPurchase =
+              if (purchaseSave != null) {
+                { purchaseMode = true }
+              } else null)
     }
-    ReceiptScanFlow(
-        photo,
-        reader,
-        save,
-        sharedHousehold,
-        showBalances,
-        onOpenBalances,
-        if (sharedHousehold && expenseRepository != null)
-            PurchaseReview.forUser(userId, members)
-                .copy(
-                    membersAvailable =
-                        memberState != null && !memberState.isLoading && !memberState.hasError)
-        else null,
-        barcode,
-        barcodePhoto)
   }
+}
+
+@Composable
+private fun ReceiptHistoryFlow(
+    photo: BarcodePhotoViewModel,
+    reader: ReceiptReader,
+    history: ReceiptHistoryViewModel,
+    sharedHousehold: Boolean,
+    showBalances: Boolean,
+    onOpenBalances: () -> Unit,
+    onPurchase: (() -> Unit)?,
+) {
+  val nav = rememberNavController()
+  var expandedPhotoUri by remember { mutableStateOf<String?>(null) }
+  val activity = LocalContext.current.findActivity()
+  DisposableEffect(photo) {
+    onDispose { if (activity?.isChangingConfigurations != true) photo.discard() }
+  }
+  val receipts by history.receipts.collectAsStateWithLifecycle()
+  val editFailed by history.error.collectAsStateWithLifecycle()
+  val scan: ReceiptScanViewModel =
+      viewModel(
+          factory =
+              viewModelFactory {
+                initializer { ReceiptScanViewModel(reader, createSavedStateHandle()) }
+              })
+  var newReceiptId by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(newReceiptId) {
+    newReceiptId?.let { nav.navigate("receipt/$it") }
+    newReceiptId = null
+  }
+  NavHost(nav, startDestination = RECEIPTS_ROUTE) {
+    composable(RECEIPTS_ROUTE) {
+      LazyVerticalGrid(
+          columns = GridCells.Fixed(2),
+          contentPadding = PaddingValues(Dimens.spacingXs),
+          horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+          verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+              Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+                Text(
+                    stringResource(R.string.receipts_title),
+                    modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
+                    style = MaterialTheme.typography.headlineMedium)
+                Button(
+                    onClick = {
+                      photo.reset()
+                      photo.open()
+                    }) {
+                      Text(stringResource(R.string.scan_receipt))
+                    }
+                onPurchase?.let { open ->
+                  OutlinedButton(onClick = open) {
+                    Text(stringResource(R.string.receipt_scan_purchase))
+                  }
+                }
+                if (editFailed) {
+                  Text(stringResource(R.string.receipt_edit_failed))
+                  Button(onClick = history::reload) {
+                    Text(stringResource(R.string.household_retry))
+                  }
+                }
+                if (showBalances)
+                    Button(
+                        onClick = onOpenBalances,
+                        modifier = Modifier.testTag(BalancesTestTags.ENTRY)) {
+                          Text(stringResource(R.string.balances_title))
+                        }
+              }
+            }
+            items(receipts, key = { it.submission.id }) { receipt ->
+              Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(Dimens.spacingXs)) {
+                  receipt.details?.photoUri?.let { uri ->
+                    AsyncImage(
+                        model = uri,
+                        contentDescription = stringResource(R.string.receipt_photo_preview),
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .height(ReceiptLayout.CardPhotoHeight)
+                                .clickable { expandedPhotoUri = uri }
+                                .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW),
+                        contentScale = ContentScale.Fit)
+                  }
+                  receipt.details?.let { details ->
+                    Text(DateFormat.getDateInstance().format(Date(details.scannedAtMillis)))
+                  }
+                  Text(stringResource(receipt.phase.labelResource()))
+                  receipt.details?.savedAtMillis?.let {
+                    Text(DateFormat.getDateInstance().format(Date(it)))
+                  }
+                  OutlinedButton(
+                      onClick = { nav.navigate("receipt/${receipt.submission.id}") },
+                      modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(
+                                if (receipt.submission.draft) R.string.receipt_review_items
+                                else R.string.receipt_view_receipt))
+                      }
+                }
+              }
+            }
+          }
+      BarcodePhotoFlow(
+          photo,
+          receipt = true,
+          confirmationError = stringResource(R.string.receipt_unreadable),
+          onImageConfirmed = { uri ->
+            scan.read(uri) { items -> newReceiptId = history.retainScan(uri, items) }
+          })
+    }
+    composable("receipt/{id}") { entry ->
+      val id = entry.arguments?.getString("id")
+      val receipt = receipts.firstOrNull { it.submission.id == id }
+      if (receipt != null) {
+        var awaitingConfirmation by remember(entry) { mutableStateOf(false) }
+        LaunchedEffect(receipt.phase, awaitingConfirmation) {
+          if (awaitingConfirmation && receipt.phase == InventorySavePhase.PENDING) {
+            nav.popBackStack()
+          }
+        }
+        val staging: StagingViewModel =
+            viewModel(
+                viewModelStoreOwner = entry,
+                factory =
+                    viewModelFactory { initializer { StagingViewModel(receipt.submission.items) } })
+        val stagingState by staging.state.collectAsStateWithLifecycle()
+        LaunchedEffect(receipt.submission.id, stagingState.items) {
+          if (receipt.submission.draft && stagingState.items != receipt.submission.items) {
+            history.updateDraft(receipt.submission.id, stagingState.items)
+          }
+        }
+        val savedReview by history.savedReview.collectAsStateWithLifecycle()
+        DisposableEffect(entry) { onDispose { history.clearSavedReview() } }
+        LaunchedEffect(savedReview) {
+          if (savedReview == receipt.submission.id) {
+            history.clearSavedReview()
+            nav.popBackStack()
+          }
+        }
+        val leaveReview = {
+          if (receipt.submission.draft) {
+            history.saveAndLeave(receipt.submission.id, staging.state.value.items)
+          } else {
+            nav.popBackStack()
+          }
+          Unit
+        }
+        BackHandler(onBack = leaveReview)
+        StagingScreen(
+            staging,
+            onConfirm = { items ->
+              if (sharedHousehold && receipt.submission.draft) {
+                awaitingConfirmation = true
+                history.confirm(receipt.submission.id, items)
+              }
+            },
+            onBack = leaveReview,
+            actionsEnabled = sharedHousehold && receipt.submission.draft,
+            statusContent = {
+              receipt.details?.photoUri?.let { uri ->
+                AsyncImage(
+                    model = uri,
+                    contentDescription = stringResource(R.string.receipt_photo_preview),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .height(ReceiptLayout.ReviewPhotoHeight)
+                            .clickable { expandedPhotoUri = uri }
+                            .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
+              }
+              Text(stringResource(receipt.phase.labelResource()))
+              if (editFailed) Text(stringResource(R.string.receipt_edit_failed))
+              if (receipt.phase == InventorySavePhase.FAILED) {
+                Button(onClick = { history.retry(receipt.submission.id) }) {
+                  Text(stringResource(R.string.household_retry))
+                }
+              }
+            })
+      }
+    }
+  }
+  expandedPhotoUri?.let { uri ->
+    Dialog(
+        onDismissRequest = { expandedPhotoUri = null },
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+          Box(
+              Modifier.fillMaxSize()
+                  .background(MaterialTheme.colorScheme.scrim)
+                  .clickable { expandedPhotoUri = null }
+                  .testTag(ReceiptHistoryTestTags.PHOTO_EXPANDED)) {
+                AsyncImage(
+                    model = uri,
+                    contentDescription = stringResource(R.string.receipt_photo_preview),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit)
+              }
+        }
+  }
+}
+
+/** Photo dimensions shared by retained receipt surfaces. */
+private object ReceiptLayout {
+  val CardPhotoHeight = 200.dp
+  val ReviewPhotoHeight = 160.dp
+}
+
+private fun InventorySavePhase.labelResource(): Int =
+    when (this) {
+      InventorySavePhase.READY -> R.string.receipt_status_draft
+      InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
+      InventorySavePhase.FAILED -> R.string.inventory_save_failed
+      else -> R.string.inventory_save_pending
+    }
+
+/** Stable semantics for opening a retained receipt photo. */
+object ReceiptHistoryTestTags {
+  const val PHOTO_PREVIEW = "receipt_photo_preview"
+  const val PHOTO_EXPANDED = "receipt_photo_expanded"
 }
 
 @Composable
