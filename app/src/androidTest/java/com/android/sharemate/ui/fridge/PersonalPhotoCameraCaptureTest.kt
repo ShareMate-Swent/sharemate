@@ -24,12 +24,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.R
-import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerLabels
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.PhotoSource
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -61,17 +63,19 @@ class PersonalPhotoCameraCaptureTest {
       MaterialTheme {
         PhotoPickerDialog(
             vm,
-            title = R.string.personal_photo_add,
-            previewDescription = R.string.personal_photo_preview,
-            sourceDescription = R.string.personal_photo_sources) { uri ->
-              val copy = photos.copy(uri, fromCamera = vm.state.value.fromCamera)
+            labels =
+                PhotoPickerLabels(
+                    R.string.personal_photo_add,
+                    R.string.personal_photo_preview,
+                    R.string.personal_photo_sources)) { photo ->
+              val copy = photos.copy(photo.uri, fromCamera = photo.source == PhotoSource.CAMERA)
               try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(copy.path, bounds)
                 assertEquals("image/jpeg", bounds.outMimeType)
                 assertTrue(bounds.outWidth in 1..1280 && bounds.outHeight in 1..1280)
                 assertTrue(copy.length() in 1..PersonalPhotoRepository.MAX_BYTES.toLong())
-                prepared = uri
+                prepared = photo.uri
               } finally {
                 photos.delete(copy)
               }
@@ -116,15 +120,15 @@ class PersonalPhotoCameraCaptureTest {
         screenshot.recycle()
       }
       compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performScrollTo().performClick()
-      compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
+      compose.waitUntil(20_000) { vm.state.value.selection?.uri != null && !vm.state.value.busy }
       compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
       compose.runOnIdle {
         assertNull(prepared)
-        assertTrue(vm.state.value.fromCamera)
+        assertEquals(PhotoSource.CAMERA, vm.state.value.selection?.source)
       }
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
-      compose.runOnIdle { assertEquals(vm.state.value.uri, prepared) }
+      compose.runOnIdle { assertEquals(vm.state.value.selection?.uri, prepared) }
     } finally {
       compose.runOnIdle { vm.discard() }
     }

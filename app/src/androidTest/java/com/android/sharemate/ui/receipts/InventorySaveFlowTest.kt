@@ -688,7 +688,9 @@ class InventorySaveFlowTest {
       }
       compose.onNodeWithText(context.getString(R.string.scan_receipt)).performClick()
       compose.runOnIdle { photo.select("content://picker/receipt") }
-      compose.waitUntil(TIMEOUT) { photo.state.value.uri != null && !photo.state.value.busy }
+      compose.waitUntil(TIMEOUT) {
+        photo.state.value.selection?.uri != null && !photo.state.value.busy
+      }
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.onNodeWithTag(StagingTestTags.item("0")).performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Oat milk")

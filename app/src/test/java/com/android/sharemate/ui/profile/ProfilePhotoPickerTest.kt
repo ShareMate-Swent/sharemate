@@ -61,7 +61,7 @@ class ProfilePhotoPickerTest {
     compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(uri to false), confirmed)
-      assertNull(camera.state.value.uri)
+      assertNull(camera.state.value.selection?.uri)
       assertFalse(camera.state.value.confirmed)
     }
   }
@@ -77,7 +77,7 @@ class ProfilePhotoPickerTest {
     compose.runOnIdle { shown = false }
     compose.runOnIdle {
       assertFalse(camera.state.value.visible)
-      assertNull(camera.state.value.uri)
+      assertNull(camera.state.value.selection?.uri)
     }
   }
 }

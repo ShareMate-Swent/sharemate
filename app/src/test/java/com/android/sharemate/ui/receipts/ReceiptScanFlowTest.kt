@@ -12,9 +12,9 @@ import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.R
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.receipt.ReceiptItem
+import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
-import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -85,7 +85,9 @@ class ReceiptScanFlowTest {
       compose.onNodeWithText(app.getString(R.string.scan_receipt)).performClick()
       fun selectAndConfirm() {
         compose.runOnIdle { model.select("content://picker/receipt") }
-        compose.waitUntil(10000) { !model.state.value.busy && model.state.value.uri != null }
+        compose.waitUntil(10000) {
+          !model.state.value.busy && model.state.value.selection?.uri != null
+        }
         compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       }
       selectAndConfirm()

@@ -46,13 +46,13 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.photo.PhotoPickerTestTags
-import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeUiState
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testPseudoRepository
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import com.android.sharemate.utils.FirebaseEmulator
@@ -186,7 +186,9 @@ class ReceiptToFridgeE2ETest {
           withContext(Dispatchers.IO) { writePhoto(File(checkNotNull(Uri.parse(uri).path))) }
         }
       }
-      compose.waitUntil(TIMEOUT) { photo.state.value.uri != null && !photo.state.value.busy }
+      compose.waitUntil(TIMEOUT) {
+        photo.state.value.selection?.uri != null && !photo.state.value.busy
+      }
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(TIMEOUT) { save.state.value.submission?.draft == true }
       verifyDraft(checkNotNull(save.state.value.submission).items)

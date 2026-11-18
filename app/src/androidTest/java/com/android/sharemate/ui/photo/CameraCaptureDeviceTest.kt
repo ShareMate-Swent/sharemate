@@ -32,6 +32,7 @@ import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodeFormTestTags
 import com.android.sharemate.ui.fridge.AddItemDialog
 import com.android.sharemate.ui.fridge.FridgeFormError
 import com.android.sharemate.ui.fridge.FridgeUiState
@@ -86,10 +87,10 @@ class CameraCaptureDeviceTest {
         }
       }
     }
-    compose.waitUntil(10_000) { vm.state.value.uri != null && !vm.state.value.busy }
+    compose.waitUntil(10_000) { vm.state.value.selection?.uri != null && !vm.state.value.busy }
     compose.runOnIdle { vm.confirm() }
     compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
-    val selected = vm.state.value.uri
+    val selected = vm.state.value.selection?.uri
     compose
         .onNodeWithText(compose.activity.getString(R.string.barcode_photo_selected))
         .assertExists()
@@ -99,7 +100,7 @@ class CameraCaptureDeviceTest {
         .onNodeWithText(compose.activity.getString(R.string.barcode_photo_selected))
         .assertExists()
     compose.runOnIdle {
-      assertEquals(selected, vm.state.value.uri)
+      assertEquals(selected, vm.state.value.selection?.uri)
       owner.viewModelStore.clear()
     }
   }
@@ -124,7 +125,7 @@ class CameraCaptureDeviceTest {
         }
       }
     }
-    compose.onNodeWithTag(PhotoPickerTestTags.OPEN).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodeFormTestTags.OPEN).performScrollTo().performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("2")
@@ -147,26 +148,30 @@ class CameraCaptureDeviceTest {
     var handedOff: String? = null
     compose.setContent {
       MaterialTheme {
-        PhotoPickerDialog(vm) { uri ->
-          store.validate(uri)
-          handedOff = uri
-        }
+        PhotoPickerDialog(
+            vm,
+            PhotoPickerLabels(
+                R.string.personal_photo_add,
+                R.string.personal_photo_preview,
+                R.string.personal_photo_sources)) { photo ->
+              store.validate(photo.uri)
+              handedOff = photo.uri
+            }
       }
     }
     compose.runOnIdle { vm.open() }
     compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).performScrollTo().performClick()
     compose.waitUntil(20_000) {
-      runCatching { compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled() }
-          .isSuccess
+      runCatching { compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled() }.isSuccess
     }
     compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performScrollTo().performClick()
-    compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
+    compose.waitUntil(20_000) { vm.state.value.selection?.uri != null && !vm.state.value.busy }
     compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertEquals(null, handedOff) }
     compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
     compose.runOnIdle {
-      assertEquals(vm.state.value.uri, handedOff)
+      assertEquals(vm.state.value.selection?.uri, handedOff)
       vm.discard()
     }
   }

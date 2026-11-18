@@ -32,6 +32,12 @@ import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 class PhotoPickerDialogTest {
+  private val labels =
+      PhotoPickerLabels(
+          R.string.personal_photo_add,
+          R.string.personal_photo_preview,
+          R.string.personal_photo_sources)
+
   @get:Rule val compose = createComposeRule()
 
   @Test
@@ -67,7 +73,7 @@ class PhotoPickerDialogTest {
         }
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-        MaterialTheme { PhotoPickerDialog(vm) }
+        MaterialTheme { PhotoPickerDialog(vm, labels) }
       }
     }
     compose.runOnIdle { vm.open() }
@@ -81,13 +87,13 @@ class PhotoPickerDialogTest {
     compose.runOnIdle {
       assertEquals(1, permissionRequests)
       assertEquals(1, galleryRequests)
-      assertNull(vm.state.value.uri)
+      assertNull(vm.state.value.selection?.uri)
       assertFalse(vm.state.value.failed)
       assertFalse(vm.state.value.busy)
     }
     compose
         .onNodeWithText(
-            RuntimeEnvironment.getApplication().getString(R.string.barcode_camera_settings))
+            RuntimeEnvironment.getApplication().getString(R.string.photo_picker_camera_settings))
         .performScrollTo()
         .performClick()
     compose.runOnIdle {
@@ -117,7 +123,7 @@ class PhotoPickerDialogTest {
         }
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-        MaterialTheme { PhotoPickerDialog(vm) }
+        MaterialTheme { PhotoPickerDialog(vm, labels) }
       }
     }
     for (tag in listOf("barcode_photo_camera", "barcode_photo_gallery")) {
@@ -126,7 +132,7 @@ class PhotoPickerDialogTest {
       compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
       compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsEnabled()
       compose.runOnIdle {
-        assertNull(vm.state.value.uri)
+        assertNull(vm.state.value.selection?.uri)
         assertFalse(vm.state.value.busy)
       }
     }
@@ -147,8 +153,8 @@ class PhotoPickerDialogTest {
     val pending = CompletableDeferred<Unit>()
     compose.setContent {
       MaterialTheme {
-        PhotoPickerDialog(vm) {
-          consumed += it
+        PhotoPickerDialog(vm, labels) {
+          consumed += it.uri
           pending.await()
         }
       }
@@ -179,7 +185,7 @@ class PhotoPickerDialogTest {
     val store = TestPhotoStore()
     val vm = PhotoPickerViewModel(store, SavedStateHandle())
     compose.setContent {
-      MaterialTheme { PhotoPickerDialog(vm) { fail("Cancelled preview submitted") } }
+      MaterialTheme { PhotoPickerDialog(vm, labels) { fail("Cancelled preview submitted") } }
     }
     compose.runOnIdle {
       vm.open()
@@ -189,13 +195,13 @@ class PhotoPickerDialogTest {
     compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertDoesNotExist()
     compose.runOnIdle { vm.open() }
     compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
-    compose.runOnIdle { assertEquals(store.uri, vm.state.value.uri) }
+    compose.runOnIdle { assertEquals(store.uri, vm.state.value.selection?.uri) }
   }
 
   @Test
   fun sourceScreenOffersCameraAndGalleryAndRecoversAfterError() {
     val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
-    compose.setContent { MaterialTheme { PhotoPickerDialog(vm) } }
+    compose.setContent { MaterialTheme { PhotoPickerDialog(vm, labels) } }
     compose.runOnIdle {
       vm.open()
       vm.reportFailure()

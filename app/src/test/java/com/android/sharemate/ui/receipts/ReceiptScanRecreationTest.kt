@@ -79,7 +79,7 @@ class ReceiptScanRecreationTest {
       compose.onNodeWithText(firstActivity.getString(R.string.scan_receipt)).performClick()
       compose.runOnIdle { photo.select(Uri.fromFile(file).toString()) }
       compose.waitUntil(WAIT_TIMEOUT_MS) {
-        photo.state.value.uri != null && !photo.state.value.busy
+        photo.state.value.selection?.uri != null && !photo.state.value.busy
       }
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(WAIT_TIMEOUT_MS) { started.isCompleted }

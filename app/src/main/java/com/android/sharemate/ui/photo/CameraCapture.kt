@@ -110,6 +110,6 @@ internal fun CameraCapture(
       },
       enabled = enabled && ready,
       modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAPTURE)) {
-        Text(stringResource(R.string.barcode_photo_capture))
+        Text(stringResource(R.string.photo_picker_capture))
       }
 }

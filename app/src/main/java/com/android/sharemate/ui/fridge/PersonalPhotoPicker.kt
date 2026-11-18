@@ -6,25 +6,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import coil.compose.AsyncImage
 import com.android.sharemate.R
-import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
+import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
 import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerLabels
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
-import com.android.sharemate.ui.photo.findActivity
+import com.android.sharemate.ui.photo.PhotoSource
+import com.android.sharemate.ui.photo.photoPickerViewModel
 
 private val PreviewSize = 80.dp
 
@@ -33,13 +29,10 @@ internal fun PersonalPhotoPicker(
     draft: PersonalPhotoDraft,
     photos: PersonalPhotoController,
     enabled: Boolean,
-    camera: PhotoPickerViewModel = personalPhotoCamera(),
+    camera: PhotoPickerViewModel = photoPickerViewModel("add-item-personal-photo"),
 ) {
   val state by camera.state.collectAsState()
-  val activity = LocalContext.current.findActivity()
-  DisposableEffect(camera) {
-    onDispose { if (activity?.isChangingConfigurations != true) camera.discard() }
-  }
+  DiscardPhotoOnDispose(camera)
   LaunchedEffect(state.confirmed) { if (state.confirmed) camera.reset() }
   TextButton(onClick = camera::open, enabled = enabled && !draft.importing && !state.busy) {
     Text(
@@ -62,21 +55,10 @@ internal fun PersonalPhotoPicker(
   }
   PhotoPickerDialog(
       camera,
-      title = R.string.personal_photo_add,
-      previewDescription = R.string.personal_photo_preview,
-      sourceDescription = R.string.personal_photo_sources,
-      onImageConfirmed = { uri -> photos.selectAndWait(uri, camera.state.value.fromCamera) })
-}
-
-@Composable
-private fun personalPhotoCamera(): PhotoPickerViewModel {
-  val context = LocalContext.current.applicationContext
-  return viewModel(
-      key = "add-item-personal-photo",
-      factory =
-          viewModelFactory {
-            initializer {
-              PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
-            }
-          })
+      labels =
+          PhotoPickerLabels(
+              R.string.personal_photo_add,
+              R.string.personal_photo_preview,
+              R.string.personal_photo_sources),
+      onImageConfirmed = { photos.selectAndWait(it.uri, it.source == PhotoSource.CAMERA) })
 }

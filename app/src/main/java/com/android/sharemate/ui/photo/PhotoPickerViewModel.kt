@@ -22,36 +22,47 @@ enum class PhotoPage {
   PREVIEW
 }
 
+enum class PhotoSource {
+  CAMERA,
+  GALLERY
+}
+
+/** A private image and the source that produced it, valid during confirmation. */
+data class SelectedPhoto(val uri: String, val source: PhotoSource)
+
 data class PhotoPickerState(
-    val uri: String? = null,
+    val selection: SelectedPhoto? = null,
     val visible: Boolean = false,
-    val page: PhotoPage = PhotoPage.SOURCE,
+    val page: PhotoPage = if (selection == null) PhotoPage.SOURCE else PhotoPage.PREVIEW,
     val busy: Boolean = false,
     val failed: Boolean = false,
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
-    val fromCamera: Boolean = false,
 )
 
 class PhotoPickerViewModel(
     private val store: TemporaryPhotoStore,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
+  private fun restoreSelection(): SelectedPhoto? =
+      savedState.get<String>(IMAGE_KEY)?.let { uri ->
+        val source =
+            if (savedState.get<Boolean>(CAMERA_KEY) == true) PhotoSource.CAMERA
+            else PhotoSource.GALLERY
+        SelectedPhoto(uri, source)
+      }
+
   private val mutableState =
       MutableStateFlow(
           PhotoPickerState(
-              uri = savedState[IMAGE_KEY],
-              fromCamera = savedState[CAMERA_KEY] ?: false,
+              selection = restoreSelection(),
               confirmed = savedState[CONFIRMED_KEY] ?: false,
-              visible = savedState[VISIBLE_KEY] ?: false,
-              page =
-                  if (savedState.get<String>(IMAGE_KEY) != null) PhotoPage.PREVIEW
-                  else PhotoPage.SOURCE))
+              visible = savedState[VISIBLE_KEY] ?: false))
   val state = mutableState.asStateFlow()
   private var operation: Job? = null
 
   init {
-    state.value.uri?.let { uri -> runOperation { store.validate(uri) } }
+    state.value.selection?.uri?.let { uri -> runOperation { store.validate(uri) } }
   }
 
   fun open() {
@@ -60,7 +71,7 @@ class PhotoPickerViewModel(
     mutableState.update {
       it.copy(
           visible = true,
-          page = if (it.uri == null) PhotoPage.SOURCE else PhotoPage.PREVIEW,
+          page = if (it.selection == null) PhotoPage.SOURCE else PhotoPage.PREVIEW,
           failed = false,
           confirmationFailed = false)
     }
@@ -94,7 +105,7 @@ class PhotoPickerViewModel(
 
   fun select(uri: String?) {
     if (uri != null && state.value.visible)
-        runOperation { replace(store.importImage(uri), fromCamera = false) }
+        runOperation { replace(SelectedPhoto(store.importImage(uri), PhotoSource.GALLERY)) }
   }
 
   fun capture(takePicture: suspend (String) -> Unit) {
@@ -104,7 +115,7 @@ class PhotoPickerViewModel(
       try {
         takePicture(uri)
         store.validate(uri)
-        replace(uri, fromCamera = true)
+        replace(SelectedPhoto(uri, PhotoSource.CAMERA))
       } catch (failure: Throwable) {
         withContext(NonCancellable) { store.delete(uri) }
         throw failure
@@ -113,17 +124,17 @@ class PhotoPickerViewModel(
   }
 
   /** The consumer may read the URI until this suspending callback completes. No decoding here. */
-  fun confirm(consume: (suspend (String) -> Unit)? = null) {
+  fun confirm(consume: (suspend (SelectedPhoto) -> Unit)? = null) {
     if (!state.value.visible) return
-    val uri = state.value.uri ?: return
+    val selection = state.value.selection ?: return
     if (state.value.confirmed) {
       closePreview()
       return
     }
     runOperation {
-      store.validate(uri)
+      store.validate(selection.uri)
       try {
-        consume?.invoke(uri)
+        consume?.invoke(selection)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (failure: Exception) {
@@ -138,7 +149,7 @@ class PhotoPickerViewModel(
 
   fun reset() {
     if (state.value.busy) return
-    val uri = state.value.uri
+    val uri = state.value.selection?.uri
     savedState[IMAGE_KEY] = null
     savedState[CAMERA_KEY] = null
     savedState[CONFIRMED_KEY] = false
@@ -160,15 +171,16 @@ class PhotoPickerViewModel(
     }
   }
 
-  private suspend fun replace(uri: String, fromCamera: Boolean) {
-    val previous = state.value.uri
-    savedState[IMAGE_KEY] = uri
-    savedState[CAMERA_KEY] = fromCamera
+  private suspend fun replace(selection: SelectedPhoto) {
+    val previous = state.value.selection?.uri
+    savedState[IMAGE_KEY] = selection.uri
+    savedState[CAMERA_KEY] = selection.source == PhotoSource.CAMERA
     savedState[CONFIRMED_KEY] = false
     mutableState.update {
-      it.copy(uri = uri, page = PhotoPage.PREVIEW, confirmed = false, fromCamera = fromCamera)
+      it.copy(selection = selection, page = PhotoPage.PREVIEW, confirmed = false)
     }
-    if (previous != null && previous != uri) withContext(NonCancellable) { store.delete(previous) }
+    if (previous != null && previous != selection.uri)
+        withContext(NonCancellable) { store.delete(previous) }
   }
 
   private fun runOperation(action: suspend () -> Unit) {
@@ -194,11 +206,12 @@ class PhotoPickerViewModel(
     // Finish a cancelled capture/consumer before releasing its private file.
     CoroutineScope(Dispatchers.Main.immediate).launch {
       pending?.join()
-      state.value.uri?.let { store.delete(it) }
+      state.value.selection?.uri?.let { store.delete(it) }
     }
   }
 
   companion object {
+    // Retain the saved-state keys used before the picker was shared across features.
     const val IMAGE_KEY = "barcodePhotoUri"
     const val CAMERA_KEY = "barcodePhotoFromCamera"
     const val CONFIRMED_KEY = "barcodePhotoConfirmed"

@@ -12,6 +12,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,18 +37,19 @@ import coil.request.ImageRequest
 import com.android.sharemate.R
 import com.android.sharemate.ui.theme.Dimens
 
-/** Captures/selects an image only; #139 supplies the optional recognition consumer. */
+data class PhotoPickerLabels(
+    @StringRes val title: Int,
+    @StringRes val previewDescription: Int,
+    @StringRes val sourceDescription: Int,
+)
+
+/** Captures or imports a photo and waits for the caller to finish using the confirmed selection. */
 @Composable
 fun PhotoPickerDialog(
     viewModel: PhotoPickerViewModel,
+    labels: PhotoPickerLabels,
     confirmationError: String? = null,
-    receipt: Boolean = false,
-    title: Int = if (receipt) R.string.scan_receipt else R.string.barcode_photo_title,
-    previewDescription: Int =
-        if (receipt) R.string.receipt_photo_preview else R.string.barcode_photo_preview,
-    sourceDescription: Int =
-        if (receipt) R.string.receipt_photo_choose else R.string.barcode_photo_choose,
-    onImageConfirmed: (suspend (String) -> Unit)? = null,
+    onImageConfirmed: (suspend (SelectedPhoto) -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsState()
   if (!state.visible) return
@@ -87,14 +89,14 @@ fun PhotoPickerDialog(
                   .padding(Dimens.spacingL)
                   .verticalScroll(rememberScrollState()),
               verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
-                Text(stringResource(title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(labels.title), style = MaterialTheme.typography.headlineSmall)
                 if (state.busy)
                     LinearProgressIndicator(
                         Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
                 if (state.failed)
                     Text(
                         confirmationError.takeIf { state.confirmationFailed }
-                            ?: stringResource(R.string.barcode_photo_failed),
+                            ?: stringResource(R.string.photo_picker_failed),
                         color = MaterialTheme.colorScheme.error)
                 when (state.page) {
                   PhotoPage.CAMERA ->
@@ -109,10 +111,10 @@ fun PhotoPickerDialog(
                     AsyncImage(
                         model =
                             ImageRequest.Builder(context)
-                                .data(state.uri)
+                                .data(state.selection?.uri)
                                 .size(PREVIEW_MAX_PIXELS)
                                 .build(),
-                        contentDescription = stringResource(previewDescription),
+                        contentDescription = stringResource(labels.previewDescription),
                         contentScale = ContentScale.Fit,
                         modifier =
                             Modifier.fillMaxWidth()
@@ -123,14 +125,14 @@ fun PhotoPickerDialog(
                         onClick = { viewModel.confirm(onImageConfirmed) },
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CONFIRM)) {
-                          Text(stringResource(R.string.barcode_photo_confirm))
+                          Text(stringResource(R.string.photo_picker_confirm))
                         }
                   }
-                  PhotoPage.SOURCE -> Text(stringResource(sourceDescription))
+                  PhotoPage.SOURCE -> Text(stringResource(labels.sourceDescription))
                 }
                 if (denied) {
                   Text(
-                      stringResource(R.string.barcode_camera_denied),
+                      stringResource(R.string.photo_picker_camera_denied),
                       color = MaterialTheme.colorScheme.error)
                   val activity = context.findActivity()
                   if (activity != null &&
@@ -149,7 +151,7 @@ fun PhotoPickerDialog(
                             viewModel.reportFailure()
                           }
                         }) {
-                          Text(stringResource(R.string.barcode_camera_settings))
+                          Text(stringResource(R.string.photo_picker_camera_settings))
                         }
                   }
                 }
@@ -166,7 +168,7 @@ fun PhotoPickerDialog(
                         },
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAMERA)) {
-                          Text(stringResource(R.string.barcode_photo_camera))
+                          Text(stringResource(R.string.photo_picker_camera))
                         }
                 OutlinedButton(
                     onClick = {
@@ -180,13 +182,13 @@ fun PhotoPickerDialog(
                     },
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
-                      Text(stringResource(R.string.barcode_photo_gallery))
+                      Text(stringResource(R.string.photo_picker_gallery))
                     }
                 TextButton(
                     onClick = viewModel::closePreview,
                     enabled = !state.busy,
                     modifier = Modifier.testTag(PhotoPickerTestTags.CANCEL)) {
-                      Text(stringResource(R.string.fridge_cancel))
+                      Text(stringResource(R.string.cancel))
                     }
               }
         }
@@ -204,6 +206,7 @@ internal tailrec fun Context.findActivity(): Activity? =
       else -> null
     }
 
+/** Keep the existing values for UI automation that addresses the picker by tag. */
 object PhotoPickerTestTags {
   const val VIEWFINDER = "barcode_photo_viewfinder"
   const val LOADING = "barcode_photo_loading"
@@ -212,8 +215,6 @@ object PhotoPickerTestTags {
   const val CAMERA = "barcode_photo_camera"
   const val GALLERY = "barcode_photo_gallery"
   const val CAPTURE = "barcode_photo_capture"
-  const val OPEN = "barcode_photo_open"
-  const val LOOKUP_ERROR = "barcode_lookup_error"
   const val CANCEL = "barcode_photo_cancel"
 }
 

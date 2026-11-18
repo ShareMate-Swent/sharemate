@@ -24,7 +24,6 @@ import androidx.navigation.compose.*
 import com.android.sharemate.R
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.finance.ExpenseSubmissionRepository
-import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
@@ -33,13 +32,17 @@ import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
-import com.android.sharemate.ui.photo.PhotoPickerDialog
-import com.android.sharemate.ui.photo.PhotoPickerViewModel
-import com.android.sharemate.ui.photo.findActivity
+import com.android.sharemate.ui.barcode.BarcodePhotoPicker
 import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
+import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerLabels
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.findActivity
+import com.android.sharemate.ui.photo.photoPickerViewModel
 import com.android.sharemate.ui.staging.PurchasePreview
 import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.PurchaseReviewContent
@@ -86,24 +89,8 @@ fun ReceiptsScreen(
                   }
                 })
       } else null
-  val barcodePhoto: PhotoPickerViewModel =
-      viewModel(
-          key = "purchase-barcode-photo_${userId}_$householdId",
-          factory =
-              viewModelFactory {
-                initializer {
-                  PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
-                }
-              })
-  val photo: PhotoPickerViewModel =
-      viewModel(
-          key = "receipt-photo",
-          factory =
-              viewModelFactory {
-                initializer {
-                  PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
-                }
-              })
+  val barcodePhoto = photoPickerViewModel("purchase-barcode-photo_${userId}_$householdId")
+  val photo = photoPickerViewModel("receipt-photo")
   val save: InventorySaveViewModel =
       viewModel(
           key = "inventory-save_${userId}_$householdId",
@@ -186,9 +173,7 @@ internal fun ReceiptScanFlow(
   val scope = rememberCoroutineScope()
   var openBarcode by rememberSaveable { mutableStateOf(false) }
   val activity = LocalContext.current.findActivity()
-  DisposableEffect(photo) {
-    onDispose { if (activity?.isChangingConfigurations != true) photo.discard() }
-  }
+  DiscardPhotoOnDispose(photo)
   DisposableEffect(barcode, barcodePhoto) {
     onDispose {
       if (activity?.isChangingConfigurations != true) {
@@ -294,14 +279,18 @@ internal fun ReceiptScanFlow(
           }
       PhotoPickerDialog(
           photo,
-          receipt = true,
+          labels =
+              PhotoPickerLabels(
+                  R.string.scan_receipt,
+                  R.string.receipt_photo_preview,
+                  R.string.receipt_photo_choose),
           confirmationError =
               stringResource(
                   if (saveState?.phase == InventorySavePhase.RECOVERY_FAILED)
                       R.string.inventory_save_recovery_failed
                   else R.string.receipt_unreadable),
-          onImageConfirmed = { uri ->
-            scan.read(uri) { items -> if (save != null) check(save.beginNewScan(items)) }
+          onImageConfirmed = { selection ->
+            scan.read(selection.uri) { items -> if (save != null) check(save.beginNewScan(items)) }
           })
     }
     composable(REVIEW_ROUTE) { entry ->
@@ -382,7 +371,7 @@ internal fun ReceiptScanFlow(
       }
       BackHandler { leaveReview() }
       if (barcode != null && barcodePhoto != null) {
-        PhotoPickerDialog(
+        BarcodePhotoPicker(
             barcodePhoto,
             confirmationError = stringResource(barcodeError.messageResource()),
             onImageConfirmed = { uri ->

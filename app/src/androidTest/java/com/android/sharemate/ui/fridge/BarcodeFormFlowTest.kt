@@ -24,6 +24,7 @@ import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.barcode.BarcodeFormTestTags
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.utils.FirebaseEmulator
@@ -79,7 +80,7 @@ class BarcodeFormFlowTest {
   fun missingProductKeepsSamePhotoRetryableAndManualDraftIntact() {
     result = ProductLookupResult.NotFound
     showFormAndPhoto()
-    val uri = photo.state.value.uri
+    val uri = photo.state.value.selection?.uri
     confirm()
     compose.waitUntil(10_000) { photo.state.value.failed && !photo.state.value.busy }
     compose
@@ -88,7 +89,7 @@ class BarcodeFormFlowTest {
         .assertExists()
     compose.runOnIdle {
       assertEquals("Manual food", fridge.uiState.value.itemName)
-      assertEquals(uri, photo.state.value.uri)
+      assertEquals(uri, photo.state.value.selection?.uri)
       assertFalse(photo.state.value.confirmed)
       result = ProductLookupResult.Found(ProductDetails("123", "Retry milk", null))
     }
@@ -170,7 +171,7 @@ class BarcodeFormFlowTest {
       fridge.updateQuantity("3")
       fridge.updateCategory("Dairy")
     }
-    compose.onNodeWithTag(PhotoPickerTestTags.OPEN).performScrollTo().performClick()
+    compose.onNodeWithTag(BarcodeFormTestTags.OPEN).performScrollTo().performClick()
     compose.runOnIdle {
       photo.capture { uri ->
         withContext(Dispatchers.IO) {
@@ -182,7 +183,9 @@ class BarcodeFormFlowTest {
         }
       }
     }
-    compose.waitUntil(10_000) { photo.state.value.uri != null && !photo.state.value.busy }
+    compose.waitUntil(10_000) {
+      photo.state.value.selection?.uri != null && !photo.state.value.busy
+    }
   }
 
   private class EmptyItems : ItemRepository {

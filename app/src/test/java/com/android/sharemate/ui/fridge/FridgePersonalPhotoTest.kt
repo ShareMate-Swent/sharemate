@@ -14,6 +14,7 @@ import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.PhotoSource
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -210,7 +211,7 @@ class FridgePersonalPhotoTest {
     camera.open()
     camera.capture { assertEquals(uri, it) }
     runCurrent()
-    camera.confirm { controller.selectAndWait(it, camera.state.value.fromCamera) }
+    camera.confirm { controller.selectAndWait(it.uri, it.source == PhotoSource.CAMERA) }
     runCurrent()
     viewModel.saveItem()
     assertTrue(controller.draft.value.importing)

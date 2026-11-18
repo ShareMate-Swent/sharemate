@@ -66,12 +66,11 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
   }
 
   private fun writeCapture(source: File, target: File) {
-    require(source.length() in 1..AndroidTemporaryPhotoStore.MAX_BYTES)
+    require(source.length() in 1..MAX_INPUT_PHOTO_BYTES)
     val bitmap =
         ImageDecoder.decodeBitmap(ImageDecoder.createSource(source)) { decoder, info, _ ->
           require(info.mimeType == PhotoMimeTypes.JPEG || info.mimeType == PhotoMimeTypes.PNG)
-          require(
-              info.size.width.toLong() * info.size.height <= AndroidTemporaryPhotoStore.MAX_PIXELS)
+          require(info.size.width.toLong() * info.size.height <= MAX_INPUT_PHOTO_PIXELS)
           val scale =
               minOf(1.0, CAPTURE_MAX_DIMENSION_PX / maxOf(info.size.width, info.size.height))
           decoder.setTargetSize(

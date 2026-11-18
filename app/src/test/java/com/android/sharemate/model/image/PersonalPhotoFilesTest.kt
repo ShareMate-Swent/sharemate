@@ -95,7 +95,7 @@ class PersonalPhotoFilesTest {
     val empty = File.createTempFile("empty-", ".jpg", captures)
     val oversized =
         File.createTempFile("oversized-", ".jpg", captures).apply {
-          RandomAccessFile(this, "rw").use { it.setLength(AndroidTemporaryPhotoStore.MAX_BYTES + 1) }
+          RandomAccessFile(this, "rw").use { it.setLength(MAX_INPUT_PHOTO_BYTES + 1) }
         }
     val unsupported = File.createTempFile("unsupported-", ".webp", captures)
     val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)

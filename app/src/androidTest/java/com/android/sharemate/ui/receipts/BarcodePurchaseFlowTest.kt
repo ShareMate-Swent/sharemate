@@ -87,7 +87,9 @@ class BarcodePurchaseFlowTest {
       }
       fun confirmPhoto() {
         compose.runOnIdle { photo.select("fixture://milk") }
-        compose.waitUntil(10_000) { !photo.state.value.busy && photo.state.value.uri != null }
+        compose.waitUntil(10_000) {
+          !photo.state.value.busy && photo.state.value.selection?.uri != null
+        }
         compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       }
       confirmPhoto()
