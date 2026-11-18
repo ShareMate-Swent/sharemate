@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
@@ -158,6 +159,72 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performClick()
     compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
     compose.runOnIdle { assertTrue(balancesOpened[0]) }
+  }
+
+  @Test
+  fun confirmingDraftReturnsToHistoryAndPersistsReviewedRows() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val id = UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val store = AndroidInventorySubmissionStore(compose.activity)
+    runBlocking { store.save(InventorySubmission(id, owner, household, rows, draft = true)) }
+    val submitted = mutableListOf<InventorySubmission>()
+    val repository =
+        object : ItemRepository by UnusedItems {
+          override fun addItems(submission: InventorySubmission): ItemWrite {
+            submitted += submission
+            return ItemWrite.Queued(CompletableDeferred())
+          }
+        }
+    compose.setContent {
+      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+    }
+    val review = compose.activity.getString(R.string.receipt_review_items)
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithText(review).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText(review).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    val view = compose.activity.getString(R.string.receipt_view_receipt)
+    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }
+    compose.runOnIdle {
+      org.junit.Assert.assertEquals(rows, submitted.single().items)
+      org.junit.Assert.assertEquals(id, submitted.single().id)
+    }
+    runBlocking { org.junit.Assert.assertFalse(store.list(owner, household).single().draft) }
+  }
+
+  @Test
+  fun rejectedReceiptCanBeRetriedFromReview() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val id = UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val store = AndroidInventorySubmissionStore(compose.activity)
+    runBlocking { store.save(InventorySubmission(id, owner, household, rows)) }
+    var attempts = 0
+    val repository =
+        object : ItemRepository by UnusedItems {
+          override fun addItems(submission: InventorySubmission): ItemWrite {
+            attempts++
+            return if (attempts == 1) ItemWrite.Rejected(IllegalStateException("refused"))
+            else ItemWrite.Queued(CompletableDeferred())
+          }
+        }
+    compose.setContent {
+      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+    }
+    val view = compose.activity.getString(R.string.receipt_view_receipt)
+    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }
+    compose.onNodeWithText(view).performClick()
+    val retry = compose.activity.getString(R.string.household_retry)
+    compose.onNodeWithText(retry).performClick()
+    compose.waitUntil(5_000) { attempts == 2 }
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.inventory_save_pending))
+        .assertIsDisplayed()
+    compose.runOnIdle { org.junit.Assert.assertEquals(2, attempts) }
   }
 
   private fun saveScreenshot(name: String, tag: String? = null) {

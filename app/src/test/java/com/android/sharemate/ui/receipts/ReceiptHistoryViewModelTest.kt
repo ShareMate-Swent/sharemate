@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModelStore
@@ -366,17 +367,116 @@ class ReceiptHistoryViewModelTest {
     assertTrue(attempts.all { it.id == id && it.items == rows })
   }
 
+  @Test
+  fun confirmationFailureAndRetrySuccessPreserveRowsAndIgnoreDuplicateActions() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val repository = mock(ItemRepository::class.java)
+    val first = CompletableDeferred<Result<Unit>>()
+    val second = CompletableDeferred<Result<Unit>>()
+    `when`(repository.addItems(anyK()))
+        .thenReturn(ItemWrite.Queued(first), ItemWrite.Queued(second))
+    `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val id = history.addDraft("photo", rows)
+    history.confirm("missing", rows)
+    history.retry("missing")
+    assertFalse(history.editDraft("missing", rows))
+    history.confirm(id, rows)
+    runCurrent()
+    history.confirm(id, rows)
+    history.retry(id)
+    assertFalse(history.editDraft(id, rows))
+    first.complete(Result.failure(IllegalStateException("refused")))
+    runCurrent()
+    // A queued write can still be confirmed by the server observer after a transport failure.
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    history.retry(id)
+    runCurrent()
+    second.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, history.receipts.value.single().phase)
+    assertEquals(rows, history.receipts.value.single().submission.items)
+    assertNotNull(store.details("owner", "home", id)?.savedAtMillis)
+    history.retry(id)
+    runCurrent()
+    verify(repository, times(2)).addItems(anyK())
+  }
+
+  @Test
+  fun legacyReceiptConfirmationRemainsConfirmedAfterStaleMissingStatus() = runTest {
+    val store = MemoryStore()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    store.save(InventorySubmission(java.util.UUID.randomUUID().toString(), "owner", "home", rows))
+    val photos = mock(ReceiptPhotoStore::class.java)
+    val repository = mock(ItemRepository::class.java)
+    val status = MutableSharedFlow<InventorySubmissionStatus>()
+    val confirmation = CompletableDeferred<Result<Unit>>()
+    `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(confirmation))
+    `when`(repository.observeSubmission(anyK())).thenReturn(status)
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    status.emit(InventorySubmissionStatus.PENDING)
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    status.emit(InventorySubmissionStatus.CONFIRMED)
+    runCurrent()
+    confirmation.complete(Result.success(Unit))
+    runCurrent()
+    status.emit(InventorySubmissionStatus.MISSING)
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, history.receipts.value.single().phase)
+    assertNull(history.receipts.value.single().details)
+    assertEquals(rows, history.receipts.value.single().submission.items)
+  }
+
+  @Test
+  fun cancelledRefreshAndEditPreserveDraftWithoutReportingStorageError() = runTest {
+    val store = MemoryStore()
+    val repository = mock(ItemRepository::class.java)
+    val history =
+        ReceiptHistoryViewModel(
+            repository, store, mock(ReceiptPhotoStore::class.java), "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val draftId = java.util.UUID.randomUUID().toString()
+    store.save(InventorySubmission(draftId, "owner", "home", rows, draft = true))
+    history.refresh()
+    store.cancelOperations = true
+    try {
+      history.refresh()
+      fail("Refresh must propagate cancellation")
+    } catch (_: kotlinx.coroutines.CancellationException) {}
+    try {
+      history.editDraft(draftId, emptyList())
+      fail("Edit must propagate cancellation")
+    } catch (_: kotlinx.coroutines.CancellationException) {}
+    assertFalse(history.error.value)
+    assertEquals(rows, history.receipts.value.single().submission.items)
+  }
+
   private class MemoryStore : InventorySubmissionStore {
     private val submissions = mutableMapOf<String, InventorySubmission>()
     private val metadata = mutableMapOf<String, ReceiptDetails>()
     var failDetails = false
     var failSave = false
     var failList = false
+    var cancelOperations = false
 
     override suspend fun load(ownerId: String, householdId: String) =
         list(ownerId, householdId).firstOrNull()
 
     override suspend fun list(ownerId: String, householdId: String): List<InventorySubmission> {
+      if (cancelOperations) throw kotlinx.coroutines.CancellationException()
       if (failList) error("local history unavailable")
       return submissions.values
           .filter { it.ownerId == ownerId && it.householdId == householdId }
@@ -384,6 +484,7 @@ class ReceiptHistoryViewModelTest {
     }
 
     override suspend fun save(submission: InventorySubmission) {
+      if (cancelOperations) throw kotlinx.coroutines.CancellationException()
       if (failSave) error("local write unavailable")
       submissions[submission.id] = submission
     }
