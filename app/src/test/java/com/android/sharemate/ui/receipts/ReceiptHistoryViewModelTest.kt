@@ -246,20 +246,145 @@ class ReceiptHistoryViewModelTest {
     verify(repository, times(2)).addItems(anyK())
   }
 
+  @Test
+  fun invalidReviewAndFailedEditLeaveDurableDraftUntouched() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val repository = mock(ItemRepository::class.java)
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val original = listOf(StagedItem("a", "Apple", 1, 100))
+    val id = history.addDraft("photo", original)
+    store.failSave = true
+    assertFalse(history.editDraft(id, listOf(StagedItem("b", "Bread", 1, 200))))
+    assertTrue(history.error.value)
+    assertEquals(original, history.receipts.value.single().submission.items)
+    assertEquals(original, store.list("owner", "home").single().items)
+
+    history.confirm(id, emptyList())
+    assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
+    assertTrue(history.receipts.value.single().submission.draft)
+    verifyNoInteractions(repository)
+  }
+
+  @Test
+  fun refreshFailureKeepsExistingHistoryAndSetsError() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val history =
+        ReceiptHistoryViewModel(mock(ItemRepository::class.java), store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    history.addDraft("photo", listOf(StagedItem("a", "Apple", 1, 100)))
+    store.failList = true
+    history.refresh()
+    assertTrue(history.error.value)
+    assertEquals("Apple", history.receipts.value.single().submission.items.single().name)
+    store.failList = false
+    history.refresh()
+    assertFalse(history.error.value)
+  }
+
+  @Test
+  fun failedLocalConfirmationKeepsDraftAndAllowsLaterRetry() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val repository = mock(ItemRepository::class.java)
+    `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(CompletableDeferred()))
+    `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val id = history.addDraft("photo", rows)
+    store.failSave = true
+    history.confirm(id, rows)
+    runCurrent()
+    assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
+    assertTrue(history.receipts.value.single().submission.draft)
+    assertTrue(store.list("owner", "home").single().draft)
+    verifyNoInteractions(repository)
+
+    store.failSave = false
+    history.retry(id)
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    assertFalse(store.list("owner", "home").single().draft)
+    verify(repository).addItems(anyK())
+  }
+
+  @Test
+  fun failedReplayCanRetryAgainWithoutChangingReviewedRows() = runTest {
+    val store = MemoryStore()
+    val photos =
+        object : ReceiptPhotoStore {
+          override suspend fun retain(sourceUri: String, receiptId: String) = sourceUri
+
+          override suspend fun delete(receiptId: String) = Unit
+        }
+    val repository = mock(ItemRepository::class.java)
+    val attempts = mutableListOf<InventorySubmission>()
+    `when`(repository.addItems(anyK())).thenAnswer { invocation ->
+      attempts += invocation.getArgument<InventorySubmission>(0)
+      if (attempts.size == 1) ItemWrite.Rejected(IllegalStateException("offline"))
+      else if (attempts.size == 2) throw IllegalStateException("transport unavailable")
+      else ItemWrite.Queued(CompletableDeferred())
+    }
+    `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
+    val history = ReceiptHistoryViewModel(repository, store, photos, "owner", "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val id = history.addDraft("photo", rows)
+    history.confirm(id, rows)
+    runCurrent()
+    assertEquals(InventorySavePhase.FAILED, history.receipts.value.single().phase)
+
+    history.retry(id)
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    history.retry(id)
+    runCurrent()
+    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
+    assertEquals(3, attempts.size)
+    assertTrue(attempts.all { it.id == id && it.items == rows })
+  }
+
   private class MemoryStore : InventorySubmissionStore {
     private val submissions = mutableMapOf<String, InventorySubmission>()
     private val metadata = mutableMapOf<String, ReceiptDetails>()
     var failDetails = false
+    var failSave = false
+    var failList = false
 
     override suspend fun load(ownerId: String, householdId: String) =
         list(ownerId, householdId).firstOrNull()
 
-    override suspend fun list(ownerId: String, householdId: String) =
-        submissions.values
-            .filter { it.ownerId == ownerId && it.householdId == householdId }
-            .reversed()
+    override suspend fun list(ownerId: String, householdId: String): List<InventorySubmission> {
+      if (failList) error("local history unavailable")
+      return submissions.values
+          .filter { it.ownerId == ownerId && it.householdId == householdId }
+          .reversed()
+    }
 
     override suspend fun save(submission: InventorySubmission) {
+      if (failSave) error("local write unavailable")
       submissions[submission.id] = submission
     }
 
