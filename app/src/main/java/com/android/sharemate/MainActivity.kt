@@ -312,7 +312,12 @@ open class MainActivity : ComponentActivity() {
                                             expirationPreferences = expirationPreferencesProvider,
                                             pseudoRepository = pseudoRepository,
                                             memberNameRepository = memberNameRepository,
-                                            currentUserDisplayName = session.displayName)
+                                            currentUserDisplayName = session.displayName,
+                                            chatRepository = chatRepository,
+                                            activitySenderName =
+                                                session.displayName
+                                                    ?: session.email
+                                                    ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

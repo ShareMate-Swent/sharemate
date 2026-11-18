@@ -8,6 +8,9 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
+import com.android.sharemate.model.chat.ChatRepository
+import com.android.sharemate.model.chat.Message
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
@@ -49,7 +52,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -74,6 +79,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FridgeViewModelTest {
   private val repository = FakeItemRepository()
+  private val chatRepository = RecordingChatRepository()
   private val imageRepository = FakeFoodImageRepository()
   private val imageSelector = FoodImageSelector(imageRepository)
   private val barcodeScanner = FakeBarcodeScanner()
@@ -184,6 +190,179 @@ class FridgeViewModelTest {
         assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
       }
     }
+  }
+
+  @Test
+  fun sharedItemActivityIsPostedOnlyAfterStatusConfirmation() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    assertTrue(chatRepository.activities.isEmpty())
+
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun confirmedActivityUsesLatestItemName() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk.copy(name = "Oat milk", status = ItemStatus.EATEN)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, "Oat milk")),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun itemMadePrivateBeforeConfirmationDoesNotPostActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(
+        listOf(
+            milk.copy(
+                ownerId = "test-user", sharing = ItemSharing.PERSONAL, status = ItemStatus.EATEN)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun itemMadeSharedBeforeConfirmationPostsActivity() = runTest {
+    val privateItem = milk.copy(ownerId = "test-user", sharing = ItemSharing.PERSONAL)
+    repository.emitItems(listOf(privateItem))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(privateItem.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(
+        listOf(privateItem.copy(sharing = ItemSharing.SHARED, status = ItemStatus.EATEN)))
+    runCurrent()
+    assertTrue(chatRepository.activities.isEmpty())
+
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, privateItem.name)),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun rejectedStatusAfterRollbackDoesNotPostActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation!!.complete(Result.failure(IOException("Undo")))
+    runCurrent()
+
+    assertTrue(chatRepository.activities.isEmpty())
+    assertEquals(ItemStatus.ACTIVE, vm.uiState.value.items.single().status)
+  }
+
+  @Test
+  fun privateItemDoesNotPostActivityAndDiscardMapsToThrown() = runTest {
+    val privateItem =
+        Item(
+            id = "private",
+            name = "Private milk",
+            ownerId = "test-user",
+            householdId = "test-household")
+    repository.emitItems(listOf(privateItem, bread))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(privateItem.id, ItemStatus.EATEN)
+    vm.setItemStatus(bread.id, ItemStatus.DISCARDED)
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.THROWN, bread.name)),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun privateFridgeDoesNotPostActivity() = runTest {
+    repository.emitItems(listOf(bread))
+    val vm = viewModel(fridgeType = FridgeType.PRIVATE)
+    runCurrent()
+
+    vm.setItemStatus(bread.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun activitySendFailureDoesNotFailStatusChange() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    chatRepository.returnNull = true
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    chatRepository.returnNull = false
+    chatRepository.failure = IOException("Chat unavailable")
+    vm.setItemStatus(bread.id, ItemStatus.DISCARDED)
+    runCurrent()
+
+    assertEquals(
+        listOf(ItemStatus.EATEN, ItemStatus.DISCARDED), vm.uiState.value.items.map { it.status })
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(2, chatRepository.attempts.size)
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun activitySendCancellationDoesNotFailStatusChange() = runTest {
+    repository.emitItems(listOf(milk))
+    chatRepository.failure = CancellationException("Chat cancelled")
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertNull(vm.uiState.value.statusError)
+    assertEquals(1, chatRepository.attempts.size)
   }
 
   @Test
@@ -1275,6 +1454,7 @@ class FridgeViewModelTest {
       directory: TestMemberNames = testMemberNameRepository(),
       profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
+      senderName: String = "Ann",
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1289,6 +1469,8 @@ class FridgeViewModelTest {
               today = { STATUS_TODAY },
               memberNameRepository = directory,
               currentUserDisplayName = null,
+              chatRepository = chatRepository,
+              activitySenderName = senderName,
           )
           .also { viewModelStore.put("fridge", it) }
 
@@ -2476,6 +2658,46 @@ class FridgeViewModelTest {
 
     override fun close() {
       closed = true
+    }
+  }
+
+  private class RecordingChatRepository : ChatRepository {
+    data class Activity(
+        val householdId: String,
+        val senderId: String,
+        val senderName: String,
+        val type: MessageType,
+        val itemName: String,
+    )
+
+    val activities = mutableListOf<Activity>()
+    val attempts = mutableListOf<Activity>()
+    var failure: Exception? = null
+    var returnNull = false
+
+    override fun observeMessages(householdId: String): Flow<List<Message>> = flowOf(emptyList())
+
+    override suspend fun sendMessage(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        text: String
+    ): String? = null
+
+    override suspend fun sendActivity(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        type: MessageType,
+        itemName: String,
+        itemImageUrl: String?,
+    ): String? {
+      val activity = Activity(householdId, senderId, senderName, type, itemName)
+      attempts += activity
+      failure?.let { throw it }
+      if (returnNull) return null
+      activities += activity
+      return "activity-id"
     }
   }
 
