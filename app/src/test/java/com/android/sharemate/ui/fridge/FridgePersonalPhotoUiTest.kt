@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,7 +37,6 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.barcode.BarcodeFormTestTags
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.ByteArrayOutputStream
@@ -50,7 +48,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import org.junit.After
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -60,7 +57,6 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -130,70 +126,6 @@ class FridgePersonalPhotoUiTest {
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     entry.assertIsEnabled()
     compose.runOnIdle { assertEquals(PersonalPhotoDraft(), photos.draft.value) }
-  }
-
-  @Test
-  fun scanningAfterChoosingAnItemPhotoPreservesThePhotoForSave() {
-    val gallery = GalleryResultRegistry()
-    val itemBytes = png(16, 8)
-    val barcodeBytes = png(8, 16)
-    val draft = temporary.newFile()
-    copyPhoto = { uri -> File(requireNotNull(Uri.parse(uri).path)).copyTo(draft, overwrite = true) }
-    val form = mutableStateOf(FridgeUiState(fridgeType = FridgeType.SHARED))
-    var saved: File? = null
-    var scans = 0
-    compose.setContent {
-      CompositionLocalProvider(LocalActivityResultRegistryOwner provides gallery) {
-        MaterialTheme {
-          AddItemDialog(
-              uiState = form.value,
-              onNameChange = {},
-              onCategoryChange = {},
-              onExpirationDateChange = {},
-              onSave = { saved = photos.takeDraft() },
-              onDismiss = {},
-              onBarcodeImageConfirmed = { uri ->
-                assertArrayEquals(
-                    barcodeBytes, File(requireNotNull(Uri.parse(uri).path)).readBytes())
-                scans++
-                form.value = form.value.copy(itemName = "Milk")
-              },
-              personalPhotos = photos)
-        }
-      }
-    }
-    fun chooseAndConfirm(path: String, image: ByteArray) {
-      val uri = Uri.parse("content://gallery/$path")
-      shadowOf(testApplication.contentResolver).registerInputStream(uri, image.inputStream())
-      compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performScrollTo().performClick()
-      compose.runOnIdle { gallery.deliver(uri.toString()) }
-      compose.waitUntil(5_000) {
-        compose.onAllNodesWithTag(PhotoPickerTestTags.CONFIRM).fetchSemanticsNodes().isNotEmpty()
-      }
-      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
-    }
-    compose
-        .onNodeWithText(testApplication.getString(R.string.personal_photo_add))
-        .performScrollTo()
-        .performClick()
-    chooseAndConfirm("item", itemBytes)
-    compose.waitUntil(5_000) {
-      photos.draft.value.file == draft &&
-          compose.onAllNodesWithTag(PhotoPickerTestTags.CONFIRM).fetchSemanticsNodes().isEmpty()
-    }
-    compose.runOnIdle { assertEquals(0, scans) }
-    compose.onNodeWithTag(BarcodeFormTestTags.OPEN).performScrollTo().performClick()
-    chooseAndConfirm("barcode", barcodeBytes)
-    compose.waitUntil(5_000) {
-      scans == 1 &&
-          compose.onAllNodesWithTag(PhotoPickerTestTags.CONFIRM).fetchSemanticsNodes().isEmpty()
-    }
-    compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk")
-    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
-    compose.runOnIdle {
-      assertEquals(draft, saved)
-      assertArrayEquals(itemBytes, requireNotNull(saved).readBytes())
-    }
   }
 
   @Test
