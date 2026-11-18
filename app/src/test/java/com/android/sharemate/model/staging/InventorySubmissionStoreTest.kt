@@ -25,6 +25,54 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun missingIndexedReceiptFailsBothLoadAndList() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val receipt =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abe",
+            "missing-record-owner",
+            "home",
+            listOf(StagedItem("a", "Apple", 1, 100)),
+            draft = true)
+    store.save(receipt)
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val scope = JSONArray(listOf(receipt.ownerId, receipt.householdId))
+    assertTrue(preferences.edit().remove("receipt:$scope:${receipt.id}").commit())
+
+    assertTrue(runCatching { store.load(receipt.ownerId, receipt.householdId) }.isFailure)
+    assertTrue(runCatching { store.list(receipt.ownerId, receipt.householdId) }.isFailure)
+    assertTrue(
+        runCatching { store.loadById(receipt.ownerId, receipt.householdId, receipt.id) }.isFailure)
+  }
+
+  @Test
+  fun legacyArchiveReleasesActiveSlotAndPreservesRejectedOperation() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val id = "12345678-1234-1234-1234-123456789abf"
+    val rejected =
+        InventorySubmission(
+            id,
+            "legacy-archive-owner",
+            "home",
+            listOf(StagedItem("milk", "Milk", 1, 100)),
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    id, "home", "legacy-archive-owner", 100, mapOf("legacy-archive-owner" to 100L)),
+            inventoryConfirmed = true,
+            expenseProgress = com.android.sharemate.model.item.ExpenseProgress.REJECTED)
+    store.save(rejected)
+    store.setAside(rejected)
+
+    val restored = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    assertNull(restored.load(rejected.ownerId, rejected.householdId))
+    assertEquals(listOf(rejected), restored.deferred(rejected.ownerId, rejected.householdId))
+    assertTrue(runCatching { restored.setAside(rejected) }.isFailure)
+  }
+
+  @Test
   fun receiptDetailsAndEditsSurviveRestartAndStayScoped() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
