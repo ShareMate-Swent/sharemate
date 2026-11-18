@@ -10,9 +10,13 @@ import java.util.UUID
  * token can be replaced in place instead of accumulating one entry per refresh.
  */
 object DeviceId {
-  private const val PREFERENCES_NAME = "push_device"
-  private const val KEY_DEVICE_ID = "device_id"
+  /** Name of the preferences file holding the identifier. */
+  const val PREFERENCES_NAME = "push_device"
 
+  /** Key of the identifier inside [PREFERENCES_NAME]. */
+  const val KEY_DEVICE_ID = "device_id"
+
+  /** Returns this install's identifier, creating and storing it on first use. */
   fun getOrCreate(context: Context): String {
     val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     return preferences.getString(KEY_DEVICE_ID, null)

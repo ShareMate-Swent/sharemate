@@ -2,127 +2,132 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.push
 
-import com.android.sharemate.model.auth.AuthRepository
-import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.push.PushTokenRepository
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class PushTokenRegistrarTest {
-  private class FakeAuthRepository(override val session: Flow<AuthSession?>) : AuthRepository {
-    override suspend fun signIn(email: String, password: String) = Unit
-
-    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
-
-    override suspend fun signInWithGoogle(idToken: String) = Unit
-
-    override fun signOut() = Unit
-  }
-
-  private class CountingAuthRepository : AuthRepository {
-    var subscriptions = 0
-
-    override val session: Flow<AuthSession?> = flow {
-      subscriptions++
-      emit(null)
-    }
-
-    override suspend fun signIn(email: String, password: String) = Unit
-
-    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
-
-    override suspend fun signInWithGoogle(idToken: String) = Unit
-
-    override fun signOut() = Unit
-  }
-
-  private class RecordingTokenRepository(
-      private val fail: Boolean = false,
-  ) : PushTokenRepository {
+  private class RecordingTokenRepository(var failure: Exception? = null) : PushTokenRepository {
     val saved = mutableListOf<Triple<String, String, String>>()
+    val deleted = mutableListOf<Pair<String, String>>()
 
     override suspend fun saveToken(userId: String, deviceId: String, token: String) {
-      if (fail) throw IllegalStateException("boom")
+      failure?.let { throw it }
       saved += Triple(userId, deviceId, token)
     }
-  }
 
-  private fun registrar(session: AuthSession?, tokenRepository: PushTokenRepository) =
-      PushTokenRegistrar(FakeAuthRepository(flowOf(session)), tokenRepository, DEVICE_ID)
-
-  @Test
-  fun registersTheFetchedTokenForTheGivenUser() = runTest {
-    val tokens = RecordingTokenRepository()
-
-    registrar(null, tokens).registerCurrentToken("alice") { "token-1" }
-
-    assertEquals(listOf(Triple("alice", DEVICE_ID, "token-1")), tokens.saved)
-  }
-
-  @Test
-  fun registeringDoesNotReadTheAuthSession() = runTest {
-    val auth = CountingAuthRepository()
-
-    PushTokenRegistrar(auth, RecordingTokenRepository(), DEVICE_ID).registerCurrentToken("alice") {
-      "token-1"
+    override suspend fun deleteToken(userId: String, deviceId: String) {
+      failure?.let { throw it }
+      deleted += userId to deviceId
     }
-
-    assertEquals(0, auth.subscriptions)
   }
 
-  @Test
-  fun aFailingFetchIsSwallowed() = runTest {
-    val tokens = RecordingTokenRepository()
+  private val tokens = RecordingTokenRepository()
+  private var fetches = 0
+  private var fetchResult: suspend () -> String = { "current-token" }
 
-    registrar(null, tokens).registerCurrentToken("alice") {
-      throw IllegalStateException("no token yet")
-    }
-
-    assertTrue(tokens.saved.isEmpty())
-  }
-
-  @Test
-  fun aFailingSaveIsSwallowed() = runTest {
-    val tokens = RecordingTokenRepository(fail = true)
-
-    registrar(null, tokens).registerCurrentToken("alice") { "token-1" }
-  }
+  private fun registrar(userId: String?) =
+      PushTokenRegistrar(
+          currentUser = { userId },
+          tokenRepository = tokens,
+          deviceId = DEVICE_ID,
+          fetchToken = {
+            fetches++
+            fetchResult()
+          })
 
   @Test
-  fun onTokenRefreshedSavesTheGivenTokenForTheSignedInUser() = runTest {
-    val tokens = RecordingTokenRepository()
-
-    val outcome =
-        registrar(AuthSession("bob", "bob@example.org"), tokens).onTokenRefreshed("token-2")
+  fun savesTheKnownTokenForTheSignedInUserWithoutReadingFcm() = runTest {
+    val outcome = registrar("bob").register("token-2")
 
     assertEquals(listOf(Triple("bob", DEVICE_ID, "token-2")), tokens.saved)
+    assertEquals(0, fetches)
     assertTrue(outcome)
   }
 
   @Test
-  fun onTokenRefreshedDoesNothingWhenSignedOutAndAsksForNoRetry() = runTest {
-    val tokens = RecordingTokenRepository()
+  fun savesTheCurrentFcmTokenWhenNoTokenIsKnown() = runTest {
+    val outcome = registrar("bob").register(null)
 
-    val outcome = registrar(null, tokens).onTokenRefreshed("token-2")
+    assertEquals(listOf(Triple("bob", DEVICE_ID, "current-token")), tokens.saved)
+    assertTrue(outcome)
+  }
+
+  @Test
+  fun doesNothingWhenSignedOutAndAsksForNoRetry() = runTest {
+    val outcome = registrar(null).register("token-2")
 
     assertTrue(tokens.saved.isEmpty())
+    assertEquals(0, fetches)
     assertTrue(outcome)
   }
 
   @Test
-  fun onTokenRefreshedReportsAFailedSaveSoItCanBeRetried() = runTest {
-    val tokens = RecordingTokenRepository(fail = true)
+  fun aFailingTokenReadAsksForARetryAndSavesNothing() = runTest {
+    fetchResult = { throw IllegalStateException("no token yet") }
 
-    val outcome =
-        registrar(AuthSession("bob", "bob@example.org"), tokens).onTokenRefreshed("token-2")
+    val outcome = registrar("bob").register(null)
 
     assertFalse(outcome)
+    assertTrue(tokens.saved.isEmpty())
+  }
+
+  @Test
+  fun aFailingSaveAsksForARetry() = runTest {
+    tokens.failure = IllegalStateException("boom")
+
+    assertFalse(registrar("bob").register("token-2"))
+  }
+
+  @Test
+  fun aRejectedTokenAsksForARetryInsteadOfCrashing() = runTest {
+    tokens.failure = IllegalArgumentException("blank")
+
+    assertFalse(registrar("bob").register("token-2"))
+  }
+
+  @Test
+  fun cancellationWhileReadingTheTokenIsNotSwallowed() = runTest {
+    fetchResult = { throw CancellationException("stopped") }
+
+    assertCancelled { registrar("bob").register(null) }
+  }
+
+  @Test
+  fun cancellationWhileSavingIsNotSwallowed() = runTest {
+    tokens.failure = CancellationException("stopped")
+
+    assertCancelled { registrar("bob").register("token-2") }
+    assertCancelled { registrar("bob").unregister("bob") }
+  }
+
+  @Test
+  fun unregisterRemovesTheDeviceTokenOfTheGivenUser() = runTest {
+    val outcome = registrar("bob").unregister("alice")
+
+    assertEquals(listOf("alice" to DEVICE_ID), tokens.deleted)
+    assertTrue(outcome)
+  }
+
+  @Test
+  fun aFailingUnregisterReportsFalse() = runTest {
+    tokens.failure = IllegalStateException("denied")
+
+    assertFalse(registrar("bob").unregister("alice"))
+  }
+
+  private suspend fun assertCancelled(action: suspend () -> Unit) {
+    try {
+      action()
+      fail("Expected the cancellation to propagate")
+    } catch (_: CancellationException) {
+      // expected
+    }
   }
 
   private companion object {

@@ -3,66 +3,69 @@
 package com.android.sharemate.notifications.push
 
 import android.util.Log
-import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.push.PushTokenRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
 
 /**
  * Keeps this device's push token saved for whichever user is currently signed in.
  *
  * Nobody is notified by this class; it only maintains the record a server-side sender will later
- * read. A failure here (no connection, a denied write, ...) never surfaces: the next
- * [registerCurrentToken] call or token refresh will try again.
+ * read. Every failure is logged and reported through the returned flag, so the caller (a
+ * WorkManager job) can retry exactly what failed.
  */
 class PushTokenRegistrar(
-    private val authRepository: AuthRepository,
+    private val currentUser: CurrentUserIdProvider,
     private val tokenRepository: PushTokenRepository,
     private val deviceId: String,
+    private val fetchToken: suspend () -> String,
 ) {
   /**
-   * Saves this device's current FCM token, read lazily through [fetchToken], for [userId]. Call
-   * once per session, so a token issued before any sign-in (or for a previous account) still ends
-   * up on record for the user who is signed in now.
+   * Saves a push token for the signed-in user. Uses [knownToken] when FCM just issued one, and
+   * otherwise reads the current FCM token, so the value written is always the latest one.
+   *
+   * @return false only when something failed and is worth retrying; true when the token was saved
+   *   or there was nobody to save it for (the next session start registers it).
    */
-  suspend fun registerCurrentToken(userId: String, fetchToken: suspend () -> String) {
-    val token =
-        try {
-          fetchToken()
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (error: Exception) {
-          Log.w(TAG, "Unable to read the current push token", error)
-          return
-        }
-    saveToken(userId, token)
+  suspend fun register(knownToken: String?): Boolean {
+    val userId = currentUser.currentUserId() ?: return true
+    val token = knownToken ?: readCurrentToken() ?: return false
+    return attempt(SAVE_FAILED_MESSAGE) { tokenRepository.saveToken(userId, deviceId, token) }
   }
 
   /**
-   * Saves a [token] FCM just issued or rotated, for whoever is signed in right now, if anyone.
+   * Removes this device's token for [userId], so the previous account is not targeted once someone
+   * else uses the device. Must run while [userId] is still signed in.
    *
-   * @return false only when saving failed and is worth retrying; true when the token was saved or
-   *   there was nobody to save it for ([registerCurrentToken] picks it up at the next sign-in).
+   * @return true when the token is gone, false when the removal failed
    */
-  suspend fun onTokenRefreshed(token: String): Boolean {
-    val userId = signedInUserId() ?: return true
-    return saveToken(userId, token)
-  }
+  suspend fun unregister(userId: String): Boolean =
+      attempt(DELETE_FAILED_MESSAGE) { tokenRepository.deleteToken(userId, deviceId) }
 
-  private suspend fun signedInUserId(): String? = authRepository.session.first()?.uid
-
-  private suspend fun saveToken(userId: String, token: String): Boolean =
+  private suspend fun readCurrentToken(): String? =
       try {
-        tokenRepository.saveToken(userId, deviceId, token)
+        fetchToken()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (error: Exception) {
+        Log.w(TAG, READ_FAILED_MESSAGE, error)
+        null
+      }
+
+  private suspend fun attempt(failureMessage: String, action: suspend () -> Unit): Boolean =
+      try {
+        action()
         true
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: Exception) {
-        Log.w(TAG, "Unable to save the push token", error)
+        Log.w(TAG, failureMessage, error)
         false
       }
 
   private companion object {
     const val TAG = "PushTokenRegistrar"
+    const val READ_FAILED_MESSAGE = "Unable to read the current push token"
+    const val SAVE_FAILED_MESSAGE = "Unable to save the push token"
+    const val DELETE_FAILED_MESSAGE = "Unable to remove the push token"
   }
 }

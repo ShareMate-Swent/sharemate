@@ -72,8 +72,6 @@ import com.android.sharemate.model.profile.FirebaseProfilePhotoRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
-import com.android.sharemate.model.push.FirebasePushTokenRepository
-import com.android.sharemate.model.push.PushTokenRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -84,7 +82,11 @@ import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.notifications.push.DeviceId
+import com.android.sharemate.notifications.push.FirebaseCurrentUserIdProvider
+import com.android.sharemate.notifications.push.PushTokenCleaningAuthRepository
+import com.android.sharemate.notifications.push.PushTokenRefreshScheduler
 import com.android.sharemate.notifications.push.PushTokenRegistrar
+import com.android.sharemate.notifications.push.PushTokenRegistrarFactory
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.auth.CredentialManagerGoogleSignIn
@@ -115,15 +117,24 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 open class MainActivity : ComponentActivity() {
   private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
 
   private val authRepository: AuthRepository by lazy {
-    FirebaseAuthRepository(
-        FirebaseAuth.getInstance(), FirestorePseudoRepository(FirebaseFirestore.getInstance()))
+    PushTokenCleaningAuthRepository(
+        delegate =
+            FirebaseAuthRepository(
+                FirebaseAuth.getInstance(),
+                FirestorePseudoRepository(FirebaseFirestore.getInstance())),
+        currentUser = FirebaseCurrentUserIdProvider(FirebaseAuth.getInstance()),
+        registrar = pushTokenRegistrar,
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        cleanupTimeoutMillis = PUSH_TOKEN_CLEANUP_TIMEOUT_MILLIS)
   }
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
@@ -152,12 +163,12 @@ open class MainActivity : ComponentActivity() {
   private val expirationPreferencesProvider: ExpirationPreferencesProvider by lazy {
     ExpirationPreferencesProvider(expirationPreferencesRepository)
   }
-  private val pushTokenRepository: PushTokenRepository by lazy {
-    FirebasePushTokenRepository(FirebaseFirestore.getInstance())
-  }
   private val pushTokenRegistrar: PushTokenRegistrar by lazy {
-    PushTokenRegistrar(
-        authRepository, pushTokenRepository, DeviceId.getOrCreate(applicationContext))
+    PushTokenRegistrarFactory.create(
+        DeviceId.getOrCreate(applicationContext),
+        FirebaseAuth.getInstance(),
+        FirebaseFirestore.getInstance(),
+        lazy { FirebaseMessaging.getInstance() })
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -228,9 +239,7 @@ open class MainActivity : ComponentActivity() {
                 }
               }
               LaunchedEffect(session.uid) {
-                pushTokenRegistrar.registerCurrentToken(session.uid) {
-                  FirebaseMessaging.getInstance().token.await()
-                }
+                PushTokenRefreshScheduler.enqueue(applicationContext, token = null)
               }
               DisposableEffect(navController) {
                 onDispose {
@@ -494,6 +503,9 @@ open class MainActivity : ComponentActivity() {
 
   private companion object {
     const val PENDING_DEEP_LINK_URI = "pending_deep_link_uri"
+
+    /** Longest wait for the push token removal at sign-out, so an offline sign-out still ends. */
+    const val PUSH_TOKEN_CLEANUP_TIMEOUT_MILLIS = 3_000L
   }
 }
 

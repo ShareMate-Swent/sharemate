@@ -8,6 +8,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,12 +38,23 @@ class PushTokenRefreshSchedulerTest {
   }
 
   @Test
-  fun aNewerTokenReplacesTheOneStillWaiting() {
+  fun aNewerRequestReplacesTheOneStillWaiting() {
     PushTokenRefreshScheduler.enqueue(context, "token-1")
-    PushTokenRefreshScheduler.enqueue(context, "token-2")
+    PushTokenRefreshScheduler.enqueue(context, null)
 
-    val states = scheduled().map { it.state }
-    assertEquals(1, states.count { it == WorkInfo.State.ENQUEUED })
-    assertEquals(0, states.count { it == WorkInfo.State.RUNNING })
+    assertEquals(listOf(WorkInfo.State.ENQUEUED), scheduled().map { it.state })
+  }
+
+  @Test
+  fun theInputCarriesTheTokenWhenOneIsKnown() {
+    val data = PushTokenRefreshScheduler.inputData("token-1")
+
+    assertEquals("token-1", data.getString(PushTokenRefreshScheduler.KEY_TOKEN))
+  }
+
+  @Test
+  fun theInputIsEmptyWhenTheWorkerMustReadTheCurrentToken() {
+    assertNull(
+        PushTokenRefreshScheduler.inputData(null).getString(PushTokenRefreshScheduler.KEY_TOKEN))
   }
 }

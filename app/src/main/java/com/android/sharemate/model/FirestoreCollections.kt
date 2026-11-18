@@ -32,6 +32,9 @@ object PushTokenFields {
   const val UPDATED_AT = "updatedAt"
 
   const val PLATFORM_ANDROID = "ANDROID"
+
+  /** Longest token the Firestore rules accept; keep in sync with `firestore.rules`. */
+  const val MAX_TOKEN_LENGTH = 4096
 }
 
 /** Fields of a user document holding the expiry notification preferences. */

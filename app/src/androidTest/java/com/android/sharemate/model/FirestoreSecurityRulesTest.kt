@@ -180,7 +180,7 @@ class FirestoreSecurityRulesTest {
         listOf(
             validPushTokenData() - PushTokenFields.PLATFORM,
             validPushTokenData() + (PushTokenFields.PLATFORM to "IOS"),
-            validPushTokenData() + ("extra" to 1),
+            validPushTokenData() + (UNEXPECTED_FIELD to 1),
             validPushTokenData() + (PushTokenFields.TOKEN to ""),
             validPushTokenData() + (PushTokenFields.TOKEN to 123),
             validPushTokenData() + (PushTokenFields.UPDATED_AT to Date()))
@@ -200,11 +200,32 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun ownerCannotDeleteAPushTokenEither() {
+  fun ownerCanDeleteTheirPushToken() {
     val userId = FirebaseEmulator.signInAs("alice")
     Tasks.await(pushTokenReference(userId, "device-1").set(validPushTokenData()))
 
-    assertDenied(pushTokenReference(userId, "device-1").delete())
+    Tasks.await(pushTokenReference(userId, "device-1").delete())
+
+    assertFalse(Tasks.await(pushTokenReference(userId, "device-1").get(Source.SERVER)).exists())
+  }
+
+  @Test
+  fun ownerCanReadTheirPushTokenButNotListThem() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    Tasks.await(pushTokenReference(userId, "device-1").set(validPushTokenData()))
+
+    Tasks.await(pushTokenReference(userId, "device-1").get(Source.SERVER))
+    assertDenied(userReference(userId).collection(FirestoreCollections.PUSH_TOKENS).get())
+  }
+
+  @Test
+  fun pushTokenLengthIsLimitedToTheSharedMaximum() {
+    val userId = FirebaseEmulator.signInAs("alice")
+    val atLimit = "t".repeat(PushTokenFields.MAX_TOKEN_LENGTH)
+    val overLimit = atLimit + "t"
+
+    Tasks.await(pushTokenReference(userId, "device-1").set(validPushTokenData(atLimit)))
+    assertDenied(pushTokenReference(userId, "device-2").set(validPushTokenData(overLimit)))
   }
 
   @Test
@@ -1094,3 +1115,6 @@ class FirestoreSecurityRulesTest {
         (failure.cause as? FirebaseFirestoreException)?.code)
   }
 }
+
+/** A field the push token rules do not know, used to check that extra fields are refused. */
+private const val UNEXPECTED_FIELD = "unexpected"

@@ -75,6 +75,7 @@ service cloud.firestore {
     // replaced in place on refresh rather than accumulating one document per refresh.
     match /users/{userId}/pushTokens/{deviceId} {
       function isValidPushToken(data) {
+        // Keep in sync with PushTokenFields.MAX_TOKEN_LENGTH.
         let maxTokenLength = 4096;
         let fields = ['token', 'platform', 'updatedAt'];
         return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
@@ -84,11 +85,12 @@ service cloud.firestore {
             && data.updatedAt == request.time;
       }
 
-      allow read: if signedIn() && request.auth.uid == userId;
+      // `get`, not `read`: allow rules are additive, so `read` would also open `list`.
+      allow get, delete: if signedIn() && request.auth.uid == userId;
       allow create, update: if signedIn()
           && request.auth.uid == userId
           && isValidPushToken(request.resource.data);
-      allow delete, list: if false;
+      allow list: if false;
     }
 
     // Private receipt handoff, not an expense ledger or trusted financial proof. The immutable

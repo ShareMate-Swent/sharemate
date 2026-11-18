@@ -1,20 +1,27 @@
 // Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
 package com.android.sharemate.notifications.push
 
-import android.content.Context
-import com.android.sharemate.model.auth.FirebaseAuthRepository
-import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.push.FirebasePushTokenRepository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.tasks.await
 
-/** Wires a production [PushTokenRegistrar] for callers that have no other repositories at hand. */
+/** Wires a production [PushTokenRegistrar] from the Firebase services it is given. */
 object PushTokenRegistrarFactory {
-  fun create(context: Context): PushTokenRegistrar {
-    val firestore = FirebaseFirestore.getInstance()
-    val authRepository =
-        FirebaseAuthRepository(FirebaseAuth.getInstance(), FirestorePseudoRepository(firestore))
-    return PushTokenRegistrar(
-        authRepository, FirebasePushTokenRepository(firestore), DeviceId.getOrCreate(context))
-  }
+  /**
+   * Builds a registrar for the device identified by [deviceId]. [messaging] is only resolved when a
+   * token must be read, so building the registrar never touches FCM.
+   */
+  fun create(
+      deviceId: String,
+      auth: FirebaseAuth,
+      firestore: FirebaseFirestore,
+      messaging: Lazy<FirebaseMessaging>,
+  ): PushTokenRegistrar =
+      PushTokenRegistrar(
+          FirebaseCurrentUserIdProvider(auth),
+          FirebasePushTokenRepository(firestore),
+          deviceId,
+          fetchToken = { messaging.value.token.await() })
 }
