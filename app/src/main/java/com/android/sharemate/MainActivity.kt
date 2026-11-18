@@ -29,6 +29,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +56,7 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
 import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
@@ -68,7 +70,9 @@ import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.profile.FirebaseProfilePhotoRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
+import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
@@ -96,6 +100,8 @@ import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.TopLevelDestination
+import com.android.sharemate.ui.profile.ProfilePhotoPicker
+import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
 import com.android.sharemate.ui.settings.NotificationSettingsScreen
@@ -105,6 +111,7 @@ import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
 import com.android.sharemate.ui.theme.SampleAppTheme
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
@@ -154,6 +161,23 @@ open class MainActivity : ComponentActivity() {
               FirebaseFunctions.getInstance(FirebaseSettlementRepository.REGION)))
 
   private val financeRepository by lazy { createHouseholdFinanceRepository() }
+  private val expenseRepository by lazy {
+    FirebaseExpenseSubmissionRepository(
+        FirebaseFunctions.getInstance(FirebaseExpenseSubmissionRepository.REGION))
+  }
+
+  /** Creates the repository that uploads the photo picked after sign-up or in Settings. */
+  protected open fun createProfilePhotoRepository(): ProfilePhotoRepository =
+      FirebaseProfilePhotoRepository.create()
+
+  private val profilePhotoRepository by lazy { createProfilePhotoRepository() }
+  /**
+   * Storage bucket of uploaded profile photos, the only one the members list loads from; null
+   * without a Firebase app (as in UI tests), which shows Google photos only.
+   */
+  private val profilePhotoBucket by lazy {
+    FirebaseApp.getApps(this).firstOrNull()?.options?.storageBucket
+  }
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -186,6 +210,7 @@ open class MainActivity : ComponentActivity() {
             authRepository,
             householdRepository,
             profileRepository,
+            profilePhotoRepository,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
@@ -225,7 +250,6 @@ open class MainActivity : ComponentActivity() {
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
                             selected = destination.isSelected(currentRoute),
-                            enabled = destination != TopLevelDestination.CHAT,
                             onClick = {
                               if (destination.isParentOf(currentRoute)) {
                                 // Tapping the tab of the open screen goes back to the tab itself.
@@ -288,7 +312,12 @@ open class MainActivity : ComponentActivity() {
                                             expirationPreferences = expirationPreferencesProvider,
                                             pseudoRepository = pseudoRepository,
                                             memberNameRepository = memberNameRepository,
-                                            currentUserDisplayName = session.displayName)
+                                            currentUserDisplayName = session.displayName,
+                                            chatRepository = chatRepository,
+                                            activitySenderName =
+                                                session.displayName
+                                                    ?: session.email
+                                                    ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -313,7 +342,12 @@ open class MainActivity : ComponentActivity() {
                               household.type ==
                                   com.android.sharemate.model.household.FridgeType.SHARED,
                               showBalances = household.canViewBalances(session.uid),
-                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) })
+                              onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
+                              expenseRepository = expenseRepository,
+                              profileRepository = profileRepository,
+                              barcodeScanner = remember { createBarcodeScanner() },
+                              productCatalogRepository =
+                                  remember { createProductCatalogRepository() })
                         }
                       }
                   composable(BALANCES_ROUTE) {
@@ -340,7 +374,6 @@ open class MainActivity : ComponentActivity() {
                                             household.id,
                                             session.uid,
                                             session.displayName
-                                                ?: session.email
                                                 ?: getString(R.string.chat_default_sender_name))
                                       }
                                     })
@@ -369,11 +402,14 @@ open class MainActivity : ComponentActivity() {
                                             authRepository,
                                             householdRepository,
                                             pseudoRepository,
-                                            household)
+                                            household,
+                                            profilePhotoRepository,
+                                            AndroidPersonalPhotoFiles(applicationContext))
                                       }
                                     })
                         val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
                         val settingsScope = rememberCoroutineScope()
+                        val photoCamera = profilePhotoCamera()
                         SettingsScreen(
                             state = settingsState,
                             leaveState = leaveState,
@@ -399,7 +435,13 @@ open class MainActivity : ComponentActivity() {
                             onSignOut = authViewModel::signOut,
                             onOpenNotificationSettings = {
                               navController.navigate(ChildRoutes.NOTIFICATION_SETTINGS)
-                            })
+                            },
+                            onChangePhoto = photoCamera::open,
+                            onRetryPhotoUpload = settingsViewModel::retryPhotoUpload)
+                        ProfilePhotoPicker(
+                            onPhotoConfirmed = settingsViewModel::changePhoto,
+                            camera = photoCamera,
+                            title = R.string.settings_change_photo)
                       }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
                     // Scoped to this screen, so the members listener stops when it is closed.
@@ -409,7 +451,10 @@ open class MainActivity : ComponentActivity() {
                                 viewModelFactory {
                                   initializer {
                                     HouseholdMembersViewModel(
-                                        profileRepository, household.id, session.uid)
+                                        profileRepository,
+                                        household.id,
+                                        session.uid,
+                                        profilePhotoBucket)
                                   }
                                 })
                     val membersState by membersViewModel.state.collectAsStateWithLifecycle()

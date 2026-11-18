@@ -849,11 +849,18 @@ class FirestoreSecurityRulesTest {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
     val chat = FirebaseChatRepository(firestore)
+    Tasks.await(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(senderId)
+            .set(mapOf("displayName" to "Alice")))
 
-    val textId = chat.sendMessage(household.id, senderId, "Sender", " hello ")
+    val textId = chat.sendMessage(household.id, senderId, "Impersonated", " hello ")
     assertNotNull(textId)
-    assertEquals(
-        "hello", Tasks.await(messageReference(household.id, textId!!).get()).getString("text"))
+    val text = Tasks.await(messageReference(household.id, textId!!).get(Source.SERVER))
+    assertEquals("hello", text.getString("text"))
+    assertEquals("Alice", text.getString("senderName"))
+    assertNotNull(text.getTimestamp("timestamp"))
 
     for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
       val activityId =
@@ -866,6 +873,41 @@ class FirestoreSecurityRulesTest {
     }
 
     assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+    val ordered =
+        Tasks.await(
+            householdReference(household.id)
+                .collection(FirestoreCollections.MESSAGES)
+                .orderBy("timestamp")
+                .get(Source.SERVER))
+    val timestamps = ordered.documents.map { checkNotNull(it.getTimestamp("timestamp")) }
+    assertEquals(timestamps.sorted(), timestamps)
+    assertEquals(textId, ordered.documents.first().id)
+  }
+
+  @Test
+  fun chatRequiresProfileNameAndServerTime() {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val profile = firestore.collection(FirestoreCollections.PROFILES).document(senderId)
+    val ref = messageReference(household.id, "m1")
+
+    Tasks.await(profile.set(mapOf("displayName" to "Alice")))
+    val base = messageData("m1", senderId) + ("senderName" to "Alice")
+    assertDenied(ref.set(base + ("senderName" to "Bob")))
+    assertDenied(ref.set(base + ("timestamp" to Date(0))))
+    assertDenied(ref.set(base + ("timestamp" to Date(System.currentTimeMillis() + 86_400_000L))))
+    Tasks.await(ref.set(base))
+
+    Tasks.await(profile.set(mapOf("displayName" to "")))
+    Tasks.await(messageReference(household.id, "m2").set(messageData("m2", senderId)))
+    assertDenied(
+        messageReference(household.id, "m3")
+            .set(messageData("m3", senderId) + ("senderName" to "person@example.com")))
+    Tasks.await(profile.set(mapOf("displayName" to "person@example.com")))
+    Tasks.await(messageReference(household.id, "m4").set(messageData("m4", senderId)))
+    assertDenied(
+        messageReference(household.id, "m5")
+            .set(messageData("m5", senderId) + ("senderName" to "person@example.com")))
   }
 
   @Test
@@ -1084,9 +1126,9 @@ class FirestoreSecurityRulesTest {
       mapOf(
           "id" to id,
           "senderId" to senderId,
-          "senderName" to "Sender",
+          "senderName" to "Member",
           "text" to text,
-          "timestamp" to Date())
+          "timestamp" to FieldValue.serverTimestamp())
 
   private fun messageReference(householdId: String, messageId: String): DocumentReference =
       householdReference(householdId).collection(FirestoreCollections.MESSAGES).document(messageId)

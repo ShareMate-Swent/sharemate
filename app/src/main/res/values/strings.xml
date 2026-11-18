@@ -2,6 +2,11 @@
 <!-- Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com> -->
 <!-- Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com> -->
 <resources>
+    <string name="purchase_members_loading">Loading household members…</string>
+    <string name="purchase_save_success">Inventory saved and expense confirmed.</string>
+    <string name="purchase_save_pending">Inventory saved. Waiting for expense confirmation.</string>
+    <string name="purchase_save_unknown">Inventory saved. Expense outcome unknown; retrying safely when connected.</string>
+    <string name="purchase_save_rejected">Inventory saved. Expense attempt rejected. Check your membership and retry; an earlier attempt may have succeeded.</string>
     <string name="app_name">ShareMate</string>
     <string name="title_activity_second">SecondActivity</string>
     <string name="greeting_robo_name" translatable="false">Robolectric</string>
@@ -113,6 +118,8 @@
     <string name="household_retry">Try again</string>
     <string name="settings_title">Settings</string>
     <string name="settings_profile_photo">Profile photo</string>
+    <string name="settings_change_photo">Change profile photo</string>
+    <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
     <string name="settings_google_account">Google account</string>
     <string name="settings_email_account">Email account</string>
     <string name="settings_connected">Connected</string>
@@ -225,6 +232,10 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
+    <string name="chat_activity_eaten">Ate %1$s</string>
+    <string name="chat_activity_thrown">Threw away %1$s</string>
+    <string name="chat_activity_image_description">Image of %1$s</string>
+    <string name="chat_sender_identity">%1$s · Member %2$d</string>
     <string name="fridge_personal">Personal</string>
     <string name="fridge_item_owner">Owner: %1$s</string>
     <string name="fridge_owner_you_named">%1$s (you)</string>
@@ -237,6 +248,16 @@
     <string name="personal_photo_remove">Remove personal photo</string>
     <string name="personal_photo_invalid">Choose a readable JPEG or PNG photo of at most 5 MiB.</string>
     <string name="personal_photo_attach_failed">%1$s was saved, but its photo could not be attached.</string>
+    <string name="profile_photo_step_title">Add a profile photo</string>
+    <string name="profile_photo_step_subtitle">Help your housemates recognise you. This step is optional.</string>
+    <string name="profile_photo_sources">Take a photo of yourself, or choose one from your gallery.</string>
+    <string name="profile_photo_preview">Selected profile photo</string>
+    <string name="profile_photo_add">Add a photo</string>
+    <string name="profile_photo_change">Change photo</string>
+    <string name="profile_photo_save">Save</string>
+    <string name="profile_photo_retry">Retry</string>
+    <string name="profile_photo_skip">Skip</string>
+    <string name="profile_photo_upload_failed">Your photo could not be uploaded. Your account is ready, so you can retry or skip.</string>
     <string name="balances_back">Back to receipts</string>
     <string name="balances_unknown_member">Household member</string>
     <string name="balances_invalid_data">These expenses could not be calculated. Please check the household’s expense data.</string>
@@ -259,4 +280,6 @@
     <string name="inventory_save_success">Items saved to the shared fridge.</string>
     <string name="inventory_save_failed">Items could not be saved. Your reviewed list is kept. Check the item details and try again (up to %1$d items).</string>
     <string name="inventory_save_recovery_failed">The previous save could not be checked. Try again before submitting another receipt.</string>
+    <string name="purchase_set_aside">Set expense aside and scan another receipt</string>
+    <string name="purchase_recover_deferred">Recover saved expense: %1$s</string>
 </resources>

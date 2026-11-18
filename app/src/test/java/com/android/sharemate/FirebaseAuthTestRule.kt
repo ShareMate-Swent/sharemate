@@ -24,6 +24,8 @@ import org.junit.rules.ExternalResource
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
 
+private const val TEST_EMAIL = "student@example.org"
+
 /** Replaces only the Firebase SDK boundary while exercising real application components. */
 class FirebaseAuthTestRule(
     private val startSignedIn: Boolean = false,
@@ -55,12 +57,13 @@ class FirebaseAuthTestRule(
         .thenReturn(Tasks.forResult(snapshot))
   }
 
-  fun setSession(userId: String?) {
+  /** Sets the mock session, including an optional account [email]. */
+  fun setSession(userId: String?, email: String? = TEST_EMAIL) {
     currentUser =
         userId?.let {
           mock(FirebaseUser::class.java).also { user ->
             `when`(user.uid).thenReturn(it)
-            `when`(user.email).thenReturn("student@example.org")
+            `when`(user.email).thenReturn(email)
           }
         }
     listener?.onAuthStateChanged(auth)
@@ -172,7 +175,7 @@ class FirebaseAuthTestRule(
         .thenReturn(lookupTask)
     val user = mock(FirebaseUser::class.java)
     `when`(user.uid).thenReturn("trusted-student-id")
-    `when`(user.email).thenReturn("student@example.org")
+    `when`(user.email).thenReturn(TEST_EMAIL)
     currentUser = if (startSignedIn) user else null
     `when`(auth.currentUser).thenAnswer { currentUser }
     doAnswer {
@@ -188,7 +191,7 @@ class FirebaseAuthTestRule(
           Tasks.forResult(mock(AuthResult::class.java))
         }
         .`when`(auth)
-        .signInWithEmailAndPassword("student@example.org", "secret")
+        .signInWithEmailAndPassword(TEST_EMAIL, "secret")
     doAnswer {
           currentUser = null
           listener?.onAuthStateChanged(auth)

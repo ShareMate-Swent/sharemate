@@ -11,16 +11,23 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 class FirebaseAuthRepository(
     private val auth: FirebaseAuth,
     private val pseudoRepository: PseudoRepository,
 ) : AuthRepository {
+  private val refreshes =
+      MutableSharedFlow<Unit>(
+          extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
   override val session: Flow<AuthSession?> =
       callbackFlow {
             val listener =
@@ -28,6 +35,8 @@ class FirebaseAuthRepository(
                   trySend(firebaseAuth.currentUser?.toAuthSession())
                 }
             auth.addAuthStateListener(listener)
+            // A profile update changes the current user in place without an auth state event.
+            launch { refreshes.collect { trySend(auth.currentUser?.toAuthSession()) } }
             awaitClose { auth.removeAuthStateListener(listener) }
           }
           .distinctUntilChanged()
@@ -65,6 +74,10 @@ class FirebaseAuthRepository(
     authenticate {
       auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).await()
     }
+  }
+
+  override fun refreshSession() {
+    refreshes.tryEmit(Unit)
   }
 
   override fun signOut() = auth.signOut()

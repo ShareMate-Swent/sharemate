@@ -1,6 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.staging
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
@@ -9,15 +11,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.test.core.app.ApplicationProvider
+import com.android.sharemate.R
 import com.android.sharemate.model.staging.StagedItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -52,6 +58,70 @@ class StagingScreenTest {
             hasText(text) and hasAnyAncestor(hasTestTag(StagingTestTags.item(id))),
             useUnmergedTree = true)
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun purchaseModeLabelsPinnedButtonAndSavesOnlyInventory() {
+    val review = PurchaseReview.forUser("a", mapOf("a" to "Alex", "b" to "Blair"))
+    val vm = StagingViewModel(listOf(milk), review)
+    vm.selectPayer("b")
+    vm.toggleParticipant("a")
+    var purchase: ReviewedPurchase? = null
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingScreen(
+            vm, onConfirm = { confirmed = it }, onBack = {}, onConfirmPurchase = { purchase = it })
+      }
+    }
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    composeTestRule
+        .onNodeWithTag(StagingTestTags.CONFIRM)
+        .assertTextEquals(context.getString(R.string.purchase_save_inventory_only))
+        .assertIsEnabled()
+        .performClick()
+    assertEquals(listOf(milk), confirmed)
+    assertNull(purchase)
+  }
+
+  @Test
+  fun inventoryModeKeepsConfirmLabel() {
+    setScreen(StagingViewModel(listOf(milk)))
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    composeTestRule
+        .onNodeWithTag(StagingTestTags.CONFIRM)
+        .assertTextEquals(context.getString(R.string.staging_confirm))
+  }
+
+  @Test
+  fun anotherPayerShowsExplanationAndDisablesFinancialConfirmation() {
+    val vm =
+        StagingViewModel(
+            listOf(milk), PurchaseReview.forUser("a", mapOf("a" to "Alex", "b" to "Blair")))
+    vm.toggleParticipant("b")
+    var purchase: ReviewedPurchase? = null
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingScreen(vm, onConfirm = {}, onBack = {}, onConfirmPurchase = { purchase = it })
+      }
+    }
+    composeTestRule.onNodeWithTag("staging_payer_b").performScrollTo().performClick()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    composeTestRule
+        .onNodeWithTag("staging_purchase_error")
+        .assertTextEquals(context.getString(R.string.purchase_payer_must_submit))
+    composeTestRule
+        .onNodeWithTag("staging_confirm_purchase")
+        .performScrollTo()
+        .assertIsNotEnabled()
+        .performClick()
+    assertNull(purchase)
+    composeTestRule.onNodeWithTag("staging_payer_a").performScrollTo().performClick()
+    composeTestRule
+        .onNodeWithTag("staging_confirm_purchase")
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+    assertEquals("a", purchase?.paidBy)
   }
 
   @Test
