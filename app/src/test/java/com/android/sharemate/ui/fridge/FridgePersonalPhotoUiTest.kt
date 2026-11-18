@@ -177,7 +177,10 @@ class FridgePersonalPhotoUiTest {
         .performScrollTo()
         .performClick()
     chooseAndConfirm("item", itemBytes)
-    compose.waitUntil(5_000) { photos.draft.value.file == draft }
+    compose.waitUntil(5_000) {
+      photos.draft.value.file == draft &&
+          compose.onAllNodesWithTag(PhotoPickerTestTags.CONFIRM).fetchSemanticsNodes().isEmpty()
+    }
     compose.runOnIdle { assertEquals(0, scans) }
     compose.onNodeWithTag(BarcodeFormTestTags.OPEN).performScrollTo().performClick()
     chooseAndConfirm("barcode", barcodeBytes)
@@ -186,7 +189,7 @@ class FridgePersonalPhotoUiTest {
           compose.onAllNodesWithTag(PhotoPickerTestTags.CONFIRM).fetchSemanticsNodes().isEmpty()
     }
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk")
-    compose.onNodeWithTag(C.Tag.fridge_save_item).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     compose.runOnIdle {
       assertEquals(draft, saved)
       assertArrayEquals(itemBytes, requireNotNull(saved).readBytes())
