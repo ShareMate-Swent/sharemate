@@ -25,6 +25,120 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun expenseNullPurchaseDraftStaysOutsideReceiptHistory() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val purchaseStore = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val historyStore = AndroidInventorySubmissionStore(app, dispatcher)
+    val purchase =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "draft-owner",
+            "draft-home",
+            listOf(StagedItem("milk", "Milk", 2, 1000)),
+            draft = true)
+    purchaseStore.save(purchase)
+
+    assertNull(historyStore.load("draft-owner", "draft-home"))
+    assertNull(historyStore.loadById("draft-owner", "draft-home", purchase.id))
+    assertTrue(historyStore.list("draft-owner", "draft-home").isEmpty())
+
+    val receipt =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "draft-owner",
+            "draft-home",
+            listOf(StagedItem("bread", "Bread", 1, 350)),
+            draft = true)
+    historyStore.save(receipt)
+    assertEquals(listOf(receipt), historyStore.list("draft-owner", "draft-home"))
+    assertNull(historyStore.loadById("draft-owner", "draft-home", purchase.id))
+    assertEquals(purchase, purchaseStore.load("draft-owner", "draft-home"))
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
+  }
+
+  @Test
+  fun expenseBearingLegacyEntryStaysOutsideReceiptHistory() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val purchaseStore = AndroidInventorySubmissionStore(app, dispatcher, legacyActive = true)
+    val historyStore = AndroidInventorySubmissionStore(app, dispatcher)
+    val purchaseId = "12345678-1234-1234-1234-123456789abc"
+    val rows = listOf(StagedItem("milk", "Milk", 2, 1000))
+    val purchase =
+        InventorySubmission(
+            purchaseId,
+            "purchase-owner",
+            "purchase-home",
+            rows,
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    purchaseId,
+                    "purchase-home",
+                    "purchase-owner",
+                    1000,
+                    mapOf("purchase-owner" to 1000L)))
+    purchaseStore.save(purchase)
+
+    assertNull(historyStore.load("purchase-owner", "purchase-home"))
+    assertNull(historyStore.loadById("purchase-owner", "purchase-home", purchaseId))
+    assertTrue(historyStore.list("purchase-owner", "purchase-home").isEmpty())
+
+    val draft =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "purchase-owner",
+            "purchase-home",
+            rows,
+            draft = true)
+    historyStore.save(draft)
+    assertEquals(listOf(draft), historyStore.list("purchase-owner", "purchase-home"))
+    assertNull(historyStore.loadById("purchase-owner", "purchase-home", purchaseId))
+    assertEquals(purchase, purchaseStore.load("purchase-owner", "purchase-home"))
+    app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE).edit().clear().commit()
+  }
+
+  @Test
+  fun multipleReceiptsSurviveRestartAndStayInTheirOwnScope() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val first =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "multi-owner",
+            "multi-home",
+            listOf(StagedItem("a", "Apple", 1, 100)),
+            draft = true)
+    val second =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "multi-owner",
+            "multi-home",
+            listOf(StagedItem("b", "Bread", 2, 350)),
+            draft = true)
+    store.save(first)
+    store.save(second)
+
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(listOf(second, first), restored.list("multi-owner", "multi-home"))
+    assertEquals(first, restored.loadById("multi-owner", "multi-home", first.id))
+    assertNull(restored.loadById("another-owner", "multi-home", first.id))
+    assertNull(restored.loadById("multi-owner", "another-home", first.id))
+
+    val edited =
+        InventorySubmission(
+            first.id,
+            first.ownerId,
+            first.householdId,
+            listOf(first.items.single().copy(name = "Green apple")),
+            draft = true)
+    restored.save(edited)
+    assertEquals(edited, store.loadById("multi-owner", "multi-home", first.id))
+    assertEquals(second, store.loadById("multi-owner", "multi-home", second.id))
+  }
+
+  @Test
   @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
   fun concurrentSaveAcrossStoresCannotBeRemovedBySetAside() = runTest {
     val app = RuntimeEnvironment.getApplication()
@@ -104,7 +218,7 @@ class InventorySubmissionStoreTest {
     store.save(InventorySubmission(id, "owner", "home", rows))
     assertNull(store.load("owner", "home")?.expense)
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf("owner", "home")).toString()
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:$id"
     val json = JSONObject(checkNotNull(preferences.getString(key, null)))
     assertFalse(json.has(Fields.EXPENSE))
     val purchase = InventorySubmission(id, "owner", "home", rows, expense = expense)
@@ -203,9 +317,16 @@ class InventorySubmissionStoreTest {
   fun corruptOrMismatchedJournalFailsRatherThanPretendingThereIsNoSubmission() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf("owner", "home")).toString()
-    preferences.edit().putString(key, "not valid json").commit()
     val store = AndroidInventorySubmissionStore(app, StandardTestDispatcher(testScheduler))
+    val owned =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abd",
+            "owner",
+            "home",
+            listOf(StagedItem("bread", "Bread", 1, 350)))
+    store.save(owned)
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:${owned.id}"
+    preferences.edit().putString(key, "not valid json").commit()
     assertTrue(runCatching { store.load("owner", "home") }.isFailure)
     val other =
         InventorySubmission(
@@ -214,7 +335,7 @@ class InventorySubmissionStoreTest {
             "home",
             listOf(StagedItem("milk", "Milk", 2, Long.MAX_VALUE)))
     store.save(other)
-    val foreignKey = JSONArray(listOf("other", "home")).toString()
+    val foreignKey = "receipt:${JSONArray(listOf("other", "home"))}:${other.id}"
     preferences.edit().putString(key, preferences.getString(foreignKey, null)).commit()
     assertTrue(runCatching { store.load("owner", "home") }.isFailure)
     assertEquals(other, store.load("other", "home"))
@@ -234,7 +355,7 @@ class InventorySubmissionStoreTest {
             draft = true)
     store.save(draft)
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf(draft.ownerId, draft.householdId)).toString()
+    val key = "receipt:${JSONArray(listOf(draft.ownerId, draft.householdId))}:${draft.id}"
     val original = checkNotNull(preferences.getString(key, null))
 
     for (value in listOf(null, JSONObject.NULL, "true", "false", 1)) {
@@ -283,7 +404,7 @@ class InventorySubmissionStoreTest {
     store.save(saved)
     assertEquals(saved, store.load("owner", "home"))
     val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
-    val key = JSONArray(listOf("owner", "home")).toString()
+    val key = "receipt:${JSONArray(listOf("owner", "home"))}:${saved.id}"
     val original = checkNotNull(preferences.getString(key, null))
     for ((field, value) in
         listOf(

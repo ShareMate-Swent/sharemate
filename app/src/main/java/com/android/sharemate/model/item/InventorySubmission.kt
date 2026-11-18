@@ -45,7 +45,7 @@ class InventorySubmission(
     require(UUID.fromString(id).toString() == id)
     require(ownerId.isNotBlank() && '/' !in ownerId)
     require(householdId.isNotBlank() && '/' !in householdId)
-    require(this.items.isNotEmpty())
+    require(draft || this.items.isNotEmpty())
     require(this.items.map { it.id }.toSet().size == this.items.size)
     require(
         draft ||
