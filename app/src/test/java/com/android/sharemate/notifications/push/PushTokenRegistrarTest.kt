@@ -6,6 +6,7 @@ import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.push.PushTokenRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -15,6 +16,23 @@ import org.junit.Test
 
 class PushTokenRegistrarTest {
   private class FakeAuthRepository(override val session: Flow<AuthSession?>) : AuthRepository {
+    override suspend fun signIn(email: String, password: String) = Unit
+
+    override suspend fun signUp(email: String, password: String, displayName: String) = Unit
+
+    override suspend fun signInWithGoogle(idToken: String) = Unit
+
+    override fun signOut() = Unit
+  }
+
+  private class CountingAuthRepository : AuthRepository {
+    var subscriptions = 0
+
+    override val session: Flow<AuthSession?> = flow {
+      subscriptions++
+      emit(null)
+    }
+
     override suspend fun signIn(email: String, password: String) = Unit
 
     override suspend fun signUp(email: String, password: String, displayName: String) = Unit
@@ -39,28 +57,30 @@ class PushTokenRegistrarTest {
       PushTokenRegistrar(FakeAuthRepository(flowOf(session)), tokenRepository, DEVICE_ID)
 
   @Test
-  fun registersTheFetchedTokenForTheSignedInUser() = runTest {
+  fun registersTheFetchedTokenForTheGivenUser() = runTest {
     val tokens = RecordingTokenRepository()
 
-    registrar(AuthSession("alice", "alice@example.org"), tokens).registerCurrentToken { "token-1" }
+    registrar(null, tokens).registerCurrentToken("alice") { "token-1" }
 
     assertEquals(listOf(Triple("alice", DEVICE_ID, "token-1")), tokens.saved)
   }
 
   @Test
-  fun doesNothingWhenNobodyIsSignedIn() = runTest {
-    val tokens = RecordingTokenRepository()
+  fun registeringDoesNotReadTheAuthSession() = runTest {
+    val auth = CountingAuthRepository()
 
-    registrar(null, tokens).registerCurrentToken { "token-1" }
+    PushTokenRegistrar(auth, RecordingTokenRepository(), DEVICE_ID).registerCurrentToken("alice") {
+      "token-1"
+    }
 
-    assertTrue(tokens.saved.isEmpty())
+    assertEquals(0, auth.subscriptions)
   }
 
   @Test
   fun aFailingFetchIsSwallowed() = runTest {
     val tokens = RecordingTokenRepository()
 
-    registrar(AuthSession("alice", "alice@example.org"), tokens).registerCurrentToken {
+    registrar(null, tokens).registerCurrentToken("alice") {
       throw IllegalStateException("no token yet")
     }
 
@@ -71,7 +91,7 @@ class PushTokenRegistrarTest {
   fun aFailingSaveIsSwallowed() = runTest {
     val tokens = RecordingTokenRepository(fail = true)
 
-    registrar(AuthSession("alice", "alice@example.org"), tokens).registerCurrentToken { "token-1" }
+    registrar(null, tokens).registerCurrentToken("alice") { "token-1" }
   }
 
   @Test

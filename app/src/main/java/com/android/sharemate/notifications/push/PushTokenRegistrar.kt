@@ -21,12 +21,11 @@ class PushTokenRegistrar(
     private val deviceId: String,
 ) {
   /**
-   * Saves this device's current FCM token, read lazily through [fetchToken], for the signed-in
-   * user. Does nothing if nobody is signed in. Call once per session, so a token issued before any
-   * sign-in (or for a previous account) still ends up on record for the current user.
+   * Saves this device's current FCM token, read lazily through [fetchToken], for [userId]. Call
+   * once per session, so a token issued before any sign-in (or for a previous account) still ends
+   * up on record for the user who is signed in now.
    */
-  suspend fun registerCurrentToken(fetchToken: suspend () -> String) {
-    val userId = signedInUserId() ?: return
+  suspend fun registerCurrentToken(userId: String, fetchToken: suspend () -> String) {
     val token =
         try {
           fetchToken()

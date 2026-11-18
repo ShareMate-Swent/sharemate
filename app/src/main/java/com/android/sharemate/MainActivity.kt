@@ -228,7 +228,7 @@ open class MainActivity : ComponentActivity() {
                 }
               }
               LaunchedEffect(session.uid) {
-                pushTokenRegistrar.registerCurrentToken {
+                pushTokenRegistrar.registerCurrentToken(session.uid) {
                   FirebaseMessaging.getInstance().token.await()
                 }
               }
