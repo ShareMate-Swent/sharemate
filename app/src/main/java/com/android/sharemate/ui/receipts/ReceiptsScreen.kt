@@ -112,7 +112,7 @@ fun ReceiptsScreen(
                 initializer {
                   InventorySaveViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context),
+                      AndroidInventorySubmissionStore(context, legacyActive = true),
                       userId,
                       householdId,
                       sharedHousehold,
