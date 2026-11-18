@@ -5,8 +5,6 @@ import com.android.sharemate.model.image.FoodImageSearchResult.Failure
 import com.android.sharemate.model.image.FoodImageSearchResult.Found
 import com.android.sharemate.model.image.FoodImageSearchResult.NotFound
 import com.android.sharemate.model.image.FoodImageSearchResult.Reason
-import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_CANDIDATE_INCREMENT
-import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_INITIAL_CANDIDATES
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
@@ -47,10 +45,7 @@ class FoodImageAutomaticSelectionTest {
     assertEquals(
         FoodImageSelection.RemoteImage(image()), FoodImageSelector(images).selectAutomatic("apple"))
     assertEquals(
-        List(IMAGE_LOOKUP_MAX_ATTEMPTS) { attempt ->
-          attempt * IMAGE_LOOKUP_RETRY_DELAY_MS to
-              IMAGE_LOOKUP_INITIAL_CANDIDATES + attempt * IMAGE_LOOKUP_CANDIDATE_INCREMENT
-        },
+        listOf(0L to 20, IMAGE_LOOKUP_RETRY_DELAY_MS to 30, 2 * IMAGE_LOOKUP_RETRY_DELAY_MS to 30),
         calls)
   }
 
@@ -273,6 +268,36 @@ class FoodImageAutomaticSelectionTest {
       assertEquals(1, calls)
       assertEquals(0L, currentTime)
     }
+  }
+
+  @Test
+  fun articleDeadlineStillAllowsTheFirstCommonsSearch() = runTest {
+    val images =
+        object : FoodImageRepository {
+          override suspend fun exactArticleImage(title: String): FoodImageSearchResult =
+              awaitCancellation()
+
+          override suspend fun searchByTitle(title: String): FoodImageSearchResult = Found(image())
+        }
+    assertEquals(
+        FoodImageSelection.RemoteImage(image()), FoodImageSelector(images).selectAutomatic("milk"))
+    assertEquals(IMAGE_LOOKUP_TIMEOUT_MS, currentTime)
+  }
+
+  @Test
+  fun cancellationDuringWikipediaLookupDoesNotLaunchCommons() = runTest {
+    val images =
+        object : FoodImageRepository {
+          override suspend fun exactArticleImage(title: String): FoodImageSearchResult =
+              awaitCancellation()
+
+          override suspend fun searchByTitle(title: String): FoodImageSearchResult =
+              error("Unexpected Commons call")
+        }
+    val selection = async { FoodImageSelector(images).selectAutomatic("milk") }
+    runCurrent()
+    selection.cancelAndJoin()
+    assertTrue(selection.isCancelled)
   }
 
   private fun repository(search: suspend (String) -> FoodImageSearchResult): FoodImageRepository =

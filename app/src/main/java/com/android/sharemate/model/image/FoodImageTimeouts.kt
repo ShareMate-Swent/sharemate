@@ -7,7 +7,7 @@ internal object FoodImageTimeouts {
   const val IMAGE_LOOKUP_TIMEOUT_MS = 10_000L
   const val IMAGE_LOOKUP_MAX_ATTEMPTS = 3
   const val IMAGE_LOOKUP_RETRY_DELAY_MS = 2_000L
-  const val IMAGE_LOOKUP_INITIAL_CANDIDATES = 10
+  const val IMAGE_LOOKUP_INITIAL_CANDIDATES = 20
   const val IMAGE_LOOKUP_CANDIDATE_INCREMENT = 10
 
   // Transport safeguards also apply when the repository is used without the ViewModel.

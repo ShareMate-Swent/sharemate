@@ -23,6 +23,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -45,75 +46,133 @@ internal constructor(
   override suspend fun searchByTitle(title: String): FoodImageSearchResult =
       searchByTitle(title, IMAGE_LOOKUP_INITIAL_CANDIDATES)
 
-  override suspend fun searchByTitle(title: String, candidateLimit: Int): FoodImageSearchResult {
+  override suspend fun searchByTitle(title: String, candidateLimit: Int): FoodImageSearchResult =
+      searchCommons(title, candidateLimit, titleOnly = false)
+
+  override suspend fun searchFileTitles(title: String, candidateLimit: Int): FoodImageSearchResult =
+      searchCommons(title, candidateLimit, titleOnly = true)
+
+  override suspend fun exactArticleImage(title: String): FoodImageSearchResult {
+    val name = title.trim()
+    // A pipe would turn a single MediaWiki title into a multi-page lookup.
+    if (name.isEmpty() || '|' in name || '\u001f' in name) return NotFound
+    return lookup {
+      val articleUrl =
+          apiQuery(WIKIPEDIA_ENDPOINT)
+              .addQueryParameter("titles", name)
+              .addQueryParameter("redirects", "1")
+              .addQueryParameter(PROPERTY, "pageprops|pageimages")
+              .addQueryParameter("ppprop", "disambiguation")
+              .addQueryParameter("piprop", "name")
+              .addQueryParameter("pilicense", "any")
+              .build()
+      val page =
+          requestJson(articleUrl) { it.optJSONObject(QUERY)?.optJSONArray(PAGES)?.optJSONObject(0) }
+      if (page == null ||
+          page.has(MISSING) ||
+          page.optInt("ns", -1) != 0 ||
+          !name.equals(page.string(TITLE), ignoreCase = true) ||
+          page.optJSONObject("pageprops")?.has("disambiguation") == true)
+          return@lookup NotFound
+      val file = page.string("pageimage") ?: return@lookup NotFound
+      if ('|' in file || '\u001f' in file) return@lookup NotFound
+      val fileUrl =
+          commonsImageQuery()
+              .addQueryParameter("titles", FILE_TITLE_PREFIX + file)
+              .addQueryParameter("redirects", "1")
+              .build()
+      requestJson(fileUrl) { parseResponse(it, query = null) }
+    }
+  }
+
+  private fun apiQuery(endpoint: String) =
+      endpoint
+          .toHttpUrl()
+          .newBuilder()
+          .addQueryParameter(ACTION, QUERY)
+          .addQueryParameter(FORMAT, JSON_FORMAT)
+          .addQueryParameter(FORMAT_VERSION, API_FORMAT_VERSION)
+
+  private fun commonsImageQuery() =
+      apiQuery(API_ENDPOINT)
+          .addQueryParameter(PROPERTY, IMAGE_INFO)
+          .addQueryParameter(IMAGE_INFO_PROPERTIES, "url|$MIME|$THUMBNAIL_MIME|$EXTENDED_METADATA")
+          .addQueryParameter(THUMBNAIL_WIDTH, THUMBNAIL_WIDTH_PX.toString())
+          .addQueryParameter(METADATA_FILTER, "$ARTIST|$OBJECT_NAME|$LICENSE_NAME|$LICENSE_URL")
+
+  private suspend fun searchCommons(
+      title: String,
+      candidateLimit: Int,
+      titleOnly: Boolean
+  ): FoodImageSearchResult {
     require(candidateLimit > 0) { "Candidate limit must be positive" }
     currentCoroutineContext().ensureActive()
     // Keep user input inside a quoted literal, rather than accepting CirrusSearch operators.
     val query = title.replace(Regex("[\"\\\\\\s]+"), " ").trim()
     if (query.isEmpty()) return Failure(Reason.EMPTY_TITLE)
+    val prefix = if (titleOnly) "intitle:" else ""
     val url =
-        API_ENDPOINT.toHttpUrl()
-            .newBuilder()
-            .addQueryParameter(ACTION, QUERY)
-            .addQueryParameter(FORMAT, JSON_FORMAT)
-            .addQueryParameter(FORMAT_VERSION, API_FORMAT_VERSION)
+        commonsImageQuery()
             .addQueryParameter(GENERATOR, SEARCH_GENERATOR)
-            .addQueryParameter(SEARCH_TERM, "\"$query\" $BITMAP_SEARCH_FILTER")
+            .addQueryParameter(SEARCH_TERM, "$prefix\"$query\" $BITMAP_SEARCH_FILTER")
             .addQueryParameter(SEARCH_NAMESPACE, FILE_NAMESPACE)
             .addQueryParameter(SEARCH_LIMIT, candidateLimit.toString())
-            .addQueryParameter(PROPERTY, IMAGE_INFO)
-            .addQueryParameter(
-                IMAGE_INFO_PROPERTIES, "url|$MIME|$THUMBNAIL_MIME|$EXTENDED_METADATA")
-            .addQueryParameter(THUMBNAIL_WIDTH, THUMBNAIL_WIDTH_PX.toString())
-            .addQueryParameter(METADATA_FILTER, "$ARTIST|$OBJECT_NAME|$LICENSE_NAME|$LICENSE_URL")
             .build()
+    return lookup { requestJson(url) { parseResponse(it, query) } }
+  }
+
+  private class HttpError(val status: Int) : IOException()
+
+  private suspend fun lookup(block: suspend () -> FoodImageSearchResult): FoodImageSearchResult =
+      withTimeoutOrNull(lookupTimeoutMs) {
+        try {
+          block()
+        } catch (error: HttpError) {
+          Failure(Reason.HTTP, error.status)
+        } catch (_: IOException) {
+          currentCoroutineContext().ensureActive()
+          Failure(Reason.NETWORK)
+        } catch (_: JSONException) {
+          Failure(Reason.INVALID_RESPONSE)
+        }
+      } ?: NotFound
+
+  private suspend fun <T> requestJson(url: HttpUrl, parse: (JSONObject) -> T): T {
     val request =
         Request.Builder()
             .url(url)
             .header(HttpHeaders.ACCEPT, HttpHeaders.JSON_MEDIA_TYPE)
             .header(HttpHeaders.USER_AGENT, FoodImageHttp.USER_AGENT)
             .build()
-    return withTimeoutOrNull(lookupTimeoutMs) {
-      try {
-        awaitResult(callFactory.newCall(request), query)
-      } catch (exception: IOException) {
-        currentCoroutineContext().ensureActive()
-        Failure(Reason.NETWORK)
-      } catch (exception: JSONException) {
-        Failure(Reason.INVALID_RESPONSE)
-      }
-    } ?: NotFound
+    val call = callFactory.newCall(request)
+    return suspendCancellableCoroutine { continuation ->
+      continuation.invokeOnCancellation { call.cancel() }
+      call.enqueue(
+          object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+              continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+              val result = runCatching {
+                response.use {
+                  continuation.context.ensureActive()
+                  if (!it.isSuccessful) throw HttpError(it.code)
+                  parse(JSONObject(it.body?.string().orEmpty()))
+                }
+              }
+              continuation.resumeWith(result)
+            }
+          })
+    }
   }
 
-  private suspend fun awaitResult(call: Call, query: String): FoodImageSearchResult =
-      suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(
-            object : Callback {
-              override fun onFailure(call: Call, e: IOException) {
-                continuation.resumeWithException(e)
-              }
-
-              override fun onResponse(call: Call, response: Response) {
-                val result = runCatching {
-                  response.use {
-                    continuation.context.ensureActive()
-                    if (!it.isSuccessful) Failure(Reason.HTTP, it.code)
-                    else parseResponse(it.body?.string().orEmpty(), query)
-                  }
-                }
-                continuation.resumeWith(result)
-              }
-            })
-      }
-
-  private fun parseResponse(body: String, query: String): FoodImageSearchResult {
-    val root = JSONObject(body)
+  private fun parseResponse(root: JSONObject, query: String?): FoodImageSearchResult {
     // MediaWiki can report errors (including overload) inside an HTTP 200 response.
     if (root.has(ERROR)) return Failure(Reason.INVALID_RESPONSE)
     if (!root.has(QUERY) && root.optBoolean(BATCH_COMPLETE)) return NotFound
     val pages = root.getJSONObject(QUERY).getJSONArray(PAGES)
-    val queryWords = titleWords(query)
+    val queryWords = query?.let(::titleWords)
     var bestImage: FoodImage? = null
     var bestScore = 0.0
     // Keep Commons relevance as the tie-breaker, independently of JSON array order.
@@ -144,7 +203,7 @@ internal constructor(
               .value(OBJECT_NAME)
               ?.let { HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim() }
               ?.takeIf(String::isNotBlank) ?: page.string(TITLE)?.removePrefix(FILE_TITLE_PREFIX)
-      val score = titleRelevance(imageTitle, queryWords)
+      val score = queryWords?.let { titleRelevance(imageTitle, it) } ?: 1.0
       if (score <= bestScore) continue
       bestScore = score
       bestImage =
@@ -216,6 +275,7 @@ internal constructor(
   }
 
   private companion object {
+    const val WIKIPEDIA_ENDPOINT = "https://en.wikipedia.org/w/api.php"
     const val API_ENDPOINT = "https://commons.wikimedia.org/w/api.php"
     const val ACTION = "action"
     const val QUERY = "query"
