@@ -40,15 +40,10 @@ class FridgeWiringTest {
   }
 
   @Test
-  fun chatTabIsDisabledWhileOtherTabsRemainAvailable() {
+  fun chatTabShowsChatScreen() {
     resolve()
-    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsDisplayed().assertIsNotEnabled()
-    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsEnabled().performClick()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsSelected()
-    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsNotEnabled()
-    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
   }
 
   @Test
