@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
@@ -31,6 +32,7 @@ import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 
@@ -264,13 +266,35 @@ class FirebaseChatRepositoryUnitTest {
                 "h1", "u1", "Impersonated", MessageType.THROWN, " Milk ", "http://i"))
         val captor = ArgumentCaptor.forClass(Map::class.java)
         verify(document).set(captor.capture())
-        assertEquals("THROWN", captor.value["type"])
-        assertEquals("Milk", captor.value["itemName"])
-        assertEquals("http://i", captor.value["itemImageUrl"])
-        assertEquals("", captor.value["text"])
-        assertEquals("Ann", captor.value["senderName"])
-        assertEquals(FieldValue.serverTimestamp(), captor.value["timestamp"])
+        assertEquals(
+            mapOf(
+                "id" to "m1",
+                "senderId" to "u1",
+                "senderName" to "Ann",
+                "text" to "",
+                "timestamp" to FieldValue.serverTimestamp(),
+                "type" to "THROWN",
+                "itemName" to "Milk",
+                "itemImageUrl" to "http://i"),
+            captor.value)
         verify(profileReference).get(Source.CACHE)
+      }
+
+  @Test
+  fun sendActivity_normalizesBlankImageUrlsToNull() =
+      runBlocking<Unit> {
+        val blankUrls = listOf("", " \t\n")
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        blankUrls.forEach { url ->
+          assertEquals(
+              "m1", repository.sendActivity("h1", "u1", "Ann", MessageType.EATEN, "Milk", url))
+        }
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document, times(blankUrls.size)).set(captor.capture())
+        captor.allValues.forEach { activity ->
+          assertNull(activity["itemImageUrl"])
+          assertEquals(FieldValue.serverTimestamp(), activity["timestamp"])
+        }
       }
 
   @Test
