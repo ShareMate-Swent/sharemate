@@ -26,6 +26,7 @@ import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
@@ -87,6 +88,51 @@ class ReceiptHistoryFlowTest {
     compose.onAllNodesWithText(review).assertCountEquals(2)
     saveScreenshot("receipt-history.png")
     compose.onAllNodesWithText(review)[1].performClick()
+    compose.onNodeWithText("Apple").assertIsDisplayed()
+  }
+
+  @Test
+  fun savedAndPendingReceiptsShowTheirOwnStatusAndCanBeViewed() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val store: InventorySubmissionStore = AndroidInventorySubmissionStore(compose.activity)
+    val savedId = UUID.randomUUID().toString()
+    val pendingId = UUID.randomUUID().toString()
+    val scanTime = System.currentTimeMillis()
+    runBlocking {
+      store.save(
+          InventorySubmission(savedId, owner, household, listOf(StagedItem("a", "Apple", 1, 100))))
+      store.saveDetails(ReceiptDetails(savedId, owner, household, "", scanTime, scanTime))
+      store.save(
+          InventorySubmission(
+              pendingId, owner, household, listOf(StagedItem("b", "Bread", 1, 200))))
+      store.saveDetails(ReceiptDetails(pendingId, owner, household, "", scanTime))
+    }
+    val pendingItems =
+        object : ItemRepository by UnusedItems {
+          override fun addItems(submission: InventorySubmission): ItemWrite =
+              ItemWrite.Queued(CompletableDeferred())
+        }
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = pendingItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true)
+      }
+    }
+
+    val saved = compose.activity.getString(R.string.receipt_status_saved)
+    val pending = compose.activity.getString(R.string.inventory_save_pending)
+    val view = compose.activity.getString(R.string.receipt_view_receipt)
+    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().size == 2 }
+    compose.onNodeWithText(saved).assertIsDisplayed()
+    compose.onNodeWithText(pending).assertIsDisplayed()
+    compose.onAllNodesWithText(view)[0].performClick()
+    compose.onNodeWithText("Bread").assertIsDisplayed()
+    compose.onNodeWithTag(StagingTestTags.BACK).performClick()
+    compose.onAllNodesWithText(view)[1].performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
