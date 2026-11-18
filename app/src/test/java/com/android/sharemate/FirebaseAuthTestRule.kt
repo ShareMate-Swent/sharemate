@@ -5,6 +5,7 @@ package com.android.sharemate
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.item.Item
@@ -21,6 +22,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import org.junit.rules.ExternalResource
+import org.mockito.ArgumentMatchers.anyString
 import org.mockito.MockedStatic
 import org.mockito.Mockito.*
 
@@ -130,6 +132,14 @@ class FirebaseAuthTestRule(
         checkNotNull(valueOf(own, "ownerId") as String)
   }
 
+  /** The push token document of the signed-in test user, whichever device id is used. */
+  fun pushTokenDocument() =
+      database
+          .collection(FirestoreCollections.USERS)
+          .document(TEST_USER_ID)
+          .collection(FirestoreCollections.PUSH_TOKENS)
+          .document(anyString())
+
   override fun before() {
     // Robolectric does not run the content provider that normally initializes WorkManager.
     WorkManagerTestInitHelper.initializeTestWorkManager(
@@ -139,6 +149,7 @@ class FirebaseAuthTestRule(
     firestore = mockStatic(FirebaseFirestore::class.java)
     database = mock(FirebaseFirestore::class.java, RETURNS_DEEP_STUBS)
     firestore.`when`<FirebaseFirestore> { FirebaseFirestore.getInstance() }.thenReturn(database)
+    `when`(pushTokenDocument().delete()).thenReturn(Tasks.forResult(null))
     `when`(database.collection("items").where(any<Filter>())).thenAnswer { invocation ->
       val (householdId, userId) = fridgeQueryOf(invocation.getArgument<Filter>(0))
       val query = mock(Query::class.java)
@@ -171,7 +182,7 @@ class FirebaseAuthTestRule(
                 .get())
         .thenReturn(lookupTask)
     val user = mock(FirebaseUser::class.java)
-    `when`(user.uid).thenReturn("trusted-student-id")
+    `when`(user.uid).thenReturn(TEST_USER_ID)
     `when`(user.email).thenReturn("student@example.org")
     currentUser = if (startSignedIn) user else null
     `when`(auth.currentUser).thenAnswer { currentUser }
@@ -204,5 +215,10 @@ class FirebaseAuthTestRule(
     } finally {
       firebase.close()
     }
+  }
+
+  companion object {
+    /** Id of the user the rule signs in. */
+    const val TEST_USER_ID = "trusted-student-id"
   }
 }
