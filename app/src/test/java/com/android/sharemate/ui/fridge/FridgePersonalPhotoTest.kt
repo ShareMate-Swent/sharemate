@@ -11,9 +11,12 @@ import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
+import com.android.sharemate.model.product.ProductDetails
+import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.PhotoSource
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
@@ -27,7 +30,6 @@ import kotlinx.coroutines.withContext
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.rules.TemporaryFolder
-import org.mockito.Mockito.mock
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FridgePersonalPhotoTest {
@@ -46,6 +48,8 @@ class FridgePersonalPhotoTest {
     selected
   }
   private var automaticLookups = 0
+  private val scanned = mutableListOf<String>()
+  private var uploadedFile: File? = null
   private var uploaded = 0
   private val deleted = mutableListOf<PersonalPhotoReference>()
   private var upload: suspend () -> Result<PersonalPhotoReference> = { Result.success(reference) }
@@ -55,6 +59,7 @@ class FridgePersonalPhotoTest {
         override suspend fun upload(itemId: String, source: File): Result<PersonalPhotoReference> {
           assertEquals("item-1", itemId)
           assertTrue(source.exists())
+          uploadedFile = source
           uploaded++
           return upload()
         }
@@ -96,8 +101,14 @@ class FridgePersonalPhotoTest {
             "owner",
             "home",
             selector,
-            BarcodeScanner { BarcodeScanResult.NotFound },
-            mock(ProductCatalogRepository::class.java),
+            BarcodeScanner { uri ->
+              scanned += uri
+              BarcodeScanResult.Found("123")
+            },
+            object : ProductCatalogRepository {
+              override suspend fun lookupByBarcode(barcode: String) =
+                  ProductLookupResult.Found(ProductDetails(barcode, "Yogurt", "Farm"))
+            },
             storage,
             files,
             expirationPreferences =
@@ -191,8 +202,8 @@ class FridgePersonalPhotoTest {
       copy.await()
     }
     val camera =
-        BarcodePhotoViewModel(
-            object : BarcodePhotoStore {
+        PhotoPickerViewModel(
+            object : TemporaryPhotoStore {
               override suspend fun createCapture() = uri
 
               override suspend fun importImage(uri: String): String = error("Unexpected gallery")
@@ -210,7 +221,7 @@ class FridgePersonalPhotoTest {
     camera.open()
     camera.capture { assertEquals(uri, it) }
     runCurrent()
-    camera.confirm { controller.selectAndWait(it, camera.state.value.fromCamera) }
+    camera.confirm { controller.selectAndWait(it.uri, it.source == PhotoSource.CAMERA) }
     runCurrent()
     viewModel.saveItem()
     assertTrue(controller.draft.value.importing)
@@ -226,6 +237,28 @@ class FridgePersonalPhotoTest {
     viewModel.saveItem()
     runCurrent()
     assertEquals(reference.path, viewModel.uiState.value.items.single().image?.reference)
+    assertEquals(1, uploaded)
+    assertEquals(0, automaticLookups)
+  }
+
+  @Test
+  fun scanningAfterChoosingAPhotoSavesTheCatalogNameAndOriginalPhoto() = runTest {
+    selectPhoto()
+    assertTrue(scanned.isEmpty())
+    assertEquals(selected, controller.draft.value.file)
+
+    val barcodeUri = "file:///private/barcode.jpg"
+    viewModel.confirmBarcodeImage(barcodeUri)
+    assertEquals(listOf(barcodeUri), scanned)
+    assertEquals("Yogurt — Farm", viewModel.uiState.value.itemName)
+    assertEquals(selected, controller.draft.value.file)
+    viewModel.saveItem()
+    runCurrent()
+
+    val saved = viewModel.uiState.value.items.single()
+    assertEquals("Yogurt — Farm", saved.name)
+    assertEquals(selected, uploadedFile)
+    assertEquals(reference.path, saved.image?.reference)
     assertEquals(1, uploaded)
     assertEquals(0, automaticLookups)
   }

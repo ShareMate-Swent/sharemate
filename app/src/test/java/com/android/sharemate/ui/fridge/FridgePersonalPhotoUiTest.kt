@@ -29,16 +29,16 @@ import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
-import com.android.sharemate.model.image.BarcodePhotoStore
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -121,9 +121,9 @@ class FridgePersonalPhotoUiTest {
     entry.assertIsNotEnabled()
     compose.runOnIdle { enabled.value = true }
     entry.performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertIsEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsEnabled()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     entry.assertIsEnabled()
     compose.runOnIdle { assertEquals(PersonalPhotoDraft(), photos.draft.value) }
   }
@@ -134,8 +134,8 @@ class FridgePersonalPhotoUiTest {
     val replacement = temporary.newFile().apply { writeBytes(png(8, 16)) }
     val source = temporary.newFile()
     val camera =
-        BarcodePhotoViewModel(
-            object : BarcodePhotoStore {
+        PhotoPickerViewModel(
+            object : TemporaryPhotoStore {
               override suspend fun createCapture() = Uri.fromFile(source).toString()
 
               override suspend fun importImage(uri: String): String = error("Unexpected gallery")
@@ -158,14 +158,14 @@ class FridgePersonalPhotoUiTest {
     compose.runOnIdle {
       camera.capture { uri -> File(requireNotNull(Uri.parse(uri).path)).writeBytes(png(4, 4)) }
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(previous, photos.draft.value.file)
       assertTrue(previous.exists())
     }
     compose.onNodeWithText(testApplication.getString(R.string.personal_photo_change)).performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.waitUntil(10_000) { photos.draft.value.file == replacement && !source.exists() }
     compose
         .onNodeWithContentDescription(testApplication.getString(R.string.personal_photo_preview))
@@ -188,8 +188,8 @@ class FridgePersonalPhotoUiTest {
     val imports = mutableListOf<String>()
     val sourceUri = Uri.fromFile(source).toString()
     val camera =
-        BarcodePhotoViewModel(
-            object : BarcodePhotoStore {
+        PhotoPickerViewModel(
+            object : TemporaryPhotoStore {
               override suspend fun createCapture(): String = error("Unexpected camera")
 
               override suspend fun importImage(uri: String) =
@@ -232,7 +232,7 @@ class FridgePersonalPhotoUiTest {
 
     choose.performClick()
     compose
-        .onNodeWithTag(BarcodePhotoTestTags.GALLERY)
+        .onNodeWithTag(PhotoPickerTestTags.GALLERY)
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
@@ -241,18 +241,18 @@ class FridgePersonalPhotoUiTest {
       assertTrue(imports.isEmpty())
       assertFalse(camera.state.value.failed)
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/valid") }
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsNotEnabled()
     compose.runOnIdle {
       assertFalse(photos.draft.value.importing)
       assertTrue(imports.isEmpty())
       pendingGalleryImport.complete(sourceUri)
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
     compose.runOnIdle { assertTrue(imports.isEmpty()) }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).assertIsNotEnabled()
     compose.runOnIdle { pendingCopy.complete(selected) }
     preview.assertIsDisplayed()
     choose.assertDoesNotExist()
@@ -260,18 +260,18 @@ class FridgePersonalPhotoUiTest {
     compose.runOnIdle { assertFalse(source.exists()) }
 
     change.performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver(null) }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     error.assertDoesNotExist()
     preview.assertExists()
 
     change.performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performScrollTo().performClick()
     compose.runOnIdle { picker.deliver("content://gallery/invalid") }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertExists()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     error.assertIsDisplayed()
     preview.assertExists()
     compose.runOnIdle {

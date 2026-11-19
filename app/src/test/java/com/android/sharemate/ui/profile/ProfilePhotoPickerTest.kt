@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.profile
 
@@ -11,9 +12,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.SavedStateHandle
-import com.android.sharemate.model.image.BarcodePhotoStore
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.model.image.TemporaryPhotoStore
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -34,7 +35,7 @@ class ProfilePhotoPickerTest {
               File.createTempFile("profile", ".png", RuntimeEnvironment.getApplication().cacheDir))
           .toString()
   private val store =
-      object : BarcodePhotoStore {
+      object : TemporaryPhotoStore {
         override suspend fun createCapture() = uri
 
         override suspend fun importImage(uri: String) = this@ProfilePhotoPickerTest.uri
@@ -43,7 +44,7 @@ class ProfilePhotoPickerTest {
 
         override suspend fun delete(uri: String) = Unit
       }
-  private val camera = BarcodePhotoViewModel(store, SavedStateHandle())
+  private val camera = PhotoPickerViewModel(store, SavedStateHandle())
 
   @Test
   fun confirmedGalleryPhotoIsHandedOverThenTheDialogResets() {
@@ -57,10 +58,10 @@ class ProfilePhotoPickerTest {
       camera.open()
       camera.select("content://photos/picked")
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(uri to false), confirmed)
-      assertNull(camera.state.value.uri)
+      assertNull(camera.state.value.selection?.uri)
       assertFalse(camera.state.value.confirmed)
     }
   }
@@ -76,7 +77,7 @@ class ProfilePhotoPickerTest {
     compose.runOnIdle { shown = false }
     compose.runOnIdle {
       assertFalse(camera.state.value.visible)
-      assertNull(camera.state.value.uri)
+      assertNull(camera.state.value.selection?.uri)
     }
   }
 }

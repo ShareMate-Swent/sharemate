@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
@@ -24,8 +25,9 @@ import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.barcode.BarcodeFormTestTags
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +47,8 @@ class BarcodeFormFlowTest {
       object : ViewModelStoreOwner {
         override val viewModelStore = ViewModelStore()
       }
-  private lateinit var photo: BarcodePhotoViewModel
+  private lateinit var photo: PhotoPickerViewModel
+  private lateinit var itemPhoto: PhotoPickerViewModel
   private lateinit var fridge: FridgeViewModel
   private var result: ProductLookupResult =
       ProductLookupResult.Found(ProductDetails("123", "Milk", "Farm"))
@@ -76,10 +79,37 @@ class BarcodeFormFlowTest {
   }
 
   @Test
+  fun barcodeScanKeepsTheConfirmedItemPhoto() {
+    showForm()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.personal_photo_add))
+        .performScrollTo()
+        .performClick()
+    capture(itemPhoto, Color.GREEN)
+    confirm()
+    val photos = checkNotNull(fridge.personalPhotos)
+    compose.waitUntil(10_000) { photos.draft.value.file != null && !itemPhoto.state.value.visible }
+    val original = checkNotNull(photos.draft.value.file)
+    val originalBytes = original.readBytes()
+    compose.runOnIdle { assertTrue(scanned.isEmpty()) }
+
+    openBarcodePhoto()
+    val barcodeUri = checkNotNull(photo.state.value.selection).uri
+    confirm()
+    compose.waitUntil(10_000) { photo.state.value.confirmed && !photo.state.value.busy }
+    compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Milk — Farm")
+    compose.runOnIdle {
+      assertEquals(listOf(barcodeUri), scanned)
+      assertEquals(original, photos.draft.value.file)
+      assertArrayEquals(originalBytes, original.readBytes())
+    }
+  }
+
+  @Test
   fun missingProductKeepsSamePhotoRetryableAndManualDraftIntact() {
     result = ProductLookupResult.NotFound
     showFormAndPhoto()
-    val uri = photo.state.value.uri
+    val uri = photo.state.value.selection?.uri
     confirm()
     compose.waitUntil(10_000) { photo.state.value.failed && !photo.state.value.busy }
     compose
@@ -88,7 +118,7 @@ class BarcodeFormFlowTest {
         .assertExists()
     compose.runOnIdle {
       assertEquals("Manual food", fridge.uiState.value.itemName)
-      assertEquals(uri, photo.state.value.uri)
+      assertEquals(uri, photo.state.value.selection?.uri)
       assertFalse(photo.state.value.confirmed)
       result = ProductLookupResult.Found(ProductDetails("123", "Retry milk", null))
     }
@@ -108,7 +138,7 @@ class BarcodeFormFlowTest {
         .onAllNodesWithText(compose.activity.getString(R.string.barcode_lookup_failed))
         .onLast()
         .assertExists()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).assertTextContains("Manual food")
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).assertTextContains("3")
     compose.onNodeWithTag(C.Tag.fridge_category_input).assertTextContains("Dairy")
@@ -121,12 +151,19 @@ class BarcodeFormFlowTest {
   }
 
   private fun confirm() {
-    compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
   }
 
   private fun showFormAndPhoto() {
+    showForm()
+    openBarcodePhoto()
+  }
+
+  private fun showForm() {
     compose.runOnIdle {
-      photo = BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+      photo = PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
+      itemPhoto =
+          PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
       fridge =
           FridgeViewModel(
               EmptyItems(),
@@ -148,6 +185,24 @@ class BarcodeFormFlowTest {
                   return result
                 }
               },
+              photoStorage =
+                  object : PersonalPhotoRepository {
+                    override suspend fun load(
+                        reference: PersonalPhotoReference
+                    ): Result<ByteArray> = error("Unexpected load")
+
+                    override suspend fun upload(
+                        itemId: String,
+                        source: File
+                    ): Result<PersonalPhotoReference> = error("Unexpected upload")
+
+                    override suspend fun delete(reference: PersonalPhotoReference): Result<Unit> =
+                        error("Unexpected delete")
+
+                    override suspend fun deleteAttached(itemId: String): Result<Unit> =
+                        error("Unexpected delete")
+                  },
+              photoFiles = AndroidPersonalPhotoFiles(compose.activity),
               expirationPreferences =
                   ExpirationPreferencesProvider(
                       FirebaseExpirationPreferencesRepository(FirebaseEmulator.firestore)),
@@ -156,6 +211,7 @@ class BarcodeFormFlowTest {
               currentUserDisplayName = null,
               pseudoRepository = testPseudoRepository(),
           )
+      owner.viewModelStore.put("add-item-personal-photo", itemPhoto)
       owner.viewModelStore.put("add-item-barcode-photo", photo)
       owner.viewModelStore.put("fridge", fridge)
     }
@@ -170,11 +226,19 @@ class BarcodeFormFlowTest {
       fridge.updateQuantity("3")
       fridge.updateCategory("Dairy")
     }
-    compose.onNodeWithTag(BarcodePhotoTestTags.OPEN).performScrollTo().performClick()
+  }
+
+  private fun openBarcodePhoto() {
+    compose.onNodeWithTag(BarcodeFormTestTags.OPEN).performScrollTo().performClick()
+    capture(photo, Color.BLACK)
+  }
+
+  private fun capture(picker: PhotoPickerViewModel, color: Int) {
     compose.runOnIdle {
-      photo.capture { uri ->
+      picker.capture { uri ->
         withContext(Dispatchers.IO) {
           val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+          bitmap.eraseColor(color)
           File(Uri.parse(uri).path!!).outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
           }
@@ -182,7 +246,7 @@ class BarcodeFormFlowTest {
         }
       }
     }
-    compose.waitUntil(10_000) { photo.state.value.uri != null && !photo.state.value.busy }
+    compose.waitUntil(10_000) { picker.state.value.selection != null && !picker.state.value.busy }
   }
 
   private class EmptyItems : ItemRepository {

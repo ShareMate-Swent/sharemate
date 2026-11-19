@@ -1,5 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import android.content.Context
 import android.net.Uri
@@ -31,7 +31,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 @Composable
-internal fun BarcodeCamera(
+internal fun CameraCapture(
     enabled: Boolean,
     onCapture: (suspend (String) -> Unit) -> Unit,
     onFailure: () -> Unit,
@@ -84,7 +84,7 @@ internal fun BarcodeCamera(
           Modifier.fillMaxWidth()
               .height(PhotoFrameHeight)
               .clipToBounds()
-              .testTag(BarcodePhotoTestTags.VIEWFINDER))
+              .testTag(PhotoPickerTestTags.VIEWFINDER))
   Button(
       onClick = {
         capture.targetRotation = previewView.display?.rotation ?: android.view.Surface.ROTATION_0
@@ -109,7 +109,7 @@ internal fun BarcodeCamera(
         }
       },
       enabled = enabled && ready,
-      modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.CAPTURE)) {
-        Text(stringResource(R.string.barcode_photo_capture))
+      modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAPTURE)) {
+        Text(stringResource(R.string.photo_picker_capture))
       }
 }

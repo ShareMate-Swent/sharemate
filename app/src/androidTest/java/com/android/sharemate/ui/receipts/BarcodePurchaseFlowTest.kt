@@ -14,12 +14,12 @@ import com.android.sharemate.R
 import com.android.sharemate.ReceiptToFridgeTestActivity
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
@@ -40,7 +40,7 @@ class BarcodePurchaseFlowTest {
             .compress(Bitmap.CompressFormat.PNG, 100, it)
       }
       val store =
-          object : BarcodePhotoStore {
+          object : TemporaryPhotoStore {
             override suspend fun createCapture(): String = error("unused")
 
             override suspend fun importImage(uri: String) = Uri.fromFile(file).toString()
@@ -69,8 +69,8 @@ class BarcodePurchaseFlowTest {
                 }
               },
               SavedStateHandle())
-      val photo = BarcodePhotoViewModel(store, SavedStateHandle())
-      val receipt = BarcodePhotoViewModel(store, SavedStateHandle())
+      val photo = PhotoPickerViewModel(store, SavedStateHandle())
+      val receipt = PhotoPickerViewModel(store, SavedStateHandle())
       compose.runOnIdle {
         owners.put("barcode", barcode)
         owners.put("photo", photo)
@@ -87,14 +87,16 @@ class BarcodePurchaseFlowTest {
       }
       fun confirmPhoto() {
         compose.runOnIdle { photo.select("fixture://milk") }
-        compose.waitUntil(10_000) { !photo.state.value.busy && photo.state.value.uri != null }
-        compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+        compose.waitUntil(10_000) {
+          !photo.state.value.busy && photo.state.value.selection?.uri != null
+        }
+        compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       }
       confirmPhoto()
       compose.waitUntil(10_000) { photo.state.value.confirmed }
       compose.onNodeWithText("Scanned milk").assertExists()
       openScan()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
       compose.onNodeWithText("Scanned milk").assertExists()
       assertEquals(1, lookups)
       openScan()
@@ -104,7 +106,7 @@ class BarcodePurchaseFlowTest {
           .onAllNodesWithText(compose.activity.getString(R.string.barcode_lookup_not_found))
           .onFirst()
           .assertExists()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
       compose.onNodeWithText("Scanned milk").assertExists()
       for (message in
           listOf(
@@ -118,7 +120,7 @@ class BarcodePurchaseFlowTest {
           photo.state.value.confirmationFailed && !photo.state.value.busy
         }
         compose.onAllNodesWithText(compose.activity.getString(message)).onFirst().assertExists()
-        compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performScrollTo().performClick()
+        compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
         compose.onNodeWithText("Scanned milk").assertExists()
       }
       compose.onNodeWithTag(StagingTestTags.ADD).performClick()

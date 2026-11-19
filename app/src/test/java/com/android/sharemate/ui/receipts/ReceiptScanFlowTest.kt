@@ -10,11 +10,11 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.R
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.receipt.ReceiptItem
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
 import com.android.sharemate.ui.finance.BalancesTestTags
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -31,7 +31,7 @@ class ReceiptScanFlowTest {
   @Test
   fun balancesEntryTracksPrivateAndSharedHouseholdPolicy() {
     val store =
-        object : BarcodePhotoStore {
+        object : TemporaryPhotoStore {
           override suspend fun createCapture(): String = error("unused")
 
           override suspend fun importImage(uri: String): String = error("unused")
@@ -40,7 +40,7 @@ class ReceiptScanFlowTest {
 
           override suspend fun delete(uri: String) = Unit
         }
-    val photo = BarcodePhotoViewModel(store, SavedStateHandle())
+    val photo = PhotoPickerViewModel(store, SavedStateHandle())
     var shared by androidx.compose.runtime.mutableStateOf(false)
     var opened = 0
     compose.setContent { ReceiptScanFlow(photo, shared, { opened++ }) { emptyList() } }
@@ -63,7 +63,7 @@ class ReceiptScanFlowTest {
             .compress(Bitmap.CompressFormat.PNG, 100, it)
       }
       val store =
-          object : BarcodePhotoStore {
+          object : TemporaryPhotoStore {
             override suspend fun createCapture() = error("Unexpected camera call")
 
             override suspend fun importImage(uri: String) = Uri.fromFile(file).toString()
@@ -72,7 +72,7 @@ class ReceiptScanFlowTest {
 
             override suspend fun delete(uri: String) = Unit
           }
-      val model = BarcodePhotoViewModel(store, SavedStateHandle())
+      val model = PhotoPickerViewModel(store, SavedStateHandle())
       var reads = 0
       val restoration = StateRestorationTester(compose)
       restoration.setContent {
@@ -85,8 +85,10 @@ class ReceiptScanFlowTest {
       compose.onNodeWithText(app.getString(R.string.scan_receipt)).performClick()
       fun selectAndConfirm() {
         compose.runOnIdle { model.select("content://picker/receipt") }
-        compose.waitUntil(10000) { !model.state.value.busy && model.state.value.uri != null }
-        compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+        compose.waitUntil(10000) {
+          !model.state.value.busy && model.state.value.selection?.uri != null
+        }
+        compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       }
       selectAndConfirm()
       compose.waitUntil(10000) { model.state.value.confirmationFailed && !model.state.value.busy }

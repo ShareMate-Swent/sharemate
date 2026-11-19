@@ -57,7 +57,7 @@ class BalancesScreenEmulatorTest {
   @Test
   fun receiptsEntryIsHiddenForPrivateFridgesAndShownForSharedFridges() {
     val store =
-        object : com.android.sharemate.model.image.BarcodePhotoStore {
+        object : com.android.sharemate.model.image.TemporaryPhotoStore {
           override suspend fun createCapture(): String = error("unused")
 
           override suspend fun importImage(uri: String): String = error("unused")
@@ -67,7 +67,7 @@ class BalancesScreenEmulatorTest {
           override suspend fun delete(uri: String) = Unit
         }
     val photo =
-        com.android.sharemate.ui.barcode.BarcodePhotoViewModel(
+        com.android.sharemate.ui.photo.PhotoPickerViewModel(
             store, androidx.lifecycle.SavedStateHandle())
     var shared by mutableStateOf(false)
     var opens = 0

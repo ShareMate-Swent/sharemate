@@ -1,9 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
-package com.android.sharemate.ui.barcode
+package com.android.sharemate.ui.photo
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -18,16 +18,16 @@ import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class BarcodePhotoViewModelTest {
+class PhotoPickerViewModelTest {
   private val dispatcher = StandardTestDispatcher()
   private val store = PhotoStore()
   private val saved = SavedStateHandle()
-  private lateinit var vm: BarcodePhotoViewModel
+  private lateinit var vm: PhotoPickerViewModel
 
   @Before
   fun setUp() {
     Dispatchers.setMain(dispatcher)
-    vm = BarcodePhotoViewModel(store, saved)
+    vm = PhotoPickerViewModel(store, saved)
     vm.open()
   }
 
@@ -37,35 +37,35 @@ class BarcodePhotoViewModelTest {
   fun photoOriginSurvivesRestorationAndOnlyChangesAfterSuccessfulReplacement() = runTest {
     vm.capture {}
     advanceUntilIdle()
-    assertTrue(vm.state.value.fromCamera)
-    assertEquals(true, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+    assertEquals(PhotoSource.CAMERA, vm.state.value.selection?.source)
+    assertEquals(true, saved.get<Boolean>(PhotoPickerViewModel.CAMERA_KEY))
 
-    val restored = BarcodePhotoViewModel(store, saved)
+    val restored = PhotoPickerViewModel(store, saved)
     advanceUntilIdle()
-    assertTrue(restored.state.value.fromCamera)
+    assertEquals(PhotoSource.CAMERA, restored.state.value.selection?.source)
     restored.open()
     restored.select(null)
     store.importFailure = IOException("Gallery unavailable")
     restored.select("content://gallery/broken")
     advanceUntilIdle()
-    assertTrue(restored.state.value.fromCamera)
-    assertEquals(true, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
+    assertEquals(PhotoSource.CAMERA, restored.state.value.selection?.source)
+    assertEquals(true, saved.get<Boolean>(PhotoPickerViewModel.CAMERA_KEY))
 
     store.importFailure = null
     restored.select("content://gallery/replacement")
     advanceUntilIdle()
-    assertFalse(restored.state.value.fromCamera)
-    assertEquals(false, saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
-    val galleryRestored = BarcodePhotoViewModel(store, saved)
+    assertEquals(PhotoSource.GALLERY, restored.state.value.selection?.source)
+    assertEquals(false, saved.get<Boolean>(PhotoPickerViewModel.CAMERA_KEY))
+    val galleryRestored = PhotoPickerViewModel(store, saved)
     advanceUntilIdle()
-    assertFalse(galleryRestored.state.value.fromCamera)
+    assertEquals(PhotoSource.GALLERY, galleryRestored.state.value.selection?.source)
     galleryRestored.capture { throw IOException("Camera unavailable") }
     advanceUntilIdle()
-    assertFalse(galleryRestored.state.value.fromCamera)
+    assertEquals(PhotoSource.GALLERY, galleryRestored.state.value.selection?.source)
     galleryRestored.reset()
     advanceUntilIdle()
-    assertNull(saved.get<Boolean>(BarcodePhotoViewModel.CAMERA_KEY))
-    assertFalse(galleryRestored.state.value.fromCamera)
+    assertNull(saved.get<Boolean>(PhotoPickerViewModel.CAMERA_KEY))
+    assertNull(galleryRestored.state.value.selection)
   }
 
   @Test
@@ -96,9 +96,9 @@ class BarcodePhotoViewModelTest {
     assertTrue(store.deleted.isEmpty())
     store.pendingImport!!.complete(Unit)
     advanceUntilIdle()
-    assertEquals("file:///private/second", vm.state.value.uri)
+    assertEquals("file:///private/second", vm.state.value.selection?.uri)
     assertEquals(listOf("file:///private/first"), store.deleted)
-    assertEquals(vm.state.value.uri, saved.get<String>(BarcodePhotoViewModel.IMAGE_KEY))
+    assertEquals(vm.state.value.selection?.uri, saved.get<String>(PhotoPickerViewModel.IMAGE_KEY))
   }
 
   @Test
@@ -108,7 +108,7 @@ class BarcodePhotoViewModelTest {
     store.importFailure = IOException("private path")
     vm.select("content://gallery/broken")
     advanceUntilIdle()
-    assertEquals("file:///private/first", vm.state.value.uri)
+    assertEquals("file:///private/first", vm.state.value.selection?.uri)
     assertTrue(vm.state.value.failed)
     assertFalse(vm.state.value.busy)
     assertTrue(store.deleted.isEmpty())
@@ -116,7 +116,7 @@ class BarcodePhotoViewModelTest {
     vm.select("content://gallery/retry")
     advanceUntilIdle()
     assertFalse(vm.state.value.failed)
-    assertEquals("file:///private/retry", vm.state.value.uri)
+    assertEquals("file:///private/retry", vm.state.value.selection?.uri)
   }
 
   @Test
@@ -125,14 +125,14 @@ class BarcodePhotoViewModelTest {
     vm.showCamera()
     vm.capture { throw IOException("camera disconnected") }
     advanceUntilIdle()
-    assertNull(vm.state.value.uri)
+    assertNull(vm.state.value.selection?.uri)
     assertTrue(vm.state.value.failed)
     assertEquals(listOf("file:///private/capture"), store.deleted)
     vm.capture { assertEquals("file:///private/capture", it) }
     advanceUntilIdle()
     assertEquals(PhotoPage.PREVIEW, vm.state.value.page)
     assertFalse(vm.state.value.failed)
-    assertEquals("file:///private/capture", vm.state.value.uri)
+    assertEquals("file:///private/capture", vm.state.value.selection?.uri)
   }
 
   @Test
@@ -141,7 +141,7 @@ class BarcodePhotoViewModelTest {
     vm.select("content://gallery/first")
     advanceUntilIdle()
     val processing = CompletableDeferred<Unit>()
-    val consumed = mutableListOf<String>()
+    val consumed = mutableListOf<SelectedPhoto>()
     vm.confirm {
       consumed += it
       processing.await()
@@ -156,7 +156,7 @@ class BarcodePhotoViewModelTest {
     assertTrue(store.deleted.isEmpty())
     processing.complete(Unit)
     advanceUntilIdle()
-    assertEquals(listOf("file:///private/first"), consumed)
+    assertEquals(listOf(SelectedPhoto("file:///private/first", PhotoSource.GALLERY)), consumed)
     assertTrue(vm.state.value.confirmed)
     assertFalse(vm.state.value.visible)
     assertFalse(vm.state.value.busy)
@@ -169,7 +169,7 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     deleted.await()
     assertEquals(listOf("file:///private/first"), store.deleted)
-    assertNull(saved.get<String>(BarcodePhotoViewModel.IMAGE_KEY))
+    assertNull(saved.get<String>(PhotoPickerViewModel.IMAGE_KEY))
   }
 
   @Test
@@ -184,7 +184,7 @@ class BarcodePhotoViewModelTest {
     assertTrue(vm.state.value.visible)
     assertFalse(vm.state.value.confirmed)
     assertTrue(store.deleted.isEmpty())
-    vm.confirm { assertEquals("file:///private/first", it) }
+    vm.confirm { assertEquals(SelectedPhoto("file:///private/first", PhotoSource.GALLERY), it) }
     advanceUntilIdle()
     assertTrue(vm.state.value.confirmed)
     assertFalse(vm.state.value.failed)
@@ -203,12 +203,12 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     assertTrue(vm.state.value.failed)
     assertFalse(vm.state.value.confirmationFailed)
-    assertEquals("file:///private/first", vm.state.value.uri)
+    assertEquals("file:///private/first", vm.state.value.selection?.uri)
   }
 
   @Test
   fun failedReplacementDoesNotResubmitAlreadyConfirmedImage() = runTest {
-    val consumed = mutableListOf<String>()
+    val consumed = mutableListOf<SelectedPhoto>()
     vm.select("content://gallery/first")
     advanceUntilIdle()
     vm.confirm { consumed += it }
@@ -217,10 +217,10 @@ class BarcodePhotoViewModelTest {
     store.importFailure = IOException("new photo unavailable")
     vm.select("content://gallery/replacement")
     advanceUntilIdle()
-    assertEquals("file:///private/first", vm.state.value.uri)
+    assertEquals("file:///private/first", vm.state.value.selection?.uri)
     vm.confirm { consumed += it }
     advanceUntilIdle()
-    assertEquals(listOf("file:///private/first"), consumed)
+    assertEquals(listOf(SelectedPhoto("file:///private/first", PhotoSource.GALLERY)), consumed)
   }
 
   @Test
@@ -229,7 +229,7 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     assertFalse(vm.state.value.failed)
     assertFalse(vm.state.value.busy)
-    assertNull(vm.state.value.uri)
+    assertNull(vm.state.value.selection?.uri)
     assertEquals(listOf("file:///private/capture"), store.deleted)
   }
 
@@ -239,20 +239,20 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     vm.confirm()
     advanceUntilIdle()
-    val restored = BarcodePhotoViewModel(store, saved)
+    val restored = PhotoPickerViewModel(store, saved)
     advanceUntilIdle()
-    assertEquals("file:///private/first", restored.state.value.uri)
+    assertEquals("file:///private/first", restored.state.value.selection?.uri)
     assertTrue(restored.state.value.confirmed)
     assertTrue(store.validated.contains("file:///private/first"))
     store.validationFailure = IOException("removed by OS")
-    val missing = BarcodePhotoViewModel(store, saved)
+    val missing = PhotoPickerViewModel(store, saved)
     advanceUntilIdle()
     assertTrue(missing.state.value.failed)
     store.validationFailure = null
     missing.open()
     missing.select("content://gallery/recovered")
     advanceUntilIdle()
-    assertEquals("file:///private/recovered", missing.state.value.uri)
+    assertEquals("file:///private/recovered", missing.state.value.selection?.uri)
     assertFalse(missing.state.value.failed)
     assertFalse(missing.state.value.confirmed)
   }
@@ -275,7 +275,7 @@ class BarcodePhotoViewModelTest {
     advanceUntilIdle()
     deleted.await()
     assertEquals(listOf("content://gallery/first"), store.imports)
-    assertNull(vm.state.value.uri)
+    assertNull(vm.state.value.selection?.uri)
     assertFalse(vm.state.value.confirmed)
     assertEquals(listOf("file:///private/first"), store.deleted)
   }
@@ -294,15 +294,15 @@ class BarcodePhotoViewModelTest {
     assertEquals(0, store.captures)
     assertEquals(validations, store.validated)
     assertTrue(store.deleted.isEmpty())
-    assertEquals(false, saved.get<Boolean>(BarcodePhotoViewModel.VISIBLE_KEY))
+    assertEquals(false, saved.get<Boolean>(PhotoPickerViewModel.VISIBLE_KEY))
     vm.open()
     vm.capture { assertEquals("file:///private/capture", it) }
     advanceUntilIdle()
-    val consumed = mutableListOf<String>()
+    val consumed = mutableListOf<SelectedPhoto>()
     vm.confirm { consumed += it }
     advanceUntilIdle()
     assertEquals(1, store.captures)
-    assertEquals(listOf("file:///private/capture"), consumed)
+    assertEquals(listOf(SelectedPhoto("file:///private/capture", PhotoSource.CAMERA)), consumed)
     assertTrue(vm.state.value.confirmed)
   }
 
@@ -364,7 +364,7 @@ class BarcodePhotoViewModelTest {
     assertFalse(vm.state.value.failed)
   }
 
-  private class PhotoStore : BarcodePhotoStore {
+  private class PhotoStore : TemporaryPhotoStore {
     var captures = 0
     val imports = mutableListOf<String>()
     val deleted = mutableListOf<String>()

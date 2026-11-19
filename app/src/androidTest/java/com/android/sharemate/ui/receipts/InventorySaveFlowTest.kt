@@ -23,8 +23,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.finance.SharedExpense
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.profile.UserProfile
 import com.android.sharemate.model.profile.UserProfileRepository
@@ -33,8 +33,8 @@ import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.model.text.TextLimits
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
@@ -87,7 +87,7 @@ class InventorySaveFlowTest {
       owner.put("save", save)
     }
     val photo =
-        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+        PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent {
       MaterialTheme {
@@ -458,7 +458,7 @@ class InventorySaveFlowTest {
       owner.put("save", save)
     }
     val photo =
-        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+        PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent {
       MaterialTheme { ReceiptScanFlow(photo, ReceiptReader { error("No scan") }, save) }
@@ -492,7 +492,7 @@ class InventorySaveFlowTest {
       owner.put("save", save)
     }
     val photo =
-        BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+        PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent {
       MaterialTheme {
@@ -538,8 +538,8 @@ class InventorySaveFlowTest {
       owner.put("save", save)
     }
     val photo =
-        BarcodePhotoViewModel(
-            object : BarcodePhotoStore {
+        PhotoPickerViewModel(
+            object : TemporaryPhotoStore {
               override suspend fun createCapture(): String = error("No photo expected")
 
               override suspend fun importImage(uri: String): String = error("No photo expected")
@@ -578,7 +578,7 @@ class InventorySaveFlowTest {
           override suspend fun save(submission: InventorySubmission) = Unit
         }
     val photoStore =
-        object : BarcodePhotoStore {
+        object : TemporaryPhotoStore {
           override suspend fun createCapture(): String = error("No photo capture expected")
 
           override suspend fun importImage(uri: String): String = error("No picker expected")
@@ -592,7 +592,7 @@ class InventorySaveFlowTest {
       save = InventorySaveViewModel(repository, store, "owner", "home")
       owner.put("save", save)
     }
-    val photo = BarcodePhotoViewModel(photoStore, SavedStateHandle())
+    val photo = PhotoPickerViewModel(photoStore, SavedStateHandle())
     owner.put("photo", photo)
     compose.setContent {
       MaterialTheme {
@@ -665,7 +665,7 @@ class InventorySaveFlowTest {
       file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it) }
       bitmap.recycle()
       val photoStore =
-          object : BarcodePhotoStore {
+          object : TemporaryPhotoStore {
             override suspend fun createCapture(): String = error("No camera expected")
 
             override suspend fun importImage(uri: String) = Uri.fromFile(file).toString()
@@ -674,7 +674,7 @@ class InventorySaveFlowTest {
 
             override suspend fun delete(uri: String) = Unit
           }
-      val photo = BarcodePhotoViewModel(photoStore, SavedStateHandle())
+      val photo = PhotoPickerViewModel(photoStore, SavedStateHandle())
       owner.put("photo", photo)
       val ack = CompletableDeferred<Result<Unit>>()
       val repository = ControlledItems(ack = ack)
@@ -703,8 +703,10 @@ class InventorySaveFlowTest {
       }
       compose.onNodeWithText(context.getString(R.string.scan_receipt)).performClick()
       compose.runOnIdle { photo.select("content://picker/receipt") }
-      compose.waitUntil(TIMEOUT) { photo.state.value.uri != null && !photo.state.value.busy }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+      compose.waitUntil(TIMEOUT) {
+        photo.state.value.selection?.uri != null && !photo.state.value.busy
+      }
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.onNodeWithTag(StagingTestTags.item("0")).performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Oat milk")
       compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("3")

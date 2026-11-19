@@ -18,11 +18,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
-import com.android.sharemate.model.image.BarcodePhotoStore
+import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.model.receipt.ReceiptReader
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -46,13 +46,13 @@ class ReceiptScanRecreationTest {
     val result = CompletableDeferred<List<ReceiptItem>>()
     val started = CompletableDeferred<Unit>()
     var reads = 0
-    lateinit var photo: BarcodePhotoViewModel
+    lateinit var photo: PhotoPickerViewModel
     try {
       val bitmap = Bitmap.createBitmap(IMAGE_SIZE, IMAGE_SIZE, Bitmap.Config.ARGB_8888)
       file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, it) }
       bitmap.recycle()
       val store =
-          object : BarcodePhotoStore {
+          object : TemporaryPhotoStore {
             override suspend fun createCapture() = error("Unexpected camera call")
 
             override suspend fun importImage(uri: String) = Uri.fromFile(file).toString()
@@ -71,7 +71,7 @@ class ReceiptScanRecreationTest {
             viewModel(
                 factory =
                     viewModelFactory {
-                      initializer { BarcodePhotoViewModel(store, SavedStateHandle()) }
+                      initializer { PhotoPickerViewModel(store, SavedStateHandle()) }
                     })
         MaterialTheme { ReceiptScanFlow(photo, reader = reader) }
       }
@@ -79,9 +79,9 @@ class ReceiptScanRecreationTest {
       compose.onNodeWithText(firstActivity.getString(R.string.scan_receipt)).performClick()
       compose.runOnIdle { photo.select(Uri.fromFile(file).toString()) }
       compose.waitUntil(WAIT_TIMEOUT_MS) {
-        photo.state.value.uri != null && !photo.state.value.busy
+        photo.state.value.selection?.uri != null && !photo.state.value.busy
       }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(WAIT_TIMEOUT_MS) { started.isCompleted }
       val firstPhoto = photo
 

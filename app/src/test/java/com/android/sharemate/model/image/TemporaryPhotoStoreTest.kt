@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
 import android.graphics.Bitmap
@@ -23,9 +24,9 @@ import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowBitmapFactory
 
 @RunWith(RobolectricTestRunner::class)
-class BarcodePhotoStoreTest {
+class TemporaryPhotoStoreTest {
   private val context = RuntimeEnvironment.getApplication()
-  private val store = AndroidBarcodePhotoStore(context)
+  private val store = AndroidTemporaryPhotoStore(context)
   private val directory = File(context.cacheDir, "barcode-photos")
 
   @Before
@@ -106,11 +107,10 @@ class BarcodePhotoStoreTest {
     for (extra in listOf(0L, 1L)) {
       val source = Uri.parse("content://photos/boundary/$extra")
       shadowOf(context.contentResolver)
-          .registerInputStream(
-              source, PaddedImage(png(), AndroidBarcodePhotoStore.MAX_BYTES + extra))
+          .registerInputStream(source, PaddedImage(png(), MAX_INPUT_PHOTO_BYTES + extra))
       if (extra == 0L) {
         val copy = store.importImage(source.toString())
-        assertEquals(AndroidBarcodePhotoStore.MAX_BYTES, File(Uri.parse(copy).path!!).length())
+        assertEquals(MAX_INPUT_PHOTO_BYTES, File(Uri.parse(copy).path!!).length())
         store.delete(copy)
       } else {
         try {
@@ -139,16 +139,16 @@ class BarcodePhotoStoreTest {
   @Test
   @Config(shadows = [BoundsOnlyDecoder::class])
   fun pixelLimitAcceptsBoundaryAndRejectsOversizedMetadataWithoutLeakingCopies() = runTest {
-    val limit = AndroidBarcodePhotoStore.MAX_PIXELS.toInt()
+    val limit = MAX_INPUT_PHOTO_PIXELS.toInt()
     for ((width, height) in
         listOf(1 to limit - 1, 1 to limit, 1 to limit + 1, Int.MAX_VALUE to Int.MAX_VALUE)) {
       BoundsOnlyDecoder.width = width
       BoundsOnlyDecoder.height = height
       val selected = Uri.parse("content://photos/dimensions/$width/$height")
       val compressed = png()
-      assertTrue(compressed.size < AndroidBarcodePhotoStore.MAX_BYTES)
+      assertTrue(compressed.size < MAX_INPUT_PHOTO_BYTES)
       shadowOf(context.contentResolver).registerInputStream(selected, compressed.inputStream())
-      if (width.toLong() * height <= AndroidBarcodePhotoStore.MAX_PIXELS) {
+      if (width.toLong() * height <= MAX_INPUT_PHOTO_PIXELS) {
         val copy = store.importImage(selected.toString())
         assertTrue(File(Uri.parse(copy).path!!).exists())
         store.delete(copy)

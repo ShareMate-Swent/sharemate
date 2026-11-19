@@ -24,7 +24,7 @@ import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.model.staging.StagedItem
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import java.util.UUID
@@ -156,7 +156,7 @@ class ReceiptHistoryFlowTest {
       }
     }
     compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
-    compose.onNodeWithTag(BarcodePhotoTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
     compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
     compose.runOnIdle { assertTrue(balancesOpened[0]) }
   }

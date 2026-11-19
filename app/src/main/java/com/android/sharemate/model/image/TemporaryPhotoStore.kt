@@ -11,8 +11,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
+internal const val MAX_INPUT_PHOTO_BYTES = 20L * 1024 * 1024
+internal const val MAX_INPUT_PHOTO_PIXELS = 50_000_000L
+
 /** Owns temporary copies only. A confirmed URI remains readable until its form is dismissed. */
-interface BarcodePhotoStore {
+interface TemporaryPhotoStore {
   /**
    * Returns a private file URI for in-process CameraX output. Never send it to an external camera
    * intent; external sharing would require a FileProvider content URI instead.
@@ -26,9 +29,9 @@ interface BarcodePhotoStore {
   suspend fun delete(uri: String)
 }
 
-class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
+class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
   private val resolver = context.applicationContext.contentResolver
-  private val directory = barcodePhotoDirectory(context)
+  private val directory = temporaryPhotoDirectory(context)
 
   override suspend fun createCapture(): String {
     var created: File? = null
@@ -54,7 +57,7 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
         imported = target
         resolver.openInputStream(Uri.parse(uri))?.use { input ->
           ownedFile(target).outputStream().use { output ->
-            input.copyPhotoTo(output, MAX_BYTES, checkActive = { ensureActive() }) {
+            input.copyPhotoTo(output, MAX_INPUT_PHOTO_BYTES, checkActive = { ensureActive() }) {
               IOException("Image exceeds size limit")
             }
           }
@@ -71,13 +74,13 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
   override suspend fun validate(uri: String) =
       withContext(Dispatchers.IO) {
         val file = ownedFile(uri)
-        if (!file.isFile || file.length() !in 1..MAX_BYTES)
+        if (!file.isFile || file.length() !in 1..MAX_INPUT_PHOTO_BYTES)
             throw IOException("Image is unavailable")
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0)
             throw IOException("Image cannot be decoded")
-        if (bounds.outWidth.toLong() * bounds.outHeight > MAX_PIXELS)
+        if (bounds.outWidth.toLong() * bounds.outHeight > MAX_INPUT_PHOTO_PIXELS)
             throw IOException("Image exceeds pixel limit")
       }
 
@@ -90,16 +93,10 @@ class AndroidBarcodePhotoStore(context: Context) : BarcodePhotoStore {
       }
 
   private fun ownedFile(uri: String): File = requireOwnedPhotoFile(Uri.parse(uri), directory)
-
-  companion object {
-    const val MAX_BYTES = 20L * 1024 * 1024
-    // Accept up to 50 MP photos while rejecting oversized compressed images before pixel decoding.
-    // Consumers must still downsample to their required resolution before allocating a bitmap.
-    const val MAX_PIXELS = 50_000_000L
-  }
 }
 
-internal fun barcodePhotoDirectory(context: Context): File =
+// Restored previews can still point to this directory after an app update.
+internal fun temporaryPhotoDirectory(context: Context): File =
     File(context.applicationContext.cacheDir, "barcode-photos")
 
 internal fun requireOwnedPhotoFile(uri: Uri, directory: File): File {

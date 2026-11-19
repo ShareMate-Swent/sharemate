@@ -36,7 +36,7 @@ class PersonalPhotoFilesTest {
       val bytes = original.readBytes()
       val selected = Uri.parse("content://gallery/transparent")
       shadowOf(context.contentResolver).registerInputStream(selected, bytes.inputStream())
-      val gallery = AndroidBarcodePhotoStore(context)
+      val gallery = AndroidTemporaryPhotoStore(context)
       val imported = gallery.importImage(selected.toString())
       var draft: File? = null
       try {
@@ -75,7 +75,7 @@ class PersonalPhotoFilesTest {
     RandomAccessFile(original, "rw").use { it.setLength(size) }
     val selected = Uri.parse("content://gallery/large")
     shadowOf(context.contentResolver).registerInputStream(selected, original.inputStream())
-    val gallery = AndroidBarcodePhotoStore(context)
+    val gallery = AndroidTemporaryPhotoStore(context)
     val imported = gallery.importImage(selected.toString())
     try {
       assertEquals(size, File(requireNotNull(Uri.parse(imported).path)).length())
@@ -95,7 +95,7 @@ class PersonalPhotoFilesTest {
     val empty = File.createTempFile("empty-", ".jpg", captures)
     val oversized =
         File.createTempFile("oversized-", ".jpg", captures).apply {
-          RandomAccessFile(this, "rw").use { it.setLength(AndroidBarcodePhotoStore.MAX_BYTES + 1) }
+          RandomAccessFile(this, "rw").use { it.setLength(MAX_INPUT_PHOTO_BYTES + 1) }
         }
     val unsupported = File.createTempFile("unsupported-", ".webp", captures)
     val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)

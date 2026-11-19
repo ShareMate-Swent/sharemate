@@ -22,31 +22,24 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.lifecycle.createSavedStateHandle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.TextLengthCounter
-import com.android.sharemate.ui.barcode.BarcodePhotoFlow
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
-import com.android.sharemate.ui.barcode.findActivity
+import com.android.sharemate.ui.barcode.BarcodeFormTestTags
+import com.android.sharemate.ui.barcode.BarcodePhotoPicker
+import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
+import com.android.sharemate.ui.photo.photoPickerViewModel
 import com.android.sharemate.ui.theme.Dimens
 
 @Composable
@@ -62,16 +55,7 @@ fun AddItemDialog(
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
 ) {
-  val context = LocalContext.current.applicationContext
-  val photoViewModel: BarcodePhotoViewModel =
-      viewModel(
-          key = "add-item-barcode-photo",
-          factory =
-              viewModelFactory {
-                initializer {
-                  BarcodePhotoViewModel(AndroidBarcodePhotoStore(context), createSavedStateHandle())
-                }
-              })
+  val photoViewModel = photoPickerViewModel("add-item-barcode-photo")
   val photo by photoViewModel.state.collectAsState()
   val lookupError =
       uiState.barcodeLookupError?.let {
@@ -86,10 +70,7 @@ fun AddItemDialog(
       }
   val personalDraft = personalPhotos?.draft?.collectAsState()?.value
   val inputEnabled = !uiState.isSaving && !uiState.isScanningBarcode && !photo.busy
-  val activity = LocalContext.current.findActivity()
-  DisposableEffect(photoViewModel) {
-    onDispose { if (activity?.isChangingConfigurations != true) photoViewModel.discard() }
-  }
+  DiscardPhotoOnDispose(photoViewModel)
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.fridge_add_dialog),
       onDismissRequest = {
@@ -112,7 +93,7 @@ fun AddItemDialog(
                 FilledTonalButton(
                     onClick = photoViewModel::open,
                     enabled = inputEnabled,
-                    modifier = Modifier.fillMaxWidth().testTag(BarcodePhotoTestTags.OPEN)) {
+                    modifier = Modifier.fillMaxWidth().testTag(BarcodeFormTestTags.OPEN)) {
                       Text(stringResource(R.string.barcode_photo_scanner))
                     }
                 if (photo.confirmed && !photo.failed)
@@ -125,7 +106,7 @@ fun AddItemDialog(
                   Text(
                       it,
                       color = MaterialTheme.colorScheme.error,
-                      modifier = Modifier.testTag(BarcodePhotoTestTags.LOOKUP_ERROR))
+                      modifier = Modifier.testTag(BarcodeFormTestTags.LOOKUP_ERROR))
                 }
               }
               OutlinedTextField(
@@ -250,7 +231,7 @@ fun AddItemDialog(
               Text(stringResource(R.string.fridge_cancel))
             }
       })
-  BarcodePhotoFlow(
+  BarcodePhotoPicker(
       photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
 }
 

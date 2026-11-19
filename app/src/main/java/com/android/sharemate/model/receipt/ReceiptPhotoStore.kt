@@ -3,6 +3,7 @@ package com.android.sharemate.model.receipt
 
 import android.content.Context
 import android.net.Uri
+import com.android.sharemate.model.image.MAX_INPUT_PHOTO_BYTES
 import com.android.sharemate.model.image.copyPhotoTo
 import java.io.File
 import java.util.UUID
@@ -38,12 +39,12 @@ class AndroidReceiptPhotoStore(
         try {
           resolver.openInputStream(Uri.parse(sourceUri))?.use { input ->
             pending.outputStream().use { output ->
-              input.copyPhotoTo(output, MAX_PHOTO_BYTES, { ensureActive() }) {
+              input.copyPhotoTo(output, MAX_INPUT_PHOTO_BYTES, { ensureActive() }) {
                 IllegalArgumentException("Receipt photo exceeds size limit")
               }
             }
           } ?: error("Receipt photo is unavailable")
-          check(pending.length() in 1..MAX_PHOTO_BYTES)
+          check(pending.length() in 1..MAX_INPUT_PHOTO_BYTES)
           check(pending.renameTo(destination))
           Uri.fromFile(destination).toString()
         } finally {
@@ -58,8 +59,4 @@ class AndroidReceiptPhotoStore(
         File(directory, "$id.jpg").delete()
         Unit
       }
-
-  private companion object {
-    const val MAX_PHOTO_BYTES = com.android.sharemate.model.image.AndroidBarcodePhotoStore.MAX_BYTES
-  }
 }

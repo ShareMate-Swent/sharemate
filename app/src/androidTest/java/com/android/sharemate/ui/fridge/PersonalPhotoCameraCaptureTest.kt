@@ -24,12 +24,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.R
-import com.android.sharemate.model.image.AndroidBarcodePhotoStore
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
+import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
 import com.android.sharemate.model.image.PersonalPhotoRepository
-import com.android.sharemate.ui.barcode.BarcodePhotoFlow
-import com.android.sharemate.ui.barcode.BarcodePhotoTestTags
-import com.android.sharemate.ui.barcode.BarcodePhotoViewModel
+import com.android.sharemate.ui.photo.PhotoPickerDialog
+import com.android.sharemate.ui.photo.PhotoPickerLabels
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.PhotoSource
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -54,24 +56,26 @@ class PersonalPhotoCameraCaptureTest {
           camera.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) ==
               CameraCharacteristics.LENS_FACING_BACK
         })
-    val vm = BarcodePhotoViewModel(AndroidBarcodePhotoStore(compose.activity), SavedStateHandle())
+    val vm = PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
     val photos = AndroidPersonalPhotoFiles(compose.activity)
     var prepared: String? = null
     compose.setContent {
       MaterialTheme {
-        BarcodePhotoFlow(
+        PhotoPickerDialog(
             vm,
-            title = R.string.personal_photo_add,
-            previewDescription = R.string.personal_photo_preview,
-            sourceDescription = R.string.personal_photo_sources) { uri ->
-              val copy = photos.copy(uri, fromCamera = vm.state.value.fromCamera)
+            labels =
+                PhotoPickerLabels(
+                    R.string.personal_photo_add,
+                    R.string.personal_photo_preview,
+                    R.string.personal_photo_sources)) { photo ->
+              val copy = photos.copy(photo.uri, fromCamera = photo.source == PhotoSource.CAMERA)
               try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(copy.path, bounds)
                 assertEquals("image/jpeg", bounds.outMimeType)
                 assertTrue(bounds.outWidth in 1..1280 && bounds.outHeight in 1..1280)
                 assertTrue(copy.length() in 1..PersonalPhotoRepository.MAX_BYTES.toLong())
-                prepared = uri
+                prepared = photo.uri
               } finally {
                 photos.delete(copy)
               }
@@ -80,20 +84,20 @@ class PersonalPhotoCameraCaptureTest {
     }
     try {
       compose.runOnIdle { vm.open() }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).performScrollTo().performClick()
       compose.waitUntil(20_000) {
-        runCatching { compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).assertIsEnabled() }
+        runCatching { compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled() }
             .isSuccess
       }
       compose
           .onNodeWithText(compose.activity.getString(R.string.personal_photo_add))
           .assertIsDisplayed()
-      compose.onNodeWithTag(BarcodePhotoTestTags.CAMERA).assertDoesNotExist()
-      compose.onNodeWithTag(BarcodePhotoTestTags.GALLERY).assertIsDisplayed()
+      compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).assertDoesNotExist()
+      compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsDisplayed()
       val frame =
-          compose.onNodeWithTag(BarcodePhotoTestTags.VIEWFINDER).fetchSemanticsNode().boundsInRoot
+          compose.onNodeWithTag(PhotoPickerTestTags.VIEWFINDER).fetchSemanticsNode().boundsInRoot
       val shutter =
-          compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
+          compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).fetchSemanticsNode().boundsInRoot
       assertTrue(frame.bottom <= shutter.top)
       lateinit var preview: PreviewView
       onView(isAssignableFrom(PreviewView::class.java)).check { view, _ ->
@@ -115,16 +119,16 @@ class PersonalPhotoCameraCaptureTest {
       } finally {
         screenshot.recycle()
       }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CAPTURE).performScrollTo().performClick()
-      compose.waitUntil(20_000) { vm.state.value.uri != null && !vm.state.value.busy }
-      compose.onNodeWithTag(BarcodePhotoTestTags.PREVIEW).assertIsDisplayed()
+      compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performScrollTo().performClick()
+      compose.waitUntil(20_000) { vm.state.value.selection?.uri != null && !vm.state.value.busy }
+      compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertIsDisplayed()
       compose.runOnIdle {
         assertNull(prepared)
-        assertTrue(vm.state.value.fromCamera)
+        assertEquals(PhotoSource.CAMERA, vm.state.value.selection?.source)
       }
-      compose.onNodeWithTag(BarcodePhotoTestTags.CONFIRM).performScrollTo().performClick()
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(10_000) { vm.state.value.confirmed && !vm.state.value.busy }
-      compose.runOnIdle { assertEquals(vm.state.value.uri, prepared) }
+      compose.runOnIdle { assertEquals(vm.state.value.selection?.uri, prepared) }
     } finally {
       compose.runOnIdle { vm.discard() }
     }
