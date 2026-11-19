@@ -36,10 +36,25 @@ class FoodImageSelector(private val repository: FoodImageRepository) {
       return FoodImageSelection.PersonalPhoto(personalReference)
     }
 
+    val article = preferredArticle(title)
+    if (article != null) return article
     return when (val result = repository.searchByTitle(title)) {
       is FoodImageSearchResult.Found -> FoodImageSelection.RemoteImage(result.image)
       FoodImageSearchResult.NotFound,
       is FoodImageSearchResult.Failure -> FoodImageSelection.Generic
+    }
+  }
+
+  private suspend fun preferredArticle(title: String): FoodImageSelection.RemoteImage? {
+    val result =
+        try {
+          withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) { repository.exactArticleImage(title) }
+        } catch (_: IOException) {
+          currentCoroutineContext().ensureActive()
+          null
+        }
+    return (result as? FoodImageSearchResult.Found)?.let {
+      FoodImageSelection.RemoteImage(it.image)
     }
   }
 
@@ -48,14 +63,20 @@ class FoodImageSelector(private val repository: FoodImageRepository) {
    * Cancellation from the owning session always propagates.
    */
   suspend fun selectAutomatic(title: String): FoodImageSelection {
+    preferredArticle(title)?.let {
+      return it
+    }
     repeat(IMAGE_LOOKUP_MAX_ATTEMPTS) { attempt ->
       currentCoroutineContext().ensureActive()
       val candidateLimit =
-          IMAGE_LOOKUP_INITIAL_CANDIDATES + attempt * IMAGE_LOOKUP_CANDIDATE_INCREMENT
+          if (attempt == 0) IMAGE_LOOKUP_INITIAL_CANDIDATES
+          else IMAGE_LOOKUP_INITIAL_CANDIDATES + IMAGE_LOOKUP_CANDIDATE_INCREMENT
       val result =
           try {
             withTimeoutOrNull(IMAGE_LOOKUP_TIMEOUT_MS) {
-              repository.searchByTitle(title, candidateLimit)
+              if (attempt == IMAGE_LOOKUP_MAX_ATTEMPTS - 1)
+                  repository.searchFileTitles(title, candidateLimit)
+              else repository.searchByTitle(title, candidateLimit)
             }
           } catch (_: IOException) {
             currentCoroutineContext().ensureActive()

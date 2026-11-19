@@ -81,7 +81,8 @@ class CommonsFoodImageRepositoryTest {
   }
 
   @Test
-  fun automaticLookupExpandsTheActualHttpRequestsToTenTwentyAndThirtyCandidates() = runBlocking {
+  fun automaticLookupUsesTwentyThenThirtyThenSearchesFileTitles() = runBlocking {
+    server.enqueue(MockResponse().setResponseCode(503)) // Optional Wikipedia lookup.
     server.enqueue(MockResponse().setBody(response()))
     server.enqueue(MockResponse().setBody(response(page(title = "Chicken soup"))))
     server.enqueue(MockResponse().setBody(response(page(title = "Raw chicken"))))
@@ -90,7 +91,75 @@ class CommonsFoodImageRepositoryTest {
         FoodImageSelector(repository).selectAutomatic("chicken") as FoodImageSelection.RemoteImage
 
     assertEquals("Raw chicken", selected.image.title)
-    assertEquals(listOf("10", "20", "30"), requests.map { it.url.queryParameter("gsrlimit") })
+    assertEquals(
+        listOf("20", "30", "30"), requests.drop(1).map { it.url.queryParameter("gsrlimit") })
+    assertEquals(
+        listOf(
+            "\"chicken\" filetype:bitmap",
+            "\"chicken\" filetype:bitmap",
+            "intitle:\"chicken\" filetype:bitmap"),
+        requests.drop(1).map { it.url.queryParameter("gsrsearch") })
+  }
+
+  private fun article(name: String = "Milk"): JSONObject =
+      JSONObject().put("title", name).put("ns", 0).put("pageimage", "Tacos.jpg")
+
+  @Test
+  fun exactEnglishArticleUsesItsCommonsFileWithAttributionBeforeSearching() = runBlocking {
+    server.enqueue(MockResponse().setBody(response(article())))
+    server.enqueue(MockResponse().setBody(response(page(title = "Unrelated filename"))))
+    val choice =
+        FoodImageSelector(repository).selectAutomatic(" mILK ") as FoodImageSelection.RemoteImage
+
+    assertEquals("Jane & John", choice.image.author)
+    assertEquals("Unrelated filename", choice.image.title)
+    assertEquals(listOf("en.wikipedia.org", "commons.wikimedia.org"), requests.map { it.url.host })
+    assertEquals("mILK", requests.first().url.queryParameter("titles"))
+    assertEquals("pageprops|pageimages", requests.first().url.queryParameter("prop"))
+    assertEquals("1", requests.first().url.queryParameter("redirects"))
+    assertEquals("File:Tacos.jpg", requests.last().url.queryParameter("titles"))
+    assertNull(requests.last().url.queryParameter("generator"))
+  }
+
+  @Test
+  fun ambiguousRedirectedMissingAndUnillustratedArticlesFallBack() = runBlocking {
+    for (invalid in
+        listOf(
+            article("Cream"),
+            article().put("pageprops", JSONObject().put("disambiguation", "")),
+            article().put("missing", true),
+            article().put("ns", 6),
+            article().put("pageimage", ""),
+            article().put("pageimage", "First.jpg|File:Second.jpg"))) {
+      server.enqueue(MockResponse().setBody(response(invalid)))
+      server.enqueue(MockResponse().setBody(response(page(title = "Milk"))))
+      val start = requests.size
+      assertTrue(
+          FoodImageSelector(repository).selectAutomatic("Milk") is FoodImageSelection.RemoteImage)
+      assertEquals(2, requests.size - start)
+      assertEquals("20", requests.last().url.queryParameter("gsrlimit"))
+    }
+  }
+
+  @Test
+  fun articleWithUnlicensedFileFallsBackToRankedCommonsImages() = runBlocking {
+    val invalid = page().also { metadata(it).remove("LicenseUrl") }
+    server.enqueue(MockResponse().setBody(response(article())))
+    server.enqueue(MockResponse().setBody(response(invalid)))
+    server.enqueue(MockResponse().setBody(response(page(title = "Fresh milk"))))
+    val image =
+        (FoodImageSelector(repository).selectAutomatic("Milk") as FoodImageSelection.RemoteImage)
+            .image
+    assertEquals("Fresh milk", image.title)
+    assertEquals("20", requests.last().url.queryParameter("gsrlimit"))
+  }
+
+  @Test
+  fun articleLookupSkipsEmptyAndMultiPageInputsWithoutNetwork() = runBlocking {
+    for (name in listOf("  ", "Eggs|Milk", "Eggs\u001fMilk")) {
+      assertSame(NotFound, repository.exactArticleImage(name))
+    }
+    assertTrue(requests.isEmpty())
   }
 
   @Test
@@ -139,7 +208,7 @@ class CommonsFoodImageRepositoryTest {
     assertEquals("2", request.url.queryParameter("formatversion"))
     assertEquals("search", request.url.queryParameter("generator"))
     assertEquals("6", request.url.queryParameter("gsrnamespace"))
-    assertEquals("10", request.url.queryParameter("gsrlimit"))
+    assertEquals("20", request.url.queryParameter("gsrlimit"))
     assertEquals("640", request.url.queryParameter("iiurlwidth"))
     assertEquals("\"tacos\" filetype:bitmap", request.url.queryParameter("gsrsearch"))
     assertEquals("application/json", request.header("Accept"))

@@ -2,8 +2,9 @@
 # Wikimedia Commons food images
 
 `MainActivity.createFoodImageSelector` uses `CommonsFoodImageRepository`, behind the existing
-`FoodImageRepository` interface. It searches Wikimedia Commons directly using the supplied English
-ingredient name, then ranks usable thumbnails by title similarity. No account or API key is needed.
+`FoodImageRepository` interface. It prefers the lead image of an English Wikipedia article whose final
+title matches the trimmed item name, ignoring case. Missing pages, disambiguation pages and broader
+redirect targets fall back to Commons search. Every image must pass the same Commons attribution checks. No account or API key is needed.
 
 After validation, `FridgeViewModel` saves the item with a placeholder and closes the form as soon as
 creation succeeds. It then searches for an image in a separate job and attaches the result through
@@ -12,9 +13,10 @@ and items that already have an image. Inventory flows supply the updated image a
 
 Lookup jobs belong to the retained fridge ViewModel: switching tabs preserves them, while leaving
 the session or household cancels them and their network calls. No work resumes after process death.
-The automatic selector makes up to three attempts, each bounded to ten seconds, with two-second
-pauses between attempts. Requests expand from ten to twenty to thirty candidates after empty results,
-timeouts or temporary failures. A found image ends the lookup immediately. Exhausted lookups and
+The optional article lookup has a ten-second deadline for both the Wikipedia and Commons requests.
+If it yields no usable image, the automatic selector searches Commons for the quoted phrase among
+20 candidates, then 30, then 30 with the phrase restricted to file titles. Each search has its own
+ten-second deadline, with two-second pauses between retries. A found image ends the lookup immediately. Exhausted lookups and
 failed image writes keep the saved placeholder. Lookup policy values live in `FoodImageTimeouts`.
 
 ## Manual verification
