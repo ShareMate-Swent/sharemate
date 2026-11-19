@@ -80,6 +80,7 @@ import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.notifications.NotificationChannelRegistrar
 import com.android.sharemate.notifications.NotificationPermission
 import com.android.sharemate.notifications.NotificationScheduler
 import com.android.sharemate.notifications.push.DeviceId
@@ -229,6 +230,7 @@ open class MainActivity : ComponentActivity() {
         } else {
           intent.takeIf(Intent::isAppDeepLink)
         }
+    NotificationChannelRegistrar.from(applicationContext).registerAll()
     NotificationScheduler.schedule(applicationContext)
     setContent {
       SampleAppTheme(dynamicColor = false) {
