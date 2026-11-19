@@ -46,16 +46,19 @@ class PushTokenRegistrar(
   /**
    * Removes this device's token for [userId], so the previous account is not targeted once someone
    * else uses the device, then runs [afterwards] (the sign-out) before any registration can run
-   * again. [userId] must still be signed in. [afterwards] runs even if the removal failed.
+   * again. [userId] must still be signed in. [afterwards] runs while the lock is still held, even
+   * if the removal failed or was cancelled (for instance by the caller's timeout), so no
+   * registration can slip in between the removal and the sign-out.
    *
    * @return true when the token is gone, false when the removal failed
    */
   suspend fun unregisterThen(userId: String, afterwards: () -> Unit): Boolean =
       operations.withLock {
-        val removed =
-            attempt(DELETE_FAILED_MESSAGE) { tokenRepository.deleteToken(userId, deviceId) }
-        afterwards()
-        removed
+        try {
+          attempt(DELETE_FAILED_MESSAGE) { tokenRepository.deleteToken(userId, deviceId) }
+        } finally {
+          afterwards()
+        }
       }
 
   private suspend fun readCurrentToken(): String? =

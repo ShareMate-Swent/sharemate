@@ -22,6 +22,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PushTokenCleaningAuthRepositoryTest {
   private val events = mutableListOf<String>()
+  private val lockHeldAtSignOut = mutableListOf<Boolean>()
   private var signedInUser: String? = "alice"
   private var deletion: suspend () -> Unit = { events += "delete" }
   private var saving: suspend () -> Unit = { events += "save" }
@@ -43,6 +44,7 @@ class PushTokenCleaningAuthRepositoryTest {
 
         override fun signOut() {
           events += "signOut"
+          lockHeldAtSignOut += operations.isLocked
           signedInUser = null
         }
       }
@@ -102,6 +104,54 @@ class PushTokenCleaningAuthRepositoryTest {
 
     advanceTimeBy(TIMEOUT + 1)
     runCurrent()
+    assertEquals(listOf("signOut"), events)
+  }
+
+  @Test
+  fun signsOutBeforeReleasingTheLockEvenWhenTheRemovalTimesOut() = runTest {
+    deletion = { CompletableDeferred<Unit>().await() }
+
+    repository().signOut()
+    runCurrent()
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+
+    assertEquals(listOf("signOut"), events)
+    assertEquals(listOf(true), lockHeldAtSignOut)
+  }
+
+  @Test
+  fun aRegistrationWaitingDuringATimedOutRemovalSavesNothing() = runTest {
+    deletion = { CompletableDeferred<Unit>().await() }
+    repository().signOut()
+    runCurrent()
+    launch { registrar().register("token-2") }
+    runCurrent()
+
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+
+    assertEquals(listOf("signOut"), events)
+  }
+
+  @Test
+  fun signsOutUnderTheLockWhenTheRemovalSucceeds() = runTest {
+    repository().signOut()
+    runCurrent()
+
+    assertEquals(listOf(true), lockHeldAtSignOut)
+  }
+
+  @Test
+  fun signsOutAnywayWhenAStuckRegistrationKeepsTheLockTaken() = runTest {
+    saving = { CompletableDeferred<Unit>().await() }
+    backgroundScope.launch { registrar().register("token-2") }
+    runCurrent()
+    repository().signOut()
+    runCurrent()
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+
     assertEquals(listOf("signOut"), events)
   }
 

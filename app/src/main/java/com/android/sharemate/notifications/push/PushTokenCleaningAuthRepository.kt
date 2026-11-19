@@ -49,7 +49,8 @@ class PushTokenCleaningAuthRepository(
           registrar.unregisterThen(userId) { signOutIfStillSignedIn(userId) }
           true
         }
-    // Gave up waiting (offline, or the lock is held by a stuck registration): sign out anyway.
+    // Only when the lock was never taken (held by a stuck registration); a timeout during the
+    // removal has already signed out under the lock, which makes this a no-op.
     if (finished == null) signOutIfStillSignedIn(userId)
   }
 
