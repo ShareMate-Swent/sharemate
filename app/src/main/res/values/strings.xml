@@ -80,6 +80,8 @@
     <string name="share_invite_code">Share</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
+    <string name="notification_channel_chat_name">Household chat</string>
+    <string name="notification_channel_chat_description">New messages from the members of your household</string>
     <string name="notification_expiration_title">Check your fridge</string>
     <plurals name="notification_expiration_expired">
         <item quantity="one">%d item has expired</item>

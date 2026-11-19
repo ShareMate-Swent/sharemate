@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications
 
 import android.app.Application
@@ -18,12 +19,18 @@ import org.robolectric.Shadows.shadowOf
 class AndroidNotificationPublisherTest {
   private val context = ApplicationProvider.getApplicationContext<Application>()
   private val manager = context.getSystemService(NotificationManager::class.java)
-  private val publisher = AndroidNotificationPublisher(context, MainActivity::class.java)
+  private val publisher =
+      AndroidNotificationPublisher(
+          context, MainActivity::class.java, NotificationChannelRegistrar.from(context))
 
-  private fun notification(key: String = "expiration", text: String = "2 items expired.") =
+  private fun notification(
+      key: String = "expiration",
+      text: String = "2 items expired.",
+      channel: AppNotificationChannel = AppNotificationChannel.EXPIRATION,
+  ) =
       AppNotification(
           key = key,
-          channel = AppNotificationChannel.EXPIRATION,
+          channel = channel,
           title = "Check your fridge",
           text = text,
           deepLink = "sharemate://app/fridge")
@@ -42,6 +49,17 @@ class AndroidNotificationPublisherTest {
     assertEquals(Intent.ACTION_VIEW, tapIntent.action)
     assertEquals("sharemate://app/fridge", tapIntent.data.toString())
     assertEquals(MainActivity::class.java.name, tapIntent.component?.className)
+  }
+
+  @Test
+  fun postsAChatNotificationOnTheChatChannelAndNotOnExpiration() {
+    shadowOf(context).grantPermissions(NotificationPermission.PERMISSION)
+
+    publisher.publish(notification(key = "chat", channel = AppNotificationChannel.CHAT))
+
+    val posted = shadowOf(manager).allNotifications.single()
+    assertEquals(AppNotificationChannel.CHAT.id, posted.channelId)
+    assertNotNull(manager.getNotificationChannel(AppNotificationChannel.CHAT.id))
   }
 
   @Test

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications
 
 import androidx.annotation.StringRes
@@ -19,6 +20,16 @@ enum class AppNotificationChannel(
       id = "expiration",
       nameRes = R.string.notification_channel_expiration_name,
       descriptionRes = R.string.notification_channel_expiration_description),
+
+  /**
+   * New household chat messages. Separate from [EXPIRATION] so a member can mute the chat without
+   * losing expiry reminders. High importance: a message is worth a heads-up with its preview.
+   */
+  CHAT(
+      id = "chat",
+      nameRes = R.string.notification_channel_chat_name,
+      descriptionRes = R.string.notification_channel_chat_description,
+      importance = NotificationManagerCompat.IMPORTANCE_HIGH),
 }
 
 /**

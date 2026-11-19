@@ -1,9 +1,9 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.NotificationChannel
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -23,18 +23,20 @@ interface NotificationPublisher {
 
 /**
  * Publishes through the system notification manager. Tapping a notification opens [entryActivity]
- * on the notification's deep link.
+ * on the notification's deep link. The channel of each notification is created through [channels]
+ * before it is posted, in case the creation at app start did not happen.
  */
 class AndroidNotificationPublisher(
     private val context: Context,
     private val entryActivity: Class<*>,
+    private val channels: NotificationChannelRegistrar,
 ) : NotificationPublisher {
   private val manager = NotificationManagerCompat.from(context)
 
   @SuppressLint("MissingPermission") // Checked by canPost().
   override fun publish(notification: AppNotification) {
     if (!canPost()) return
-    ensureChannel(notification.channel)
+    channels.register(notification.channel)
     manager.notify(notification.key, NOTIFICATION_ID, build(notification))
   }
 
@@ -44,14 +46,6 @@ class AndroidNotificationPublisher(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
     return permitted && manager.areNotificationsEnabled()
-  }
-
-  @SuppressLint("WrongConstant") // The importance is always one of the NotificationManager values.
-  private fun ensureChannel(channel: AppNotificationChannel) {
-    val systemChannel =
-        NotificationChannel(channel.id, context.getString(channel.nameRes), channel.importance)
-            .apply { description = context.getString(channel.descriptionRes) }
-    manager.createNotificationChannel(systemChannel)
   }
 
   private fun build(notification: AppNotification) =

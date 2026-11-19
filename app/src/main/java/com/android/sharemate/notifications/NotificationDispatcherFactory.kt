@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.notifications
 
 import android.content.Context
@@ -37,6 +38,8 @@ object NotificationDispatcherFactory {
                 formatter = ResourceExpirationNotificationFormatter(context.resources)),
         )
     return NotificationDispatcher(
-        sources, AndroidNotificationPublisher(context, MainActivity::class.java))
+        sources,
+        AndroidNotificationPublisher(
+            context, MainActivity::class.java, NotificationChannelRegistrar.from(context)))
   }
 }
