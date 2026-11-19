@@ -3,9 +3,12 @@
     <string name="recipes_loading">Loading recipe suggestions</string>
     <string name="recipes_empty">No recipes found for these ingredients.</string>
     <string name="recipes_error">Recipes could not be loaded. Please try again.</string>
+    <string name="recipes_offline">You are offline. Check your connection and try again.</string>
     <string name="recipes_retry">Try again</string>
     <string name="recipes_image_description">Photo of %1$s</string>
     <string name="recipes_image_unavailable">No image available for %1$s</string>
+    <string name="recipes_image_retry">Retry image</string>
+    <string name="recipes_image_retry_description">Retry image for %1$s</string>
     <plurals name="recipes_matching_ingredients">
         <item quantity="one">%d matching ingredient</item>
         <item quantity="other">%d matching ingredients</item>

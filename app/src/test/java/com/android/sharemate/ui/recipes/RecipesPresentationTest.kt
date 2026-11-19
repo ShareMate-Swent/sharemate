@@ -14,8 +14,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.Density
 import coil.ImageLoader
 import coil.decode.DataSource
@@ -26,7 +39,9 @@ import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -102,7 +117,7 @@ class RecipesPresentationTest {
     state.value = RecipesUiState.Success(listOf(soup))
     render()
     compose.onNodeWithTag(RecipesTestTags.card(soup.id)).assertIsDisplayed()
-    compose.runOnIdle { state.value = RecipesUiState.Error }
+    compose.runOnIdle { state.value = RecipesUiState.Error(RecipesErrorReason.SERVICE) }
     compose.onNodeWithTag(RecipesTestTags.card(soup.id)).assertDoesNotExist()
     compose.onNodeWithTag(RecipesTestTags.LIST).assertDoesNotExist()
     compose
@@ -112,7 +127,7 @@ class RecipesPresentationTest {
     compose.onNodeWithTag(RecipesTestTags.RETRY).assertHasClickAction().performClick()
     compose.runOnIdle {
       assertEquals(1, retries)
-      assertEquals(RecipesUiState.Error, state.value)
+      assertEquals(RecipesUiState.Error(RecipesErrorReason.SERVICE), state.value)
       state.value = RecipesUiState.Loading
     }
     compose.onNodeWithTag(RecipesTestTags.LOADING).assertIsDisplayed()
@@ -148,6 +163,62 @@ class RecipesPresentationTest {
         compose.onNodeWithTag(RecipesTestTags.card("a")).fetchSemanticsNode().boundsInRoot
     assertTrue(firstBounds.top < secondBounds.top)
     compose.onNodeWithTag(RecipesTestTags.card("z")).assertHasNoClickAction()
+  }
+
+  @Test
+  fun offlineErrorUsesItsOwnMessageAndPreservesCallerOwnedRetry() {
+    state.value = RecipesUiState.Error(RecipesErrorReason.OFFLINE)
+    render()
+    compose
+        .onNodeWithTag(RecipesTestTags.ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals("You are offline. Check your connection and try again.")
+    compose.onNodeWithTag(RecipesTestTags.RETRY).performClick()
+    compose.runOnIdle {
+      assertEquals(1, retries)
+      assertEquals(RecipesUiState.Error(RecipesErrorReason.OFFLINE), state.value)
+      state.value = RecipesUiState.Error(RecipesErrorReason.SERVICE)
+    }
+    compose
+        .onNodeWithTag(RecipesTestTags.ERROR)
+        .assertTextEquals("Recipes could not be loaded. Please try again.")
+    compose.onNodeWithTag(RecipesTestTags.LIST).assertDoesNotExist()
+  }
+
+  @Test
+  fun negativeIngredientCountsAreRejectedWhileZeroIsAccepted() {
+    assertThrows(IllegalArgumentException::class.java) { soup.copy(matchingIngredientCount = -1) }
+    assertThrows(IllegalArgumentException::class.java) { soup.copy(missingIngredientCount = -1) }
+    assertEquals(
+        0,
+        soup.copy(matchingIngredientCount = 0, missingIngredientCount = 0).missingIngredientCount)
+  }
+
+  @Test
+  fun failedImageCanBeRetriedAtTheSameUrlWithoutRetryingRecipes() {
+    val recipe = soup.copy(imageUrl = "https://fixture.invalid/retry")
+    state.value = RecipesUiState.Success(listOf(recipe))
+    render()
+    await { requests.size == 1 }
+    compose.runOnIdle { requests[0].success.complete(false) }
+    await {
+      compose
+          .onAllNodesWithTag(RecipesTestTags.imageRetry(recipe.id), true)
+          .fetchSemanticsNodes()
+          .size == 1
+    }
+    compose
+        .onNodeWithTag(RecipesTestTags.imageRetry(recipe.id), true)
+        .assertIsDisplayed()
+        .assertContentDescriptionEquals("Retry image for Vegetable soup")
+        .performClick()
+    await { requests.size == 2 }
+    compose.runOnIdle { requests[1].success.complete(true) }
+    compose.onNodeWithTag(RecipesTestTags.image(recipe.id), true).assertIsDisplayed()
+    compose.onNodeWithTag(RecipesTestTags.imageRetry(recipe.id), true).assertDoesNotExist()
+    compose.onNodeWithTag(RecipesTestTags.placeholder(recipe.id), true).assertDoesNotExist()
+    assertEquals(listOf(recipe.imageUrl, recipe.imageUrl), requests.map { it.url })
+    assertEquals(0, retries)
   }
 
   @Test
