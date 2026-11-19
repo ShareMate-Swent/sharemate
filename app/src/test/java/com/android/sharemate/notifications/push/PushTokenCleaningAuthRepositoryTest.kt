@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -23,6 +24,10 @@ class PushTokenCleaningAuthRepositoryTest {
   private val events = mutableListOf<String>()
   private var signedInUser: String? = "alice"
   private var deletion: suspend () -> Unit = { events += "delete" }
+  private var saving: suspend () -> Unit = { events += "save" }
+
+  /** The lock every registrar shares, as the factory does in production. */
+  private val operations = Mutex()
 
   private val delegate =
       object : AuthRepository {
@@ -38,21 +43,25 @@ class PushTokenCleaningAuthRepositoryTest {
 
         override fun signOut() {
           events += "signOut"
+          signedInUser = null
         }
       }
 
   private val tokens =
       object : PushTokenRepository {
-        override suspend fun saveToken(userId: String, deviceId: String, token: String) = Unit
+        override suspend fun saveToken(userId: String, deviceId: String, token: String) = saving()
 
         override suspend fun deleteToken(userId: String, deviceId: String) = deletion()
       }
+
+  private fun registrar() =
+      PushTokenRegistrar({ signedInUser }, tokens, "device-1", operations) { "token" }
 
   private fun TestScope.repository() =
       PushTokenCleaningAuthRepository(
           delegate = delegate,
           currentUser = { signedInUser },
-          registrar = PushTokenRegistrar({ signedInUser }, tokens, "device-1") { "token" },
+          registrar = registrar(),
           scope = this,
           cleanupTimeoutMillis = TIMEOUT)
 
@@ -107,6 +116,60 @@ class PushTokenCleaningAuthRepositoryTest {
     runCurrent()
 
     assertEquals(listOf("delete"), events)
+  }
+
+  @Test
+  fun aRegistrationStartingDuringTheRemovalSavesNothingAfterTheSignOut() = runTest {
+    val removal = CompletableDeferred<Unit>()
+    deletion = {
+      removal.await()
+      events += "delete"
+    }
+    repository().signOut()
+    runCurrent()
+
+    launch { registrar().register("token-2") }
+    runCurrent()
+    assertTrue("the registration must wait for the sign-out", "save" !in events)
+
+    removal.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf("delete", "signOut"), events)
+  }
+
+  @Test
+  fun aRegistrationAlreadyRunningFinishesBeforeTheRemoval() = runTest {
+    val saved = CompletableDeferred<Unit>()
+    saving = {
+      saved.await()
+      events += "save"
+    }
+    launch { registrar().register("token-2") }
+    runCurrent()
+    repository().signOut()
+    runCurrent()
+    assertTrue("the removal must wait for the registration", events.isEmpty())
+
+    saved.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf("save", "delete", "signOut"), events)
+  }
+
+  @Test
+  fun aStuckRegistrationDelaysTheSignOutButNeverBlocksItForever() = runTest {
+    saving = { CompletableDeferred<Unit>().await() }
+    backgroundScope.launch { registrar().register("token-2") }
+    runCurrent()
+    repository().signOut()
+    runCurrent()
+    assertTrue(events.isEmpty())
+
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+
+    assertEquals(listOf("signOut"), events)
   }
 
   @Test

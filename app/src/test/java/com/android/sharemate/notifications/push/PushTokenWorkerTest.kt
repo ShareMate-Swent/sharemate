@@ -9,6 +9,7 @@ import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.android.sharemate.model.push.PushTokenRepository
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,7 +40,7 @@ class PushTokenWorkerTest {
               workerParameters: WorkerParameters,
           ) =
               PushTokenWorker(appContext, workerParameters) {
-                PushTokenRegistrar({ user }, tokens, "device-1") { "current-token" }
+                PushTokenRegistrar({ user }, tokens, "device-1", Mutex()) { "current-token" }
               }
         }
     val builder =

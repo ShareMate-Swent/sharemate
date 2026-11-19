@@ -16,6 +16,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * signing out must not hang on it. In that case the token stays on record until it is replaced or
  * pruned server-side.
  *
+ * The removal and the sign-out run under the registrar's lock, so a registration running at the
+ * same time cannot save the token again in between: it either finishes first (and its write is then
+ * removed) or starts after the sign-out and finds nobody signed in.
+ *
  * Because the sign-out completes later than the call, whoever shows the sign-in screen must keep it
  * disabled until [awaitSignOut] returns (see [awaitingSignOut]). Otherwise the same account could
  * sign back in and the late sign-out would end the new session. The user check below only covers a
@@ -36,11 +40,21 @@ class PushTokenCleaningAuthRepository(
       delegate.signOut()
       return
     }
-    pendingSignOut =
-        scope.launch {
-          withTimeoutOrNull(cleanupTimeoutMillis) { registrar.unregister(userId) }
-          if (currentUser.currentUserId() == userId) delegate.signOut()
+    pendingSignOut = scope.launch { removeTokenThenSignOut(userId) }
+  }
+
+  private suspend fun removeTokenThenSignOut(userId: String) {
+    val finished =
+        withTimeoutOrNull(cleanupTimeoutMillis) {
+          registrar.unregisterThen(userId) { signOutIfStillSignedIn(userId) }
+          true
         }
+    // Gave up waiting (offline, or the lock is held by a stuck registration): sign out anyway.
+    if (finished == null) signOutIfStillSignedIn(userId)
+  }
+
+  private fun signOutIfStillSignedIn(userId: String) {
+    if (currentUser.currentUserId() == userId) delegate.signOut()
   }
 
   /** Suspends until the sign-out started by [signOut] has finished; returns at once if none. */

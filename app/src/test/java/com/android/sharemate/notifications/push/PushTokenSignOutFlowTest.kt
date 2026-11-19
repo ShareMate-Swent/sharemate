@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -69,7 +70,8 @@ class PushTokenSignOutFlowTest {
       PushTokenCleaningAuthRepository(
           delegate = delegate,
           currentUser = { sessions.value?.uid },
-          registrar = PushTokenRegistrar({ sessions.value?.uid }, tokens, "device-1") { "token" },
+          registrar =
+              PushTokenRegistrar({ sessions.value?.uid }, tokens, "device-1", Mutex()) { "token" },
           scope = CoroutineScope(dispatcher),
           cleanupTimeoutMillis = TIMEOUT)
 

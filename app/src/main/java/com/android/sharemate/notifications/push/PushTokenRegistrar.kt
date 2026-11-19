@@ -5,6 +5,8 @@ package com.android.sharemate.notifications.push
 import android.util.Log
 import com.android.sharemate.model.push.PushTokenRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Keeps this device's push token saved for whichever user is currently signed in.
@@ -12,11 +14,16 @@ import kotlinx.coroutines.CancellationException
  * Nobody is notified by this class; it only maintains the record a server-side sender will later
  * read. Every failure is logged and reported through the returned flag, so the caller (a
  * WorkManager job) can retry exactly what failed.
+ *
+ * The activity and the WorkManager job each build their own registrar, so [operations] must be the
+ * same lock for all of them: it orders a registration against a sign-out cleanup, which would
+ * otherwise let a token be saved again between its removal and the sign-out.
  */
 class PushTokenRegistrar(
     private val currentUser: CurrentUserIdProvider,
     private val tokenRepository: PushTokenRepository,
     private val deviceId: String,
+    private val operations: Mutex,
     private val fetchToken: suspend () -> String,
 ) {
   /**
@@ -27,19 +34,29 @@ class PushTokenRegistrar(
    *   or there was nobody to save it for (the next session start registers it).
    */
   suspend fun register(knownToken: String?): Boolean {
-    val userId = currentUser.currentUserId() ?: return true
+    if (currentUser.currentUserId() == null) return true
     val token = knownToken ?: readCurrentToken() ?: return false
-    return attempt(SAVE_FAILED_MESSAGE) { tokenRepository.saveToken(userId, deviceId, token) }
+    return operations.withLock {
+      // Read again under the lock: a sign-out cleanup may have finished while this waited.
+      val userId = currentUser.currentUserId() ?: return@withLock true
+      attempt(SAVE_FAILED_MESSAGE) { tokenRepository.saveToken(userId, deviceId, token) }
+    }
   }
 
   /**
    * Removes this device's token for [userId], so the previous account is not targeted once someone
-   * else uses the device. Must run while [userId] is still signed in.
+   * else uses the device, then runs [afterwards] (the sign-out) before any registration can run
+   * again. [userId] must still be signed in. [afterwards] runs even if the removal failed.
    *
    * @return true when the token is gone, false when the removal failed
    */
-  suspend fun unregister(userId: String): Boolean =
-      attempt(DELETE_FAILED_MESSAGE) { tokenRepository.deleteToken(userId, deviceId) }
+  suspend fun unregisterThen(userId: String, afterwards: () -> Unit): Boolean =
+      operations.withLock {
+        val removed =
+            attempt(DELETE_FAILED_MESSAGE) { tokenRepository.deleteToken(userId, deviceId) }
+        afterwards()
+        removed
+      }
 
   private suspend fun readCurrentToken(): String? =
       try {

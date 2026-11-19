@@ -4,6 +4,7 @@ package com.android.sharemate.notifications.push
 
 import com.android.sharemate.model.push.PushTokenRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,6 +37,7 @@ class PushTokenRegistrarTest {
           currentUser = { userId },
           tokenRepository = tokens,
           deviceId = DEVICE_ID,
+          operations = Mutex(),
           fetchToken = {
             fetches++
             fetchResult()
@@ -103,22 +105,52 @@ class PushTokenRegistrarTest {
     tokens.failure = CancellationException("stopped")
 
     assertCancelled { registrar("bob").register("token-2") }
-    assertCancelled { registrar("bob").unregister("bob") }
   }
 
   @Test
-  fun unregisterRemovesTheDeviceTokenOfTheGivenUser() = runTest {
-    val outcome = registrar("bob").unregister("alice")
+  fun unregisterThenRemovesTheTokenOfTheGivenUserBeforeRunningTheFollowUp() = runTest {
+    val order = mutableListOf<String>()
+    val outcome =
+        registrar("bob").unregisterThen("alice") { order += "afterwards:${tokens.deleted.size}" }
 
     assertEquals(listOf("alice" to DEVICE_ID), tokens.deleted)
+    assertEquals(listOf("afterwards:1"), order)
     assertTrue(outcome)
   }
 
   @Test
-  fun aFailingUnregisterReportsFalse() = runTest {
+  fun aFailingRemovalReportsFalseButStillRunsTheFollowUp() = runTest {
     tokens.failure = IllegalStateException("denied")
+    var ran = false
 
-    assertFalse(registrar("bob").unregister("alice"))
+    val outcome = registrar("bob").unregisterThen("alice") { ran = true }
+
+    assertFalse(outcome)
+    assertTrue(ran)
+  }
+
+  @Test
+  fun cancellationDuringTheRemovalIsNotSwallowed() = runTest {
+    tokens.failure = CancellationException("stopped")
+
+    assertCancelled { registrar("bob").unregisterThen("bob") {} }
+  }
+
+  @Test
+  fun theSignedInUserIsReadAgainBeforeSavingSoASignOutInBetweenWritesNothing() = runTest {
+    val answers = ArrayDeque(listOf<String?>("bob", null))
+    val registrar =
+        PushTokenRegistrar(
+            currentUser = { answers.removeFirst() },
+            tokenRepository = tokens,
+            deviceId = DEVICE_ID,
+            operations = Mutex(),
+            fetchToken = { "current-token" })
+
+    val outcome = registrar.register("token-2")
+
+    assertTrue(outcome)
+    assertTrue(tokens.saved.isEmpty())
   }
 
   private suspend fun assertCancelled(action: suspend () -> Unit) {
