@@ -16,7 +16,11 @@ object DeviceId {
   /** Key of the identifier inside [PREFERENCES_NAME]. */
   const val KEY_DEVICE_ID = "device_id"
 
-  /** Returns this install's identifier, creating and storing it on first use. */
+  /**
+   * Returns this install's identifier, creating and storing it on first use. Synchronized so that
+   * callers on different threads (the activity and the push worker) cannot each create one.
+   */
+  @Synchronized
   fun getOrCreate(context: Context): String {
     val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     return preferences.getString(KEY_DEVICE_ID, null)

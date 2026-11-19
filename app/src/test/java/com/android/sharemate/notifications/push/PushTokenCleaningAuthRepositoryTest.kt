@@ -8,11 +8,13 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -105,6 +107,66 @@ class PushTokenCleaningAuthRepositoryTest {
     runCurrent()
 
     assertEquals(listOf("delete"), events)
+  }
+
+  @Test
+  fun awaitSignOutReturnsAtOnceWhenNoSignOutIsPending() = runTest {
+    repository().awaitSignOut()
+
+    assertTrue(events.isEmpty())
+  }
+
+  @Test
+  fun awaitSignOutOnlyReturnsOnceTheSignOutHasHappened() = runTest {
+    deletion = { CompletableDeferred<Unit>().await() }
+    val repository = repository()
+    repository.signOut()
+    var returned = false
+    launch {
+      repository.awaitSignOut()
+      returned = true
+    }
+
+    runCurrent()
+    assertFalse(returned)
+
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+    assertTrue(returned)
+    assertEquals(listOf("signOut"), events)
+  }
+
+  @Test
+  fun awaitingSignOutWaitsAfterClearingTheCredentials() = runTest {
+    val repository = repository()
+    repository.signOut()
+
+    repository.awaitingSignOut { events += "clear" }()
+
+    assertEquals(listOf("clear", "delete", "signOut"), events)
+  }
+
+  @Test
+  fun awaitingSignOutStillWaitsWhenClearingTheCredentialsFails() = runTest {
+    deletion = { CompletableDeferred<Unit>().await() }
+    val repository = repository()
+    repository.signOut()
+    var failure: Exception? = null
+    launch {
+      try {
+        repository.awaitingSignOut { throw IllegalStateException("provider down") }()
+      } catch (error: IllegalStateException) {
+        failure = error
+      }
+    }
+
+    runCurrent()
+    assertEquals(null, failure)
+
+    advanceTimeBy(TIMEOUT + 1)
+    runCurrent()
+    assertEquals("provider down", failure?.message)
+    assertEquals(listOf("signOut"), events)
   }
 
   @Test
