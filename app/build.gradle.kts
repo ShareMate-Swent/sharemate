@@ -222,6 +222,7 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
     implementation(libs.firebase.functions)
+    implementation(libs.firebase.messaging)
 }
 
 tasks.withType<Test> {

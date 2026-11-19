@@ -41,6 +41,7 @@ class MainActivityAuthTest {
     compose.onNodeWithText(compose.activity.getString(R.string.auth_sign_out)).performClick()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
     compose.onNodeWithTag(AuthTestTags.WELCOME).assertIsDisplayed()
+    verify(firebase.pushTokenDocument()).delete()
     verify(firebase.auth).signOut()
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
   }
