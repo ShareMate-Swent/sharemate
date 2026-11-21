@@ -111,7 +111,9 @@ internal fun colorSchemeOf(palette: Palette, dark: Boolean): ColorScheme {
         onBackground = text,
         surface = surface,
         onSurface = text,
-        surfaceVariant = background,
+        // A visible grey, distinct from the background: incoming chat bubbles and placeholder
+        // tiles sit directly on the background and must not blend into it.
+        surfaceVariant = surfaceContainerHighest,
         onSurfaceVariant = muted,
         surfaceTint = accent,
         outline = border,

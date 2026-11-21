@@ -160,6 +160,23 @@ class ShareMateThemeTest {
     assertReadable(DarkColorScheme, DarkStatusColors)
   }
 
+  @Test
+  fun lightSurfaceVariantStandsOutFromTheBackground() {
+    assertStandsOut(LightColorScheme)
+  }
+
+  @Test
+  fun darkSurfaceVariantStandsOutFromTheBackground() {
+    assertStandsOut(DarkColorScheme)
+  }
+
+  /** Incoming chat bubbles use surfaceVariant on the background; they must not blend into it. */
+  private fun assertStandsOut(colors: ColorScheme) {
+    val minimum = 1.1
+    val ratio = contrast(colors.surfaceVariant, colors.background)
+    assertTrue("surfaceVariant only reaches $ratio against the background", ratio >= minimum)
+  }
+
   private fun assertReadable(colors: ColorScheme, status: StatusColors) {
     val minimum = 4.5
     val pairs =
@@ -168,6 +185,9 @@ class ShareMateThemeTest {
             colors.onSurface to colors.surface,
             colors.onSurfaceVariant to colors.surface,
             colors.onSurfaceVariant to colors.background,
+            colors.onSurface to colors.surfaceVariant,
+            colors.onSurfaceVariant to colors.surfaceVariant,
+            colors.primary to colors.surfaceVariant,
             colors.onPrimary to colors.primary,
             colors.primary to colors.surface,
             colors.onPrimaryContainer to colors.primaryContainer,
