@@ -1,8 +1,10 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.chat
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
@@ -478,5 +480,107 @@ class FirebaseChatRepositoryUnitTest {
                 "timestamp", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE))
         .thenThrow(RuntimeException("bad"))
     assertNull(badTimestamp.toMessageOrNull())
+  }
+
+  @Test
+  fun sendIncident_invalidInput_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        val tooLong = "a".repeat(Message.MAX_TEXT_LENGTH + 1)
+        assertNull(repository.sendIncident("", "u1", "Ann", "Leak", incidentPhoto))
+        assertNull(repository.sendIncident("h1", "", "Ann", "Leak", incidentPhoto))
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "   ", incidentPhoto))
+        assertNull(repository.sendIncident("h1", "u1", "Ann", tooLong, incidentPhoto))
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendIncident_photoOfAnotherHouseholdOrAuthor_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        val otherHome = IncidentPhotoReference("incidentPhotos/h2/u1/$PHOTO_ID")
+        val otherAuthor = IncidentPhotoReference("incidentPhotos/h1/u2/$PHOTO_ID")
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", otherHome))
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", otherAuthor))
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendIncident_writesTrimmedDescriptionAndPhotoPath() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        assertEquals(
+            "m1", repository.sendIncident("h1", "u1", "Impersonated", "  Leak  ", incidentPhoto))
+        val captor = ArgumentCaptor.forClass(Map::class.java)
+        verify(document).set(captor.capture())
+        assertEquals("m1", captor.value["id"])
+        assertEquals("u1", captor.value["senderId"])
+        assertEquals("Ann", captor.value["senderName"])
+        assertEquals(FieldValue.serverTimestamp(), captor.value["timestamp"])
+        assertEquals("INCIDENT", captor.value["type"])
+        assertEquals("Leak", captor.value["text"])
+        assertEquals(incidentPhoto.path, captor.value["incidentPhotoPath"])
+        assertTrue(captor.value.keys.none { it == "itemName" || it == "itemImageUrl" })
+      }
+
+  @Test
+  fun sendIncident_returnsNullOnFailure() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forException(RuntimeException("x")))
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", incidentPhoto))
+      }
+
+  @Test
+  fun sendActivity_incidentType_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        assertNull(repository.sendActivity("h1", "u1", "Ann", MessageType.INCIDENT, "Milk"))
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun toMessageOrNull_parsesIncident() {
+    val doc = incidentDocument(text = "Leak", photoPath = incidentPhoto.path)
+    assertEquals(
+        Message(
+            id = "i1",
+            senderId = "u1",
+            senderName = "Ann",
+            text = "Leak",
+            type = MessageType.INCIDENT,
+            incidentPhoto = incidentPhoto),
+        doc.toMessageOrNull())
+  }
+
+  @Test
+  fun toMessageOrNull_skipsIncidentWithoutDescriptionOrValidPhoto() {
+    assertNull(incidentDocument(text = " ", photoPath = incidentPhoto.path).toMessageOrNull())
+    assertNull(incidentDocument(text = null, photoPath = incidentPhoto.path).toMessageOrNull())
+    assertNull(incidentDocument(text = "Leak", photoPath = null).toMessageOrNull())
+    assertNull(
+        incidentDocument(text = "Leak", photoPath = "https://example.com/p.jpg").toMessageOrNull())
+  }
+
+  @Test
+  fun toMessageOrNull_ignoresPhotoPathOnOtherTypes() {
+    val doc = incidentDocument(text = "hi", photoPath = incidentPhoto.path)
+    `when`(doc.getString("type")).thenReturn(null)
+    val message = doc.toMessageOrNull()
+    assertEquals(MessageType.TEXT, message?.type)
+    assertNull(message?.incidentPhoto)
+  }
+
+  private val incidentPhoto = IncidentPhotoReference("incidentPhotos/h1/u1/$PHOTO_ID")
+
+  private fun incidentDocument(text: String?, photoPath: String?): DocumentSnapshot {
+    val doc = mock(DocumentSnapshot::class.java)
+    `when`(doc.id).thenReturn("i1")
+    `when`(doc.getString("senderId")).thenReturn("u1")
+    `when`(doc.getString("senderName")).thenReturn("Ann")
+    `when`(doc.getString("type")).thenReturn("INCIDENT")
+    `when`(doc.getString("text")).thenReturn(text)
+    `when`(doc.getString("incidentPhotoPath")).thenReturn(photoPath)
+    return doc
+  }
+
+  private companion object {
+    const val PHOTO_ID = "123e4567-e89b-12d3-a456-426614174000"
   }
 }

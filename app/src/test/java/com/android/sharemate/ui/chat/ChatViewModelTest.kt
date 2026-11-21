@@ -1,9 +1,11 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +39,14 @@ class ChatViewModelTest {
         type: MessageType,
         itemName: String,
         itemImageUrl: String?
+    ): String? = null
+
+    override suspend fun sendIncident(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        description: String,
+        photo: IncidentPhotoReference
     ): String? = null
 
     override suspend fun sendMessage(
@@ -129,6 +139,14 @@ class ChatViewModelTest {
                   itemImageUrl: String?
               ): String? = null
 
+              override suspend fun sendIncident(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  description: String,
+                  photo: IncidentPhotoReference
+              ): String? = null
+
               override suspend fun sendMessage(
                   householdId: String,
                   senderId: String,
@@ -170,6 +188,14 @@ class ChatViewModelTest {
                   type: MessageType,
                   itemName: String,
                   itemImageUrl: String?
+              ): String? = null
+
+              override suspend fun sendIncident(
+                  householdId: String,
+                  senderId: String,
+                  senderName: String,
+                  description: String,
+                  photo: IncidentPhotoReference
               ): String? = null
 
               override suspend fun sendMessage(

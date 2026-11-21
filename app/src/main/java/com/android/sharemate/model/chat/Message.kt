@@ -1,6 +1,8 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.chat
 
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import java.util.Date
 
 /**
@@ -10,11 +12,13 @@ import java.util.Date
  * @property id Message identifier (the Firestore document id).
  * @property senderId Firebase UID of the author.
  * @property senderName Display name of the author at send time.
- * @property text Message content.
+ * @property text Message content; for an incident, its description.
  * @property timestamp When the message was sent.
- * @property type Whether this is a text message or a fridge activity (eaten / thrown).
+ * @property type Whether this is a text message, a fridge activity (eaten / thrown) or an incident.
  * @property itemName Name of the concerned item, for activity messages.
  * @property itemImageUrl Optional image of the concerned item, for activity messages.
+ * @property incidentPhoto Storage reference of the incident photo, for incident messages; load it
+ *   through `IncidentPhotoRepository.load`.
  */
 data class Message(
     val id: String = "",
@@ -24,7 +28,8 @@ data class Message(
     val timestamp: Date? = null,
     val type: MessageType = MessageType.TEXT,
     val itemName: String = "",
-    val itemImageUrl: String? = null
+    val itemImageUrl: String? = null,
+    val incidentPhoto: IncidentPhotoReference? = null
 ) {
   /** Whether this message was sent by [userId]. */
   fun isSentBy(userId: String): Boolean = senderId.isNotEmpty() && senderId == userId
@@ -43,11 +48,15 @@ data class Message(
   }
 }
 
-/** Kind of chat message; non-text kinds are fridge activities shown as badges. */
+/**
+ * Kind of chat message: [TEXT] is written by a member, [EATEN] and [THROWN] are fridge activities
+ * shown as badges, and [INCIDENT] is a household problem reported with a photo and a description.
+ */
 enum class MessageType {
   TEXT,
   EATEN,
-  THROWN;
+  THROWN,
+  INCIDENT;
 
   companion object {
     /** Parses a stored value, falling back to [TEXT] for missing or unknown ones. */
