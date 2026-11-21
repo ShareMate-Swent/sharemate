@@ -1,6 +1,8 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.chat
 
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import kotlinx.coroutines.flow.Flow
 
 /** Access to the group chat of a shared household. */
@@ -31,5 +33,19 @@ interface ChatRepository {
       type: MessageType,
       itemName: String,
       itemImageUrl: String? = null
+  ): String?
+
+  /**
+   * Posts an incident reported by [senderId]: a [description] and the [photo] already uploaded with
+   * `IncidentPhotoRepository.upload`. The photo must have been uploaded by [senderId] for
+   * [householdId]. Returns the new message id after acknowledgement, or null if invalid or failed.
+   * The cached profile name is preferred; [senderName] is used on a cache miss.
+   */
+  suspend fun sendIncident(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      description: String,
+      photo: IncidentPhotoReference
   ): String?
 }

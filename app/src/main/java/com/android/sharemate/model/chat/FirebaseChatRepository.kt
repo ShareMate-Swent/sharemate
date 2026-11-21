@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.chat
 
 import android.util.Log
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -51,18 +53,8 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
       text: String
   ): String? {
     if (householdId.isBlank() || senderId.isBlank() || !Message.isValidText(text)) return null
-    return try {
-      val document = messages(householdId).document()
-      val message =
-          messageData(document.id, senderId, senderName) +
-              mapOf(MessageFields.TEXT to Message.normalizeText(text))
-      writeMessage(document, message, senderId)
-      document.id
-    } catch (cancelled: CancellationException) {
-      throw cancelled
-    } catch (_: Exception) {
-      null
-    }
+    return post(
+        householdId, senderId, senderName, mapOf(MessageFields.TEXT to Message.normalizeText(text)))
   }
 
   override suspend fun sendActivity(
@@ -75,26 +67,62 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
   ): String? {
     if (householdId.isBlank() ||
         senderId.isBlank() ||
-        type == MessageType.TEXT ||
+        type !in ACTIVITY_TYPES ||
         itemName.isBlank())
         return null
-    return try {
-      val document = messages(householdId).document()
-      val message =
-          messageData(document.id, senderId, senderName) +
-              mapOf(
-                  MessageFields.TEXT to "",
-                  MessageFields.TYPE to type.name,
-                  MessageFields.ITEM_NAME to itemName.trim(),
-                  MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() })
-      writeMessage(document, message, senderId)
-      document.id
-    } catch (cancelled: CancellationException) {
-      throw cancelled
-    } catch (_: Exception) {
-      null
-    }
+    return post(
+        householdId,
+        senderId,
+        senderName,
+        mapOf(
+            MessageFields.TEXT to "",
+            MessageFields.TYPE to type.name,
+            MessageFields.ITEM_NAME to itemName.trim(),
+            MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() }))
   }
+
+  override suspend fun sendIncident(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      description: String,
+      photo: IncidentPhotoReference
+  ): String? {
+    if (householdId.isBlank() ||
+        senderId.isBlank() ||
+        !Message.isValidText(description) ||
+        photo.householdId != householdId ||
+        photo.authorId != senderId)
+        return null
+    return post(
+        householdId,
+        senderId,
+        senderName,
+        mapOf(
+            MessageFields.TEXT to Message.normalizeText(description),
+            MessageFields.TYPE to MessageType.INCIDENT.name,
+            MessageFields.INCIDENT_PHOTO_PATH to photo.path))
+  }
+
+  /**
+   * Writes a new message made of the common fields plus the type-specific [fields]; returns its id
+   * after acknowledgement, or null on failure. Cancellation is rethrown.
+   */
+  private suspend fun post(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      fields: Map<String, Any?>
+  ): String? =
+      try {
+        val document = messages(householdId).document()
+        writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
+        document.id
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        null
+      }
 
   private suspend fun messageData(
       id: String,
@@ -149,6 +177,7 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
 
   private companion object {
     const val TAG = "FirebaseChatRepository"
+    val ACTIVITY_TYPES = setOf(MessageType.EATEN, MessageType.THROWN)
   }
 }
 
@@ -165,7 +194,15 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
       val type = MessageType.fromStored(getString(MessageFields.TYPE))
       val text = getString(MessageFields.TEXT) ?: if (type == MessageType.TEXT) null else ""
       val itemName = getString(MessageFields.ITEM_NAME).orEmpty()
-      if (senderId == null || text == null || (type != MessageType.TEXT && itemName.isBlank())) {
+      val incidentPhoto = if (type == MessageType.INCIDENT) incidentPhotoOrNull() else null
+      val hasTypeFields =
+          when (type) {
+            MessageType.TEXT -> true
+            MessageType.EATEN,
+            MessageType.THROWN -> itemName.isNotBlank()
+            MessageType.INCIDENT -> !text.isNullOrBlank() && incidentPhoto != null
+          }
+      if (senderId == null || text == null || !hasTypeFields) {
         null
       } else {
         Message(
@@ -179,11 +216,22 @@ internal fun DocumentSnapshot.toMessageOrNull(): Message? =
                     ?.toDate(),
             type = type,
             itemName = itemName,
-            itemImageUrl = getString(MessageFields.ITEM_IMAGE_URL)?.takeIf { it.isNotBlank() })
+            itemImageUrl = getString(MessageFields.ITEM_IMAGE_URL)?.takeIf { it.isNotBlank() },
+            incidentPhoto = incidentPhoto)
       }
     } catch (_: RuntimeException) {
       // Wrongly typed fields make the Firestore getters throw; skip the malformed document.
       null
+    }
+
+/** The stored incident photo reference, or null when it is missing or not a valid path. */
+private fun DocumentSnapshot.incidentPhotoOrNull(): IncidentPhotoReference? =
+    getString(MessageFields.INCIDENT_PHOTO_PATH)?.let { path ->
+      try {
+        IncidentPhotoReference(path)
+      } catch (_: IllegalArgumentException) {
+        null
+      }
     }
 
 /** Fields of a chat message document in Firestore. */
@@ -196,4 +244,5 @@ private object MessageFields {
   const val TEXT = "text"
   const val ITEM_NAME = "itemName"
   const val ITEM_IMAGE_URL = "itemImageUrl"
+  const val INCIDENT_PHOTO_PATH = "incidentPhotoPath"
 }

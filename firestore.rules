@@ -327,7 +327,7 @@ service cloud.firestore {
         let message = request.resource.data;
         return message.keys().hasOnly([
               'id', 'senderId', 'senderName', 'text', 'timestamp',
-              'type', 'itemName', 'itemImageUrl'
+              'type', 'itemName', 'itemImageUrl', 'incidentPhotoPath'
             ])
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
@@ -335,7 +335,8 @@ service cloud.firestore {
             && message.senderName == chatSenderName()
             && message.text is string
             && message.timestamp == request.time
-            && (isValidTextMessage(message) || isValidActivityMessage(message));
+            && (isValidTextMessage(message) || isValidActivityMessage(message)
+                || isValidIncidentMessage(message));
       }
 
       function chatSenderName() {
@@ -349,14 +350,22 @@ service cloud.firestore {
         return text.matches('[\\s\\S]*\\S[\\s\\S]*');
       }
 
+      // Same limit as Message.MAX_TEXT_LENGTH in the app.
+      function isValidChatText(text) {
+        return hasVisibleText(text) && text.size() <= 2000;
+      }
+
+      function hasNoIncidentPhoto(message) {
+        return message.get('incidentPhotoPath', null) == null;
+      }
+
       function isValidTextMessage(message) {
         let textType = 'TEXT';
-        let maxTextLength = 2000;
         return message.get('type', textType) == textType
-            && hasVisibleText(message.text)
-            && message.text.size() <= maxTextLength
+            && isValidChatText(message.text)
             && message.get('itemName', '') == ''
-            && message.get('itemImageUrl', null) == null;
+            && message.get('itemImageUrl', null) == null
+            && hasNoIncidentPhoto(message);
       }
 
       function isValidActivityMessage(message) {
@@ -367,7 +376,21 @@ service cloud.firestore {
             && message.get('itemName', null) is string
             && hasVisibleText(message.itemName)
             && (message.get('itemImageUrl', null) == null
-                || message.itemImageUrl is string);
+                || message.itemImageUrl is string)
+            && hasNoIncidentPhoto(message);
+      }
+
+      // The description is the text; the photo must be one the sender uploaded for this household
+      // (same path as IncidentPhotoReference and storage.rules).
+      function isValidIncidentMessage(message) {
+        let photoId = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+        let photoPath = 'incidentPhotos/' + householdId + '/' + request.auth.uid + '/' + photoId;
+        return message.get('type', null) == 'INCIDENT'
+            && isValidChatText(message.text)
+            && message.get('itemName', '') == ''
+            && message.get('itemImageUrl', null) == null
+            && message.get('incidentPhotoPath', null) is string
+            && message.incidentPhotoPath.matches(photoPath);
       }
 
       allow read: if signedIn() && canUseChat();
