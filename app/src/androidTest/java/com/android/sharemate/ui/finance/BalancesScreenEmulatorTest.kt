@@ -17,7 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sharemate.model.finance.*
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -42,9 +42,7 @@ class BalancesScreenEmulatorTest {
         mutableStateOf<BalancesUiState>(
             BalancesUiState.Ready("alice", summary, mapOf("bob" to "Bob")))
     var retries = 0
-    compose.setContent {
-      SampleAppTheme(dynamicColor = false) { BalancesScreen(state, { retries++ }) }
-    }
+    compose.setContent { ShareMateTheme { BalancesScreen(state, { retries++ }) } }
     compose.onNodeWithText("You owe Bob", substring = true).assertIsDisplayed()
     screenshot("balances-ready")
     compose.runOnIdle { state = BalancesUiState.Error }
@@ -72,7 +70,7 @@ class BalancesScreenEmulatorTest {
     var shared by mutableStateOf(false)
     var opens = 0
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         com.android.sharemate.ui.receipts.ReceiptScanFlow(photo, shared, { opens++ }) {
           emptyList()
         }

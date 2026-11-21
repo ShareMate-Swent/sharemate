@@ -17,7 +17,7 @@ import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseMemberNameRepository
 import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.runBlocking
@@ -102,7 +102,7 @@ class OwnershipDisplayEmulatorTest {
       vm = ownerViewModel(alice, home.id, FridgeType.SHARED)
       store.put("ownership", vm)
     }
-    compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
+    compose.setContent { ShareMateTheme { FridgeScreen(vm) } }
     compose.waitUntil(10_000) {
       vm.uiState.value.items.size == 2 &&
           vm.uiState.value.ownerNames[alice] == "Alice" &&
@@ -156,7 +156,7 @@ class OwnershipDisplayEmulatorTest {
       vm = ownerViewModel(owner, home.id, FridgeType.PRIVATE)
       store.put("private-owner", vm)
     }
-    compose.setContent { SampleAppTheme { FridgeScreen(vm) } }
+    compose.setContent { ShareMateTheme { FridgeScreen(vm) } }
     compose.waitUntil(10_000) {
       vm.uiState.value.ownerNames[owner] == "Private pseudo" && vm.uiState.value.items.size == 1
     }

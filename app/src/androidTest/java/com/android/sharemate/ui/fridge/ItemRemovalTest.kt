@@ -34,7 +34,7 @@ import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -219,7 +219,7 @@ class ItemRemovalTest {
     }
     composeTestRule.setContent {
       val state by viewModel.uiState.collectAsState()
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         FridgeScreen(
             uiState = state,
             onEditItem = viewModel::openEditItemDialog,

@@ -37,7 +37,7 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.theme.Dimens
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.delay
 
 private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
@@ -358,7 +358,7 @@ fun FridgeScreen(
 @Preview(showBackground = true)
 @Composable
 private fun FridgeScreenPreview() {
-  SampleAppTheme(dynamicColor = false) {
+  ShareMateTheme {
     FridgeScreen(
         uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
   }

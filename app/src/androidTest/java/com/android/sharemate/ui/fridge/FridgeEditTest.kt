@@ -34,7 +34,7 @@ import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import java.time.LocalDate
 import java.util.Date
@@ -85,7 +85,7 @@ class FridgeEditTest {
             pseudoRepository = testPseudoRepository(),
         )
     compose.runOnUiThread { compose.activity.viewModelStore.put("fridge-edit-test", vm) }
-    compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
+    compose.setContent { ShareMateTheme { FridgeScreen(vm) } }
     openEdit()
   }
 
