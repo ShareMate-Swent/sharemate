@@ -17,7 +17,7 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.profile.UserProfile
 import com.android.sharemate.model.profile.UserProfileRepository
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.FirebaseApp
 import com.google.firebase.functions.FirebaseFunctions
@@ -68,7 +68,7 @@ class SettlementFlowEmulatorTest {
               flowOf(listOf(UserProfile("bob", "Bob")))
         }
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         BalancesRoute(
             finances,
             HouseholdRepositoryFirestore(firestore),

@@ -45,7 +45,7 @@ import com.android.sharemate.model.text.limitedTo
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import java.time.LocalDate
@@ -457,9 +457,7 @@ class ManualItemCreationTest {
     composeTestRule.runOnUiThread {
       composeTestRule.activity.viewModelStore.put("manual-item-test", viewModel)
     }
-    composeTestRule.setContent {
-      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
-    }
+    composeTestRule.setContent { ShareMateTheme { FridgeScreen(viewModel = viewModel) } }
     return viewModel
   }
 
