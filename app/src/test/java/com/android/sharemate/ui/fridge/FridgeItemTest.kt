@@ -37,7 +37,7 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -111,7 +111,7 @@ class FridgeItemTest {
                   links += uri
                 }
               }) {
-            SampleAppTheme(dynamicColor = false) {
+            ShareMateTheme {
               FridgeItem(
                   item = item.value,
                   imageLoader = loader,
@@ -351,7 +351,7 @@ class FridgeItemTest {
 
     compose.setContent {
       CompositionLocalProvider(LocalUriHandler provides failingHandler) {
-        SampleAppTheme(dynamicColor = false) { FridgeImageCredits(remote().copy(sourceUrl = url)) }
+        ShareMateTheme { FridgeImageCredits(remote().copy(sourceUrl = url)) }
       }
     }
 

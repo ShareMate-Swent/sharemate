@@ -40,7 +40,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import java.util.Date
 import kotlinx.coroutines.CompletableDeferred
@@ -238,9 +238,7 @@ class FridgeScreenTest {
           )
       compose.activity.viewModelStore.put("fridge-screen-test", viewModel)
     }
-    compose.setContent {
-      SampleAppTheme(dynamicColor = false) { FridgeScreen(viewModel = viewModel) }
-    }
+    compose.setContent { ShareMateTheme { FridgeScreen(viewModel = viewModel) } }
     compose.waitUntil(5_000) {
       !viewModel.uiState.value.isLoading && viewModel.visibleItems.value.size == items.size
     }

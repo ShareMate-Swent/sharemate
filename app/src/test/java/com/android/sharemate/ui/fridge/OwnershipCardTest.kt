@@ -8,7 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.*
 import com.android.sharemate.resources.C
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,7 +28,7 @@ class OwnershipCardTest {
   @Test
   fun threeColumnCardsShowExplicitSharingAndEachOwnersName() {
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         FridgeScreen(
             expiryStatuses = emptyMap(),
             uiState =
@@ -59,7 +59,7 @@ class OwnershipCardTest {
             FridgeUiState(
                 fridgeType = FridgeType.SHARED, isLoading = true, currentUserId = "alice"))
     compose.setContent {
-      SampleAppTheme { FridgeScreen(uiState = state.value, expiryStatuses = emptyMap()) }
+      ShareMateTheme { FridgeScreen(uiState = state.value, expiryStatuses = emptyMap()) }
     }
     compose.runOnIdle { state.value = state.value.copy(isLoading = false, items = listOf(other)) }
     owner("other").assertTextEquals("Owner: Unknown owner")
@@ -73,7 +73,7 @@ class OwnershipCardTest {
   @Test
   fun privateAndLegacyItemsUseSharingRatherThanHouseholdOrCurrentUser() {
     compose.setContent {
-      SampleAppTheme {
+      ShareMateTheme {
         FridgeScreen(
             expiryStatuses = emptyMap(),
             uiState =

@@ -28,7 +28,7 @@ import com.android.sharemate.ui.auth.AUTH_PSEUDO_TEST_TAG
 import com.android.sharemate.ui.auth.AuthTestTags
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.profile.ProfilePhotoStepTestTags
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -233,7 +233,7 @@ class AuthHouseholdGateTest {
   @Composable
   private fun GateContent() {
     val authViewModel: AuthViewModel = viewModel { AuthViewModel(auth) }
-    SampleAppTheme(dynamicColor = false) {
+    ShareMateTheme {
       AuthHouseholdGate(
           authViewModel,
           auth,

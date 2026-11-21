@@ -116,7 +116,7 @@ import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -233,7 +233,7 @@ open class MainActivity : ComponentActivity() {
     NotificationChannelRegistrar.from(applicationContext).registerAll()
     NotificationScheduler.schedule(applicationContext)
     setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         AuthHouseholdGate(
             authViewModel,
             authRepository,

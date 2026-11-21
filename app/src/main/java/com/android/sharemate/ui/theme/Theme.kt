@@ -1,62 +1,49 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme =
-    darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
+/** Provides the [StatusColors] of the current theme. */
+internal val LocalStatusColors = staticCompositionLocalOf { LightStatusColors }
 
-private val LightColorScheme =
-    lightColorScheme(
-        primary = Purple40, secondary = PurpleGrey40, tertiary = Pink40
-
-        /* Other default colors to override
-        background = Color(0xFFFFFBFE),
-        surface = Color(0xFFFFFBFE),
-        onPrimary = Color.White,
-        onSecondary = Color.White,
-        onTertiary = Color.White,
-        onBackground = Color(0xFF1C1B1F),
-        onSurface = Color(0xFF1C1B1F),
-        */
-        )
-
+/**
+ * The app's theme: the design system's colors, Plus Jakarta Sans typography and rounded shapes,
+ * plus the [StatusColors] read through [ShareMateTheme.statusColors]. It follows the phone's dark
+ * mode unless [darkTheme] says otherwise, and paints the status bar with the background color and
+ * icons that contrast with it.
+ */
 @Composable
-fun SampleAppTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-  val colorScheme =
-      when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-          val context = LocalContext.current
-          if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-      }
+fun ShareMateTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+  val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+  val statusColors = if (darkTheme) DarkStatusColors else LightStatusColors
   val view = LocalView.current
   if (!view.isInEditMode) {
     SideEffect {
-      val window = (view.context as Activity).window
-      window.statusBarColor = colorScheme.primary.toArgb()
-      WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+      val window = (view.context as? Activity)?.window ?: return@SideEffect
+      @Suppress("DEPRECATION")
+      window.statusBarColor = colorScheme.background.toArgb()
+      WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
     }
   }
+  CompositionLocalProvider(LocalStatusColors provides statusColors) {
+    MaterialTheme(
+        colorScheme = colorScheme, typography = Typography, shapes = Shapes, content = content)
+  }
+}
 
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+/** Values of the app's theme that `MaterialTheme` does not cover. */
+object ShareMateTheme {
+  /** Colors for expiry and ownership badges, from the closest [ShareMateTheme]. */
+  val statusColors: StatusColors
+    @Composable @ReadOnlyComposable get() = LocalStatusColors.current
 }
