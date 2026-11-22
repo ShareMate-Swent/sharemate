@@ -57,6 +57,7 @@ class FirebaseChatRepositoryUnitTest {
     `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(households)
     `when`(household.collection(FirestoreCollections.MESSAGES)).thenReturn(collection)
     `when`(collection.document()).thenReturn(document)
+    `when`(collection.document(any())).thenReturn(document)
     `when`(document.id).thenReturn("m1")
     `when`(firestore.collection(FirestoreCollections.PROFILES)).thenReturn(profiles)
     `when`(profiles.document("u1")).thenReturn(profileReference)

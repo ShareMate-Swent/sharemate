@@ -11,6 +11,8 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
+import com.android.sharemate.model.chat.PendingFridgeActivity
+import com.android.sharemate.model.chat.PendingFridgeActivityStore
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
@@ -80,6 +82,7 @@ import org.junit.Test
 class FridgeViewModelTest {
   private val repository = FakeItemRepository()
   private val chatRepository = RecordingChatRepository()
+  private val pendingActivityStore = FakePendingFridgeActivityStore()
   private val imageRepository = FakeFoodImageRepository()
   private val imageSelector = FoodImageSelector(imageRepository)
   private val barcodeScanner = FakeBarcodeScanner()
@@ -210,6 +213,39 @@ class FridgeViewModelTest {
             RecordingChatRepository.Activity(
                 "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
         chatRepository.activities)
+  }
+
+  @Test
+  fun offlineActivityIsPersistedAndReplayedAfterViewModelRestart() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            PendingFridgeActivity(
+                id = "milk:EATEN",
+                householdId = "test-household",
+                userId = "test-user",
+                type = MessageType.EATEN,
+                itemName = milk.name)),
+        pendingActivityStore.list("test-household", "test-user"))
+
+    viewModelStore.clear()
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
+        chatRepository.activities)
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
   }
 
   @Test
@@ -1455,6 +1491,7 @@ class FridgeViewModelTest {
       profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
       senderName: String = "Ann",
+      pendingStore: PendingFridgeActivityStore = pendingActivityStore,
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1471,6 +1508,7 @@ class FridgeViewModelTest {
               currentUserDisplayName = null,
               chatRepository = chatRepository,
               activitySenderName = senderName,
+              pendingActivityStore = pendingStore,
           )
           .also { viewModelStore.put("fridge", it) }
 
@@ -2659,6 +2697,25 @@ class FridgeViewModelTest {
     override fun close() {
       closed = true
     }
+  }
+
+  private class FakePendingFridgeActivityStore : PendingFridgeActivityStore {
+    private val activities = mutableListOf<PendingFridgeActivity>()
+
+    override suspend fun save(activity: PendingFridgeActivity) {
+      activities.removeAll { it.id == activity.id }
+      activities += activity
+    }
+
+    override suspend fun remove(activity: PendingFridgeActivity) {
+      activities.removeAll { it.id == activity.id }
+    }
+
+    override suspend fun list(
+        householdId: String,
+        userId: String,
+    ): List<PendingFridgeActivity> =
+        activities.filter { it.householdId == householdId && it.userId == userId }
   }
 
   private class RecordingChatRepository : ChatRepository {

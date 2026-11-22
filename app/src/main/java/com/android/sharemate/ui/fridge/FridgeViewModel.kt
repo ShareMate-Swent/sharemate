@@ -11,6 +11,8 @@ import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.MessageType
+import com.android.sharemate.model.chat.PendingFridgeActivity
+import com.android.sharemate.model.chat.PendingFridgeActivityStore
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.PersonalPhotoFiles
@@ -94,6 +96,7 @@ class FridgeViewModel(
     currentUserDisplayName: String?,
     private val chatRepository: ChatRepository? = null,
     private val activitySenderName: String = currentUserDisplayName.orEmpty(),
+    private val pendingActivityStore: PendingFridgeActivityStore? = null,
 ) : ViewModel() {
   private val supportsSharing = fridgeType == FridgeType.SHARED
   private val ownerNames =
@@ -146,6 +149,7 @@ class FridgeViewModel(
   private val deletionOperations = mutableMapOf<String, Any>()
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
+  private val pendingActivityDispatches = mutableSetOf<String>()
   private var barcodeDialogGeneration = 0L
   private var barcodeScanJob: Job? = null
 
@@ -208,6 +212,7 @@ class FridgeViewModel(
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId.isNotBlank()) { "A household ID is required" }
+    viewModelScope.launch { flushPendingActivities() }
     viewModelScope.launch {
       ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
     }
@@ -350,8 +355,10 @@ class FridgeViewModel(
     val operation = Any()
     latestStatusWrites[itemId] = operation
     mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds + itemId) }
+    val pendingActivity = pendingActivity(itemId, item.name, status, item.sharing)
     viewModelScope.launch {
       try {
+        pendingActivity?.let { persistPendingActivity(it) }
         if (uiState.value.items.none {
           it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
         })
@@ -359,12 +366,14 @@ class FridgeViewModel(
         when (val write = itemRepository.setItemStatus(itemId, status)) {
           is ItemWrite.Rejected -> {
             if (write.cause is CancellationException) throw write.cause
+            pendingActivity?.let { removePendingActivity(it) }
             reportStatusError(item.name, false)
           }
           is ItemWrite.Queued ->
               trackConfirmation(
                   write,
                   onFailure = {
+                    viewModelScope.launch { pendingActivity?.let { removePendingActivity(it) } }
                     if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
                   },
                   onSuccess = {
@@ -382,21 +391,106 @@ class FridgeViewModel(
   }
 
   private suspend fun postActivity(itemId: String, status: ItemStatus) {
-    val repository = chatRepository ?: return
+    if (chatRepository == null) return
     val item =
         uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
             ?: return
-    if (fridgeType != FridgeType.SHARED || item.sharing != ItemSharing.SHARED) return
+    if (fridgeType != FridgeType.SHARED) return
+    if (item.sharing != ItemSharing.SHARED) {
+      val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
+      removePendingActivity(
+          PendingFridgeActivity(
+              id = "$itemId:${type.name}",
+              householdId = householdId,
+              userId = userId,
+              type = type,
+              itemName = item.name,
+          ))
+      return
+    }
+    val pending = pendingActivity(itemId, item.name, status, item.sharing) ?: return
+    sendPendingActivity(pending)
+  }
+
+  private fun pendingActivity(
+      itemId: String,
+      itemName: String,
+      status: ItemStatus,
+      sharing: ItemSharing,
+  ): PendingFridgeActivity? {
+    if (fridgeType != FridgeType.SHARED ||
+        sharing != ItemSharing.SHARED ||
+        itemId.isBlank() ||
+        itemName.isBlank()) {
+      return null
+    }
     val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
+    return PendingFridgeActivity(
+        id = "$itemId:${type.name}",
+        householdId = householdId,
+        userId = userId,
+        type = type,
+        itemName = itemName.trim(),
+    )
+  }
+
+  private suspend fun persistPendingActivity(activity: PendingFridgeActivity) {
+    val store = pendingActivityStore ?: return
     try {
-      if (repository.sendActivity(householdId, userId, activitySenderName, type, item.name) ==
-          null) {
+      store.save(activity)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(TAG, "Unable to persist pending fridge activity", failure)
+    }
+  }
+
+  private suspend fun removePendingActivity(activity: PendingFridgeActivity) {
+    val store = pendingActivityStore ?: return
+    try {
+      store.remove(activity)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(TAG, "Unable to remove pending fridge activity", failure)
+    }
+  }
+
+  private suspend fun flushPendingActivities() {
+    val store = pendingActivityStore ?: return
+    if (fridgeType != FridgeType.SHARED) return
+    try {
+      store.list(householdId, userId).forEach { sendPendingActivity(it) }
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(TAG, "Unable to load pending fridge activities", failure)
+    }
+  }
+
+  private suspend fun sendPendingActivity(activity: PendingFridgeActivity) {
+    val repository = chatRepository ?: return
+    if (activity.id in pendingActivityDispatches) return
+    pendingActivityDispatches += activity.id
+    persistPendingActivity(activity)
+    try {
+      if (repository.sendActivity(
+          activity.householdId,
+          activity.userId,
+          activitySenderName,
+          activity.type,
+          activity.itemName,
+      ) == null) {
         Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE)
+      } else {
+        removePendingActivity(activity)
       }
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
       Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE, failure)
+    } finally {
+      pendingActivityDispatches -= activity.id
     }
   }
 

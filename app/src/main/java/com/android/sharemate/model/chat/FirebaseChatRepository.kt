@@ -12,6 +12,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
+import java.security.MessageDigest
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -79,7 +80,9 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
         itemName.isBlank())
         return null
     return try {
-      val document = messages(householdId).document()
+      val document =
+          messages(householdId)
+              .document(stableActivityId(householdId, senderId, type, itemName.trim()))
       val message =
           messageData(document.id, senderId, senderName) +
               mapOf(
@@ -94,6 +97,18 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
     } catch (_: Exception) {
       null
     }
+  }
+
+  private fun stableActivityId(
+      householdId: String,
+      senderId: String,
+      type: MessageType,
+      itemName: String,
+  ): String {
+    val source = listOf(householdId, senderId, type.name, itemName).joinToString(SEPARATOR)
+    val digest =
+        MessageDigest.getInstance(HASH_ALGORITHM).digest(source.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { byte -> "%02x".format(byte) }
   }
 
   private suspend fun messageData(
@@ -149,6 +164,8 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
 
   private companion object {
     const val TAG = "FirebaseChatRepository"
+    const val HASH_ALGORITHM = "SHA-256"
+    const val SEPARATOR = "|"
   }
 }
 
