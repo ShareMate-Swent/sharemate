@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
 import androidx.compose.foundation.layout.Arrangement
@@ -205,7 +206,9 @@ private fun MessageBubble(
     disambiguator: Int?
 ): Unit =
     when (message.type) {
-      MessageType.TEXT -> TextMessageBubble(message, own, senderName, disambiguator)
+      // Incidents show their description until the photo card of US-7 is built.
+      MessageType.TEXT,
+      MessageType.INCIDENT -> TextMessageBubble(message, own, senderName, disambiguator)
       MessageType.EATEN,
       MessageType.THROWN -> ActivityBadge(message, senderName, disambiguator)
     }

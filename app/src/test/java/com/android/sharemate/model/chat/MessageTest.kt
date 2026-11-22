@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.chat
 
 import java.util.Date
@@ -61,5 +62,12 @@ class MessageTest {
   fun textUpToMaxLengthIsValid() {
     assertTrue(Message.isValidText("a".repeat(Message.MAX_TEXT_LENGTH)))
     assertFalse(Message.isValidText("a".repeat(Message.MAX_TEXT_LENGTH + 1)))
+  }
+
+  @Test
+  fun incidentTypeIsStoredByNameAndHasNoPhotoByDefault() {
+    assertEquals(MessageType.INCIDENT, MessageType.fromStored("INCIDENT"))
+    assertEquals(MessageType.TEXT, MessageType.fromStored("incident"))
+    assertNull(Message().incidentPhoto)
   }
 }
