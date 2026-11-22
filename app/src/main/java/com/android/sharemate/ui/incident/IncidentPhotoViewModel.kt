@@ -15,11 +15,21 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** A confirmed private attachment; provisional picker images stay outside the incident draft. */
+/**
+ * A confirmed private attachment; provisional picker images stay outside the incident draft.
+ *
+ * @property file Private copy owned by this ViewModel, deleted on replacement, removal or draft
+ *   clearance. The host must finish reading it before clearing the draft.
+ * @property importing True until the current confirmation has copied the photo or failed;
+ *   attachment controls must remain disabled meanwhile.
+ * @property rejected The last import failed, including unreadable images or I/O errors. Cleared by
+ *   the next import attempt, [IncidentPhotoViewModel.clearRejection] or removal.
+ */
 data class IncidentPhotoState(
     val file: File? = null,
     val importing: Boolean = false,
@@ -32,9 +42,16 @@ data class IncidentPhotoState(
  * Uploading and message persistence belong to the incident form, which must finish reading the file
  * before ending the draft. Process-death restoration is not provided by this local attachment
  * component.
+ *
+ * One picker must serialize confirmations for this draft. [selectAndWait] tracks the caller's
+ * confirmation job; clearing the draft intentionally cancels that job and waits for it before
+ * deleting files. Prefer the same navigation-entry ViewModelStore for picker and draft. A host
+ * using separate stores must still accept cancellation of the picker's pending confirmation when
+ * the draft ends.
  */
 class IncidentPhotoViewModel(private val files: PersonalPhotoFiles) : ViewModel() {
   private val mutableState = MutableStateFlow(IncidentPhotoState())
+  /** Confirmed attachment, import progress and last failure observed by the host form. */
   val state = mutableState.asStateFlow()
   private var importing: Job? = null
 
@@ -44,6 +61,8 @@ class IncidentPhotoViewModel(private val files: PersonalPhotoFiles) : ViewModel(
    * becoming an error.
    */
   suspend fun selectAndWait(uri: String, fromCamera: Boolean) {
+    // The single picker's busy guard serializes confirmations. A duplicate call violates that
+    // contract; returning early would falsely acknowledge a photo that we never copied.
     check(!state.value.importing)
     viewModelScope.coroutineContext.ensureActive()
     val operation = currentCoroutineContext().job
@@ -68,6 +87,13 @@ class IncidentPhotoViewModel(private val files: PersonalPhotoFiles) : ViewModel(
       candidate?.let { release(it) }
       if (importing === operation) importing = null
     }
+  }
+
+  /**
+   * Clears an old import error when reopening the picker, preserving the attachment and any copy.
+   */
+  fun clearRejection() {
+    mutableState.update { if (it.importing) it else it.copy(rejected = false) }
   }
 
   /**

@@ -16,6 +16,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,14 +29,21 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import com.android.sharemate.R
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
+import com.android.sharemate.model.image.PersonalPhotoFiles
+import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.photo.PhotoSource
 import com.google.common.util.concurrent.Futures
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.Executor
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
@@ -217,11 +225,120 @@ class IncidentPhotoAttachmentTest {
       assertTrue(camera.state.value.visible)
     }
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
-    compose.onNodeWithTag(IncidentPhotoTags.ERROR).assertIsDisplayed()
+    compose
+        .onNodeWithTag(IncidentPhotoTags.ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals(importError())
+    compose.onNodeWithTag(IncidentPhotoTags.SELECT).performClick()
+    compose.runOnIdle { assertFalse(vm.state.value.rejected) }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(IncidentPhotoTags.ERROR).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(original, vm.state.value.file)
+      assertTrue(original!!.exists())
+    }
     assertTextDraft()
   }
 
-  private fun render() {
+  @Test
+  fun importingDisablesSelectAndRemoveUntilTheReplacementIsConfirmed() {
+    val files = ControlledFiles(AndroidPersonalPhotoFiles(context))
+    val draft = IncidentPhotoViewModel(files)
+    viewModels.put("controlled-draft", draft)
+    render(draft)
+    selectGallery("content://images/original")
+    confirm()
+    val original = draft.state.value.file
+    val gate = CompletableDeferred<Unit>()
+    files.gate = gate
+    selectGallery("content://images/replacement")
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+    await { draft.state.value.importing }
+    compose.onNodeWithTag(IncidentPhotoTags.SELECT).assertIsNotEnabled()
+    compose.onNodeWithTag(IncidentPhotoTags.REMOVE).assertIsNotEnabled()
+    compose.onNodeWithTag(IncidentPhotoTags.IMPORTING).assertExists()
+    compose.runOnIdle {
+      draft.clearRejection()
+      assertTrue(draft.state.value.importing)
+      assertEquals(original, draft.state.value.file)
+      gate.complete(Unit)
+    }
+    await { !draft.state.value.importing && !camera.state.value.busy }
+    compose.onNodeWithTag(IncidentPhotoTags.SELECT).assertIsEnabled()
+    compose.onNodeWithTag(IncidentPhotoTags.REMOVE).assertIsEnabled()
+    compose.onNodeWithTag(IncidentPhotoTags.IMPORTING).assertDoesNotExist()
+    compose.runOnIdle {
+      assertNotEquals(original, draft.state.value.file)
+      assertFalse(original!!.exists())
+    }
+  }
+
+  @Test
+  fun ioFailureShowsGenericRetryGuidanceWithTheConfiguredSizeLimit() {
+    val files = ControlledFiles(AndroidPersonalPhotoFiles(context))
+    files.failure = IOException("Disk full")
+    val draft = IncidentPhotoViewModel(files)
+    viewModels.put("controlled-draft", draft)
+    render(draft)
+    selectGallery("content://images/unreadable")
+    compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+    await { draft.state.value.rejected && !camera.state.value.busy }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(IncidentPhotoTags.ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals(importError())
+    compose.runOnIdle { assertNull(draft.state.value.file) }
+  }
+
+  @Test
+  fun factoryRetainsTheKeyedDraftAcrossRecompositionAndCleansItsPrivateCopy() {
+    val owner =
+        object : ViewModelStoreOwner {
+          override val viewModelStore = viewModels
+        }
+    var revision by mutableStateOf(0)
+    lateinit var first: IncidentPhotoViewModel
+    lateinit var sameKey: IncidentPhotoViewModel
+    lateinit var otherKey: IncidentPhotoViewModel
+    compose.setContent {
+      CompositionLocalProvider(
+          LocalViewModelStoreOwner provides owner,
+          LocalActivityResultRegistryOwner provides picker) {
+            first = incidentPhotoViewModel("first-incident")
+            sameKey = incidentPhotoViewModel("first-incident")
+            otherKey = incidentPhotoViewModel("other-incident")
+            MaterialTheme {
+              Column {
+                Text("Revision $revision")
+                IncidentPhotoAttachment(first, picker = camera)
+              }
+            }
+          }
+    }
+    val originalOwner = first
+    compose.runOnIdle {
+      assertSame(first, sameKey)
+      assertNotSame(first, otherKey)
+    }
+    selectGallery("content://images/factory")
+    confirm()
+    val file = checkNotNull(first.state.value.file)
+    assertTrue(file.exists())
+    compose.runOnIdle { revision++ }
+    compose.runOnIdle {
+      assertSame(originalOwner, first)
+      assertEquals(file, first.state.value.file)
+      assertNull(otherKey.state.value.file)
+      viewModels.clear()
+    }
+    await { !file.exists() }
+  }
+
+  private fun importError() =
+      context.getString(R.string.incident_photo_invalid, PersonalPhotoRepository.MAX_MEBIBYTES)
+
+  private fun render(draft: IncidentPhotoViewModel = vm) {
     compose.setContent {
       CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
         MaterialTheme {
@@ -229,7 +346,7 @@ class IncidentPhotoAttachmentTest {
             var description by remember { mutableStateOf("Broken fridge shelf") }
             OutlinedTextField(
                 description, { description = it }, modifier = Modifier.testTag("draft"))
-            IncidentPhotoAttachment(vm, picker = camera)
+            IncidentPhotoAttachment(draft, picker = camera)
           }
         }
       }
@@ -260,6 +377,19 @@ class IncidentPhotoAttachmentTest {
 
   private fun assertTextDraft() {
     compose.onNodeWithTag("draft").assertTextContains("Broken fridge shelf")
+  }
+
+  private class ControlledFiles(private val delegate: PersonalPhotoFiles) : PersonalPhotoFiles {
+    var gate: CompletableDeferred<Unit>? = null
+    var failure: Exception? = null
+
+    override suspend fun copy(uri: String, fromCamera: Boolean): File {
+      gate?.await()
+      failure?.let { throw it }
+      return delegate.copy(uri, fromCamera)
+    }
+
+    override suspend fun delete(file: File) = delegate.delete(file)
   }
 
   private class Picker : ActivityResultRegistry(), ActivityResultRegistryOwner {

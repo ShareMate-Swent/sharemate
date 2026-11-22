@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -28,7 +27,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
+import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
+import com.android.sharemate.ui.photo.PREVIEW_MAX_PIXELS
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
@@ -47,9 +48,9 @@ object IncidentPhotoTags {
 
 /**
  * Camera/gallery attachment controls for an incident draft. The host owns [viewModel] and reads its
- * confirmed file for submission. Use one instance per draft ViewModel store, or supply independent
- * pickers. Dismissing the picker never removes the confirmed attachment. No upload or incident form
- * is introduced here.
+ * confirmed file for submission. Use one picker per draft; multiple attachments in the same
+ * ViewModelStore require independent draft ViewModels and pickers. Dismissing the picker never
+ * removes the confirmed attachment. No upload or incident form is introduced here.
  */
 @Composable
 fun IncidentPhotoAttachment(
@@ -60,8 +61,11 @@ fun IncidentPhotoAttachment(
   val draft by viewModel.state.collectAsStateWithLifecycle()
   val selection by picker.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
+  val importError =
+      stringResource(R.string.incident_photo_invalid, PersonalPhotoRepository.MAX_MEBIBYTES)
   DiscardPhotoOnDispose(picker)
   LaunchedEffect(selection.confirmed) { if (selection.confirmed) picker.reset() }
+  LaunchedEffect(selection.visible) { if (selection.visible) viewModel.clearRejection() }
 
   Column(modifier, verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
     TextButton(
@@ -78,7 +82,7 @@ fun IncidentPhotoAttachment(
           model = ImageRequest.Builder(context).data(file).size(PREVIEW_MAX_PIXELS).build(),
           contentDescription = stringResource(R.string.incident_photo_preview),
           contentScale = ContentScale.Fit,
-          modifier = Modifier.size(AttachmentPreviewSize).testTag(IncidentPhotoTags.PREVIEW))
+          modifier = Modifier.size(Dimens.attachmentPreviewSize).testTag(IncidentPhotoTags.PREVIEW))
       TextButton(
           onClick = viewModel::remove,
           enabled = !draft.importing,
@@ -92,7 +96,7 @@ fun IncidentPhotoAttachment(
     }
     if (draft.rejected) {
       Text(
-          stringResource(R.string.incident_photo_invalid),
+          importError,
           color = MaterialTheme.colorScheme.error,
           modifier =
               Modifier.testTag(IncidentPhotoTags.ERROR).semantics {
@@ -107,7 +111,7 @@ fun IncidentPhotoAttachment(
               R.string.incident_photo_add,
               R.string.incident_photo_preview,
               R.string.incident_photo_sources),
-      confirmationError = stringResource(R.string.incident_photo_invalid),
+      confirmationError = importError,
       onImageConfirmed = { viewModel.selectAndWait(it.uri, it.source == PhotoSource.CAMERA) })
 }
 
@@ -124,5 +128,3 @@ fun incidentPhotoViewModel(key: String): IncidentPhotoViewModel {
 }
 
 private const val INCIDENT_PICKER_KEY = "incident-photo-selection"
-private const val PREVIEW_MAX_PIXELS = 1280
-private val AttachmentPreviewSize = 96.dp

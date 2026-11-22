@@ -65,6 +65,23 @@ class IncidentPhotoViewModelTest {
   }
 
   @Test
+  fun clearingRejectionPreservesTheConfirmedFileWithoutCopyingOrDeletingIt() = runTest {
+    vm.selectAndWait("confirmed", false)
+    val confirmed = vm.state.value.file
+    files.failure = IOException("Disk full")
+    try {
+      vm.selectAndWait("replacement", false)
+      fail("Expected import failure")
+    } catch (_: IOException) {}
+    assertTrue(vm.state.value.rejected)
+    vm.clearRejection()
+    vm.clearRejection()
+    assertEquals(IncidentPhotoState(confirmed), vm.state.value)
+    assertEquals(2, files.origins.size)
+    assertTrue(files.deleted.isEmpty())
+  }
+
+  @Test
   fun cancellationKeepsPreviousPhotoAndDeletesAnUnacceptedCopy() = runTest {
     vm.selectAndWait("first", false)
     val first = vm.state.value.file
