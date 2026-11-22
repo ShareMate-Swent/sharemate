@@ -325,10 +325,7 @@ service cloud.firestore {
 
       function isValidNewMessage() {
         let message = request.resource.data;
-        return message.keys().hasOnly([
-              'id', 'senderId', 'senderName', 'text', 'timestamp',
-              'type', 'itemName', 'itemImageUrl', 'incidentPhotoPath'
-            ])
+        return hasOnlyChatMessageKeys(message)
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
             && message.senderId == request.auth.uid
@@ -337,6 +334,13 @@ service cloud.firestore {
             && message.timestamp == request.time
             && (isValidTextMessage(message) || isValidActivityMessage(message)
                 || isValidIncidentMessage(message));
+      }
+
+      function hasOnlyChatMessageKeys(message) {
+        return message.keys().hasOnly([
+              'id', 'senderId', 'senderName', 'text', 'timestamp',
+              'type', 'itemName', 'itemImageUrl', 'incidentPhotoPath'
+            ]);
       }
 
       function chatSenderName() {
@@ -383,8 +387,10 @@ service cloud.firestore {
       function isIdenticalActivityReplay() {
         let previous = resource.data;
         let replay = request.resource.data;
-        return previous.get('type', null) in ['EATEN', 'THROWN']
+        return previous.senderId == request.auth.uid
+            && previous.get('type', null) in ['EATEN', 'THROWN']
             && replay.get('type', null) in ['EATEN', 'THROWN']
+            && hasOnlyChatMessageKeys(replay)
             && replay.timestamp == request.time
             && replay.id == previous.id
             && replay.senderId == previous.senderId

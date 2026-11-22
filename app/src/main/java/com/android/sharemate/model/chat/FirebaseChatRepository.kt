@@ -33,6 +33,25 @@ class FirebaseChatRepository(
     private val incidentPhotos: IncidentPhotoRepository,
 ) : ChatRepository {
 
+  /** Sends an activity with no image or explicit idempotency key. */
+  suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+  ): String? = sendActivity(householdId, senderId, senderName, type, itemName, null, null)
+
+  /** Sends an activity with an image and no explicit idempotency key. */
+  suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+      itemImageUrl: String?,
+  ): String? = sendActivity(householdId, senderId, senderName, type, itemName, itemImageUrl, null)
+
   private fun messages(householdId: String) =
       firestore
           .collection(FirestoreCollections.HOUSEHOLDS)
@@ -72,7 +91,8 @@ class FirebaseChatRepository(
       senderName: String,
       type: MessageType,
       itemName: String,
-      itemImageUrl: String?
+      itemImageUrl: String?,
+      activityId: String?,
   ): String? {
     if (householdId.isBlank() ||
         senderId.isBlank() ||
@@ -94,7 +114,9 @@ class FirebaseChatRepository(
                 senderId,
                 type,
                 itemName.trim(),
-                itemImageUrl?.takeIf { it.isNotBlank() }))
+                itemImageUrl?.takeIf { it.isNotBlank() },
+                activityId),
+        skipExisting = activityId?.isNotBlank() == true)
   }
 
   private fun stableActivityId(
@@ -103,10 +125,15 @@ class FirebaseChatRepository(
       type: MessageType,
       itemName: String,
       itemImageUrl: String?,
+      activityId: String?,
   ): String {
     val source =
-        listOf(householdId, senderId, type.name, itemName, itemImageUrl.orEmpty())
-            .joinToString(SEPARATOR)
+        if (activityId.isNullOrBlank()) {
+          listOf(householdId, senderId, type.name, itemName, itemImageUrl.orEmpty())
+              .joinToString(SEPARATOR)
+        } else {
+          listOf(householdId, senderId, activityId.trim()).joinToString(SEPARATOR)
+        }
     val digest =
         MessageDigest.getInstance(HASH_ALGORITHM).digest(source.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { byte -> "%02x".format(byte) }
@@ -147,18 +174,20 @@ class FirebaseChatRepository(
       senderName: String,
       fields: Map<String, Any?>,
       documentId: String? = null,
-  ): String? =
-      try {
-        val document =
-            documentId?.let { messages(householdId).document(it) }
-                ?: messages(householdId).document()
-        writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
-        document.id
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        null
-      }
+      skipExisting: Boolean = false,
+  ): String? {
+    return try {
+      val document =
+          documentId?.let { messages(householdId).document(it) } ?: messages(householdId).document()
+      if (skipExisting && document.get().await().exists()) return document.id
+      writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
+      document.id
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      null
+    }
+  }
 
   private suspend fun messageData(
       id: String,

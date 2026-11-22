@@ -41,7 +41,7 @@ class PendingFridgeActivityStoreTest {
   }
 
   @Test
-  fun malformedStoredJsonFailsWithoutReturningForeignActivities() = runTest {
+  fun malformedStoredJsonIsSkippedWithoutReturningForeignActivities() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val store = AndroidPendingFridgeActivityStore(app)
     val foreign =
@@ -57,7 +57,7 @@ class PendingFridgeActivityStoreTest {
     val preferences = app.getSharedPreferences("pending_fridge_activities", Context.MODE_PRIVATE)
     preferences.edit().putString("scope:other:user", "not json").commit()
 
-    assertTrue(runCatching { store.list("other", "user") }.isFailure)
+    assertTrue(store.list("other", "user").isEmpty())
     assertTrue(store.list("home", "user").isEmpty())
     preferences.edit().clear().commit()
   }

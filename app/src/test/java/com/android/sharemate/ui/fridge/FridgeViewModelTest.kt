@@ -102,6 +102,7 @@ class FridgeViewModelTest {
   @Before
   fun setUp() {
     Dispatchers.setMain(StandardTestDispatcher())
+    pendingActivityStore.clear()
   }
 
   @After
@@ -212,6 +213,66 @@ class FridgeViewModelTest {
     runCurrent()
     assertEquals(
         listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun cancelledStatusActionLeavesNoPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun rejectedStatusWriteLeavesNoPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusFailure = IOException("Rejected")
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun sameNameItemsUseDistinctReplayActivities() = runTest {
+    val secondMilk = milk.copy(id = "milk-friday", name = milk.name, status = ItemStatus.ACTIVE)
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk-friday:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(
+        listOf(milk.copy(status = ItemStatus.EATEN), secondMilk.copy(status = ItemStatus.EATEN)))
+    viewModel()
+    runCurrent()
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name),
             RecordingChatRepository.Activity(
                 "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
         chatRepository.activities)
@@ -2718,6 +2779,11 @@ class FridgeViewModelTest {
 
   private class FakePendingFridgeActivityStore : PendingFridgeActivityStore {
     private val activities = mutableListOf<PendingFridgeActivity>()
+
+    fun clear() {
+      activities.clear()
+    }
+
     var saveFailure: Exception? = null
     var listFailure: Exception? = null
 
@@ -2778,6 +2844,7 @@ class FridgeViewModelTest {
         type: MessageType,
         itemName: String,
         itemImageUrl: String?,
+        activityId: String?,
     ): String? {
       val activity = Activity(householdId, senderId, senderName, type, itemName)
       attempts += activity

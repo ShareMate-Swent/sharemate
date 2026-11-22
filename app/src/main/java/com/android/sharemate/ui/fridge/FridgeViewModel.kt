@@ -64,6 +64,8 @@ import kotlinx.coroutines.launch
 private const val TAG = "FridgeViewModel"
 private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
 private const val ACTIVITY_SEND_FAILURE_MESSAGE = "Fridge activity message could not be sent"
+private const val MAX_ACTIVITY_SEND_ATTEMPTS = 3
+private const val PENDING_ACTIVITY_ID_SEPARATOR = ':'
 
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
 data class OwnerOption(val id: String, val pseudo: String?)
@@ -78,6 +80,8 @@ enum class FridgeSortOrder {
  *
  * @param chatRepository Optional repository used to post confirmed shared-item activity.
  * @param activitySenderName Name displayed for activity messages sent by the current user.
+ * @param pendingActivityStore Optional durable queue replayed after process restarts. A null store
+ *   disables badge replay; it does not change normal status updates.
  */
 class FridgeViewModel(
     private val itemRepository: ItemRepository,
@@ -150,6 +154,8 @@ class FridgeViewModel(
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
   private val pendingActivityDispatches = mutableSetOf<String>()
+  private val activitySendAttempts = mutableMapOf<String, Int>()
+  private var initialItemsLoaded = false
   private var barcodeDialogGeneration = 0L
   private var barcodeScanJob: Job? = null
 
@@ -212,7 +218,6 @@ class FridgeViewModel(
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
     require(householdId.isNotBlank()) { "A household ID is required" }
-    viewModelScope.launch { flushPendingActivities() }
     viewModelScope.launch {
       ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
     }
@@ -231,6 +236,10 @@ class FridgeViewModel(
                 loadFailed = false,
                 pendingRemovalItem = if (stale) null else pending,
                 removalFailed = if (stale) false else state.removalFailed)
+          }
+          if (!initialItemsLoaded) {
+            initialItemsLoaded = true
+            viewModelScope.launch { flushPendingActivities() }
           }
         }
       } catch (exception: CancellationException) {
@@ -358,11 +367,11 @@ class FridgeViewModel(
     val pendingActivity = pendingActivity(itemId, item.name, status, item.sharing)
     viewModelScope.launch {
       try {
-        pendingActivity?.let { persistPendingActivity(it) }
         if (uiState.value.items.none {
           it.id == itemId && it.householdId == householdId && it.status == ItemStatus.ACTIVE
         })
             return@launch
+        pendingActivity?.let { persistPendingActivity(it) }
         when (val write = itemRepository.setItemStatus(itemId, status)) {
           is ItemWrite.Rejected -> {
             if (write.cause is CancellationException) throw write.cause
@@ -383,6 +392,7 @@ class FridgeViewModel(
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
+        pendingActivity?.let { removePendingActivity(it) }
         reportStatusError(item.name, false)
       } finally {
         mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds - itemId) }
@@ -394,13 +404,37 @@ class FridgeViewModel(
     if (chatRepository == null) return
     val item =
         uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
-            ?: return
+            ?: run {
+              val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
+              pendingActivityStore?.remove(
+                  PendingFridgeActivity(
+                      id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
+                      householdId = householdId,
+                      userId = userId,
+                      type = type,
+                      itemName = "",
+                  ))
+              return
+            }
     if (fridgeType != FridgeType.SHARED) return
+    val expectedStatus = if (status == ItemStatus.EATEN) ItemStatus.EATEN else ItemStatus.DISCARDED
+    if (item.status != expectedStatus) {
+      val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
+      removePendingActivity(
+          PendingFridgeActivity(
+              id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
+              householdId = householdId,
+              userId = userId,
+              type = type,
+              itemName = item.name,
+          ))
+      return
+    }
     if (item.sharing != ItemSharing.SHARED) {
       val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
       removePendingActivity(
           PendingFridgeActivity(
-              id = "$itemId:${type.name}",
+              id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
               householdId = householdId,
               userId = userId,
               type = type,
@@ -426,7 +460,7 @@ class FridgeViewModel(
     }
     val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
     return PendingFridgeActivity(
-        id = "$itemId:${type.name}",
+        id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
         householdId = householdId,
         userId = userId,
         type = type,
@@ -471,24 +505,53 @@ class FridgeViewModel(
   private suspend fun sendPendingActivity(activity: PendingFridgeActivity) {
     val repository = chatRepository ?: return
     if (activity.id in pendingActivityDispatches) return
+    val itemId = activity.id.substringBefore(PENDING_ACTIVITY_ID_SEPARATOR)
+    val expectedStatus =
+        when (activity.type) {
+          MessageType.EATEN -> ItemStatus.EATEN
+          MessageType.THROWN -> ItemStatus.DISCARDED
+          else -> null
+        }
+    val item =
+        expectedStatus?.let { status ->
+          uiState.value.items.firstOrNull {
+            it.id == itemId &&
+                it.householdId == householdId &&
+                it.status == status &&
+                it.sharing == ItemSharing.SHARED
+          }
+        }
+    if (item == null) {
+      removePendingActivity(activity)
+      return
+    }
     pendingActivityDispatches += activity.id
-    persistPendingActivity(activity)
     try {
       if (repository.sendActivity(
           activity.householdId,
           activity.userId,
           activitySenderName,
           activity.type,
-          activity.itemName,
+          item.name,
+          activityId = activity.id,
       ) == null) {
         Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE)
+        removePendingActivity(activity)
       } else {
+        activitySendAttempts.remove(activity.id)
         removePendingActivity(activity)
       }
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
       Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE, failure)
+      val attempts = activitySendAttempts.getOrDefault(activity.id, 0) + 1
+      if (attempts >= MAX_ACTIVITY_SEND_ATTEMPTS) {
+        activitySendAttempts.remove(activity.id)
+        removePendingActivity(activity)
+      } else {
+        activitySendAttempts[activity.id] = attempts
+      }
     } finally {
       pendingActivityDispatches -= activity.id
     }

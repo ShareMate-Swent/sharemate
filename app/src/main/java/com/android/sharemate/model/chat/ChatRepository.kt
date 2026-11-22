@@ -32,7 +32,9 @@ interface ChatRepository {
       senderName: String,
       type: MessageType,
       itemName: String,
-      itemImageUrl: String? = null
+      itemImageUrl: String? = null,
+      /** Stable action key used to make chat publication idempotent, for example itemId:TYPE. */
+      activityId: String? = null,
   ): String?
 
   /**
