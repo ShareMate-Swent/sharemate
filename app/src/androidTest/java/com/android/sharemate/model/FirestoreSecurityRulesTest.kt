@@ -10,6 +10,8 @@ import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.model.incident.IncidentPhotoRepository
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.push.FirebasePushTokenRepository
 import com.android.sharemate.model.text.TextLimits
@@ -26,7 +28,9 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import java.util.Date
 import java.util.concurrent.ExecutionException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +39,23 @@ import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+
+/** How long to wait for the emulator to deliver a written message to a listener. */
+private const val EMULATOR_TIMEOUT_MS = 10_000L
+
+/**
+ * Reports every incident photo as uploaded, so these tests reach the Firestore rules. The real
+ * Storage check is covered by IncidentPhotoStorageEmulatorTest.
+ */
+private object ExistingIncidentPhotos : IncidentPhotoRepository {
+  override suspend fun upload(householdId: String, expectedAuthorId: String, source: java.io.File) =
+      Result.failure<IncidentPhotoReference>(UnsupportedOperationException())
+
+  override suspend fun load(reference: IncidentPhotoReference) =
+      Result.failure<ByteArray>(UnsupportedOperationException())
+
+  override suspend fun exists(reference: IncidentPhotoReference) = Result.success(true)
+}
 
 /** Checks that `firestore.rules` rejects what the app must never be able to do. */
 @RunWith(AndroidJUnit4::class)
@@ -918,7 +939,7 @@ class FirestoreSecurityRulesTest {
   fun chatRepositoryWritesTextAndActivitiesUnderRules() = runBlocking {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
-    val chat = FirebaseChatRepository(firestore)
+    val chat = FirebaseChatRepository(firestore, ExistingIncidentPhotos)
     Tasks.await(
         firestore
             .collection(FirestoreCollections.PROFILES)
@@ -1161,6 +1182,113 @@ class FirestoreSecurityRulesTest {
     assertDenied(ref.set(activityData("private", creatorId)))
     assertDenied(ref.set(messageData("private", creatorId)))
   }
+
+  @Test
+  fun chatRepositorySendsAndReadsIncidentUnderRules() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val chat = FirebaseChatRepository(firestore, ExistingIncidentPhotos)
+    Tasks.await(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(senderId)
+            .set(mapOf("displayName" to "Alice")))
+    val photo = IncidentPhotoReference(incidentPhotoPath(household.id, senderId))
+
+    val id = chat.sendIncident(household.id, senderId, "Sender", " Leak in the bathroom ", photo)
+
+    assertNotNull(id)
+    val messages =
+        withTimeout(EMULATOR_TIMEOUT_MS) {
+          chat.observeMessages(household.id).first { list -> list.any { it.id == id } }
+        }
+    val incident = messages.single { it.id == id }
+    assertEquals(MessageType.INCIDENT, incident.type)
+    assertEquals("Leak in the bathroom", incident.text)
+    assertEquals(photo, incident.incidentPhoto)
+    assertEquals("Alice", incident.senderName)
+  }
+
+  @Test
+  fun memberCanCreateIncidentWithTheirOwnPhoto() {
+    val home = createHouseholdAs("creator")
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(home.inviteCode, memberId) }
+    val ref = messageReference(home.id, "incident")
+
+    Tasks.await(ref.set(incidentData("incident", memberId, home.id)))
+
+    val stored = Tasks.await(ref.get(Source.SERVER))
+    assertEquals("INCIDENT", stored.getString("type"))
+    assertEquals(incidentPhotoPath(home.id, memberId), stored.getString("incidentPhotoPath"))
+  }
+
+  @Test
+  fun incidentRequiresDescriptionAndPhotoOfSenderInThisHousehold() {
+    val home = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val ref = messageReference(home.id, "bad")
+    val data = incidentData("bad", senderId, home.id)
+    val invalidPhotos =
+        listOf(
+            incidentPhotoPath("other-home", senderId),
+            incidentPhotoPath(home.id, "someone-else"),
+            "incidentPhotos/${home.id}/$senderId/not-a-uuid",
+            "https://example.com/photo.jpg",
+            123,
+            null)
+
+    for (photo in invalidPhotos) assertDenied(ref.set(data + ("incidentPhotoPath" to photo)))
+    assertDenied(ref.set(data - "incidentPhotoPath"))
+    assertDenied(ref.set(data - "text"))
+    assertDenied(ref.set(data + ("text" to " ")))
+    assertDenied(ref.set(data + ("text" to "a".repeat(2001))))
+    assertDenied(ref.set(data + ("itemName" to "Milk")))
+    assertDenied(ref.set(data + ("itemImageUrl" to "https://example.com/image")))
+    assertDenied(ref.set(data + ("timestamp" to Date())))
+  }
+
+  @Test
+  fun memberCannotPostIncidentAsAnotherMember() {
+    val home = createHouseholdAs("creator")
+    val creatorId = home.createdBy
+    val memberId = FirebaseEmulator.signInAs("member")
+    runBlocking { repository.joinHousehold(home.inviteCode, memberId) }
+
+    // Author and photo path both claim the creator, so only the author check can refuse it.
+    assertDenied(
+        messageReference(home.id, "forged").set(incidentData("forged", creatorId, home.id)))
+    Tasks.await(messageReference(home.id, "own").set(incidentData("own", memberId, home.id)))
+  }
+
+  @Test
+  fun textAndActivityMessagesCannotCarryAnIncidentPhoto() {
+    val home = createHouseholdAs("creator")
+    val senderId = checkNotNull(FirebaseEmulator.auth.uid)
+    val photo = "incidentPhotoPath" to incidentPhotoPath(home.id, senderId)
+
+    assertDenied(messageReference(home.id, "text").set(messageData("text", senderId) + photo))
+    assertDenied(
+        messageReference(home.id, "activity").set(activityData("activity", senderId) + photo))
+  }
+
+  @Test
+  fun nonMemberCannotCreateIncident() {
+    val home = createHouseholdAs("creator")
+    val outsiderId = FirebaseEmulator.signInAs("outsider")
+    assertDenied(
+        messageReference(home.id, "incident").set(incidentData("incident", outsiderId, home.id)))
+  }
+
+  /** A valid incident message whose photo path follows `IncidentPhotoReference`. */
+  private fun incidentData(id: String, senderId: String, householdId: String): Map<String, Any?> =
+      messageData(id, senderId, text = "The washing machine is leaking") +
+          mapOf(
+              "type" to MessageType.INCIDENT.name,
+              "incidentPhotoPath" to incidentPhotoPath(householdId, senderId))
+
+  private fun incidentPhotoPath(householdId: String, authorId: String): String =
+      "incidentPhotos/$householdId/$authorId/123e4567-e89b-12d3-a456-426614174000"
 
   /**
    * Exercises real membership and allows the image to be omitted or set as in the Message model.

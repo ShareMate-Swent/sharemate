@@ -41,4 +41,20 @@ object Dimens {
 
   /** Item thumbnail size for a fridge activity shown in chat. */
   val activityBadgeImageSize = 48.dp
+
+  // Corner radii of the design system, used by the theme's shapes.
+  /** Corner radius of the smallest elements, like badges. */
+  val cornerRadiusXs = 8.dp
+
+  /** Corner radius of small elements, like chips, icon tiles and menus. */
+  val cornerRadiusS = 14.dp
+
+  /** Corner radius of buttons and text fields. */
+  val cornerRadiusM = 18.dp
+
+  /** Corner radius of cards and lists. */
+  val cornerRadiusL = 22.dp
+
+  /** Corner radius of sheets, dialogs and highlighted cards. */
+  val cornerRadiusXl = 24.dp
 }

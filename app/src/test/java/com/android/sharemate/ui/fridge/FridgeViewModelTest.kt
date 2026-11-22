@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -22,6 +23,7 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
+import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
@@ -2739,6 +2741,14 @@ class FridgeViewModelTest {
         senderId: String,
         senderName: String,
         text: String
+    ): String? = null
+
+    override suspend fun sendIncident(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        description: String,
+        photo: IncidentPhotoReference
     ): String? = null
 
     override suspend fun sendActivity(

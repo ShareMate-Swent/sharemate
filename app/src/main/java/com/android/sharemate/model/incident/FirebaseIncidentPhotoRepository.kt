@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.incident
 
 import com.android.sharemate.model.image.PhotoBytes
 import com.android.sharemate.model.image.awaitPhotoTransfer
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import java.util.UUID
@@ -12,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 /**
@@ -19,11 +22,23 @@ import kotlinx.coroutines.withContext
  */
 class FirebaseIncidentPhotoRepository
 internal constructor(
-    private val storage: FirebaseStorage,
+    storageProvider: () -> FirebaseStorage,
     private val auth: FirebaseAuth,
     private val newPhotoId: () -> UUID,
 ) : IncidentPhotoRepository {
-  constructor(storage: FirebaseStorage, auth: FirebaseAuth) : this(storage, auth, UUID::randomUUID)
+  constructor(
+      storage: FirebaseStorage,
+      auth: FirebaseAuth
+  ) : this({ storage }, auth, UUID::randomUUID)
+
+  internal constructor(
+      storage: FirebaseStorage,
+      auth: FirebaseAuth,
+      newPhotoId: () -> UUID,
+  ) : this({ storage }, auth, newPhotoId)
+
+  // Resolved on first use, so building the repository never needs a configured Storage bucket.
+  private val storage: FirebaseStorage by lazy(storageProvider)
 
   override suspend fun upload(
       householdId: String,
@@ -70,6 +85,17 @@ internal constructor(
         checkNotNull(bytes).also { PhotoBytes.contentType(it) }
       }
 
+  override suspend fun exists(reference: IncidentPhotoReference): Result<Boolean> =
+      inSession(null) {
+        try {
+          storage.reference.child(reference.path).metadata.await()
+          true
+        } catch (missing: StorageException) {
+          if (missing.errorCode != StorageException.ERROR_OBJECT_NOT_FOUND) throw missing
+          false
+        }
+      }
+
   private fun checkSession(uid: String) {
     check(auth.currentUser?.uid == uid) { SESSION_CHANGED }
   }
@@ -93,9 +119,14 @@ internal constructor(
         Result.failure(failure)
       }
 
-  private companion object {
-    const val SESSION_CHANGED = "The signed-in user changed"
-    const val NO_SESSION = "No signed-in user"
-    const val INVALID_AUTHOR = "Unexpected photo author"
+  companion object {
+    /** Repository on the default Firebase app; Storage is only created when a photo is used. */
+    fun create(): IncidentPhotoRepository =
+        FirebaseIncidentPhotoRepository(
+            { FirebaseStorage.getInstance() }, FirebaseAuth.getInstance(), UUID::randomUUID)
+
+    private const val SESSION_CHANGED = "The signed-in user changed"
+    private const val NO_SESSION = "No signed-in user"
+    private const val INVALID_AUTHOR = "Unexpected photo author"
   }
 }

@@ -66,6 +66,7 @@ import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
 import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.incident.FirebaseIncidentPhotoRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.OpenFoodFactsProductCatalogRepository
@@ -117,7 +118,7 @@ import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -150,7 +151,8 @@ open class MainActivity : ComponentActivity() {
   }
 
   private val chatRepository: ChatRepository by lazy {
-    FirebaseChatRepository(FirebaseFirestore.getInstance())
+    FirebaseChatRepository(
+        FirebaseFirestore.getInstance(), FirebaseIncidentPhotoRepository.create())
   }
   private val pendingActivityStore by lazy { AndroidPendingFridgeActivityStore(applicationContext) }
 
@@ -235,7 +237,7 @@ open class MainActivity : ComponentActivity() {
     NotificationChannelRegistrar.from(applicationContext).registerAll()
     NotificationScheduler.schedule(applicationContext)
     setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         AuthHouseholdGate(
             authViewModel,
             authRepository,

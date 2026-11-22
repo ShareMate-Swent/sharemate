@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.incident
 
 import java.io.File
@@ -22,4 +23,11 @@ interface IncidentPhotoRepository {
 
   /** Downloads at most 5 MiB through authenticated SDK access, never a public download URL. */
   suspend fun load(reference: IncidentPhotoReference): Result<ByteArray>
+
+  /**
+   * Tells whether the photo at [reference] has been uploaded, reading only its metadata. Returns
+   * `false` when Storage reports no such object, and a failure when the check itself fails
+   * (offline, no session, or no longer a member).
+   */
+  suspend fun exists(reference: IncidentPhotoReference): Result<Boolean>
 }

@@ -23,7 +23,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodeFormTestTags
-import com.android.sharemate.ui.theme.SampleAppTheme
+import com.android.sharemate.ui.theme.ShareMateTheme
 import com.android.sharemate.utils.FirebaseEmulator
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.flow.flowOf
@@ -65,7 +65,7 @@ class ItemSharingDialogTest {
                 showSharingSelector = true))
     var changes = 0
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         AddItemDialog(
             state.value,
             {},
@@ -105,7 +105,7 @@ class ItemSharingDialogTest {
   fun hiddenSelectorPreservesOrdinaryFormAndPhotoEntry() {
     var saves = 0
     compose.setContent {
-      SampleAppTheme(dynamicColor = false) {
+      ShareMateTheme {
         AddItemDialog(
             FridgeUiState(
                 fridgeType = FridgeType.PRIVATE, isAddItemDialogOpen = true, itemName = "Milk"),
@@ -167,7 +167,7 @@ class ItemSharingDialogTest {
           )
       store.put("sharing-dialog", vm)
     }
-    compose.setContent { SampleAppTheme(dynamicColor = false) { FridgeScreen(vm) } }
+    compose.setContent { ShareMateTheme { FridgeScreen(vm) } }
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
     compose.onNodeWithTag(C.Tag.fridge_share_switch).performScrollTo().assertIsOff()
