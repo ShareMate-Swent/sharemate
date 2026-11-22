@@ -1,6 +1,7 @@
 // Co-authored-by: Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.android.sharemate.R
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
+import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -193,5 +195,79 @@ class AuthScreenTest {
       compose.runOnIdle { state = state.copy(error = error) }
       compose.onNodeWithTag(AuthTestTags.ERROR).assertTextEquals(message)
     }
+  }
+
+  private fun string(id: Int, vararg args: Any) = testApplication.getString(id, *args)
+
+  @Test
+  fun logInFormShowsItsHeaderBackButtonAndSignUpLink() {
+    var backs = 0
+    compose.setContent {
+      ShareMateTheme {
+        AuthScreen(AuthUiState(isRestoringSession = false), {}, {}, {}, {}, {}, {}) { backs++ }
+      }
+    }
+    compose.onNodeWithText(string(R.string.auth_welcome_back)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.auth_log_in_subtitle)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.auth_email_placeholder)).assertExists()
+    compose
+        .onNodeWithTag(AuthTestTags.EMAIL)
+        .assertContentDescriptionEquals(string(R.string.auth_email))
+    compose
+        .onNodeWithTag(AuthTestTags.PASSWORD)
+        .assertContentDescriptionEquals(string(R.string.auth_password))
+    compose
+        .onNodeWithText(
+            string(R.string.auth_password_hint, PasswordRules.MIN_LENGTH, TextLimits.PASSWORD))
+        .assertDoesNotExist()
+    compose
+        .onNodeWithTag(AuthTestTags.SWITCH_MODE)
+        .assertTextEquals(
+            "${string(R.string.auth_new_here)} ${string(R.string.auth_create_account)}")
+    compose
+        .onNodeWithTag(AuthTestTags.BACK)
+        .assertContentDescriptionEquals(string(R.string.auth_back))
+        .performClick()
+    compose.runOnIdle { assertEquals(1, backs) }
+  }
+
+  @Test
+  fun signUpFormShowsThePasswordRuleAndALogInLink() {
+    compose.setContent {
+      ShareMateTheme {
+        AuthScreen(
+            AuthUiState(isRestoringSession = false, mode = AuthMode.SIGN_UP),
+            {},
+            {},
+            {},
+            {},
+            {},
+            {})
+      }
+    }
+    compose.onNodeWithText(string(R.string.auth_sign_up_subtitle)).assertIsDisplayed()
+    compose
+        .onNodeWithText(
+            string(R.string.auth_password_hint, PasswordRules.MIN_LENGTH, TextLimits.PASSWORD))
+        .assertExists()
+    compose.onNodeWithText(string(R.string.auth_confirm_password_placeholder)).assertExists()
+    compose.onNodeWithTag(AuthTestTags.BACK).assertDoesNotExist()
+    compose
+        .onNodeWithTag(AuthTestTags.SWITCH_MODE)
+        .assertTextEquals("${string(R.string.auth_have_account)} ${string(R.string.auth_log_in)}")
+  }
+
+  @Test
+  fun pendingPseudoFlowExplainsTheNameWithoutBackOrModeSwitch() {
+    val state =
+        AuthUiState(
+            isRestoringSession = false,
+            session = com.android.sharemate.model.auth.AuthSession("user", "user@example.org"),
+            pendingProfileUpdate = PendingProfileUpdate("user", "Name"))
+    compose.setContent { ShareMateTheme { AuthScreen(state, {}, {}, {}, {}, {}, {}) } }
+    compose.onNodeWithText(string(R.string.auth_choose_pseudo)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.auth_choose_pseudo_subtitle)).assertIsDisplayed()
+    compose.onNodeWithTag(AuthTestTags.BACK).assertDoesNotExist()
+    compose.onNodeWithTag(AuthTestTags.SWITCH_MODE).assertDoesNotExist()
   }
 }
