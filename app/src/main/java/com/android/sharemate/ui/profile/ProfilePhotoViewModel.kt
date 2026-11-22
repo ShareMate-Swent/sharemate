@@ -91,14 +91,6 @@ class ProfilePhotoViewModel(
   }
 
   /**
-   * Copies an image picked straight from the gallery and shows it, like [select]. The copy runs in
-   * the ViewModel's scope, so it is not lost if the screen is recreated while it runs.
-   */
-  fun selectFromGallery(uri: String) {
-    viewModelScope.launch { select(uri, fromCamera = false) }
-  }
-
-  /**
    * Uploads the previewed photo. On success the step is done; on failure the photo is kept so it
    * can be retried, and [ProfilePhotoError.UPLOAD_FAILED] is shown. Ignored without a photo, while
    * uploading or once done.

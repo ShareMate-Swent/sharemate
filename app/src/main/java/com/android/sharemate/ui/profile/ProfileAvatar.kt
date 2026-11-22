@@ -15,8 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -33,9 +31,6 @@ import coil.compose.rememberAsyncImagePainter
  * @param contentDescription Description of the photo; the placeholder is decorative.
  * @param photoTestTag Test tag of the photo, present whenever there is a [photoUrl].
  * @param placeholderTestTag Test tag of the placeholder icon, present until the photo loads.
- * @param containerColor Background of the placeholder.
- * @param iconTint Color of the placeholder icon.
- * @param icon The placeholder icon.
  */
 @Composable
 internal fun ProfileAvatar(
@@ -46,20 +41,21 @@ internal fun ProfileAvatar(
     photoTestTag: String,
     placeholderTestTag: String,
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
-    iconTint: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    icon: ImageVector = Icons.Filled.Person,
 ) {
   val painter = photoUrl?.let { rememberAsyncImagePainter(model = it) }
   Box(
-      modifier = modifier.size(size).clip(CircleShape).background(containerColor),
+      modifier =
+          modifier
+              .size(size)
+              .clip(CircleShape)
+              .background(MaterialTheme.colorScheme.primaryContainer),
       contentAlignment = Alignment.Center,
   ) {
     if (painter?.state !is AsyncImagePainter.State.Success) {
       Icon(
-          imageVector = icon,
+          imageVector = Icons.Filled.Person,
           contentDescription = null,
-          tint = iconTint,
+          tint = MaterialTheme.colorScheme.onPrimaryContainer,
           modifier = Modifier.size(iconSize).testTag(placeholderTestTag),
       )
     }
