@@ -251,6 +251,21 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun pendingStoreFailuresDoNotFailStatusOrViewModelInitialization() = runTest {
+    pendingActivityStore.listFailure = IOException("Cannot load")
+    repository.emitItems(listOf(milk))
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    pendingActivityStore.saveFailure = IOException("Cannot save")
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.statusError == null)
+  }
+
+  @Test
   fun confirmedActivityUsesLatestItemName() = runTest {
     repository.emitItems(listOf(milk))
     repository.statusConfirmation = CompletableDeferred()
@@ -2703,8 +2718,11 @@ class FridgeViewModelTest {
 
   private class FakePendingFridgeActivityStore : PendingFridgeActivityStore {
     private val activities = mutableListOf<PendingFridgeActivity>()
+    var saveFailure: Exception? = null
+    var listFailure: Exception? = null
 
     override suspend fun save(activity: PendingFridgeActivity) {
+      saveFailure?.let { throw it }
       activities.removeAll { it.id == activity.id }
       activities += activity
     }
@@ -2716,8 +2734,10 @@ class FridgeViewModelTest {
     override suspend fun list(
         householdId: String,
         userId: String,
-    ): List<PendingFridgeActivity> =
-        activities.filter { it.householdId == householdId && it.userId == userId }
+    ): List<PendingFridgeActivity> {
+      listFailure?.let { throw it }
+      return activities.filter { it.householdId == householdId && it.userId == userId }
+    }
   }
 
   private class RecordingChatRepository : ChatRepository {
