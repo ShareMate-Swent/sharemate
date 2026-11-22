@@ -204,6 +204,12 @@ class IncidentPhotoStorageEmulatorTest {
   @Test
   fun chatPostsAnIncidentOnlyWhenItsPhotoWasUploaded() = runBlocking {
     val chat = FirebaseChatRepository(firestore, repository)
+    // Chat rules require the sender name to match the profile's display name.
+    firestore
+        .collection(FirestoreCollections.PROFILES)
+        .document(owner)
+        .set(mapOf("displayName" to "Owner"))
+        .await()
     val missing = IncidentPhotoReference(path())
     assertNull(chat.sendIncident(home, owner, "Owner", "Leak", missing))
     val uploaded = upload()
