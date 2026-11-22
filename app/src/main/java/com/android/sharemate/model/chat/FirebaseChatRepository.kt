@@ -88,7 +88,13 @@ class FirebaseChatRepository(
             MessageFields.TYPE to type.name,
             MessageFields.ITEM_NAME to itemName.trim(),
             MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() }),
-        documentId = stableActivityId(householdId, senderId, type, itemName.trim()))
+        documentId =
+            stableActivityId(
+                householdId,
+                senderId,
+                type,
+                itemName.trim(),
+                itemImageUrl?.takeIf { it.isNotBlank() }))
   }
 
   private fun stableActivityId(
@@ -96,8 +102,11 @@ class FirebaseChatRepository(
       senderId: String,
       type: MessageType,
       itemName: String,
+      itemImageUrl: String?,
   ): String {
-    val source = listOf(householdId, senderId, type.name, itemName).joinToString(SEPARATOR)
+    val source =
+        listOf(householdId, senderId, type.name, itemName, itemImageUrl.orEmpty())
+            .joinToString(SEPARATOR)
     val digest =
         MessageDigest.getInstance(HASH_ALGORITHM).digest(source.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { byte -> "%02x".format(byte) }

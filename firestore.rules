@@ -380,6 +380,22 @@ service cloud.firestore {
             && hasNoIncidentPhoto(message);
       }
 
+      function isIdenticalActivityReplay() {
+        let previous = resource.data;
+        let replay = request.resource.data;
+        return previous.get('type', null) in ['EATEN', 'THROWN']
+            && replay.get('type', null) in ['EATEN', 'THROWN']
+            && replay.timestamp == request.time
+            && replay.id == previous.id
+            && replay.senderId == previous.senderId
+            && replay.senderName == previous.senderName
+            && replay.text == previous.text
+            && replay.type == previous.type
+            && replay.itemName == previous.itemName
+            && replay.get('itemImageUrl', null) == previous.get('itemImageUrl', null)
+            && hasNoIncidentPhoto(replay);
+      }
+
       // The description is the text; the photo must be one the sender uploaded for this household
       // (same path as IncidentPhotoReference and storage.rules).
       function isValidIncidentMessage(message) {
@@ -395,7 +411,8 @@ service cloud.firestore {
 
       allow read: if signedIn() && canUseChat();
       allow create: if signedIn() && canUseChat() && isValidNewMessage();
-      allow update, delete: if false;
+      allow update: if signedIn() && canUseChat() && isIdenticalActivityReplay();
+      allow delete: if false;
     }
 
     function isHouseholdMember(householdId) {

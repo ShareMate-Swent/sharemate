@@ -963,6 +963,14 @@ class FirestoreSecurityRulesTest {
       assertEquals("Milk", stored.getString("itemName"))
     }
 
+    assertNotNull(
+        chat.sendActivity(
+            household.id,
+            senderId,
+            "Sender",
+            MessageType.EATEN,
+            "Milk",
+            "https://example.com/image"))
     assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
     val ordered =
         Tasks.await(
