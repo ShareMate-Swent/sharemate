@@ -59,6 +59,14 @@ class ProfilePhotoViewModelTest {
   }
 
   @Test
+  fun galleryPickIsCopiedAsAGalleryImageAndShown() = runTest {
+    vm.selectFromGallery("content://gallery")
+    dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(File("copy-gallery"), vm.state.value.photo)
+    assertEquals(listOf("content://gallery" to false), files.copies)
+  }
+
+  @Test
   fun invalidPhotoKeepsThePreviousOneUntilAValidOneIsPicked() = runTest {
     vm.select("content://a", false)
     files.failure = IllegalArgumentException("too large")

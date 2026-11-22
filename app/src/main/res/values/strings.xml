@@ -256,6 +256,8 @@
     <string name="profile_photo_preview">Selected profile photo</string>
     <string name="profile_photo_add">Add a photo</string>
     <string name="profile_photo_change">Change photo</string>
+    <string name="profile_photo_take">Take a photo</string>
+    <string name="profile_photo_from_gallery">From gallery</string>
     <string name="profile_photo_save">Save</string>
     <string name="profile_photo_retry">Retry</string>
     <string name="profile_photo_skip">Skip</string>
