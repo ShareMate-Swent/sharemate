@@ -84,7 +84,7 @@ class AndroidPendingFridgeActivityStore(
                     .put(FIELD_ITEM_NAME, activity.itemName))
           }
         }
-    preferences.edit().putString(scopeKey(householdId, userId), array.toString()).commit()
+    preferences.edit().putString(scopeKey(householdId, userId), array.toString()).apply()
   }
 
   private fun scopeKey(householdId: String, userId: String): String =
