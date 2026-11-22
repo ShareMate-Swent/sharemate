@@ -51,6 +51,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.testTag
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
@@ -65,6 +67,8 @@ object ProfilePhotoStepTestTags {
   const val PHOTO = "profile_photo_step_photo"
   /** The round photo target, which opens the camera/gallery dialog. */
   const val TARGET = "profile_photo_step_target"
+  /** The "+" badge on the photo target, which opens the same dialog. */
+  const val BADGE = "profile_photo_step_badge"
   /** The placeholder avatar, present until a photo is shown. */
   const val PLACEHOLDER = "profile_photo_step_placeholder"
   /** Opens the camera to take the photo. */
@@ -256,8 +260,8 @@ internal fun ProfilePhotoStepContent(
 }
 
 /**
- * The avatar preview inside a dashed ring, with a "+" badge. Tapping it opens the camera/gallery
- * dialog, like the add photo button.
+ * The avatar preview inside a dashed ring, with a "+" badge. Tapping the avatar or the badge opens
+ * the camera/gallery dialog.
  */
 @Composable
 private fun PhotoTarget(
@@ -303,11 +307,15 @@ private fun PhotoTarget(
               modifier = Modifier.padding(ProfileLayout.stepAvatarRingWidth),
           )
         }
-    // Sits on the ring at the bottom right, outside the clipped circle so it is not cut off.
+    // Sits on the ring at the bottom right, outside the clipped circle so it is not cut off. It
+    // takes the same tap as the avatar; screen readers already get that action from the avatar.
     Box(
         Modifier.align(Alignment.BottomEnd)
             .size(ProfileLayout.stepBadgeSize)
-            .background(MaterialTheme.colorScheme.primary, CircleShape),
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary)
+            .clearAndSetSemantics { testTag = ProfilePhotoStepTestTags.BADGE }
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center) {
           Icon(
               Icons.Filled.Add,

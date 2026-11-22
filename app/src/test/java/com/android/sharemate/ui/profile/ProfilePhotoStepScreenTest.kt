@@ -99,6 +99,20 @@ class ProfilePhotoStepScreenTest {
   }
 
   @Test
+  fun tappingTheBadgeOpensThePickerUnlessUploading() {
+    setContent()
+    // The badge centre lies outside the round target, so only the badge's own click reaches it.
+    // Screen readers get the action from the target, so the badge exposes none.
+    node(ProfilePhotoStepTestTags.BADGE)
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        .performClick()
+    assertEquals(listOf("add"), calls)
+    compose.runOnIdle { state = state.copy(isUploading = true) }
+    node(ProfilePhotoStepTestTags.BADGE).performClick()
+    assertEquals(listOf("add"), calls)
+  }
+
+  @Test
   fun pickedPhotoOffersSaveAndUploadDisablesAllButSkip() {
     state = ProfilePhotoUiState(photo = File("picked.jpg"))
     setContent()
