@@ -6,6 +6,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.R
@@ -23,8 +27,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Checks which actions the profile photo step offers in each state, that they reach their
- * callbacks, that a short screen scrolls to all of them, and that system back skips the step, also
- * while uploading.
+ * callbacks, that a short screen keeps Skip and Save in view and scrolls to the rest, and that
+ * system back skips the step, also while uploading.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w411dp-h891dp")
@@ -39,6 +43,8 @@ class ProfilePhotoStepScreenTest {
           ProfilePhotoStepContent(
               state = state,
               onAddPhoto = { calls += "add" },
+              onTakePhoto = { calls += "camera" },
+              onPickFromGallery = { calls += "gallery" },
               onSave = { calls += "save" },
               onSkip = { calls += "skip" })
         }
@@ -46,36 +52,62 @@ class ProfilePhotoStepScreenTest {
 
   private fun node(tag: String) = compose.onNodeWithTag(tag)
 
+  /** The avatar sits inside the clickable photo target, which merges its children. */
+  private fun avatarNode(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
+
   private fun text(id: Int) = compose.activity.getString(id)
 
+  private fun hasClickLabel(label: String) =
+      SemanticsMatcher("click label is '$label'") {
+        it.config.getOrNull(SemanticsActions.OnClick)?.label == label
+      }
+
   @Test
-  fun initialStepOffersAddAndSkipButNoSave() {
+  fun initialStepOffersCameraGalleryAndSkipWithSaveDisabled() {
     setContent()
-    node(ProfilePhotoStepTestTags.ADD_PHOTO).assertTextEquals(text(R.string.profile_photo_add))
-    node(ProfilePhotoStepTestTags.PLACEHOLDER).assertExists()
+    node(ProfilePhotoStepTestTags.TAKE_PHOTO).assertTextEquals(text(R.string.profile_photo_take))
+    node(ProfilePhotoStepTestTags.FROM_GALLERY)
+        .assertTextEquals(text(R.string.profile_photo_from_gallery))
+    node(ProfilePhotoStepTestTags.TARGET).assert(hasClickLabel(text(R.string.profile_photo_add)))
+    avatarNode(ProfilePhotoStepTestTags.PLACEHOLDER).assertExists()
+    node(ProfilePhotoStepTestTags.SAVE).assertIsNotEnabled()
     for (tag in
         listOf(
-            ProfilePhotoStepTestTags.SAVE,
             ProfilePhotoStepTestTags.RETRY,
             ProfilePhotoStepTestTags.PROGRESS,
             ProfilePhotoStepTestTags.ERROR)) {
       node(tag).assertDoesNotExist()
     }
-    node(ProfilePhotoStepTestTags.ADD_PHOTO).performClick()
+    node(ProfilePhotoStepTestTags.TAKE_PHOTO).performClick()
+    node(ProfilePhotoStepTestTags.FROM_GALLERY).performClick()
     node(ProfilePhotoStepTestTags.SKIP).performClick()
-    assertEquals(listOf("add", "skip"), calls)
+    assertEquals(listOf("camera", "gallery", "skip"), calls)
+  }
+
+  @Test
+  fun tappingThePhotoTargetOpensThePickerUnlessUploading() {
+    state = ProfilePhotoUiState(photo = File("picked.jpg"))
+    setContent()
+    node(ProfilePhotoStepTestTags.TARGET)
+        .assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)
+                .and(hasClickLabel(text(R.string.profile_photo_change))))
+        .performClick()
+    assertEquals(listOf("add"), calls)
+    compose.runOnIdle { state = state.copy(isUploading = true) }
+    node(ProfilePhotoStepTestTags.TARGET).assertIsNotEnabled()
   }
 
   @Test
   fun pickedPhotoOffersSaveAndUploadDisablesAllButSkip() {
     state = ProfilePhotoUiState(photo = File("picked.jpg"))
     setContent()
-    node(ProfilePhotoStepTestTags.ADD_PHOTO).assertTextEquals(text(R.string.profile_photo_change))
     node(ProfilePhotoStepTestTags.SAVE).performClick()
     assertEquals(listOf("save"), calls)
     compose.runOnIdle { state = state.copy(isUploading = true) }
     node(ProfilePhotoStepTestTags.PROGRESS).assertExists()
-    node(ProfilePhotoStepTestTags.ADD_PHOTO).assertIsNotEnabled()
+    node(ProfilePhotoStepTestTags.TAKE_PHOTO).assertIsNotEnabled()
+    node(ProfilePhotoStepTestTags.FROM_GALLERY).assertIsNotEnabled()
     node(ProfilePhotoStepTestTags.SAVE).assertIsNotEnabled()
     node(ProfilePhotoStepTestTags.SKIP).assertIsEnabled()
   }
@@ -93,27 +125,25 @@ class ProfilePhotoStepScreenTest {
   }
 
   @Test
-  fun invalidPhotoShowsItsMessageWithoutSave() {
+  fun invalidPhotoShowsItsMessageWithSaveDisabled() {
     state = ProfilePhotoUiState(error = ProfilePhotoError.INVALID_PHOTO)
     setContent()
     node(ProfilePhotoStepTestTags.ERROR).assertTextEquals(text(R.string.personal_photo_invalid))
-    node(ProfilePhotoStepTestTags.SAVE).assertDoesNotExist()
+    node(ProfilePhotoStepTestTags.SAVE).assertIsNotEnabled()
   }
 
   @Test
   @Config(qualifiers = "w640dp-h320dp")
-  fun shortScreenScrollsToEveryAction() {
+  fun shortScreenKeepsSkipAndRetryInViewAndScrollsToTheSources() {
     state = ProfilePhotoUiState(photo = File("picked.jpg"), error = ProfilePhotoError.UPLOAD_FAILED)
     setContent()
-    node(ProfilePhotoStepTestTags.SKIP).assertIsNotDisplayed()
-    for (tag in
-        listOf(
-            ProfilePhotoStepTestTags.ADD_PHOTO,
-            ProfilePhotoStepTestTags.RETRY,
-            ProfilePhotoStepTestTags.SKIP)) {
-      node(tag).performScrollTo().assertIsDisplayed().performClick()
-    }
-    assertEquals(listOf("add", "save", "skip"), calls)
+    node(ProfilePhotoStepTestTags.FROM_GALLERY).assertIsNotDisplayed()
+    node(ProfilePhotoStepTestTags.SKIP).assertIsDisplayed()
+    node(ProfilePhotoStepTestTags.RETRY).assertIsDisplayed()
+    node(ProfilePhotoStepTestTags.FROM_GALLERY).performScrollTo().assertIsDisplayed().performClick()
+    node(ProfilePhotoStepTestTags.RETRY).assertIsDisplayed().performClick()
+    node(ProfilePhotoStepTestTags.SKIP).assertIsDisplayed().performClick()
+    assertEquals(listOf("gallery", "save", "skip"), calls)
   }
 
   @Test

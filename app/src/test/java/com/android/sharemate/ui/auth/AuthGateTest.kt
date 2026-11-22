@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.auth
@@ -17,7 +18,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -110,7 +110,7 @@ class AuthGateTest {
   }
 
   @Test
-  fun gateHidesContentUntilSessionAndRestoresSystemBarsWhenAuthenticated() {
+  fun gateHidesContentUntilSessionAndLeavesSystemBarsToTheAppTheme() {
     val repository = UiRepository()
     lateinit var viewModel: AuthViewModel
     val window = compose.activity.window
@@ -131,10 +131,11 @@ class AuthGateTest {
     compose.onNodeWithTag(AuthTestTags.RESTORING).assertIsDisplayed()
     compose.onNodeWithTag(AuthTestTags.SUBMIT).assertDoesNotExist()
     compose.runOnIdle {
-      assertEquals(0xFFFEF7FF.toInt(), window.statusBarColor)
-      assertEquals(0xFFFEF7FF.toInt(), window.navigationBarColor)
-      assertTrue(controller.isAppearanceLightStatusBars)
-      assertTrue(controller.isAppearanceLightNavigationBars)
+      // The entry flow no longer has its own theme: the bars are painted by ShareMateTheme.
+      assertEquals(Color.BLACK, window.statusBarColor)
+      assertEquals(Color.BLACK, window.navigationBarColor)
+      assertFalse(controller.isAppearanceLightStatusBars)
+      assertFalse(controller.isAppearanceLightNavigationBars)
       repository.session.tryEmit(null)
     }
     compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()

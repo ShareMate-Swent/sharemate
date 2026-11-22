@@ -1,21 +1,23 @@
 // Co-authored-by: Codex
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,9 +64,11 @@ object AuthTestTags {
 internal const val AUTH_PSEUDO_TEST_TAG = "auth_pseudo"
 
 /**
- * Presents the authentication form.
+ * Presents the authentication form: email log in, email sign up, or only the pseudo when a
+ * signed-in account still needs one.
  *
  * @param onPseudoChange Receives changes to the sign-up pseudo input.
+ * @param onBack Returns to the welcome screen; no back button is shown when it is null.
  */
 @Composable
 fun AuthScreen(
@@ -78,21 +82,31 @@ fun AuthScreen(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null
 ) {
-  AuthTheme {
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-      AuthForm(
-          state,
-          onEmailChange,
-          onPseudoChange,
-          onPasswordChange,
-          onConfirmPasswordChange,
-          onSubmit,
-          onSwitchMode,
-          onBack)
+  Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    BoxWithConstraints(Modifier.imePadding(), contentAlignment = Alignment.TopCenter) {
+      Column(
+          modifier =
+              Modifier.widthIn(max = AuthLayout.maxContentWidth)
+                  .fillMaxWidth()
+                  .verticalScroll(rememberScrollState())
+                  .heightIn(min = this@BoxWithConstraints.maxHeight)
+                  .padding(Dimens.spacingL),
+          verticalArrangement = Arrangement.SpaceBetween) {
+            AuthForm(
+                state,
+                onEmailChange,
+                onPseudoChange,
+                onPasswordChange,
+                onConfirmPasswordChange,
+                onSubmit,
+                onBack)
+            AuthActions(state, onSubmit, onSwitchMode)
+          }
     }
   }
 }
 
+/** Header and fields of the form, at the top of the screen. */
 @Composable
 private fun AuthForm(
     state: AuthUiState,
@@ -101,113 +115,129 @@ private fun AuthForm(
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onSwitchMode: () -> Unit,
     onBack: (() -> Unit)?
 ) {
   val pseudoOnly = state.pendingProfileUpdate != null
   val signingUp = state.mode == AuthMode.SIGN_UP
+  val credentialsEnabled = !state.isLoading && !pseudoOnly
+  Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
+    onBack?.let {
+      AuthBackButton(
+          onClick = it,
+          enabled = credentialsEnabled,
+          modifier = Modifier.testTag(AuthTestTags.BACK))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
+      Text(
+          stringResource(
+              when {
+                pseudoOnly -> R.string.auth_choose_pseudo
+                signingUp -> R.string.auth_sign_up
+                else -> R.string.auth_welcome_back
+              }),
+          style = MaterialTheme.typography.displaySmall)
+      Text(
+          stringResource(
+              when {
+                pseudoOnly -> R.string.auth_choose_pseudo_subtitle
+                signingUp -> R.string.auth_sign_up_subtitle
+                else -> R.string.auth_log_in_subtitle
+              }),
+          style = MaterialTheme.typography.bodyLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (!pseudoOnly)
+        AuthTextField(
+            value = state.email,
+            onValueChange = onEmailChange,
+            label = stringResource(R.string.auth_email),
+            placeholder = stringResource(R.string.auth_email_placeholder),
+            enabled = credentialsEnabled,
+            keyboardOptions =
+                KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+            fieldModifier = Modifier.testTag(AuthTestTags.EMAIL))
+    if (signingUp || pseudoOnly) {
+      AuthTextField(
+          value = state.pseudo,
+          onValueChange = onPseudoChange,
+          label = stringResource(R.string.auth_pseudo),
+          enabled = !state.isLoading,
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+          fieldModifier = Modifier.testTag(AUTH_PSEUDO_TEST_TAG))
+    }
+    if (!pseudoOnly)
+        PasswordField(
+            value = state.password,
+            onValueChange = onPasswordChange,
+            label = stringResource(R.string.auth_password),
+            enabled = credentialsEnabled,
+            tag = AuthTestTags.PASSWORD,
+            mode = state.mode,
+            imeAction = if (signingUp) ImeAction.Next else ImeAction.Done,
+            onSubmit = onSubmit,
+            supportingText =
+                if (signingUp)
+                    stringResource(
+                        R.string.auth_password_hint, PasswordRules.MIN_LENGTH, TextLimits.PASSWORD)
+                else null)
+    if (signingUp && !pseudoOnly) {
+      PasswordField(
+          value = state.confirmPassword,
+          onValueChange = onConfirmPasswordChange,
+          label = stringResource(R.string.auth_confirm_password),
+          placeholder = stringResource(R.string.auth_confirm_password_placeholder),
+          enabled = credentialsEnabled,
+          tag = AuthTestTags.CONFIRM_PASSWORD,
+          mode = state.mode,
+          imeAction = ImeAction.Done,
+          onSubmit = onSubmit)
+    }
+    state.error?.let {
+      Text(
+          text = it.messageText(),
+          color = MaterialTheme.colorScheme.error,
+          style = MaterialTheme.typography.bodyMedium,
+          modifier =
+              Modifier.testTag(AuthTestTags.ERROR).semantics { liveRegion = LiveRegionMode.Polite })
+    }
+  }
+}
+
+/** Submit button and mode switch link, at the bottom of the screen. */
+@Composable
+private fun AuthActions(state: AuthUiState, onSubmit: () -> Unit, onSwitchMode: () -> Unit) {
+  val pseudoOnly = state.pendingProfileUpdate != null
+  val signingUp = state.mode == AuthMode.SIGN_UP
   Column(
-      modifier =
-          Modifier.fillMaxSize()
-              .imePadding()
-              .verticalScroll(rememberScrollState())
-              .padding(Dimens.spacingL),
-      verticalArrangement = Arrangement.spacedBy(Dimens.spacingM),
-      horizontalAlignment = Alignment.CenterHorizontally) {
-        onBack?.let {
-          TextButton(
-              onClick = it,
-              enabled = !state.isLoading && state.pendingProfileUpdate == null,
-              modifier = Modifier.align(Alignment.Start).testTag(AuthTestTags.BACK)) {
-                Text(stringResource(R.string.auth_back))
-              }
-        }
-        Text(stringResource(R.string.auth_title), style = MaterialTheme.typography.headlineLarge)
-        Text(
-            stringResource(
-                when {
-                  pseudoOnly -> R.string.auth_choose_pseudo
-                  signingUp -> R.string.auth_sign_up
-                  else -> R.string.auth_log_in
-                }),
-            style = MaterialTheme.typography.headlineMedium)
-        if (!pseudoOnly)
-            OutlinedTextField(
-                value = state.email,
-                onValueChange = onEmailChange,
-                label = { Text(stringResource(R.string.auth_email)) },
-                enabled = !state.isLoading && state.pendingProfileUpdate == null,
-                singleLine = true,
-                keyboardOptions =
-                    KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth().testTag(AuthTestTags.EMAIL))
-        if (signingUp || pseudoOnly) {
-          OutlinedTextField(
-              value = state.pseudo,
-              onValueChange = onPseudoChange,
-              label = { Text(stringResource(R.string.auth_pseudo)) },
-              enabled = !state.isLoading,
-              singleLine = true,
-              keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-              modifier = Modifier.fillMaxWidth().testTag(AUTH_PSEUDO_TEST_TAG))
-        }
-        if (!pseudoOnly)
-            PasswordField(
-                value = state.password,
-                onValueChange = onPasswordChange,
-                label = stringResource(R.string.auth_password),
-                enabled = !state.isLoading && state.pendingProfileUpdate == null,
-                tag = AuthTestTags.PASSWORD,
-                mode = state.mode,
-                imeAction = if (signingUp) ImeAction.Next else ImeAction.Done,
-                onSubmit = onSubmit)
-        if (signingUp && !pseudoOnly) {
-          PasswordField(
-              value = state.confirmPassword,
-              onValueChange = onConfirmPasswordChange,
-              label = stringResource(R.string.auth_confirm_password),
-              enabled = !state.isLoading && state.pendingProfileUpdate == null,
-              tag = AuthTestTags.CONFIRM_PASSWORD,
-              mode = state.mode,
-              imeAction = ImeAction.Done,
-              onSubmit = onSubmit)
-          Text(
-              stringResource(
-                  R.string.auth_password_hint, PasswordRules.MIN_LENGTH, TextLimits.PASSWORD),
-              style = MaterialTheme.typography.bodySmall)
-        }
-        state.error?.let {
-          Text(
-              text = it.messageText(),
-              color = MaterialTheme.colorScheme.error,
-              modifier =
-                  Modifier.testTag(AuthTestTags.ERROR).semantics {
-                    liveRegion = LiveRegionMode.Polite
-                  })
-        }
+      modifier = Modifier.fillMaxWidth().padding(top = Dimens.spacingL),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
         if (state.isLoading || state.isRestoringSession)
             CircularProgressIndicator(Modifier.testTag(AuthTestTags.LOADING))
-        Button(
+        AuthButton(
             onClick = onSubmit,
             enabled =
                 !state.isLoading &&
                     !state.isRestoringSession &&
                     (state.pendingProfileUpdate == null || state.session != null),
-            modifier = Modifier.fillMaxWidth().testTag(AuthTestTags.SUBMIT)) {
+            colors = authPrimaryButtonColors(),
+            modifier = Modifier.testTag(AuthTestTags.SUBMIT)) {
               Text(
                   stringResource(
                       if (pseudoOnly) R.string.auth_save_pseudo
                       else if (signingUp) R.string.auth_sign_up else R.string.auth_log_in))
             }
         if (!pseudoOnly) {
-          TextButton(
+          AuthLink(
+              prompt =
+                  stringResource(
+                      if (signingUp) R.string.auth_have_account else R.string.auth_new_here),
+              action =
+                  stringResource(
+                      if (signingUp) R.string.auth_log_in else R.string.auth_create_account),
               onClick = onSwitchMode,
               enabled = !state.isLoading,
-              modifier = Modifier.testTag(AuthTestTags.SWITCH_MODE)) {
-                Text(
-                    stringResource(
-                        if (signingUp) R.string.auth_have_account else R.string.auth_need_account))
-              }
+              modifier = Modifier.testTag(AuthTestTags.SWITCH_MODE))
         }
       }
 }
@@ -221,28 +251,32 @@ private fun PasswordField(
     tag: String,
     mode: AuthMode,
     imeAction: ImeAction,
-    onSubmit: () -> Unit
+    onSubmit: () -> Unit,
+    placeholder: String? = null,
+    supportingText: String? = null,
 ) {
   var visible by remember(mode) { mutableStateOf(false) }
-  OutlinedTextField(
+  AuthTextField(
       value = value,
       onValueChange = onValueChange,
-      label = { Text(label) },
+      label = label,
+      placeholder = placeholder,
+      supportingText = supportingText,
       enabled = enabled,
-      singleLine = true,
       visualTransformation =
           if (visible) VisualTransformation.None else PasswordVisualTransformation(),
       trailingIcon = {
         TextButton(onClick = { visible = !visible }, enabled = enabled) {
           Text(
               stringResource(
-                  if (visible) R.string.auth_hide_password else R.string.auth_show_password))
+                  if (visible) R.string.auth_hide_password else R.string.auth_show_password),
+              style = MaterialTheme.typography.labelMedium)
         }
       },
       keyboardOptions =
           KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = imeAction),
       keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-      modifier = Modifier.fillMaxWidth().testTag(tag))
+      fieldModifier = Modifier.testTag(tag))
 }
 
 /** The message of this error, including the limit for the errors that name one. */

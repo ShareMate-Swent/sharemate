@@ -1,20 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com> -->
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
-    <string name="auth_title">ShareMate</string>
     <string name="auth_log_in">Log in</string>
     <string name="auth_sign_up">Sign up</string>
     <string name="auth_email">Email</string>
+    <string name="auth_email_placeholder">you@example.com</string>
+    <string name="auth_welcome_back">Welcome back</string>
+    <string name="auth_log_in_subtitle">Log in to see your shared fridge.</string>
+    <string name="auth_sign_up_subtitle">Create your account to share a fridge.</string>
+    <string name="auth_choose_pseudo_subtitle">This is the name your housemates will see.</string>
     <string name="auth_pseudo">Pseudo</string>
     <string name="auth_choose_pseudo">Choose a unique pseudo</string>
     <string name="auth_save_pseudo">Save pseudo and continue</string>
     <string name="auth_password">Password</string>
     <string name="auth_confirm_password">Confirm password</string>
+    <string name="auth_confirm_password_placeholder">Repeat your password</string>
     <string name="auth_password_hint">Use %1$d to %2$d characters.</string>
     <string name="auth_show_password">Show</string>
     <string name="auth_hide_password">Hide</string>
-    <string name="auth_need_account">New here? Sign up</string>
-    <string name="auth_have_account">Already have an account? Log in</string>
+    <string name="auth_have_account">Already have an account?</string>
+    <string name="auth_new_here">New here?</string>
     <string name="auth_error_email">Enter a valid email address.</string>
     <string name="auth_error_pseudo_required">Enter a pseudo.</string>
     <string name="auth_error_pseudo_taken">That pseudo is already in use. Choose another one.</string>
@@ -30,10 +36,10 @@
     <string name="auth_error_provider_disabled">This sign-in method is currently unavailable. Please try again later.</string>
     <string name="auth_error_unknown">Something went wrong. Please try again.</string>
     <string name="auth_sign_out">Sign out</string>
-    <string name="auth_welcome_title">Welcome to your\nshared fridge</string>
-    <string name="auth_welcome_description">Sign in to access your household’s fridge, recipes and shared receipts. Everything together, for everyone at home.</string>
+    <string name="auth_welcome_title">Share the fridge.\nSplit the bills.</string>
+    <string name="auth_welcome_description">ShareMate keeps your flat organised: what’s in the fridge, who paid for what, and a chat for the house.</string>
     <string name="auth_create_account">Create an account</string>
-    <string name="auth_sign_in_required">Sign-in is required to continue.</string>
+    <string name="auth_sign_in_with_email">Sign in with email</string>
     <string name="auth_back">Back</string>
     <string name="auth_google_sign_in">Continue with Google</string>
     <string name="auth_error_google_unavailable">Google sign-in is unavailable. Please use email or try again later.</string>
