@@ -38,8 +38,9 @@ interface ChatRepository {
   /**
    * Posts an incident reported by [senderId]: a [description] and the [photo] already uploaded with
    * `IncidentPhotoRepository.upload`. The photo must have been uploaded by [senderId] for
-   * [householdId]. Returns the new message id after acknowledgement, or null if invalid or failed.
-   * The cached profile name is preferred; [senderName] is used on a cache miss.
+   * [householdId] and must exist in Storage; a missing photo, or a check that cannot be made,
+   * refuses the post. Returns the new message id after acknowledgement, or null if invalid or
+   * failed. The cached profile name is preferred; [senderName] is used on a cache miss.
    */
   suspend fun sendIncident(
       householdId: String,

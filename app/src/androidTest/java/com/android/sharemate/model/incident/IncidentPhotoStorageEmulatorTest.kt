@@ -1,7 +1,11 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.incident
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.chat.FirebaseChatRepository
+import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.utils.FirebaseEmulator
@@ -189,5 +193,31 @@ class IncidentPhotoStorageEmulatorTest {
             "incidents/$home/$owner/${UUID.randomUUID()}")) {
       denied { rawUpload(invalid) }
     }
+  }
+
+  @Test
+  fun existsIsTrueOnlyForAnUploadedPhoto() = runBlocking {
+    assertTrue(repository.exists(upload()).getOrThrow())
+    assertFalse(repository.exists(IncidentPhotoReference(path())).getOrThrow())
+  }
+
+  @Test
+  fun chatPostsAnIncidentOnlyWhenItsPhotoWasUploaded() = runBlocking {
+    val chat = FirebaseChatRepository(firestore, repository)
+    val missing = IncidentPhotoReference(path())
+    assertNull(chat.sendIncident(home, owner, "Owner", "Leak", missing))
+    val uploaded = upload()
+    val id = checkNotNull(chat.sendIncident(home, owner, "Owner", "Leak", uploaded))
+    val stored =
+        firestore
+            .collection(FirestoreCollections.HOUSEHOLDS)
+            .document(home)
+            .collection(FirestoreCollections.MESSAGES)
+            .get()
+            .await()
+            .documents
+    assertEquals(listOf(id), stored.map { it.id })
+    assertEquals(MessageType.INCIDENT.name, stored.single().getString("type"))
+    assertEquals(uploaded.path, stored.single().getString("incidentPhotoPath"))
   }
 }

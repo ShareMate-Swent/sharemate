@@ -1,7 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.incident
 
 import com.android.sharemate.model.image.PersonalPhotoRepository
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.storage.*
@@ -246,5 +248,27 @@ class FirebaseIncidentPhotoRepositoryTest {
     assertTrue(pendingDownload.isCancelled)
     verify(download).cancel()
     verify(remote, never()).delete()
+  }
+
+  @Test
+  fun existsReadsMetadataAndReportsWhetherThePhotoWasUploaded() = runTest {
+    `when`(remote.metadata).thenReturn(Tasks.forResult(mock(StorageMetadata::class.java)))
+    assertTrue(repository.exists(reference).getOrThrow())
+    verify(root).child(reference.path)
+    val missing = mock(StorageException::class.java)
+    `when`(missing.errorCode).thenReturn(StorageException.ERROR_OBJECT_NOT_FOUND)
+    `when`(remote.metadata).thenReturn(Tasks.forException(missing))
+    assertFalse(repository.exists(reference).getOrThrow())
+    verify(remote, never()).getStream(any(StreamDownloadTask.StreamProcessor::class.java))
+  }
+
+  @Test
+  fun existsReturnsOtherErrorsAndMissingSessionAsFailures() = runTest {
+    val denied = mock(StorageException::class.java)
+    `when`(denied.errorCode).thenReturn(StorageException.ERROR_NOT_AUTHORIZED)
+    `when`(remote.metadata).thenReturn(Tasks.forException(denied))
+    assertSame(denied, repository.exists(reference).exceptionOrNull())
+    `when`(auth.currentUser).thenReturn(null)
+    assertEquals("No signed-in user", repository.exists(reference).exceptionOrNull()?.message)
   }
 }

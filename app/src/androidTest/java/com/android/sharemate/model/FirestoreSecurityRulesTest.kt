@@ -11,6 +11,7 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.model.incident.IncidentPhotoRepository
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.push.FirebasePushTokenRepository
 import com.android.sharemate.model.text.TextLimits
@@ -41,6 +42,20 @@ import org.junit.runner.RunWith
 
 /** How long to wait for the emulator to deliver a written message to a listener. */
 private const val EMULATOR_TIMEOUT_MS = 10_000L
+
+/**
+ * Reports every incident photo as uploaded, so these tests reach the Firestore rules. The real
+ * Storage check is covered by IncidentPhotoStorageEmulatorTest.
+ */
+private object ExistingIncidentPhotos : IncidentPhotoRepository {
+  override suspend fun upload(householdId: String, expectedAuthorId: String, source: java.io.File) =
+      Result.failure<IncidentPhotoReference>(UnsupportedOperationException())
+
+  override suspend fun load(reference: IncidentPhotoReference) =
+      Result.failure<ByteArray>(UnsupportedOperationException())
+
+  override suspend fun exists(reference: IncidentPhotoReference) = Result.success(true)
+}
 
 /** Checks that `firestore.rules` rejects what the app must never be able to do. */
 @RunWith(AndroidJUnit4::class)
@@ -924,7 +939,7 @@ class FirestoreSecurityRulesTest {
   fun chatRepositoryWritesTextAndActivitiesUnderRules() = runBlocking {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
-    val chat = FirebaseChatRepository(firestore)
+    val chat = FirebaseChatRepository(firestore, ExistingIncidentPhotos)
     Tasks.await(
         firestore
             .collection(FirestoreCollections.PROFILES)
@@ -1172,7 +1187,7 @@ class FirestoreSecurityRulesTest {
   fun chatRepositorySendsAndReadsIncidentUnderRules() = runBlocking {
     val household = createHouseholdAs("creator")
     val senderId = checkNotNull(FirebaseEmulator.auth.uid)
-    val chat = FirebaseChatRepository(firestore)
+    val chat = FirebaseChatRepository(firestore, ExistingIncidentPhotos)
     Tasks.await(
         firestore
             .collection(FirestoreCollections.PROFILES)

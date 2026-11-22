@@ -7,6 +7,7 @@ import android.util.Log
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
 import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.model.incident.IncidentPhotoRepository
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -22,7 +23,14 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
-class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRepository {
+/**
+ * Firestore-backed chat. [incidentPhotos] is used to check that an incident's photo was really
+ * uploaded before the incident is posted, since Firestore rules cannot read Storage.
+ */
+class FirebaseChatRepository(
+    private val firestore: FirebaseFirestore,
+    private val incidentPhotos: IncidentPhotoRepository,
+) : ChatRepository {
 
   private fun messages(householdId: String) =
       firestore
@@ -94,6 +102,8 @@ class FirebaseChatRepository(private val firestore: FirebaseFirestore) : ChatRep
         photo.householdId != householdId ||
         photo.authorId != senderId)
         return null
+    // Never post a message whose photo can never load; a failed check also refuses.
+    if (incidentPhotos.exists(photo).getOrNull() != true) return null
     return post(
         householdId,
         senderId,

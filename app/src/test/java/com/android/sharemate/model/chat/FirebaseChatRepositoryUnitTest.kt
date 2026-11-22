@@ -5,6 +5,7 @@ package com.android.sharemate.model.chat
 
 import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.model.incident.IncidentPhotoRepository
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
@@ -19,6 +20,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.Source
+import java.io.File
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +46,7 @@ class FirebaseChatRepositoryUnitTest {
   private lateinit var profileReference: DocumentReference
   private lateinit var profile: DocumentSnapshot
   private lateinit var repository: FirebaseChatRepository
+  private val photos = FakeIncidentPhotos()
 
   @Before
   fun setUp() {
@@ -66,7 +69,7 @@ class FirebaseChatRepositoryUnitTest {
     `when`(profileReference.get(Source.SERVER)).thenReturn(Tasks.forResult(profile))
     `when`(profile.exists()).thenReturn(true)
     `when`(profile.getString("displayName")).thenReturn("Ann")
-    repository = FirebaseChatRepository(firestore)
+    repository = FirebaseChatRepository(firestore, photos)
   }
 
   @Test
@@ -501,6 +504,24 @@ class FirebaseChatRepositoryUnitTest {
         assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", otherHome))
         assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", otherAuthor))
         verify(document, never()).set(any())
+        assertTrue(photos.checked.isEmpty())
+      }
+
+  @Test
+  fun sendIncident_nonexistentPhoto_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        photos.exists = Result.success(false)
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", incidentPhoto))
+        assertEquals(listOf(incidentPhoto), photos.checked)
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendIncident_photoCheckFailure_returnsNullWithoutWriting() =
+      runBlocking<Unit> {
+        photos.exists = Result.failure(IllegalStateException("offline"))
+        assertNull(repository.sendIncident("h1", "u1", "Ann", "Leak", incidentPhoto))
+        verify(document, never()).set(any())
       }
 
   @Test
@@ -519,6 +540,7 @@ class FirebaseChatRepositoryUnitTest {
         assertEquals("Leak", captor.value["text"])
         assertEquals(incidentPhoto.path, captor.value["incidentPhotoPath"])
         assertTrue(captor.value.keys.none { it == "itemName" || it == "itemImageUrl" })
+        assertEquals(listOf(incidentPhoto), photos.checked)
       }
 
   @Test
@@ -578,6 +600,26 @@ class FirebaseChatRepositoryUnitTest {
     `when`(doc.getString("text")).thenReturn(text)
     `when`(doc.getString("incidentPhotoPath")).thenReturn(photoPath)
     return doc
+  }
+
+  /** Answers [exists] for every photo and records which references were checked. */
+  private class FakeIncidentPhotos : IncidentPhotoRepository {
+    var exists: Result<Boolean> = Result.success(true)
+    val checked = mutableListOf<IncidentPhotoReference>()
+
+    override suspend fun upload(
+        householdId: String,
+        expectedAuthorId: String,
+        source: File
+    ): Result<IncidentPhotoReference> = error("Not used")
+
+    override suspend fun load(reference: IncidentPhotoReference): Result<ByteArray> =
+        error("Not used")
+
+    override suspend fun exists(reference: IncidentPhotoReference): Result<Boolean> {
+      checked += reference
+      return exists
+    }
   }
 
   private companion object {
