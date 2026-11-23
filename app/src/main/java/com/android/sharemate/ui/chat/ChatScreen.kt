@@ -3,7 +3,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
-import android.view.WindowManager
+import android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+import android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -174,8 +175,8 @@ fun ChatContent(
 
 /**
  * Makes the window resize instead of pan while the chat is shown, so opening the keyboard shrinks
- * the message list rather than pushing the whole screen (and messages that would still fit) up
- * out of view. The previous soft input mode is restored when the chat leaves composition.
+ * the message list rather than pushing the whole screen (and messages that would still fit) up out
+ * of view. The previous soft input mode is restored when the chat leaves composition.
  */
 @Composable
 private fun ResizeWindowForKeyboard() {
@@ -189,8 +190,7 @@ private fun ResizeWindowForKeyboard() {
 
 /** Returns [softInputMode] with its adjust flags replaced by `SOFT_INPUT_ADJUST_RESIZE`. */
 internal fun withAdjustResize(softInputMode: Int): Int =
-    (softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
-        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+    (softInputMode and SOFT_INPUT_MASK_ADJUST.inv()) or SOFT_INPUT_ADJUST_RESIZE
 
 @Composable
 private fun MessageList(messages: List<Message>, currentUserId: String) {
