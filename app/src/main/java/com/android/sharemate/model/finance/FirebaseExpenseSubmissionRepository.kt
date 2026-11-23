@@ -13,6 +13,49 @@ import kotlinx.coroutines.tasks.await
 /** Inject a Functions instance configured for [REGION], with the current authenticated session. */
 class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctions) :
     ExpenseSubmissionRepository {
+  override suspend fun deleteReceipt(householdId: String, id: String) {
+    val result =
+        functions
+            .getHttpsCallable("deleteReceipt")
+            .call(mapOf("householdId" to householdId, "id" to id))
+            .await()
+            .data
+    check(result == mapOf("id" to id)) { "Unexpected deletion response" }
+  }
+
+  override suspend fun correctReceipt(
+      correction: com.android.sharemate.model.staging.ReceiptCorrection
+  ) {
+    fun expense(value: SharedExpense) =
+        mapOf(
+            ID to value.id,
+            HOUSEHOLD_ID to value.householdId,
+            PAID_BY to value.paidBy,
+            TOTAL_AMOUNT_CENTS to value.totalAmountCents.toString(),
+            SHARES to value.shares.mapValues { it.value.toString() })
+    fun rows(value: com.android.sharemate.model.item.InventorySubmission) =
+        value.items.map {
+          mapOf(
+              "id" to it.id,
+              "name" to it.name,
+              "quantity" to it.quantity,
+              "priceCents" to it.priceCents?.toString())
+        }
+    val payload =
+        mapOf(
+            "operationId" to correction.operationId,
+            "ownerId" to correction.original.ownerId,
+            "originalRows" to rows(correction.original),
+            "rows" to rows(correction.replacement),
+            "originalExpense" to correction.original.expense?.let(::expense),
+            "expense" to expense(checkNotNull(correction.replacement.expense)),
+            "title" to correction.title)
+    val response = functions.getHttpsCallable("correctReceipt").call(payload).await().data
+    check(response == mapOf("operationId" to correction.operationId)) {
+      "Unexpected correction response"
+    }
+  }
+
   override suspend fun recordExpense(expense: SharedExpense): SharedExpense {
     val payload =
         mapOf(

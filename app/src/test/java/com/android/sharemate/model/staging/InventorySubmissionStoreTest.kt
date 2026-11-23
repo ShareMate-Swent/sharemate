@@ -361,7 +361,7 @@ class InventorySubmissionStoreTest {
             { it.put(Fields.INVENTORY_CONFIRMED, "true") },
             { it.put(Fields.EXPENSE_PROGRESS, "invalid") },
             { it.getJSONObject(Fields.EXPENSE).put("totalAmountCents", "1000") },
-            { it.getJSONObject(Fields.EXPENSE).put("paidBy", "other") },
+            { it.getJSONObject(Fields.EXPENSE).put("paidBy", "") },
             { it.getJSONObject(Fields.EXPENSE).getJSONObject("shares").put("bob", 1.5) })) {
       val corrupt = JSONObject(original).also(mutate)
       preferences.edit().putString(key, corrupt.toString()).commit()

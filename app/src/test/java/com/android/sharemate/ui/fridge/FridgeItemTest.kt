@@ -49,6 +49,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @Config(sdk = [28], qualifiers = "w360dp-h800dp")
 @RunWith(AndroidJUnit4::class)
@@ -58,6 +59,7 @@ class FridgeItemTest {
   private val pending = CopyOnWriteArrayList<PendingImage>()
   private val loaders = mutableListOf<ImageLoader>()
   private val files = mutableListOf<File>()
+  private val localFailures = CopyOnWriteArrayList<Throwable>()
   private val item = mutableStateOf(Item(id = "milk", name = "Milk", householdId = "household-1"))
 
   @After
@@ -93,7 +95,9 @@ class FridgeItemTest {
             add(
                 Interceptor { chain ->
                   check(!chain.request.data.toString().startsWith("http"))
-                  chain.proceed(chain.request)
+                  chain.proceed(chain.request).also { result ->
+                    if (result is ErrorResult) localFailures += result.throwable
+                  }
                 })
           }
           .build()
@@ -128,7 +132,12 @@ class FridgeItemTest {
       ItemImage(origin = ItemImageOrigin.REMOTE_IMAGE, reference = reference)
 
   private fun waitFor(tag: String) {
-    compose.waitUntil(5000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().size == 1 }
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(tag).fetchSemanticsNodes().size == 1 ||
+          (tag == C.Tag.fridge_image && localFailures.isNotEmpty())
+    }
+    if (tag == C.Tag.fridge_image && localFailures.isNotEmpty())
+        throw AssertionError("Local photo could not be decoded", localFailures.first())
     compose.onNodeWithTag(tag).assertIsDisplayed()
   }
 
@@ -276,11 +285,12 @@ class FridgeItemTest {
   }
 
   @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
   fun localFilePathAndFileUriAreDecodedByCoil() {
     val file = File.createTempFile("food", ".png", context.cacheDir).also { files += it }
     val bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
     bitmap.eraseColor(Color.BLUE)
-    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    file.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     bitmap.recycle()
     item.value = item.value.copy(image = ItemImage(reference = file.absolutePath))
     show(localLoader())
