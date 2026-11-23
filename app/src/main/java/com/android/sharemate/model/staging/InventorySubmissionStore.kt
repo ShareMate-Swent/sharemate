@@ -19,6 +19,8 @@ import org.json.JSONObject
  * Private durable receipt handoff. Persist before enqueueing; retain prices after inventory save.
  */
 interface InventorySubmissionStore {
+  /** Re-enqueues retained work after an interrupted process, without replacing running jobs. */
+  suspend fun resumeSync(ownerId: String, householdId: String) {}
   /**
    * Applies explicit server deletion markers without interpreting missing snapshots as deletion.
    */
@@ -103,10 +105,30 @@ class AndroidInventorySubmissionStore(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val legacyActive: Boolean = false,
+    private val scheduleSync: Boolean = false,
 ) : InventorySubmissionStore {
   private val applicationContext = context.applicationContext
   private val preferences
     get() = applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+  override suspend fun resumeSync(ownerId: String, householdId: String) {
+    if (!scheduleSync || legacyActive) return
+    for (receipt in list(ownerId, householdId) + sharedReceipts(ownerId, householdId)) {
+      if (receipt.ownerId == ownerId ||
+          pendingCorrection(receipt.ownerId, householdId, receipt.id) != null)
+          ReceiptSyncWorker.enqueue(applicationContext, receipt, replace = false)
+    }
+    withContext(dispatcher) {
+      val prefix = "deleted:${key(ownerId, householdId)}:"
+      for (entry in
+          preferences.all.filterKeys { it.startsWith(prefix) }.filterValues { it == true }) {
+        val receipt =
+            InventorySubmission(
+                entry.key.removePrefix(prefix), ownerId, householdId, emptyList(), draft = true)
+        ReceiptSyncWorker.enqueue(applicationContext, receipt, delete = true, replace = false)
+      }
+    }
+  }
 
   override suspend fun applyCloudDeletions(ownerId: String, householdId: String, ids: Set<String>) {
     val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher)
@@ -140,7 +162,8 @@ class AndroidInventorySubmissionStore(
       householdId: String,
       entries: List<com.android.sharemate.model.receipt.ReceiptCloudEntry>
   ) {
-    val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher)
+    val cache =
+        AndroidInventorySubmissionStore(applicationContext, dispatcher, scheduleSync = false)
     val shared =
         entries.filter {
           it.submission.ownerId != viewerId &&
@@ -243,6 +266,7 @@ class AndroidInventorySubmissionStore(
                   .putBoolean("deleted:$scope:$id", true)
                   .putString(indexKey(scope), JSONArray(remaining).toString())
                   .commit())
+          if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, submission, delete = true)
         }
       }
 
@@ -273,6 +297,10 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun saveDetails(details: ReceiptDetails) {
     saveDetailsLocally(details)
+    if (scheduleSync && !legacyActive)
+        loadById(details.ownerId, details.householdId, details.id)?.let {
+          ReceiptSyncWorker.enqueue(applicationContext, it)
+        }
   }
 
   private suspend fun saveDetailsLocally(details: ReceiptDetails) =
@@ -300,6 +328,9 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun save(submission: InventorySubmission) {
     saveLocally(submission)
+    if (scheduleSync && !legacyActive) {
+      ReceiptSyncWorker.enqueue(applicationContext, submission)
+    }
   }
 
   private suspend fun saveLocally(submission: InventorySubmission) =
@@ -407,6 +438,7 @@ class AndroidInventorySubmissionStore(
                     "correction:${key(original.ownerId, original.householdId)}:${original.id}",
                     json.toString())
                 .commit())
+        if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, original)
       }
 
   override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) =
