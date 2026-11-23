@@ -262,6 +262,9 @@ class FridgeScreenTest {
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
