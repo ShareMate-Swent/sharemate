@@ -25,7 +25,6 @@ import coil.size.Scale
 import java.io.File
 import java.io.IOException
 import java.util.UUID
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,22 +32,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okio.Buffer
-
-sealed interface FridgeImageReference
-
-internal data class RemoteFridgeImageReference(val url: String) : FridgeImageReference
 
 /** Image requests and access lifecycle for one authorized fridge session. */
 interface FridgeImageCacheSession {
   val isActive: StateFlow<Boolean>
   val imageLoader: ImageLoader
 
-  fun request(
-      context: Context,
-      reference: FridgeImageReference,
-      downloadPhoto: suspend (PersonalPhotoReference) -> ByteArray,
-  ): ImageRequest
+  fun withCache(request: ImageRequest): ImageRequest
 
   suspend fun revoke()
 }
@@ -69,14 +61,27 @@ internal class FridgeImageCache(
     callFactory: Call.Factory? = null,
 ) {
   private val sessions = mutableMapOf<Scope, Session>()
-  private val inFlight = mutableMapOf<MemoryCache.Key, CompletableDeferred<ImageResult?>>()
   private val loader =
       ImageLoader.Builder(context)
           .diskCache(diskCache)
           // Check connectivity once on a cache miss for both Firebase and HTTP.
           .networkObserverEnabled(false)
           .apply { if (callFactory != null) callFactory(callFactory) }
-          .components { add(Interceptor(::intercept)) }
+          .components {
+            add(Interceptor(::intercept))
+            add(
+                Fetcher.Factory<DiskThumbnail> { thumbnail, _, _ ->
+                  Fetcher {
+                    val snapshot =
+                        diskCache.openSnapshot(thumbnail.key)
+                            ?: throw IOException("Thumbnail missing")
+                    SourceResult(
+                        ImageSource(snapshot.data, diskCache.fileSystem, closeable = snapshot),
+                        "image/png",
+                        DataSource.DISK)
+                  }
+                })
+          }
           .build()
 
   fun session(userId: String, householdId: String): FridgeImageCacheSession =
@@ -115,18 +120,28 @@ internal class FridgeImageCache(
 
     fun hasAccess() = active.value && isCurrentUser(scope.userId)
 
-    override fun request(
-        context: Context,
-        reference: FridgeImageReference,
-        downloadPhoto: suspend (PersonalPhotoReference) -> ByteArray,
-    ): ImageRequest =
-        fridgeThumbnailRequest(context, THUMBNAIL_PIXELS)
-            .data(Thumbnail(this, reference, downloadPhoto))
-            .scale(Scale.FIT)
-            .precision(Precision.INEXACT)
-            .allowHardware(false)
-            .diskCachePolicy(CachePolicy.DISABLED)
-            .build()
+    override fun withCache(request: ImageRequest): ImageRequest {
+      val data = request.data
+      val source =
+          when (data) {
+            is PersonalPhotoReference -> "firebase:$storageBucket/${data.path}"
+            is String -> {
+              if (data.toHttpUrlOrNull() == null) return request
+              "web:$data"
+            }
+            else -> return request
+          }
+      val diskKey = "${scope.userId}\u0000${scope.householdId}\u0000$source"
+      return request
+          .newBuilder()
+          .data(Thumbnail(this, diskKey, data))
+          .size(THUMBNAIL_PIXELS, THUMBNAIL_PIXELS)
+          .scale(Scale.FIT)
+          .precision(Precision.INEXACT)
+          .allowHardware(false)
+          .diskCachePolicy(CachePolicy.DISABLED)
+          .build()
+    }
 
     override suspend fun revoke() = purge(this) { it == scope }
   }
@@ -134,33 +149,12 @@ internal class FridgeImageCache(
   private suspend fun intercept(chain: Interceptor.Chain): ImageResult {
     val data = chain.request.data as? Thumbnail ?: return chain.proceed(chain.request)
     val session = data.session
-    val diskKey = data.diskKey()
-    val memoryKey = MemoryCache.Key("${session.generation}:$diskKey")
+    val memoryKey = MemoryCache.Key("${session.generation}:${data.diskKey}")
     val request = chain.request.newBuilder().memoryCacheKey(memoryKey).build()
+    if (!session.hasAccess()) return denied(request)
     try {
-      while (session.hasAccess()) {
-        val pending = CompletableDeferred<ImageResult?>()
-        val existing = synchronized(inFlight) { inFlight.putIfAbsent(memoryKey, pending) }
-        val result =
-            if (existing == null) {
-              var loaded: ImageResult? = null
-              try {
-                load(chain, request, data, diskKey).also { loaded = it }
-              } finally {
-                synchronized(inFlight) { inFlight.remove(memoryKey) }
-                pending.complete(loaded)
-              }
-            } else {
-              // If the first card left composition, an active card can take over the load.
-              when (val shared = existing.await()) {
-                is SuccessResult -> shared.copy(request = request)
-                is ErrorResult -> shared.copy(request = request)
-                null -> continue
-              }
-            }
-        if (session.hasAccess()) return result
-      }
-      return denied(request)
+      val result = load(chain, request, data)
+      return if (session.hasAccess()) result else denied(request)
     } finally {
       // Coil may finish a memory write during or after a purge.
       if (!session.hasAccess()) loader.memoryCache?.remove(memoryKey)
@@ -171,50 +165,21 @@ internal class FridgeImageCache(
       chain: Interceptor.Chain,
       request: ImageRequest,
       data: Thumbnail,
-      diskKey: String,
   ): ImageResult {
-    val local = readThumbnail(chain, request, diskKey)
+    val cachedRequest = request.newBuilder().data(DiskThumbnail(data.diskKey)).build()
+    val local = chain.proceed(cachedRequest)
     if (local is SuccessResult) return local
     if (!isOnline()) return local
     if (!data.session.hasAccess()) return denied(request)
-    val network = request.newBuilder().memoryCachePolicy(CachePolicy.WRITE_ONLY)
-    when (val reference = data.reference) {
-      is PersonalPhotoReference -> network.firebasePhoto(reference, data.downloadPhoto)
-      is RemoteFridgeImageReference -> network.data(reference.url)
-    }
+    val network =
+        request.newBuilder().data(data.originalData).memoryCachePolicy(CachePolicy.WRITE_ONLY)
     val result = chain.proceed(network.build())
     if (result is SuccessResult) {
       withContext(Dispatchers.IO) {
-        saveThumbnail(data.session, diskKey, result.drawable as? BitmapDrawable)
+        saveThumbnail(data.session, data.diskKey, result.drawable as? BitmapDrawable)
       }
     }
     return result
-  }
-
-  private suspend fun readThumbnail(
-      chain: Interceptor.Chain,
-      request: ImageRequest,
-      key: String,
-  ): ImageResult {
-    val cachedRequest =
-        request
-            .newBuilder()
-            .data(DiskThumbnail(key))
-            .fetcherFactory<DiskThumbnail> { data, _, _ ->
-              Fetcher {
-                val snapshot = diskCache.openSnapshot(data.key) ?: throw ThumbnailNotCached()
-                SourceResult(
-                    ImageSource(snapshot.data, diskCache.fileSystem, closeable = snapshot),
-                    "image/png",
-                    DataSource.DISK)
-              }
-            }
-            .build()
-    return chain.proceed(cachedRequest).also { result ->
-      if (result is ErrorResult && result.throwable !is ThumbnailNotCached) {
-        withContext(Dispatchers.IO) { diskCache.remove(key) }
-      }
-    }
   }
 
   private fun saveThumbnail(session: Session, key: String, image: BitmapDrawable?) {
@@ -245,26 +210,11 @@ internal class FridgeImageCache(
   private fun denied(request: ImageRequest) =
       ErrorResult(null, request, IOException("Fridge image session is no longer active"))
 
-  private fun Thumbnail.diskKey(): String {
-    val source =
-        when (val image = reference) {
-          is PersonalPhotoReference -> "firebase:$storageBucket/${image.path}"
-          is RemoteFridgeImageReference -> "web:${image.url}"
-        }
-    return "${session.scope.userId}\u0000${session.scope.householdId}\u0000$source"
-  }
-
   private data class Scope(val userId: String, val householdId: String)
 
-  private data class Thumbnail(
-      val session: Session,
-      val reference: FridgeImageReference,
-      val downloadPhoto: suspend (PersonalPhotoReference) -> ByteArray,
-  )
+  private data class Thumbnail(val session: Session, val diskKey: String, val originalData: Any)
 
   private data class DiskThumbnail(val key: String)
-
-  private class ThumbnailNotCached : IOException()
 
   companion object {
     fun diskCache(directory: File): DiskCache =

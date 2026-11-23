@@ -5,7 +5,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
-import android.content.Context
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import coil.ImageLoader
@@ -25,8 +24,6 @@ import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTE
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.image.FridgeImageCacheSession
-import com.android.sharemate.model.image.FridgeImageReference
-import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
@@ -2109,11 +2106,7 @@ class FridgeViewModelTest {
           override val imageLoader: ImageLoader
             get() = error("Unexpected image loader")
 
-          override fun request(
-              context: Context,
-              reference: FridgeImageReference,
-              downloadPhoto: suspend (PersonalPhotoReference) -> ByteArray,
-          ): ImageRequest = error("Unexpected request")
+          override fun withCache(request: ImageRequest): ImageRequest = error("Unexpected request")
 
           override suspend fun revoke() {
             isActive.value = false

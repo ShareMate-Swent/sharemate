@@ -9,8 +9,7 @@ import coil.fetch.SourceResult
 import coil.request.ImageRequest
 import com.android.sharemate.model.HttpHeaders
 import com.android.sharemate.model.item.Item
-import com.android.sharemate.model.item.ItemImageOrigin
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import com.android.sharemate.model.item.isStoredPersonalPhoto
 import okio.Buffer
 
 internal fun fridgeThumbnailRequest(context: Context, pixels: Int): ImageRequest.Builder =
@@ -28,17 +27,16 @@ internal fun fridgeImageRequest(
 ): ImageRequest? {
   val image = item.image ?: return null
   val source = image.reference.takeIf { it.isNotBlank() } ?: return null
-  if (image.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-      PersonalPhotoReference.hasStoragePrefix(source)) {
+  val builder = fridgeThumbnailRequest(context, pixels)
+  if (image.isStoredPersonalPhoto()) {
     if (downloadPhoto == null || !PersonalPhotoReference.hasItemPrefix(source, item.id)) return null
     val reference = runCatching { PersonalPhotoReference(source) }.getOrNull() ?: return null
-    return session?.request(context, reference, downloadPhoto)
-        ?: fridgeThumbnailRequest(context, pixels).firebasePhoto(reference, downloadPhoto).build()
+    builder.firebasePhoto(reference, downloadPhoto)
+  } else {
+    builder.data(source)
   }
-  if (session != null && downloadPhoto != null && source.toHttpUrlOrNull() != null) {
-    return session.request(context, RemoteFridgeImageReference(source), downloadPhoto)
-  }
-  return fridgeThumbnailRequest(context, pixels).data(source).build()
+  val request = builder.build()
+  return session?.withCache(request) ?: request
 }
 
 internal fun ImageRequest.Builder.firebasePhoto(

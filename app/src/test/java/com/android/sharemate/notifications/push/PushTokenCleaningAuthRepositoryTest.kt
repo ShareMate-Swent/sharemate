@@ -70,15 +70,7 @@ class PushTokenCleaningAuthRepositoryTest {
           beforeSignOut = beforeSignOut)
 
   @Test
-  fun removesTheTokenBeforeSigningOut() = runTest {
-    repository().signOut()
-    runCurrent()
-
-    assertEquals(listOf("delete", "signOut"), events)
-  }
-
-  @Test
-  fun purgesTheCurrentAccountsPhotosBeforeSigningOut() = runTest {
+  fun purgesPhotosAndRemovesTheTokenBeforeSigningOut() = runTest {
     repository { events += "purge:$it" }.signOut()
     runCurrent()
     assertEquals(listOf("purge:alice", "delete", "signOut"), events)

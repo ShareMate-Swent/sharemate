@@ -29,11 +29,11 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.android.sharemate.R
 import com.android.sharemate.model.image.FoodImageLicenseIds
-import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.fridgeImageRequest
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
+import com.android.sharemate.model.item.isStoredPersonalPhoto
 import com.android.sharemate.resources.C
 
 private val ThumbnailSize = 80.dp
@@ -47,17 +47,13 @@ internal fun FridgeItemImage(
 ) {
   val cache = personalPhotos?.imageCache
   val accessRevoked = cache?.isActive?.collectAsState()?.value == false
-  val showProgress =
-      item.image?.let {
-        it.origin != ItemImageOrigin.PERSONAL_PHOTO ||
-            !PersonalPhotoReference.hasStoragePrefix(it.reference)
-      } == true
+  val showProgress = item.image?.isStoredPersonalPhoto() == false
   val context = LocalContext.current
   BoxWithConstraints(modifier.size(ThumbnailSize), contentAlignment = Alignment.Center) {
     val pixels = constraints.maxWidth.coerceAtLeast(1)
     key(item.id, item.image?.origin, item.image?.reference, personalPhotos) {
       val request =
-          remember(context, item.id, item.image, pixels, personalPhotos) {
+          remember(context, pixels) {
             fridgeImageRequest(context, item, pixels, cache, personalPhotos?.let { it::download })
           }
       if (request == null || accessRevoked) {

@@ -7,9 +7,9 @@ import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
-import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.isStoredPersonalPhoto
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -145,11 +145,7 @@ class PersonalPhotoController(
 
   suspend fun prepareRemoval(item: Item) {
     val upload = uploads[item.id]
-    val hasPhoto =
-        item.image?.let {
-          it.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-              PersonalPhotoReference.hasStoragePrefix(it.reference)
-        } == true
+    val hasPhoto = item.image?.isStoredPersonalPhoto() == true
     if (upload == null && !hasPhoto) return
     // Keep the item present until Storage authorizes and confirms removal.
     upload?.join()

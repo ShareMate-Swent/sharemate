@@ -19,7 +19,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
@@ -36,19 +35,12 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
         // The security rules only accept a query whose every result the caller may read, so it
         // must name both the household and either the shared items or the caller's own items.
         observe(
-                items.where(
-                    Filter.and(
-                        Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
-                        Filter.or(
-                            Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
-                            Filter.equalTo(ItemFields.OWNER_ID, userId)))))
-            .catch { error ->
-              if (error is FirebaseFirestoreException &&
-                  error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-                throw FridgeAccessDeniedException(error)
-              }
-              throw error
-            }
+            items.where(
+                Filter.and(
+                    Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
+                    Filter.or(
+                        Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
+                        Filter.equalTo(ItemFields.OWNER_ID, userId)))))
       }
 
   override suspend fun addItem(item: Item): String? {
@@ -235,15 +227,15 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     }
   }
 
-  private fun observe(
-      query: Query,
-      transform: (List<Item>) -> List<Item> = { it },
-  ): Flow<List<Item>> =
+  private fun observe(query: Query): Flow<List<Item>> =
       callbackFlow {
             val registration =
                 query.addSnapshotListener { snapshot, error ->
                   if (error != null) {
-                    close(error)
+                    close(
+                        if (error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
+                            FridgeAccessDeniedException(error)
+                        else error)
                     return@addSnapshotListener
                   }
                   // `snapshot` is nullable in Firestore's callback (though never null when there is
@@ -253,7 +245,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                   // `orEmpty()` turns a null result (null snapshot) into an empty list,
                   // so we always end up with a non-null List<Item>.
                   val parsed = snapshot?.documents?.mapNotNull { it.toItemOrNull() }.orEmpty()
-                  trySend(transform(parsed))
+                  trySend(parsed)
                 }
             awaitClose { registration.remove() }
           }

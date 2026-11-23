@@ -13,6 +13,7 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
@@ -386,11 +387,11 @@ class PersonalPhotoStorageEmulatorTest {
             storage.reference.bucket,
             { FirebaseEmulator.auth.uid == it },
             isOnline = { online })
-    suspend fun load(fridge: FridgeViewModel, reference: PersonalPhotoReference): SuccessResult {
+    suspend fun load(fridge: FridgeViewModel, item: Item): SuccessResult {
       val photos = checkNotNull(fridge.personalPhotos)
       val session = checkNotNull(photos.imageCache)
-      return session.imageLoader.execute(session.request(context, reference, photos::download))
-          as SuccessResult
+      val request = checkNotNull(fridgeImageRequest(context, item, 80, session, photos::download))
+      return session.imageLoader.execute(request) as SuccessResult
     }
     val files =
         object : PersonalPhotoFiles {
@@ -454,7 +455,7 @@ class PersonalPhotoStorageEmulatorTest {
       val reread =
           withTimeout(15_000) { member.uiState.first { it.items.isNotEmpty() } }.items.single()
       assertEquals(saved, reread)
-      val loaded = load(member, reference)
+      val loaded = load(member, reread)
       assertEquals(DataSource.NETWORK, loaded.dataSource)
 
       withContext(Dispatchers.Main) { models.clear() }
@@ -463,7 +464,7 @@ class PersonalPhotoStorageEmulatorTest {
           try {
             val reloaded = fridge(outsider, cache(online = false).session(outsider, home.id))
             withTimeout(15_000) { reloaded.uiState.first { it.items == listOf(reread) } }
-            val offline = load(reloaded, reference)
+            val offline = load(reloaded, reread)
             assertEquals(DataSource.DISK, offline.dataSource)
             assertEquals(
                 (loaded.drawable as BitmapDrawable).bitmap.getPixel(0, 0),
