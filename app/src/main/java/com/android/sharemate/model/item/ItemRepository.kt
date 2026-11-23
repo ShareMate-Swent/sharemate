@@ -32,6 +32,14 @@ interface ItemRepository {
       getFridgeItems(householdId, userId).map { FridgeSyncSnapshot(it, emptySet()) }
 
   /**
+   * Reads the same visible inventory as [getFridgeItems], requiring a server response without cache
+   * fallback. Blank scope returns an empty list without reading. Offline, permission and other read
+   * failures propagate; cancellation stops waiting. Locally pending writes may be overlaid on the
+   * server result by the SDK. This does not change queued-write behavior.
+   */
+  suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item>
+
+  /**
    * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to
    * its owner or shared with the household.
    *

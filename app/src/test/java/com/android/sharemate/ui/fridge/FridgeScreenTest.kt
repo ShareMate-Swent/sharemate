@@ -732,6 +732,9 @@ class FridgeScreenTest {
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = sharedItems
 
     override fun addItems(submission: InventorySubmission): ItemWrite =

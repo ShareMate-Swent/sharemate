@@ -1,5 +1,6 @@
 // Co-authored-by: Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.activity.ComponentActivity
@@ -17,6 +18,7 @@ import com.android.sharemate.model.auth.AuthError
 import com.android.sharemate.model.auth.AuthException
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.*
@@ -211,5 +213,24 @@ class AuthWelcomeScreenTest {
     override fun signOut() {
       session.value = null
     }
+  }
+
+  @Test
+  fun welcomeShowsThePitchAndTheRedesignedActions() {
+    compose.setContent { ShareMateTheme { AuthWelcomeScreen({}, {}) } }
+    val app = compose.activity
+    compose.onNodeWithText(app.getString(R.string.auth_welcome_title)).assertExists()
+    compose.onNodeWithText(app.getString(R.string.auth_welcome_description)).assertExists()
+    compose.onNodeWithTag(AuthTestTags.BRAND_HEADER).assertExists()
+    compose
+        .onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN)
+        .assertTextEquals(app.getString(R.string.auth_google_sign_in))
+    compose
+        .onNodeWithTag(AuthTestTags.WELCOME_LOGIN)
+        .assertTextEquals(app.getString(R.string.auth_sign_in_with_email))
+    compose
+        .onNodeWithTag(AuthTestTags.WELCOME_SIGNUP)
+        .assertTextEquals(
+            "${app.getString(R.string.auth_new_here)} ${app.getString(R.string.auth_create_account)}")
   }
 }

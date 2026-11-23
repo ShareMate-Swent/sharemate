@@ -242,6 +242,9 @@ class ItemRemovalTest {
     var returnFalseOnDelete = false
     var deleteConfirmation: CompletableDeferred<Result<Unit>>? = null
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         items.map { current ->
           current.filter {

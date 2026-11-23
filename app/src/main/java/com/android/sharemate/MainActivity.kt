@@ -118,7 +118,11 @@ import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
-import com.android.sharemate.ui.theme.ShareMateTheme
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.LocalLaunchVisible
+import com.android.sharemate.ui.startup.ReportLaunch
+import com.android.sharemate.ui.startup.ShareMateLaunch
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -237,7 +241,7 @@ open class MainActivity : ComponentActivity() {
     NotificationChannelRegistrar.from(applicationContext).registerAll()
     NotificationScheduler.schedule(applicationContext)
     setContent {
-      ShareMateTheme {
+      ShareMateLaunch {
         AuthHouseholdGate(
             authViewModel,
             authRepository,
@@ -258,8 +262,9 @@ open class MainActivity : ComponentActivity() {
                   if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
                 }
               }
-              LaunchedEffect(Unit) {
-                if (NotificationPermission.shouldRequest(this@MainActivity)) {
+              val launchVisible = LocalLaunchVisible.current
+              LaunchedEffect(launchVisible) {
+                if (!launchVisible && NotificationPermission.shouldRequest(this@MainActivity)) {
                   notificationPermissionLauncher.launch(NotificationPermission.PERMISSION)
                 }
               }
@@ -276,6 +281,9 @@ open class MainActivity : ComponentActivity() {
               }
               val currentRoute =
                   navController.currentBackStackEntryAsState().value?.destination?.route
+              if (currentRoute != null && currentRoute != TopLevelDestination.FRIDGE.route) {
+                ReportLaunch(LaunchStage.DESTINATION, LaunchStatus.READY)
+              }
               Scaffold(
                   modifier =
                       Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },

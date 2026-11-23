@@ -62,32 +62,46 @@ class ProfilePhotoViewModel(
 
   private var upload: Job? = null
   private var cleared = false
+  // Counts the selections started; only the latest one may change the preview or show an error.
+  private var latestSelection = 0
 
   /**
    * Copies the image at [uri] and shows it as the preview, replacing the previous one. On failure
    * the previous photo is kept and [ProfilePhotoError.INVALID_PHOTO] is shown. Ignored while
-   * uploading or once done.
+   * uploading or once done. When selections overlap, only the latest one counts: an older copy that
+   * finishes last is deleted, and its failure is not shown.
    *
    * @param fromCamera True for a camera capture, which is downscaled and encoded as JPEG.
    */
   suspend fun select(uri: String, fromCamera: Boolean) {
     if (!acceptsActions()) return
+    val selection = ++latestSelection
     val copy =
         try {
           files.copy(uri, fromCamera)
         } catch (cancelled: CancellationException) {
           throw cancelled
         } catch (_: Exception) {
-          mutableState.update { it.copy(error = ProfilePhotoError.INVALID_PHOTO) }
+          if (selection == latestSelection) {
+            mutableState.update { it.copy(error = ProfilePhotoError.INVALID_PHOTO) }
+          }
           return
         }
-    if (cleared || !acceptsActions()) {
+    if (cleared || !acceptsActions() || selection != latestSelection) {
       withContext(NonCancellable) { files.delete(copy) }
       return
     }
     val previous = state.value.photo
     mutableState.update { it.copy(photo = copy, error = null) }
     previous?.let { withContext(NonCancellable) { files.delete(it) } }
+  }
+
+  /**
+   * Copies an image picked straight from the gallery and shows it, like [select]. The copy runs in
+   * the ViewModel's scope, so it is not lost if the screen is recreated while it runs.
+   */
+  fun selectFromGallery(uri: String) {
+    viewModelScope.launch { select(uri, fromCamera = false) }
   }
 
   /**

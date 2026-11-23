@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -49,6 +50,9 @@ class FakeItemRepository : ItemRepository {
       submission: InventorySubmission
   ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
       error("Submission observation is not used in this test")
+
+  override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+      getFridgeItems(householdId, userId).first()
 
   /** Like the real repository: the household's SHARED items plus the user's own PERSONAL ones. */
   override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> {

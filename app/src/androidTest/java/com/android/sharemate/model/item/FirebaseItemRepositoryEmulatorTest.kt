@@ -68,6 +68,28 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
+  fun serverInventoryReadRequiresNetworkEvenWithWarmCache() = runBlocking {
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Rice", ownerId = owner, householdId = homeId)))
+    assertEquals(listOf(id), repository.getFridgeItemsFromServer(homeId, owner).map { it.id })
+    await(firestore.disableNetwork())
+    try {
+      assertTrue(
+          await(firestore.collection(FirestoreCollections.ITEMS).get(Source.CACHE))
+              .documents
+              .isNotEmpty())
+      try {
+        repository.getFridgeItemsFromServer(homeId, owner)
+        fail("A warm cache must not satisfy a server-only read")
+      } catch (failure: FirebaseFirestoreException) {
+        assertEquals(FirebaseFirestoreException.Code.UNAVAILABLE, failure.code)
+      }
+    } finally {
+      await(firestore.enableNetwork())
+    }
+  }
+
+  @Test
   fun imageAttachmentPreservesAllOtherFieldsAndRoundTripsCredits() = runBlocking {
     val household = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
     val original =

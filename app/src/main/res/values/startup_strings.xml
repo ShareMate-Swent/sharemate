@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<resources>
+    <string name="launch_progress">%1$d%%</string>
+    <string name="launch_failed">Unable to prepare your space. Check your connection and try again.</string>
+    <string name="launch_retry">Try again</string>
+</resources>

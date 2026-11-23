@@ -1,13 +1,14 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,41 +18,44 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.android.sharemate.R
+import com.android.sharemate.ui.startup.LocalLaunchState
+import com.android.sharemate.ui.startup.LocalLaunchVisible
+import com.android.sharemate.ui.startup.ShareMateBrand
 import com.android.sharemate.ui.theme.Dimens
+import com.android.sharemate.ui.theme.LightColorScheme
+import com.android.sharemate.ui.theme.ShareMateBrandColors
 
-private val WelcomeMaxWidth = 520.dp
-private val WelcomeTopSpacing = 56.dp
-private val FridgeIllustrationMaxWidth = 312.dp
-private val FridgeIllustrationCornerRadius = 28.dp
-private const val FRIDGE_ILLUSTRATION_ASPECT_RATIO = 624f / 560f
-
-private val GoogleButtonTextColor = Color(0xFF1F1F1F)
-private val GoogleButtonBorderColor = Color(0xFF747775)
-private val GoogleButtonIconSize = 20.dp
-private val GoogleButtonIconSpacing = 10.dp
-
+/**
+ * First screen of the entry flow: the handwritten brand, the app's pitch, and the ways to get in.
+ * Google is the main action; email log in and sign up open the form.
+ *
+ * @param onLogIn Opens the email log in form.
+ * @param onCreateAccount Opens the email sign up form.
+ * @param onGoogleSignIn Starts Google sign-in.
+ * @param isLoading Whether Google sign-in is running; every action is disabled meanwhile.
+ * @param error The last sign-in error, if any.
+ */
 @Composable
 fun AuthWelcomeScreen(
     onLogIn: () -> Unit,
@@ -61,96 +65,118 @@ fun AuthWelcomeScreen(
     isLoading: Boolean = false,
     error: AuthUiError? = null,
 ) {
-  AuthTheme {
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+  MaterialTheme(colorScheme = LightColorScheme) {
+    Surface(modifier.fillMaxSize(), color = Color.White) {
       BoxWithConstraints(contentAlignment = Alignment.TopCenter) {
         Column(
             modifier =
-                Modifier.widthIn(max = WelcomeMaxWidth)
+                Modifier.widthIn(max = AuthLayout.maxContentWidth)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .heightIn(min = this@BoxWithConstraints.maxHeight)
-                    .padding(Dimens.spacingL)
+                    .padding(vertical = Dimens.spacingL)
                     .testTag(AuthTestTags.WELCOME),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween) {
-              Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(WelcomeTopSpacing))
-                Image(
-                    painter = painterResource(R.drawable.auth_fridge),
-                    contentDescription = null,
-                    modifier =
-                        Modifier.widthIn(max = FridgeIllustrationMaxWidth)
-                            .fillMaxWidth()
-                            .aspectRatio(FRIDGE_ILLUSTRATION_ASPECT_RATIO)
-                            .clip(RoundedCornerShape(FridgeIllustrationCornerRadius)))
-                Spacer(Modifier.height(Dimens.spacingXl))
-                Text(
-                    text = stringResource(R.string.auth_welcome_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center)
-                Spacer(Modifier.height(Dimens.spacingM))
-                Text(
-                    text = stringResource(R.string.auth_welcome_description),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center)
-              }
+            verticalArrangement = Arrangement.Center) {
+              BrandHeader()
               Column(
-                  modifier = Modifier.padding(top = Dimens.spacingXl),
-                  horizontalAlignment = Alignment.CenterHorizontally) {
-                    error?.let {
-                      Text(
-                          stringResource(it.messageResource()),
-                          color = MaterialTheme.colorScheme.error,
-                          modifier = Modifier.testTag(AuthTestTags.ERROR))
-                    }
-                    if (isLoading) {
-                      CircularProgressIndicator(Modifier.testTag(AuthTestTags.GOOGLE_LOADING))
-                    }
-                    OutlinedButton(
-                        onClick = onGoogleSignIn,
-                        enabled = !isLoading,
-                        colors =
-                            ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White, contentColor = GoogleButtonTextColor),
-                        border = BorderStroke(Dimens.borderWidth, GoogleButtonBorderColor),
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .heightIn(min = Dimens.buttonHeight)
-                                .testTag(AuthTestTags.GOOGLE_SIGN_IN)) {
-                          Image(
-                              painterResource(R.drawable.google_g),
-                              contentDescription = null,
-                              modifier = Modifier.size(GoogleButtonIconSize))
-                          Spacer(Modifier.width(GoogleButtonIconSpacing))
-                          Text(stringResource(R.string.auth_google_sign_in))
-                        }
-                    Spacer(Modifier.height(Dimens.spacingS))
-                    Button(
-                        onClick = onLogIn,
-                        enabled = !isLoading,
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .heightIn(min = Dimens.buttonHeight)
-                                .testTag(AuthTestTags.WELCOME_LOGIN)) {
-                          Text(stringResource(R.string.auth_log_in))
-                        }
-                    TextButton(
-                        onClick = onCreateAccount,
-                        enabled = !isLoading,
-                        modifier = Modifier.testTag(AuthTestTags.WELCOME_SIGNUP)) {
-                          Text(stringResource(R.string.auth_create_account))
-                        }
+                  modifier =
+                      Modifier.padding(horizontal = Dimens.spacingL)
+                          .padding(top = Dimens.spacingXs),
+                  verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
                     Text(
-                        text = stringResource(R.string.auth_sign_in_required),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center)
+                        text = stringResource(R.string.auth_welcome_title),
+                        style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        text = stringResource(R.string.auth_welcome_description),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(Dimens.spacingXs))
+                    WelcomeActions(onLogIn, onCreateAccount, onGoogleSignIn, isLoading, error)
                   }
             }
       }
     }
   }
+}
+
+/** Keeps the ShareMate identity visible while the user chooses a sign-in method. */
+@Composable
+private fun BrandHeader(modifier: Modifier = Modifier) {
+  val launchState = LocalLaunchState.current
+  val launchVisible = LocalLaunchVisible.current
+  DisposableEffect(launchState) { onDispose { launchState?.welcomeBrandBounds = null } }
+  ShareMateBrand(
+      modifier =
+          modifier
+              .testTag(AuthTestTags.BRAND_HEADER)
+              .onGloballyPositioned {
+                val bounds = Rect(it.positionInRoot(), it.size.toSize())
+                launchState?.welcomeBrandBounds = bounds
+              }
+              .graphicsLayer { alpha = if (launchVisible) 0f else 1f })
+}
+
+@Composable
+private fun WelcomeActions(
+    onLogIn: () -> Unit,
+    onCreateAccount: () -> Unit,
+    onGoogleSignIn: () -> Unit,
+    isLoading: Boolean,
+    error: AuthUiError?,
+) {
+  Column(
+      Modifier.fillMaxWidth(),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+        error?.let {
+          Text(
+              stringResource(it.messageResource()),
+              color = MaterialTheme.colorScheme.error,
+              style = MaterialTheme.typography.bodyMedium,
+              modifier = Modifier.testTag(AuthTestTags.ERROR))
+        }
+        if (isLoading) {
+          CircularProgressIndicator(Modifier.testTag(AuthTestTags.GOOGLE_LOADING))
+        }
+        AuthButton(
+            onClick = onGoogleSignIn,
+            enabled = !isLoading,
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = ShareMateBrandColors.mintName, contentColor = Color.White),
+            modifier = Modifier.testTag(AuthTestTags.GOOGLE_SIGN_IN)) {
+              GoogleLogo()
+              Spacer(Modifier.width(Dimens.spacingS))
+              Text(stringResource(R.string.auth_google_sign_in))
+            }
+        AuthButton(
+            onClick = onLogIn,
+            enabled = !isLoading,
+            colors = authSecondaryButtonColors(),
+            modifier = Modifier.testTag(AuthTestTags.WELCOME_LOGIN)) {
+              Text(stringResource(R.string.auth_sign_in_with_email))
+            }
+        AuthLink(
+            prompt = stringResource(R.string.auth_new_here),
+            action = stringResource(R.string.auth_create_account),
+            onClick = onCreateAccount,
+            enabled = !isLoading,
+            modifier = Modifier.testTag(AuthTestTags.WELCOME_SIGNUP))
+      }
+}
+
+/**
+ * The Google "G" on a white disc. Google's branding asks for the logo on white, so the disc stays
+ * white in dark mode as well.
+ */
+@Composable
+private fun GoogleLogo() {
+  Box(
+      Modifier.size(AuthLayout.googleBadgeSize).background(Color.White, CircleShape),
+      contentAlignment = Alignment.Center) {
+        Image(
+            painterResource(R.drawable.google_g),
+            contentDescription = null,
+            modifier = Modifier.size(AuthLayout.googleLogoSize))
+      }
 }

@@ -250,6 +250,9 @@ class BarcodeFormFlowTest {
   }
 
   private class EmptyItems : ItemRepository {
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
     override fun addItems(submission: InventorySubmission): ItemWrite =

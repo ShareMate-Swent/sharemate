@@ -1,4 +1,5 @@
 // Co-authored-by: Codex
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -19,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.ReportLaunch
 import kotlinx.coroutines.launch
 
 /** Test tag for the progress indicator shown while an authenticated operation is finishing. */
@@ -34,23 +38,16 @@ fun AuthGate(
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val session = state.session
+  ReportLaunch(
+      LaunchStage.AUTH,
+      when {
+        state.isRestoringSession || (session != null && state.isLoading) -> LaunchStatus.WAITING
+        session == null || state.pendingProfileUpdate != null -> LaunchStatus.READY
+        else -> LaunchStatus.CONTINUE
+      })
   when {
-    state.isRestoringSession ->
-        AuthTheme(updateSystemBars = true) {
-          Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              CircularProgressIndicator(Modifier.testTag(AuthTestTags.RESTORING))
-            }
-          }
-        }
-    session != null && state.isLoading ->
-        AuthTheme(updateSystemBars = true) {
-          Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              CircularProgressIndicator(Modifier.testTag(AUTH_GATE_LOADING_TEST_TAG))
-            }
-          }
-        }
+    state.isRestoringSession -> AuthProgress(AuthTestTags.RESTORING, modifier)
+    session != null && state.isLoading -> AuthProgress(AUTH_GATE_LOADING_TEST_TAG, modifier)
     session != null && state.pendingProfileUpdate != null ->
         AuthEntryFlow(viewModel, state, modifier, googleTokenProvider)
     session != null -> content(session)
@@ -77,32 +74,40 @@ private fun AuthEntryFlow(
     if (state.pendingProfileUpdate != null) showForm = true
   }
   BackHandler(enabled = showForm && state.pendingProfileUpdate == null, onBack = goBack)
-  AuthTheme(updateSystemBars = true) {
-    if (showForm) {
-      AuthScreen(
-          state = state,
-          onEmailChange = viewModel::updateEmail,
-          onPseudoChange = viewModel::updatePseudo,
-          onPasswordChange = viewModel::updatePassword,
-          onConfirmPasswordChange = viewModel::updateConfirmPassword,
-          onSubmit = viewModel::submit,
-          onSwitchMode = viewModel::switchMode,
-          modifier = modifier,
-          onBack = goBack.takeIf { state.pendingProfileUpdate == null })
-    } else {
-      AuthWelcomeScreen(
-          onLogIn = {
-            viewModel.selectMode(AuthMode.LOGIN)
-            showForm = true
-          },
-          onCreateAccount = {
-            viewModel.selectMode(AuthMode.SIGN_UP)
-            showForm = true
-          },
-          modifier = modifier,
-          isLoading = state.isLoading,
-          error = state.error,
-          onGoogleSignIn = { scope.launch { viewModel.signInWithGoogle(googleTokenProvider) } })
+  if (showForm) {
+    AuthScreen(
+        state = state,
+        onEmailChange = viewModel::updateEmail,
+        onPseudoChange = viewModel::updatePseudo,
+        onPasswordChange = viewModel::updatePassword,
+        onConfirmPasswordChange = viewModel::updateConfirmPassword,
+        onSubmit = viewModel::submit,
+        onSwitchMode = viewModel::switchMode,
+        modifier = modifier,
+        onBack = goBack.takeIf { state.pendingProfileUpdate == null })
+  } else {
+    AuthWelcomeScreen(
+        onLogIn = {
+          viewModel.selectMode(AuthMode.LOGIN)
+          showForm = true
+        },
+        onCreateAccount = {
+          viewModel.selectMode(AuthMode.SIGN_UP)
+          showForm = true
+        },
+        modifier = modifier,
+        isLoading = state.isLoading,
+        error = state.error,
+        onGoogleSignIn = { scope.launch { viewModel.signInWithGoogle(googleTokenProvider) } })
+  }
+}
+
+/** A centred progress indicator on the background, shown while a session is being settled. */
+@Composable
+private fun AuthProgress(tag: String, modifier: Modifier) {
+  Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      CircularProgressIndicator(Modifier.testTag(tag))
     }
   }
 }

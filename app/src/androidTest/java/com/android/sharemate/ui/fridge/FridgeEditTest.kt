@@ -291,6 +291,9 @@ class FridgeEditTest {
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String) = items
 
     override fun addItems(submission: InventorySubmission): ItemWrite =
