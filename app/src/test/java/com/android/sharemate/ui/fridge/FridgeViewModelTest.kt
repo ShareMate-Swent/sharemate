@@ -418,6 +418,85 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun confirmationWithDifferentStatusClearsPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun pendingStoreCancellationDoesNotReportStatusError() = runTest {
+    repository.emitItems(listOf(milk))
+    pendingActivityStore.saveFailure = CancellationException("Save cancelled")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+  }
+
+  @Test
+  fun pendingStoreCancellationDuringReplayLeavesStoredActivity() = runTest {
+    val stale =
+        PendingFridgeActivity(
+            id = "missing:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = "Missing",
+        )
+    pendingActivityStore.save(stale)
+    pendingActivityStore.removeFailure = CancellationException("Remove cancelled")
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertEquals(listOf(stale), pendingActivityStore.list("test-household", "test-user"))
+  }
+
+  @Test
+  fun pendingStoreCancellationWhileLoadingReplayIsIgnored() = runTest {
+    pendingActivityStore.listFailure = CancellationException("List cancelled")
+    repository.emitItems(listOf(milk))
+
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertFalse(vm.uiState.value.loadFailed)
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun repeatedActivitySendFailuresDropPendingActivityAfterMaxAttempts() = runTest {
+    chatRepository.failure = IOException("Chat unavailable")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    repeat(3) {
+      repository.emitItems(listOf(milk))
+      runCurrent()
+      vm.setItemStatus(milk.id, ItemStatus.EATEN)
+      runCurrent()
+      assertEquals(it == 2, pendingActivityStore.list("test-household", "test-user").isEmpty())
+    }
+
+    assertEquals(3, chatRepository.attempts.size)
+  }
+
+  @Test
   fun pendingStoreRemoveFailureDoesNotFailStatusChange() = runTest {
     repository.emitItems(listOf(milk))
     pendingActivityStore.removeFailure = IOException("Cannot remove")

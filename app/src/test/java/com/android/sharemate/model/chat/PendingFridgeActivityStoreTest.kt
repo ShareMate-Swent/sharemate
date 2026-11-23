@@ -85,4 +85,26 @@ class PendingFridgeActivityStoreTest {
     assertTrue(store.list("home", "user").isEmpty())
     preferences.edit().clear().commit()
   }
+
+  @Test
+  fun entryWithNonObjectElementAndMissingFieldsIsIgnored() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidPendingFridgeActivityStore(app)
+    val preferences = app.getSharedPreferences("pending_fridge_activities", Context.MODE_PRIVATE)
+    preferences
+        .edit()
+        .putString(
+            "scope:home:user",
+            """[
+              7,
+              {"id":"a:EATEN","userId":"user","type":"EATEN","itemName":"Milk"},
+              {"id":"b:EATEN","householdId":"home","type":"EATEN","itemName":"Milk"},
+              {"id":"c:THROWN","householdId":"home","userId":"user","type":"THROWN","itemName":"Bread"}
+            ]""",
+        )
+        .commit()
+
+    assertEquals(listOf("c:THROWN"), store.list("home", "user").map { it.id })
+    preferences.edit().clear().commit()
+  }
 }
