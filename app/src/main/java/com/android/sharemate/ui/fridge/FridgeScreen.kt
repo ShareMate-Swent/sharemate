@@ -36,6 +36,9 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.ReportLaunch
 import com.android.sharemate.ui.theme.Dimens
 import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.delay
@@ -307,6 +310,16 @@ fun FridgeScreen(
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
+  ReportLaunch(
+      LaunchStage.DESTINATION,
+      when {
+        uiState.loadFailed -> LaunchStatus.ERROR
+        uiState.isLoading -> LaunchStatus.WAITING
+        visibleItems.map { it.id }.toSet() !=
+            uiState.items.filter { it.status == ItemStatus.ACTIVE }.map { it.id }.toSet() ->
+            LaunchStatus.WAITING
+        else -> LaunchStatus.READY
+      })
   val sortOrder by viewModel.sortOrder.collectAsState()
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()

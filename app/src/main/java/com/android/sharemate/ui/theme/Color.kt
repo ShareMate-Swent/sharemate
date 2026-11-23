@@ -142,6 +142,14 @@ internal val LightColorScheme: ColorScheme = colorSchemeOf(LightPalette, dark = 
 /** Material 3 color scheme of the app in dark mode. */
 internal val DarkColorScheme: ColorScheme = colorSchemeOf(DarkPalette, dark = true)
 
+/** Brand colors used by the ShareMate launch reveal and its entry actions. */
+internal object ShareMateBrandColors {
+  val darkName = Color(0xFF493052)
+  val mintName = Color(0xFF9168BB)
+  val progressTrack = Color(0xFFEEE8F4)
+  val progressLabel = Color(0xFF786780)
+}
+
 /**
  * A pair of colors for a pastel badge or tile: [container] fills the shape and [content] colors the
  * text or icon on it.
