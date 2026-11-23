@@ -76,21 +76,27 @@ class ReceiptHistoryFlowTest {
       }
     }
 
-    val review = compose.activity.getString(R.string.receipt_review_items)
-    compose.waitUntil(5_000) { compose.onAllNodesWithText(review).fetchSemanticsNodes().size == 2 }
-    compose.onAllNodesWithText(review).assertCountEquals(2)
+    val review = "receipt_card_"
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(review + secondId).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(review + firstId).assertExists()
+    compose.onNodeWithTag(review + secondId).performClick()
     compose.onAllNodesWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW)[0].performClick()
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertIsDisplayed()
     saveScreenshot("receipt-photo-large.png", ReceiptHistoryTestTags.PHOTO_EXPANDED)
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).performClick()
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertDoesNotExist()
-    compose.onAllNodesWithText(review)[0].performClick()
     compose.onNodeWithText("Bread").assertIsDisplayed()
     saveScreenshot("receipt-review.png")
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
-    compose.onAllNodesWithText(review).assertCountEquals(2)
+    compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(review + firstId).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(review + firstId).assertExists()
     saveScreenshot("receipt-history.png")
-    compose.onAllNodesWithText(review)[1].performClick()
+    compose.onNodeWithTag(review + firstId).performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
@@ -128,14 +134,16 @@ class ReceiptHistoryFlowTest {
 
     val saved = compose.activity.getString(R.string.receipt_status_saved)
     val pending = compose.activity.getString(R.string.inventory_save_pending)
-    val view = compose.activity.getString(R.string.receipt_view_receipt)
-    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().size == 2 }
-    compose.onNodeWithText(saved).assertIsDisplayed()
+    val view = "receipt_card_"
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(view + savedId).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onAllNodesWithText(saved).assertCountEquals(2)
     compose.onNodeWithText(pending).assertIsDisplayed()
-    compose.onAllNodesWithText(view)[0].performClick()
+    compose.onNodeWithTag(view + pendingId).performClick()
     compose.onNodeWithText("Bread").assertIsDisplayed()
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
-    compose.onAllNodesWithText(view)[1].performClick()
+    compose.onNodeWithTag(view + savedId).performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
@@ -155,8 +163,11 @@ class ReceiptHistoryFlowTest {
             onOpenBalances = { balancesOpened[0] = true })
       }
     }
-    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
-    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_action), substring = true)
+        .performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.onNodeWithTag("receipt_back").performClick()
     compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
     compose.runOnIdle { assertTrue(balancesOpened[0]) }
   }
@@ -180,14 +191,14 @@ class ReceiptHistoryFlowTest {
     compose.setContent {
       MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
     }
-    val review = compose.activity.getString(R.string.receipt_review_items)
+    val review = "receipt_card_$id"
     compose.waitUntil(5_000) {
-      compose.onAllNodesWithText(review).fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(review).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithText(review).performClick()
+    compose.onNodeWithTag(review).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    val view = compose.activity.getString(R.string.receipt_view_receipt)
-    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }
+    val view = "receipt_card_$id"
+    compose.waitUntil(5_000) { compose.onAllNodesWithTag(view).fetchSemanticsNodes().isNotEmpty() }
     compose.runOnIdle {
       org.junit.Assert.assertEquals(rows, submitted.single().items)
       org.junit.Assert.assertEquals(id, submitted.single().id)
@@ -218,9 +229,9 @@ class ReceiptHistoryFlowTest {
     compose.setContent {
       MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
     }
-    val view = compose.activity.getString(R.string.receipt_view_receipt)
-    compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }
-    compose.onNodeWithText(view).performClick()
+    val view = "receipt_card_$id"
+    compose.waitUntil(5_000) { compose.onAllNodesWithTag(view).fetchSemanticsNodes().isNotEmpty() }
+    compose.onNodeWithTag(view).performClick()
     val retry = compose.activity.getString(R.string.household_retry)
     compose.onNodeWithText(retry).performClick()
     compose.waitUntil(5_000) { attempts == 1 }

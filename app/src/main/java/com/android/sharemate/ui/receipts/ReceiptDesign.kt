@@ -1,0 +1,397 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+package com.android.sharemate.ui.receipts
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.android.sharemate.R
+import com.android.sharemate.ui.finance.BalancesTestTags
+import com.android.sharemate.ui.navigation.NavigationTestTags
+import java.text.DateFormat
+import java.util.Date
+
+/** Shared visual tokens for receipt history, review and sharing screens. */
+object ReceiptDesign {
+  val background = Color(0xFFF5F3FA)
+  val purple = Color(0xFF6E4BC3)
+  val ink = Color(0xFF251C35)
+  val muted = Color(0xFF756C82)
+  val border = Color(0xFFE6DEF0)
+  val lavender = Color(0xFFEEE8FA)
+}
+
+@Composable
+internal fun ReceiptExitDialog(
+    busy: Boolean,
+    failed: Boolean,
+    title: String = stringResource(R.string.receipt_exit_title),
+    saveLabel: String = stringResource(R.string.receipt_save_draft),
+    discardLabel: String = stringResource(R.string.receipt_discard),
+    onSaveDraft: () -> Unit,
+    onDiscard: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+  AlertDialog(
+      onDismissRequest = { if (!busy) onDismiss() },
+      title = { Text(title) },
+      text = {
+        if (failed)
+            Text(
+                stringResource(R.string.receipt_exit_failed),
+                color = MaterialTheme.colorScheme.error)
+      },
+      confirmButton = {
+        TextButton(
+            onClick = onSaveDraft,
+            enabled = !busy,
+            modifier = Modifier.testTag("receipt_save_draft")) {
+              Text(saveLabel)
+            }
+      },
+      dismissButton = {
+        TextButton(
+            onClick = onDiscard, enabled = !busy, modifier = Modifier.testTag("receipt_discard")) {
+              Text(discardLabel)
+            }
+      })
+}
+
+@Composable
+internal fun ReceiptSyncFeedback(
+    state: InventorySaveState?,
+    fallback: InventorySavePhase,
+    editFailed: Boolean,
+    onRetry: () -> Unit
+) {
+  val phase = state?.phase ?: fallback
+  val message =
+      when {
+        editFailed ||
+            phase in setOf(InventorySavePhase.FAILED, InventorySavePhase.RECOVERY_FAILED) ->
+            R.string.receipt_sync_failed
+        phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING) ->
+            R.string.receipt_sync_saving
+        phase == InventorySavePhase.PENDING -> R.string.receipt_sync_pending
+        else -> null
+      }
+  if (message != null)
+      Row(
+          Modifier.fillMaxWidth().padding(vertical = 8.dp),
+          verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(message),
+                Modifier.weight(1f).testTag(InventorySaveTestTags.STATUS),
+                color = ReceiptDesign.muted)
+            if (phase !in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING)) {
+              TextButton(
+                  onClick = onRetry, modifier = Modifier.testTag(InventorySaveTestTags.RETRY)) {
+                    Text(stringResource(R.string.receipt_sync_retry))
+                  }
+            }
+          }
+}
+
+@Composable
+/** Displays the completed portion of the three-step receipt workflow. */
+fun ReceiptProgress(completed: Int) {
+  Row(
+      Modifier.fillMaxWidth().padding(vertical = 16.dp).semantics {
+        progressBarRangeInfo = ProgressBarRangeInfo(completed.toFloat(), 0f..3f, 2)
+      },
+      horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        repeat(3) { index ->
+          Box(
+              Modifier.weight(1f)
+                  .height(5.dp)
+                  .background(
+                      if (index < completed) ReceiptDesign.purple else ReceiptDesign.border,
+                      RoundedCornerShape(5.dp)))
+        }
+      }
+}
+
+@Composable
+/** Centers secondary-page titles independently of back navigation and trailing actions. */
+fun ReceiptHeader(
+    title: String,
+    onBack: (() -> Unit)? = null,
+    backTag: String = "receipt_back",
+    actions: @Composable (() -> Unit)? = null,
+) {
+  Box(Modifier.fillMaxWidth().heightIn(min = 52.dp), contentAlignment = Alignment.Center) {
+    if (onBack != null)
+        TextButton(
+            onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).testTag(backTag)) {
+              Text("←", fontSize = 24.sp)
+            }
+    Text(
+        title,
+        fontSize = 26.sp,
+        fontWeight = FontWeight.Bold,
+        color = ReceiptDesign.ink,
+        modifier =
+            if (onBack == null)
+                Modifier.align(Alignment.CenterStart).testTag(NavigationTestTags.PAGE_CONTENT)
+            else Modifier)
+    actions?.let { content -> Box(Modifier.align(Alignment.CenterEnd)) { content() } }
+  }
+}
+
+@Composable
+internal fun ReceiptDashboard(
+    receipts: List<RetainedReceipt>,
+    showBalances: Boolean,
+    error: Boolean,
+    onScan: () -> Unit,
+    onBalances: () -> Unit,
+    onRetry: () -> Unit,
+    onOpen: (String) -> Unit,
+    onPurchase: (() -> Unit)?,
+    balance: Long? = null,
+) {
+  var filter by rememberSaveable { mutableIntStateOf(0) }
+  var limit by rememberSaveable { mutableIntStateOf(10) }
+  val ordered = receipts.sortedByDescending { it.details?.scannedAtMillis ?: 0L }
+  val filtered =
+      ordered.filter {
+        when (filter) {
+          1 -> it.phase == InventorySavePhase.CONFIRMED
+          2 -> it.submission.draft
+          else -> true
+        }
+      }
+  LazyColumn(
+      Modifier.fillMaxSize().background(ReceiptDesign.background).testTag("receipt_history_list"),
+      contentPadding = PaddingValues(16.dp),
+      verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { ReceiptHeader(stringResource(R.string.receipts_title)) }
+        item {
+          Button(
+              onClick = onScan,
+              shape = RoundedCornerShape(14.dp),
+              modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("＋ ")
+                Text(stringResource(R.string.scan_receipt), fontWeight = FontWeight.Bold)
+              }
+        }
+        if (showBalances)
+            item {
+              Surface(
+                  onClick = onBalances,
+                  shape = RoundedCornerShape(16.dp),
+                  color = Color.Transparent,
+                  modifier = Modifier.fillMaxWidth().testTag(BalancesTestTags.ENTRY)) {
+                    Row(
+                        Modifier.background(
+                                Brush.linearGradient(listOf(Color(0xFFEEE7FA), Color(0xFFF7F2FF))))
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                          Column(Modifier.weight(1f)) {
+                            Text(
+                                if (balance == null)
+                                    stringResource(R.string.receipt_balance_loading)
+                                else
+                                    stringResource(
+                                        if (balance > 0L) R.string.receipt_balance_credit
+                                        else R.string.receipt_balance_owe,
+                                        java.math.BigDecimal.valueOf(balance, 2)
+                                            .abs()
+                                            .toPlainString()),
+                                fontWeight = FontWeight.Bold,
+                                color =
+                                    when {
+                                      balance != null && balance < 0L -> Color(0xFFB3261E)
+                                      balance != null && balance > 0L -> Color(0xFF276443)
+                                      else -> ReceiptDesign.ink
+                                    })
+                          }
+                          Text(
+                              stringResource(R.string.receipt_view_balances) + " →",
+                              color = ReceiptDesign.purple,
+                              fontSize = 12.sp)
+                        }
+                  }
+            }
+        item {
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                    R.string.receipts_title,
+                    R.string.receipt_status_saved,
+                    R.string.receipt_status_draft)
+                .forEachIndexed { index, label ->
+                  val count =
+                      when (index) {
+                        1 -> receipts.count { it.phase == InventorySavePhase.CONFIRMED }
+                        2 -> receipts.count { it.submission.draft }
+                        else -> receipts.size
+                      }
+                  Surface(
+                      onClick = {
+                        filter = index
+                        limit = 10
+                      },
+                      modifier =
+                          Modifier.weight(1f)
+                              .semantics { selected = filter == index }
+                              .testTag("receipt_filter_$index"),
+                      color = if (filter == index) ReceiptDesign.lavender else Color.White,
+                      shape = RoundedCornerShape(12.dp),
+                      border =
+                          BorderStroke(
+                              1.dp,
+                              if (filter == index) ReceiptDesign.purple
+                              else ReceiptDesign.border)) {
+                        Column(Modifier.padding(12.dp)) {
+                          Text(
+                              count.toString(),
+                              fontSize = 22.sp,
+                              fontWeight = FontWeight.Bold,
+                              color = ReceiptDesign.ink)
+                          Text(stringResource(label), fontSize = 12.sp, color = ReceiptDesign.muted)
+                        }
+                      }
+                }
+          }
+        }
+        if (error)
+            item {
+              TextButton(onClick = onRetry) { Text(stringResource(R.string.receipt_edit_failed)) }
+            }
+        if (filtered.isEmpty())
+            item {
+              Text(
+                  stringResource(
+                      when (filter) {
+                        1 -> R.string.receipt_empty_saved
+                        2 -> R.string.receipt_empty_drafts
+                        else -> R.string.receipt_empty_history
+                      }),
+                  color = ReceiptDesign.muted,
+                  modifier = Modifier.padding(vertical = 24.dp))
+            }
+        filtered
+            .take(limit)
+            .groupBy {
+              it.details
+                  ?.scannedAtMillis
+                  ?.let { time -> DateFormat.getDateInstance(DateFormat.LONG).format(Date(time)) }
+                  .orEmpty()
+            }
+            .forEach { (date, rows) ->
+              item {
+                Text(
+                    date,
+                    fontWeight = FontWeight.Bold,
+                    color = ReceiptDesign.ink,
+                    modifier = Modifier.padding(top = 12.dp))
+              }
+              items(rows, key = { it.submission.id }) { receipt ->
+                Row(
+                    Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically) {
+                      Box(
+                          Modifier.width(20.dp).fillMaxHeight(),
+                          contentAlignment = Alignment.Center) {
+                            Box(
+                                Modifier.width(2.dp).fillMaxHeight().drawBehind {
+                                  drawLine(
+                                      ReceiptDesign.border,
+                                      Offset(size.width / 2, 0f),
+                                      Offset(
+                                          size.width / 2,
+                                          size.height +
+                                              if (receipt != rows.last()) 10.dp.toPx() else 0f),
+                                      size.width)
+                                })
+                            Box(
+                                Modifier.size(8.dp)
+                                    .background(ReceiptDesign.purple, RoundedCornerShape(50)))
+                          }
+                      Surface(
+                          onClick = { onOpen(receipt.submission.id) },
+                          color = Color.White,
+                          shape = RoundedCornerShape(17.dp),
+                          border = BorderStroke(1.dp, ReceiptDesign.border),
+                          modifier =
+                              Modifier.weight(1f)
+                                  .testTag("receipt_card_${receipt.submission.id}")) {
+                            Column(Modifier.padding(14.dp)) {
+                              Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                  Text(
+                                      receipt.details?.title?.takeIf { it.isNotBlank() }
+                                          ?: stringResource(R.string.receipt_untitled),
+                                      fontWeight = FontWeight.Bold,
+                                      color = ReceiptDesign.ink,
+                                      maxLines = 2)
+                                  Text(
+                                      pluralStringResource(
+                                          R.plurals.receipt_product_count,
+                                          receipt.submission.items.size,
+                                          receipt.submission.items.size),
+                                      color = ReceiptDesign.muted,
+                                      fontSize = 12.sp)
+                                }
+                                val label =
+                                    when (receipt.phase) {
+                                      InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
+                                      InventorySavePhase.READY -> R.string.receipt_status_draft
+                                      InventorySavePhase.FAILED -> R.string.inventory_save_failed
+                                      else -> R.string.inventory_save_pending
+                                    }
+                                Text(
+                                    stringResource(label),
+                                    color =
+                                        when {
+                                          receipt.phase == InventorySavePhase.CONFIRMED ->
+                                              Color(0xFF276443)
+                                          receipt.submission.draft -> Color(0xFF806000)
+                                          else -> ReceiptDesign.purple
+                                        },
+                                    fontSize = 11.sp,
+                                    modifier =
+                                        Modifier.widthIn(max = 110.dp)
+                                            .background(
+                                                when {
+                                                  receipt.phase == InventorySavePhase.CONFIRMED ->
+                                                      Color(0xFFE7F3EA)
+                                                  receipt.submission.draft -> Color(0xFFFFF5D6)
+                                                  else -> ReceiptDesign.lavender
+                                                },
+                                                RoundedCornerShape(50))
+                                            .padding(horizontal = 9.dp, vertical = 5.dp))
+                              }
+                            }
+                          }
+                    }
+              }
+            }
+        if (limit < filtered.size)
+            item {
+              TextButton(
+                  onClick = { limit = nextReceiptLimit(limit, filtered.size) },
+                  modifier = Modifier.fillMaxWidth().testTag("receipt_view_more")) {
+                    Text(stringResource(R.string.receipt_view_more))
+                  }
+            }
+      }
+}

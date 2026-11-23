@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
@@ -60,7 +61,10 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
   private val mutableState =
       MutableStateFlow(StagingUiState(items = initialItems, purchase = purchaseReview))
   val state: StateFlow<StagingUiState> = mutableState.asStateFlow()
-  private var purchaseMembersInitialized = purchaseReview?.members?.isNotEmpty() == true
+  private var purchaseMembersInitialized =
+      purchaseReview?.members?.isNotEmpty() == true ||
+          purchaseReview?.paidBy != null ||
+          purchaseReview?.participants?.isNotEmpty() == true
 
   /**
    * The coordinator supplies current member names through its existing household abstractions.

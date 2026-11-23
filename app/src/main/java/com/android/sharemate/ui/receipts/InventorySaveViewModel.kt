@@ -12,6 +12,7 @@ import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.staging.InventorySubmissionStore
+import com.android.sharemate.model.staging.ReceiptCorrection
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.ReviewedPurchase
@@ -48,6 +49,7 @@ data class InventorySaveState(
     val phase: InventorySavePhase = InventorySavePhase.LOADING,
     val submission: InventorySubmission? = null,
     val invalidInput: Boolean = false,
+    val correctionPending: Boolean = false,
 ) {
   /** A new scan may begin in [InventorySavePhase.READY] or after server confirmation. */
   val canStartScan: Boolean
@@ -86,6 +88,7 @@ class InventorySaveViewModel(
   private var generation = 0
   private var expenseJob: Job? = null
   private var expenseRetry = CompletableDeferred<Unit>()
+  private var activeCorrection: ReceiptCorrection? = null
 
   init {
     restore()
@@ -100,6 +103,11 @@ class InventorySaveViewModel(
             mutableDeferred.value = store.deferred(userId, householdId)
             val restored = store.load(userId, householdId)
             if (generation != token) return@launch
+            val correction = restored?.let { store.pendingCorrection(userId, householdId, it.id) }
+            if (correction != null) {
+              launchCorrection(correction)
+              return@launch
+            }
             mutableState.value =
                 InventorySaveState(
                     if (restored == null || restored.draft) InventorySavePhase.READY
@@ -140,6 +148,87 @@ class InventorySaveViewModel(
         preview.shares != purchase.shares)
         return false
     return confirmRows(purchase.items, purchase)
+  }
+
+  /** Persists the amendment before contacting the server; never inserts another purchase. */
+  fun correctPurchase(
+      purchase: ReviewedPurchase,
+      members: Map<String, String>,
+      title: String
+  ): Boolean {
+    val current = state.value
+    val original = current.submission ?: return false
+    if (expenses == null ||
+        !canSave ||
+        original.draft ||
+        current.correctionPending ||
+        current.phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING))
+        return false
+    val preview =
+        PurchaseReview.forUser(userId, members)
+            .copy(paidBy = purchase.paidBy, participants = purchase.shares.keys)
+            .preview(purchase.items)
+    if (preview.error != null ||
+        preview.totalCents != purchase.totalCents ||
+        preview.shares != purchase.shares)
+        return false
+    val replacement =
+        try {
+          InventorySubmission(
+              original.id,
+              original.ownerId,
+              householdId,
+              purchase.items,
+              expense =
+                  SharedExpense(
+                      original.id,
+                      householdId,
+                      purchase.paidBy,
+                      purchase.totalCents,
+                      purchase.shares))
+        } catch (_: IllegalArgumentException) {
+          return false
+        }
+    launchCorrection(
+        ReceiptCorrection(
+            UUID.randomUUID().toString(), original, replacement, title.trim().take(80)))
+    return true
+  }
+
+  private fun launchCorrection(correction: ReceiptCorrection) {
+    val token = ++generation
+    activeCorrection = correction
+    val previousJobs = listOfNotNull(observation, expenseJob, submissionJob)
+    observation?.cancel()
+    expenseJob?.cancel()
+    submissionJob?.cancel()
+    mutableState.value =
+        InventorySaveState(
+            InventorySavePhase.SUBMITTING, correction.original, correctionPending = true)
+    submissionJob =
+        viewModelScope.launch {
+          try {
+            previousJobs.forEach { it.join() }
+            store.saveCorrection(correction)
+            checkNotNull(expenses).correctReceipt(correction)
+            val confirmed = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
+            store.save(confirmed)
+            store.details(userId, householdId, confirmed.id)?.let {
+              store.saveDetails(it.copy(title = correction.title))
+            }
+            store.clearCorrection(userId, householdId, confirmed.id)
+            activeCorrection = null
+            if (token == generation)
+                mutableState.value = InventorySaveState(InventorySavePhase.CONFIRMED, confirmed)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            if (token == generation)
+                mutableState.value =
+                    InventorySaveState(
+                        InventorySavePhase.FAILED, correction.original, correctionPending = true)
+          }
+        }
   }
 
   private fun confirmRows(items: List<StagedItem>, purchase: ReviewedPurchase?): Boolean {
@@ -266,6 +355,22 @@ class InventorySaveViewModel(
    */
   fun retry() {
     val current = state.value
+    if (current.correctionPending) {
+      if (submissionJob?.isActive == true) return
+      submissionJob =
+          viewModelScope.launch {
+            try {
+              val pending =
+                  current.submission?.let { store.pendingCorrection(userId, householdId, it.id) }
+              (pending ?: activeCorrection)?.let(::launchCorrection)
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (_: Exception) {
+              mutableState.value = current.copy(phase = InventorySavePhase.FAILED)
+            }
+          }
+      return
+    }
     current.submission
         ?.takeIf { it.expense != null }
         ?.let {

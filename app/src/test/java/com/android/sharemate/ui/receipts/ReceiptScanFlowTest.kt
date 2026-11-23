@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Codex
 package com.android.sharemate.ui.receipts
 
@@ -99,14 +100,14 @@ class ReceiptScanFlowTest {
       compose.onNodeWithText(app.getString(R.string.staging_title)).assertExists()
       compose.onNodeWithText("Lait").assertExists()
       compose.onNodeWithText("Pain").assertExists()
-      compose.onNodeWithText("CHF 2.40").assertExists()
+      compose.onNodeWithText("2.40 CHF").assertExists()
       compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
       compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertExists()
       restoration.emulateSavedInstanceStateRestore()
       compose.onNodeWithText(app.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Lait").assertExists()
-      compose.onNodeWithText("CHF 2.40").assertExists()
-      compose.onNodeWithText("CHF 3.10").assertExists()
+      compose.onNodeWithText("2.40 CHF").assertExists()
+      compose.onNodeWithText("3.10 CHF").assertExists()
       compose.onNodeWithText("Pain").assertExists()
       assertEquals(2, reads)
     } finally {

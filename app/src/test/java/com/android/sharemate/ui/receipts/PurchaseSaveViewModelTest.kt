@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.finance.*
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.staging.InventorySubmissionStore
+import com.android.sharemate.model.staging.ReceiptCorrection
 import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.staging.ReviewedPurchase
 import java.io.IOException
@@ -25,6 +26,58 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseSaveViewModelTest {
+  @Test
+  fun correctionRetriesSamePayloadAfterRestartWithoutAnotherInventoryInsert() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            expense =
+                SharedExpense(
+                    "12345678-1234-1234-1234-123456789abc", "home", "alice", 1000, purchase.shares),
+            inventoryConfirmed = true,
+            expenseProgress = ExpenseProgress.CONFIRMED)
+    store.saved = original
+    val vm = model()
+    expenses.correctionFailure = IOException("response lost")
+    val edited =
+        purchase.copy(
+            items = listOf(rows[0].copy(name = "Oat milk", priceCents = 1200)),
+            totalCents = 1200,
+            shares = mapOf("alice" to 600L, "bob" to 600L))
+    assertTrue(vm.correctPurchase(edited, members, "Courses"))
+    runCurrent()
+    assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
+    val retained = store.correction
+    assertNotNull(retained)
+    assertFalse(vm.correctPurchase(edited, members, "Another edit"))
+    expenses.correctionFailure = null
+    val recovered = restart()
+    runCurrent()
+    assertEquals(InventorySavePhase.CONFIRMED, recovered.state.value.phase)
+    assertEquals(listOf(retained, retained), expenses.corrections)
+    assertEquals("Oat milk", store.saved?.items?.single()?.name)
+    assertNull(store.correction)
+    assertTrue(inventory.calls.isEmpty())
+    assertTrue(expenses.calls.isEmpty())
+  }
+
+  @Test
+  fun anotherMemberCanPayWhileJournalOwnershipStaysWithSubmitter() = runTest {
+    val vm = model()
+    assertTrue(vm.confirmPurchase(purchase.copy(paidBy = "bob"), members))
+    runCurrent()
+    assertEquals("alice", store.saved?.ownerId)
+    assertEquals("bob", store.saved?.expense?.paidBy)
+    confirmInventory()
+    expenses.result.complete(Unit)
+    runCurrent()
+    assertEquals("bob", expenses.calls.single().paidBy)
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+  }
+
   private val owners = mutableListOf<ViewModelStore>()
   private val rows = listOf(StagedItem("milk", "Edited milk", 2, 1000))
   private val members = mapOf("alice" to "Alice", "bob" to "Bob")
@@ -372,7 +425,7 @@ class PurchaseSaveViewModelTest {
     val vm = model()
     assertFalse(privateVm.confirmPurchase(purchase, members))
     assertFalse(vm.confirmPurchase(purchase, members - "bob"))
-    assertFalse(vm.confirmPurchase(purchase.copy(paidBy = "bob"), members))
+    assertFalse(vm.confirmPurchase(purchase.copy(paidBy = "outsider"), members))
     assertFalse(vm.confirmPurchase(purchase.copy(totalCents = 999), members))
     assertFalse(
         vm.confirmPurchase(purchase.copy(shares = mapOf("alice" to 499L, "bob" to 501L)), members))
@@ -558,6 +611,19 @@ class PurchaseSaveViewModelTest {
   }
 
   private class Store : InventorySubmissionStore {
+    var correction: ReceiptCorrection? = null
+
+    override suspend fun pendingCorrection(ownerId: String, householdId: String, id: String) =
+        correction
+
+    override suspend fun saveCorrection(correction: ReceiptCorrection) {
+      this.correction = correction
+    }
+
+    override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) {
+      correction = null
+    }
+
     var activeCommit: CompletableDeferred<Unit>? = null
     var blockProgress: CompletableDeferred<Unit>? = null
     val archived = mutableListOf<InventorySubmission>()
@@ -612,6 +678,14 @@ class PurchaseSaveViewModelTest {
   }
 
   private class Expenses : ExpenseSubmissionRepository {
+    val corrections = mutableListOf<ReceiptCorrection>()
+    var correctionFailure: Exception? = null
+
+    override suspend fun correctReceipt(correction: ReceiptCorrection) {
+      corrections += correction
+      correctionFailure?.let { throw it }
+    }
+
     var mismatch = false
     val calls = mutableListOf<SharedExpense>()
     val result = CompletableDeferred<Unit>()
