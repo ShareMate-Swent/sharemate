@@ -202,7 +202,7 @@ internal fun WelcomeIllustration(modifier: Modifier = Modifier) {
       modifier.fillMaxWidth().height(AuthLayout.illustrationHeight),
       contentAlignment = Alignment.Center) {
         Blob(
-            status.fresh.container,
+            MaterialTheme.colorScheme.primaryContainer,
             CircleShape,
             AuthLayout.blobLarge,
             Alignment.CenterStart,

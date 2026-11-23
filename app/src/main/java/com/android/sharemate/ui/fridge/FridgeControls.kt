@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.BorderStroke
@@ -167,13 +168,13 @@ private fun CategoryChip(
           FilterChipDefaults.filterChipColors(
               containerColor = MaterialTheme.colorScheme.surface,
               labelColor = MaterialTheme.colorScheme.onSurface,
-              selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-              selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-              selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+              selectedContainerColor = MaterialTheme.colorScheme.primary,
+              selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+              selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
               disabledContainerColor = MaterialTheme.colorScheme.surface,
-              disabledSelectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+              disabledSelectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
               disabledLabelColor = MaterialTheme.colorScheme.onSurface,
-              disabledLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer),
+              disabledLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer),
       leadingIcon =
           if (showCheckmark) {
             { Icon(Icons.Default.Check, null, modifier = Modifier.size(FridgeLayout.iconSize)) }
