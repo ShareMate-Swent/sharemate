@@ -20,7 +20,6 @@ import com.android.sharemate.model.item.toItemOrNull
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
-import com.android.sharemate.ui.fridge.fridgeImageRequest
 import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.ui.fridge.testPseudoRepository
@@ -89,7 +88,8 @@ class CommonsImageFirestoreTest {
     try {
       val decoded =
           withTimeout(20_000) {
-            loader.execute(fridgeImageRequest(context, saved.image!!.reference, 80))
+            loader.execute(
+                fridgeThumbnailRequest(context, 80).data(saved.image!!.reference).build())
           }
       assertTrue(
           "Thumbnail decode failed: ${(decoded as? ErrorResult)?.throwable}",

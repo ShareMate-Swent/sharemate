@@ -5,8 +5,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
+import android.content.Context
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
+import coil.ImageLoader
+import coil.request.ImageRequest
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
@@ -23,7 +26,7 @@ import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DE
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
 import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.FridgeImageReference
-import com.android.sharemate.model.image.LoadedFridgeImage
+import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
@@ -2103,12 +2106,15 @@ class FridgeViewModelTest {
         object : FridgeImageCacheSession {
           override val isActive = MutableStateFlow(true)
 
-          override fun memoryKey(reference: FridgeImageReference): String = error("Unexpected load")
+          override val online = MutableStateFlow(true)
+          override val imageLoader: ImageLoader
+            get() = error("Unexpected image loader")
 
-          override suspend fun load(
+          override fun request(
+              context: Context,
               reference: FridgeImageReference,
-              download: suspend () -> ByteArray,
-          ): LoadedFridgeImage = error("Unexpected load")
+              downloadPhoto: suspend (PersonalPhotoReference) -> ByteArray,
+          ): ImageRequest = error("Unexpected request")
 
           override suspend fun revoke() {
             isActive.value = false

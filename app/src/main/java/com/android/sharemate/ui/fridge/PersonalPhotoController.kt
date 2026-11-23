@@ -2,7 +2,6 @@
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.image.FridgeImageCacheSession
-import com.android.sharemate.model.image.LoadedFridgeImage
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -143,9 +142,6 @@ class PersonalPhotoController(
 
   internal suspend fun download(reference: PersonalPhotoReference): ByteArray =
       storage.load(reference).getOrThrow()
-
-  internal suspend fun load(reference: PersonalPhotoReference): LoadedFridgeImage =
-      imageCache?.load(reference) { download(reference) } ?: LoadedFridgeImage(download(reference))
 
   suspend fun prepareRemoval(item: Item) {
     val upload = uploads[item.id]

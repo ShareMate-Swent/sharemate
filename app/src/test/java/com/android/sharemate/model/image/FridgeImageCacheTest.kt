@@ -1,232 +1,277 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.image
 
-import java.io.IOException
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
+import coil.annotation.ExperimentalCoilApi
+import coil.decode.DataSource
+import coil.request.ErrorResult
+import coil.request.ImageResult
+import coil.request.SuccessResult
+import java.io.ByteArrayOutputStream
+import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertArrayEquals
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
+@OptIn(ExperimentalCoilApi::class, ExperimentalCoroutinesApi::class)
+@Config(sdk = [34])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@RunWith(RobolectricTestRunner::class)
 class FridgeImageCacheTest {
   @get:Rule val temporary = TemporaryFolder()
 
-  private val first = reference("01")
-  private val replacement = reference("02")
-  private val third = reference("03")
-  private val remote = RemoteFridgeImageReference("https://images.example.org/milk.webp?size=120")
-  private val webp = "RIFFtestWEBP".toByteArray()
-  private val jpeg = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0)
+  private val context
+    get() = RuntimeEnvironment.getApplication()
+
+  private val online = MutableStateFlow(true)
   private var currentUser = "alice"
-  private var online = true
+  private var clock = 1000L
+  private val remote = RemoteFridgeImageReference("https://images.example.org/milk.png?size=120")
+  private val photo = PersonalPhotoReference("itemPhotos/milk/00000000-0000-0000-0000-000000000001")
+  private val disk by lazy { FridgeImageCache.diskCache(temporary.root) }
+  private var responseBody: () -> ResponseBody = { error("Unexpected HTTP request") }
+  private val requestedUrls = mutableListOf<String>()
+  private val client =
+      OkHttpClient.Builder()
+          .addInterceptor { chain ->
+            assertTrue(online.value)
+            requestedUrls += chain.request().url.toString()
+            assertEquals(FoodImageHttp.USER_AGENT, chain.request().header("User-Agent"))
+            val headers =
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .header("Cache-Control", "no-cache")
+                    .build()
+            headers.newBuilder().networkResponse(headers).body(responseBody()).build()
+          }
+          .build()
+
+  @Before
+  fun setUp() {
+    Dispatchers.setMain(UnconfinedTestDispatcher())
+  }
+
+  @After
+  fun tearDown() {
+    Dispatchers.resetMain()
+    client.connectionPool.evictAll()
+    client.dispatcher.executorService.shutdownNow()
+  }
 
   @Test
-  fun readsTheViewedPhotoAfterAnOfflineRestart() = runBlocking {
+  fun invalidHttpSuccessDoesNotPoisonTheDiskCache() = runBlocking {
     val session = cache().session("alice", "home")
-    assertFalse(session.load(first) { jpeg }.fromDisk)
-    assertTrue(session.load(first, ::unexpectedDownload).fromDisk)
+    responseBody = { "<html>Login</html>".toResponseBody("text/html".toMediaType()) }
+    assertTrue(session.load(remote) is ErrorResult)
+    responseBody = { byteArrayOf(1, 2, 3).toResponseBody("image/png".toMediaType()) }
+    assertTrue(session.load(remote) is ErrorResult)
+    assertEquals(0L, disk.size)
 
-    online = false
-    val restartedSession = cache().session("alice", "home")
-    val photo = restartedSession.load(first, ::unexpectedDownload)
-    assertTrue(photo.fromDisk)
-    assertArrayEquals(jpeg, photo.bytes)
-    assertCacheMiss(restartedSession, replacement)
-
-    online = true
-    val updated = jpeg.copyOf().apply { this[lastIndex] = 1 }
-    assertNotEquals(session.memoryKey(first), session.memoryKey(replacement))
-    assertFalse(restartedSession.load(replacement) { updated }.fromDisk)
-    assertArrayEquals(updated, restartedSession.load(replacement, ::unexpectedDownload).bytes)
+    serve(Color.BLUE)
+    assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
+    online.value = false
+    val reopened = cache().session("alice", "home")
+    val saved = reopened.load(remote) as SuccessResult
+    assertEquals(DataSource.DISK, saved.dataSource)
+    assertEquals(Color.BLUE, saved.bitmap().getPixel(0, 0))
+    assertEquals(listOf(remote.url, remote.url, remote.url), requestedUrls)
   }
 
   @Test
-  fun remoteAndFirebaseImagesSurviveOfflineRestartAndUseTheSamePurge() = runBlocking {
+  fun largeRemoteImageIsStoredAsABoundedThumbnail() = runBlocking {
+    val source =
+        png(dimension = 1536) {
+          val random = Random(123)
+          IntArray(width * height) { Color.BLACK or random.nextInt(0x1000000) }
+              .let { setPixels(it, 0, width, 0, 0, width, height) }
+        }
+    assertTrue(source.size > PersonalPhotoRepository.MAX_BYTES)
+    responseBody = { source.toResponseBody("image/png".toMediaType()) }
+
+    val viewed = cache().session("alice", "home").load(remote).bitmap()
+    assertTrue(viewed.width <= FridgeImageCache.THUMBNAIL_PIXELS)
+    online.value = false
+
+    val offline = cache().session("alice", "home").load(remote) as SuccessResult
+    assertEquals(DataSource.DISK, offline.dataSource)
+    assertEquals(viewed.width, offline.bitmap().width)
+    assertEquals(viewed.height, offline.bitmap().height)
+    assertEquals(1, requestedUrls.size)
+    assertEquals(50L * 1024 * 1024, disk.maxSize)
+    assertTrue(disk.size in 1 until source.size.toLong())
+  }
+
+  @Test
+  fun staleUrlRefreshesOnceEvenWhenTheOldThumbnailIsInMemory() = runBlocking {
     val session = cache().session("alice", "home")
-    session.load(first) { jpeg }
-    assertFalse(session.load(remote) { webp }.fromDisk)
-    assertNotEquals(session.memoryKey(first), session.memoryKey(remote))
+    serve(Color.RED)
+    assertEquals(Color.RED, session.load(remote).bitmap().getPixel(0, 0))
+    assertEquals(DataSource.MEMORY_CACHE, (session.load(remote) as SuccessResult).dataSource)
 
-    online = false
-    val restartedSession = cache().session("alice", "home")
-    val image = restartedSession.load(remote, ::unexpectedDownload)
-    assertTrue(image.fromDisk)
-    assertArrayEquals(webp, image.bytes)
-    assertTrue(restartedSession.load(first, ::unexpectedDownload).fromDisk)
-    assertCacheMiss(restartedSession, remote.copy(url = remote.url.replace("120", "240")))
-    assertCacheMiss(cache().session("alice", "other-home"), remote)
+    clock += FridgeImageCache.WEB_MAX_AGE_MILLIS
+    serve(Color.BLUE)
+    online.value = false
+    val reopened = cache().session("alice", "home")
+    val stale = reopened.load(remote) as SuccessResult
+    assertEquals(DataSource.DISK, stale.dataSource)
+    assertEquals(Color.RED, stale.bitmap().getPixel(0, 0))
+    assertEquals(DataSource.MEMORY_CACHE, (reopened.load(remote) as SuccessResult).dataSource)
+    assertEquals(1, requestedUrls.size)
 
-    restartedSession.revoke()
-    val afterPurge = cache().session("alice", "home")
-    assertCacheMiss(afterPurge, first)
-    assertCacheMiss(afterPurge, remote)
+    online.value = true
+    val refreshed = reopened.load(remote) as SuccessResult
+    assertEquals(DataSource.NETWORK, refreshed.dataSource)
+    assertEquals(Color.BLUE, refreshed.bitmap().getPixel(0, 0))
+    val fromMemory = reopened.load(remote) as SuccessResult
+    assertEquals(DataSource.MEMORY_CACHE, fromMemory.dataSource)
+    assertEquals(Color.BLUE, fromMemory.bitmap().getPixel(0, 0))
+    assertEquals(
+        DataSource.DISK,
+        (cache().session("alice", "home").load(remote) as SuccessResult).dataSource)
+    assertEquals(2, requestedUrls.size)
   }
 
   @Test
-  fun aRemoteImageCanEvictAPersonalPhotoFromTheSharedBudget() = runBlocking {
-    val session = cache(maxBytes = webp.size.toLong()).session("alice", "home")
-    session.load(first) { jpeg }
-    session.load(remote) { webp }
-
-    online = false
-    assertCacheMiss(session, first)
-    assertTrue(session.load(remote, ::unexpectedDownload).fromDisk)
+  fun anInvalidRefreshLeavesThePreviousThumbnailAvailable() = runBlocking {
+    val session = cache().session("alice", "home")
+    serve(Color.RED)
+    assertEquals(Color.RED, session.load(remote).bitmap().getPixel(0, 0))
+    clock += FridgeImageCache.WEB_MAX_AGE_MILLIS
+    responseBody = { "<html>Unavailable</html>".toResponseBody("text/html".toMediaType()) }
+    assertEquals(Color.RED, session.load(remote).bitmap().getPixel(0, 0))
+    online.value = false
+    assertEquals(Color.RED, cache().session("alice", "home").load(remote).bitmap().getPixel(0, 0))
+    assertEquals(2, requestedUrls.size)
   }
 
   @Test
-  fun isolatesAccountsHouseholdsAndStorageBuckets() = runBlocking {
+  fun cacheEntriesAreScopedToAccountHouseholdAndCompleteReference() = runBlocking {
     val cache = cache()
     val alice = cache.session("alice", "home")
-    alice.load(first) { jpeg }
+    assertTrue(alice.load(photo) { png { eraseColor(Color.RED) } } is SuccessResult)
+    serve(Color.BLUE)
+    assertTrue(alice.load(remote) is SuccessResult)
 
-    online = false
-    val otherHousehold = cache.session("alice", "other-home")
-    assertNotEquals(alice.memoryKey(first), otherHousehold.memoryKey(first))
-    assertCacheMiss(otherHousehold, first)
-    assertCacheMiss(cache(bucket = "other-bucket").session("alice", "home"), first)
-
+    online.value = false
+    assertTrue(cache().session("alice", "home").load(photo) is SuccessResult)
+    assertOffline(cache.session("alice", "other-home").load(photo))
+    assertOffline(cache(bucket = "other-bucket").session("alice", "home").load(photo))
+    assertOffline(alice.load(remote.copy(url = remote.url.replace("120", "240"))))
     currentUser = "bob"
-    val bob = cache.session("bob", "home")
-    assertNotEquals(alice.memoryKey(first), bob.memoryKey(first))
-    assertCacheMiss(bob, first)
-    assertCacheMiss(alice, first)
+    assertOffline(cache.session("bob", "home").load(remote))
+    assertTrue(alice.load(photo) is ErrorResult)
   }
 
   @Test
-  fun purgesOnlyTheRequestedHouseholdThenTheRestOfTheAccount() = runBlocking {
-    val evicted = mutableListOf<String>()
-    val cache = cache(evictMemory = { evicted += it })
-    val alice = cache.session("alice", "home")
-    val otherHome = cache.session("alice", "other-home")
-    alice.load(first) { jpeg }
-    otherHome.load(first) { jpeg }
-    currentUser = "bob"
-    val bob = cache.session("bob", "home")
-    bob.load(first) { jpeg }
-    currentUser = "alice"
-    online = false
-
-    cache.purgeHousehold("alice", "home")
-    assertFalse(alice.isActive.value)
-    assertTrue(alice.memoryKey(first).startsWith(evicted.single()))
-    assertCacheMiss(cache.session("alice", "home"), first)
-    assertTrue(otherHome.load(first, ::unexpectedDownload).fromDisk)
-
-    cache.purgeAccount("alice")
-    assertFalse(otherHome.isActive.value)
-    assertTrue(evicted.any { otherHome.memoryKey(first).startsWith(it) })
-    assertCacheMiss(cache().session("alice", "other-home"), first)
-    currentUser = "bob"
-    assertTrue(bob.isActive.value)
-    assertTrue(bob.load(first, ::unexpectedDownload).fromDisk)
+  fun purgeClearsTheDedicatedFridgeCacheAndInvalidatesTheSession() = runBlocking {
+    val cache = cache()
+    repeat(3) { event ->
+      online.value = true
+      val session = cache.session("alice", "home")
+      serve(Color.BLUE)
+      assertTrue(session.load(remote) is SuccessResult)
+      assertTrue(session.load(photo) { png { eraseColor(Color.RED) } } is SuccessResult)
+      when (event) {
+        0 -> cache.purgeAccount("alice")
+        1 -> cache.purgeHousehold("alice", "home")
+        2 -> session.revoke()
+      }
+      assertFalse(session.isActive.value)
+      assertEquals(0L, disk.size)
+      assertTrue(session.imageLoader.memoryCache!!.keys.isEmpty())
+      online.value = false
+      val reopened = cache.session("alice", "home")
+      assertOffline(reopened.load(remote))
+      assertOffline(reopened.load(photo))
+    }
   }
 
   @Test
-  fun aRevokedDownloadCannotRepopulateDisk() = runBlocking {
+  fun downloadCompletingAfterRevocationCannotPopulateEitherCache() = runBlocking {
     val cache = cache()
     val session = cache.session("alice", "home")
-    val downloadStarted = CompletableDeferred<Unit>()
-    val resumeDownload = CompletableDeferred<Unit>()
-    val pending = async {
-      runCatching {
-        session.load(first) {
-          downloadStarted.complete(Unit)
-          resumeDownload.await()
-          jpeg
-        }
+    val started = CompletableDeferred<Unit>()
+    val allowCompletion = CompletableDeferred<Unit>()
+    val bytes = png { eraseColor(Color.RED) }
+    val request = async {
+      session.load(photo) {
+        started.complete(Unit)
+        allowCompletion.await()
+        bytes
       }
     }
-    downloadStarted.await()
+    withTimeout(5_000) { started.await() }
     session.revoke()
-    resumeDownload.complete(Unit)
+    allowCompletion.complete(Unit)
 
-    assertTrue(pending.await().exceptionOrNull() is IOException)
-    assertFalse(session.isActive.value)
-    online = false
-    assertCacheMiss(cache.session("alice", "home"), first)
+    assertTrue(request.await() is ErrorResult)
+    assertEquals(0L, disk.size)
+    assertTrue(session.imageLoader.memoryCache!!.keys.isEmpty())
+    online.value = false
+    assertOffline(cache.session("alice", "home").load(photo))
   }
 
-  @Test
-  fun overlappingLoadsOfTheSameReferenceDownloadOnce() = runBlocking {
-    val session = cache().session("alice", "home")
-    val downloadStarted = CompletableDeferred<Unit>()
-    val resumeDownload = CompletableDeferred<Unit>()
-    val pending = async {
-      session.load(first) {
-        downloadStarted.complete(Unit)
-        resumeDownload.await()
-        jpeg
-      }
-    }
-    downloadStarted.await()
-    val second = async { session.load(first, ::unexpectedDownload) }
-    resumeDownload.complete(Unit)
+  private fun cache(bucket: String = "bucket") =
+      FridgeImageCache(context, disk, bucket, { it == currentUser }, online, { clock }, client)
 
-    assertFalse(pending.await().fromDisk)
-    assertTrue(second.await().fromDisk)
-  }
-
-  @Test
-  fun staysWithinOneBudgetAcrossHouseholdsAndEvictsTheOldestPhoto() = runBlocking {
-    val cache = cache(maxBytes = 2L * jpeg.size)
-    val firstHome = cache.session("alice", "home")
-    val secondHome = cache.session("alice", "other-home")
-    firstHome.load(first) { jpeg }
-    val oldest = temporary.root.walkTopDown().single { it.extension == "photo" }
-    assertTrue(oldest.setLastModified(1000L))
-    secondHome.load(replacement) { jpeg }
-    secondHome.load(third) { jpeg }
-
-    online = false
-    assertCacheMiss(firstHome, first)
-    assertTrue(secondHome.load(replacement, ::unexpectedDownload).fromDisk)
-    assertTrue(secondHome.load(third, ::unexpectedDownload).fromDisk)
-    assertEquals(
-        2L * jpeg.size, temporary.root.walkTopDown().filter { it.isFile }.sumOf { it.length() })
-  }
-
-  @Test
-  fun aCorruptEntryFallsBackToDownload() = runBlocking {
-    val session = cache().session("alice", "home")
-    session.load(first) { jpeg }
-    temporary.root.walkTopDown().single { it.extension == "photo" }.writeText("corrupt")
-
-    assertFalse(session.load(first) { jpeg }.fromDisk)
-    assertTrue(session.load(first, ::unexpectedDownload).fromDisk)
-  }
-
-  @Test
-  fun anUnavailableDiskDoesNotPreventDisplayingAFetchedPhoto() = runBlocking {
-    val session =
-        FridgeImageCache(temporary.newFile(), "bucket", { true }, { true }).session("alice", "home")
-
-    assertArrayEquals(jpeg, session.load(first) { jpeg }.bytes)
-  }
-
-  private fun cache(
-      bucket: String = "bucket",
-      maxBytes: Long = 50L * 1024 * 1024,
-      evictMemory: (String) -> Unit = {},
-  ) =
-      FridgeImageCache(
-          temporary.root, bucket, { it == currentUser }, { online }, evictMemory, maxBytes)
-
-  private suspend fun assertCacheMiss(
-      session: FridgeImageCacheSession,
+  private suspend fun FridgeImageCacheSession.load(
       reference: FridgeImageReference,
-  ) {
-    val error = runCatching { session.load(reference, ::unexpectedDownload) }.exceptionOrNull()
-    assertTrue("Expected a cache miss, got $error", error is IOException)
+      download: suspend (PersonalPhotoReference) -> ByteArray = {
+        error("Unexpected Storage download")
+      },
+  ) = withTimeout(10_000) { imageLoader.execute(request(context, reference, download)) }
+
+  private fun assertOffline(result: ImageResult) {
+    assertTrue((result as? ErrorResult)?.throwable is FridgeImageOfflineException)
   }
 
-  private fun unexpectedDownload(): ByteArray = error("Unexpected download")
+  private fun ImageResult.bitmap() = ((this as SuccessResult).drawable as BitmapDrawable).bitmap
 
-  private fun reference(suffix: String) =
-      PersonalPhotoReference("itemPhotos/milk/00000000-0000-0000-0000-0000000000$suffix")
+  private fun serve(color: Int) {
+    val bytes = png { eraseColor(color) }
+    responseBody = { bytes.toResponseBody("image/png".toMediaType()) }
+  }
+
+  private fun png(dimension: Int = 16, fill: Bitmap.() -> Unit): ByteArray {
+    val bitmap = Bitmap.createBitmap(dimension, dimension, Bitmap.Config.ARGB_8888)
+    return try {
+      bitmap.fill()
+      ByteArrayOutputStream()
+          .apply { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, this)) }
+          .toByteArray()
+    } finally {
+      bitmap.recycle()
+    }
+  }
 }

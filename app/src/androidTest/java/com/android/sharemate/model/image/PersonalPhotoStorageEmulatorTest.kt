@@ -2,9 +2,12 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.image
 
-import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import coil.decode.DataSource
+import coil.request.SuccessResult
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
@@ -36,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -374,13 +378,21 @@ class PersonalPhotoStorageEmulatorTest {
     val homes = HouseholdRepositoryFirestore(firestore)
     val home = homes.createHousehold("Gallery home", owner)
     val models = ViewModelStore()
-    val cacheDirectory = temporary.newFolder()
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val disk = FridgeImageCache.diskCache(temporary.newFolder())
     fun cache(online: Boolean) =
         FridgeImageCache(
-            cacheDirectory,
+            context,
+            disk,
             storage.reference.bucket,
             { FirebaseEmulator.auth.uid == it },
-            { online })
+            MutableStateFlow(online))
+    suspend fun load(fridge: FridgeViewModel, reference: PersonalPhotoReference): SuccessResult {
+      val photos = checkNotNull(fridge.personalPhotos)
+      val session = checkNotNull(photos.imageCache)
+      return session.imageLoader.execute(session.request(context, reference, photos::download))
+          as SuccessResult
+    }
     val files =
         object : PersonalPhotoFiles {
           override suspend fun copy(uri: String, fromCamera: Boolean) =
@@ -443,9 +455,8 @@ class PersonalPhotoStorageEmulatorTest {
       val reread =
           withTimeout(15_000) { member.uiState.first { it.items.isNotEmpty() } }.items.single()
       assertEquals(saved, reread)
-      val loaded = member.personalPhotos!!.load(reference)
-      assertFalse(loaded.fromDisk)
-      assertArrayEquals(png, loaded.bytes)
+      val loaded = load(member, reference)
+      assertEquals(DataSource.NETWORK, loaded.dataSource)
 
       withContext(Dispatchers.Main) { models.clear() }
       firestore.disableNetwork().await()
@@ -453,21 +464,15 @@ class PersonalPhotoStorageEmulatorTest {
           try {
             val reloaded = fridge(outsider, cache(online = false).session(outsider, home.id))
             withTimeout(15_000) { reloaded.uiState.first { it.items == listOf(reread) } }
-            val offline = reloaded.personalPhotos!!.load(reference)
-            assertTrue(offline.fromDisk)
-            assertArrayEquals(png, offline.bytes)
+            val offline = load(reloaded, reference)
+            assertEquals(DataSource.DISK, offline.dataSource)
+            assertEquals(
+                (loaded.drawable as BitmapDrawable).bitmap.getPixel(0, 0),
+                (offline.drawable as BitmapDrawable).bitmap.getPixel(0, 0))
             reloaded
           } finally {
             firestore.enableNetwork().await()
           }
-      val bytes = loaded.bytes
-      val bitmap = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-      try {
-        assertEquals(1, bitmap.width)
-      } finally {
-        bitmap.recycle()
-      }
-
       withContext(Dispatchers.Main) {
         offlineMember.requestRemoval(reread.id)
         offlineMember.confirmRemoval()
