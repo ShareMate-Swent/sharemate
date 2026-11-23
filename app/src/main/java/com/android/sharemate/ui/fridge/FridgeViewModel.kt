@@ -13,12 +13,14 @@ import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.ExpiryStatuses
+import com.android.sharemate.model.item.FridgeAccessDeniedException
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -94,6 +96,7 @@ class FridgeViewModel(
     currentUserDisplayName: String?,
     private val chatRepository: ChatRepository? = null,
     private val activitySenderName: String = currentUserDisplayName.orEmpty(),
+    private val photoCache: FridgeImageCacheSession? = null,
 ) : ViewModel() {
   private val supportsSharing = fridgeType == FridgeType.SHARED
   private val ownerNames =
@@ -116,7 +119,8 @@ class FridgeViewModel(
               ownerNames = ownerNames.names.value))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
-          PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
+          PersonalPhotoController(
+              itemRepository, photoStorage, photoFiles, viewModelScope, photoCache)
       else null
 
   val uiState = mutableUiState.asStateFlow()
@@ -230,6 +234,17 @@ class FridgeViewModel(
         }
       } catch (exception: CancellationException) {
         throw exception
+      } catch (_: FridgeAccessDeniedException) {
+        mutableUiState.update {
+          it.copy(
+              items = emptyList(),
+              isLoading = false,
+              loadFailed = true,
+              pendingRemovalItem = null,
+              pendingDeletionIds = emptySet(),
+              removalFailed = false)
+        }
+        photoCache?.revoke()
       } catch (exception: Exception) {
         mutableUiState.update { it.copy(isLoading = false, loadFailed = true) }
       }

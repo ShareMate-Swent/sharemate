@@ -1,6 +1,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import com.android.sharemate.model.image.FridgeImageCacheSession
+import com.android.sharemate.model.image.LoadedFridgeImage
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -37,6 +39,7 @@ class PersonalPhotoController(
     private val storage: PersonalPhotoRepository,
     private val files: PersonalPhotoFiles,
     private val scope: CoroutineScope,
+    internal val imageCache: FridgeImageCacheSession? = null,
 ) {
   private val mutableDraft = MutableStateFlow(PersonalPhotoDraft())
   val draft = mutableDraft.asStateFlow()
@@ -138,8 +141,11 @@ class PersonalPhotoController(
     }
   }
 
-  suspend fun load(path: String): ByteArray =
-      storage.load(PersonalPhotoReference(path)).getOrThrow()
+  internal suspend fun download(reference: PersonalPhotoReference): ByteArray =
+      storage.load(reference).getOrThrow()
+
+  internal suspend fun load(reference: PersonalPhotoReference): LoadedFridgeImage =
+      imageCache?.load(reference) { download(reference) } ?: LoadedFridgeImage(download(reference))
 
   suspend fun prepareRemoval(item: Item) {
     val upload = uploads[item.id]

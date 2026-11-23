@@ -5,7 +5,7 @@ import java.io.File
 import java.util.UUID
 
 /** A bucket-relative identifier, never a local URI or a bearer download URL. */
-data class PersonalPhotoReference(val path: String) {
+data class PersonalPhotoReference(val path: String) : FridgeImageReference {
   init {
     require(PATH_PATTERN.matches(path))
     require(path.split('/').none { it == "." || it == ".." })

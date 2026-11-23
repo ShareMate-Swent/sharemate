@@ -324,7 +324,8 @@ fun FridgeScreen(
 
   FridgeScreen(
       modifier = modifier,
-      uiState = uiState.copy(items = visibleItems),
+      // The filtered stream can still contain the previous list when access is revoked.
+      uiState = uiState.copy(items = if (uiState.items.isEmpty()) emptyList() else visibleItems),
       expiryStatuses = expiryStatuses,
       onAddItem = viewModel::openAddItemDialog,
       onDismissAddItem = viewModel::dismissAddItemDialog,

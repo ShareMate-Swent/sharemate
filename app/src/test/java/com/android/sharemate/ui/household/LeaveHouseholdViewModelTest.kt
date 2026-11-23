@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-// Co-authored-by: OpenAI Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -74,6 +74,23 @@ class LeaveHouseholdViewModelTest {
     assertTrue(viewModel.state.value.left)
     assertFalse(viewModel.state.value.isConfirming)
     assertFalse(viewModel.state.value.isLeaving)
+  }
+
+  @Test
+  fun purgesPhotosOnlyAfterLeavingSucceeds() = runTest {
+    val purged = mutableListOf<String>()
+    val viewModel = LeaveHouseholdViewModel(repository, auth) { purged += it }
+    repository.failure = IllegalStateException("unavailable")
+    viewModel.requestLeave()
+    viewModel.confirmLeave()
+    advanceUntilIdle()
+    assertTrue(purged.isEmpty())
+
+    repository.failure = null
+    viewModel.confirmLeave()
+    advanceUntilIdle()
+    assertEquals(listOf("user-1"), purged)
+    assertTrue(viewModel.state.value.left)
   }
 
   @Test

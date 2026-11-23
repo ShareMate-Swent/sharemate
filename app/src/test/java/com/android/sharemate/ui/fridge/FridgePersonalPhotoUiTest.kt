@@ -27,8 +27,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
+import coil.ImageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.image.FridgeImageCache
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -36,17 +39,26 @@ import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -79,7 +91,9 @@ class FridgePersonalPhotoUiTest {
   private var loadPhoto: suspend (PersonalPhotoReference) -> Result<ByteArray> = {
     error("Unexpected download: $it")
   }
-  private val photos =
+  private val photos = photoController()
+
+  private fun photoController(cache: FridgeImageCacheSession? = null) =
       PersonalPhotoController(
           FakeItemRepository(),
           object : PersonalPhotoRepository {
@@ -102,7 +116,8 @@ class FridgePersonalPhotoUiTest {
               file.delete()
             }
           },
-          scope)
+          scope,
+          cache)
 
   @After
   fun tearDown() {
@@ -289,7 +304,7 @@ class FridgePersonalPhotoUiTest {
 
   @Test
   fun changingTheStoredPhotoCancelsTheOldLoadAndDenialClearsTheImage() {
-    val requests = mutableListOf<PersonalPhotoReference>()
+    val requests = ConcurrentLinkedQueue<PersonalPhotoReference>()
     val cancelled = CompletableDeferred<Unit>()
     val unavailable = CompletableDeferred<Result<ByteArray>>()
     val bytes = png(512, 256)
@@ -326,8 +341,9 @@ class FridgePersonalPhotoUiTest {
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
     val image = compose.onNodeWithTag(C.Tag.fridge_image)
     placeholder.assertIsDisplayed()
+    compose.waitUntil(5_000) { requests.size == 1 }
     compose.runOnIdle {
-      assertEquals(listOf(first), requests)
+      assertEquals(listOf(first), requests.toList())
       item.value =
           Item(
               id = "yogurt",
@@ -341,8 +357,8 @@ class FridgePersonalPhotoUiTest {
     }
     compose.onNodeWithContentDescription("Photo of Yogurt").assertIsDisplayed()
     placeholder.assertDoesNotExist()
+    compose.waitUntil(5_000) { cancelled.isCompleted }
     compose.runOnIdle {
-      assertTrue(cancelled.isCompleted)
       item.value =
           Item(
               id = "bread",
@@ -352,15 +368,162 @@ class FridgePersonalPhotoUiTest {
     }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
+    compose.waitUntil(5_000) { requests.size == 3 }
     compose.runOnIdle { unavailable.complete(Result.failure(IOException("Access denied"))) }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
     compose.runOnIdle {
-      assertEquals(listOf(first, second, denied), requests)
+      assertEquals(listOf(first, second, denied), requests.toList())
       session.value = null
     }
     placeholder.assertIsDisplayed()
-    compose.runOnIdle { assertEquals(listOf(first, second, denied), requests) }
+    compose.runOnIdle { assertEquals(listOf(first, second, denied), requests.toList()) }
+  }
+
+  @Test
+  fun viewedPhotoSurvivesReopeningOfflineAndDisappearsWhenAccessIsRevoked() {
+    val online = AtomicBoolean(true)
+    val downloads = AtomicInteger()
+    val bytes = png(24, 16)
+    loadPhoto = {
+      downloads.incrementAndGet()
+      Result.success(bytes)
+    }
+    fun cache() = FridgeImageCache(temporary.root, "bucket", { it == "user" }, online::get)
+
+    val original =
+        Item(
+            id = "milk",
+            name = "Milk",
+            householdId = "home",
+            image = ItemImage(reference = first.path))
+    val item = mutableStateOf(original)
+    val initial = cache().session("user", "home")
+    val controller = mutableStateOf<PersonalPhotoController?>(photoController(initial))
+    compose.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
+            personalPhotos = controller.value,
+            expiryStatuses = emptyMap())
+      }
+    }
+    val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
+    val image = compose.onNodeWithTag(C.Tag.fridge_image)
+    fun awaitPhoto() {
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithTag(C.Tag.fridge_image).fetchSemanticsNodes().size == 1
+      }
+      image.assertIsDisplayed()
+    }
+
+    awaitPhoto()
+    compose.runOnIdle { controller.value = null }
+    placeholder.assertIsDisplayed()
+    online.set(false)
+    val reopened = cache().session("user", "home")
+    compose.runOnIdle { controller.value = photoController(reopened) }
+    awaitPhoto()
+    assertEquals(1, downloads.get())
+
+    compose.runOnIdle {
+      item.value =
+          original.copy(
+              image = ItemImage(reference = "itemPhotos/milk/00000000-0000-0000-0000-000000000002"))
+    }
+    placeholder.assertIsDisplayed()
+    image.assertDoesNotExist()
+    compose.runOnIdle { item.value = original }
+    awaitPhoto()
+    assertEquals(1, downloads.get())
+
+    runBlocking { reopened.revoke() }
+    placeholder.assertIsDisplayed()
+    image.assertDoesNotExist()
+  }
+
+  @Test
+  fun remoteThumbnailSurvivesOfflineRestartEvenWhenHttpRequiresRevalidation() {
+    val online = AtomicBoolean(true)
+    val downloads = AtomicInteger()
+    val bytes = png(24, 16)
+    val url = "https://images.example.org/openverse/milk.png"
+    val client =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+              assertTrue("The fridge should not make a network request offline", online.get())
+              downloads.incrementAndGet()
+              assertEquals(url, chain.request().url.toString())
+              assertEquals(
+                  "ShareMate/1.0 (https://github.com/ShareMate-Swent/sharemate)",
+                  chain.request().header("User-Agent"))
+              Response.Builder()
+                  .request(chain.request())
+                  .protocol(Protocol.HTTP_1_1)
+                  .code(200)
+                  .message("OK")
+                  .header("Cache-Control", "no-cache")
+                  .body(bytes.toResponseBody())
+                  .build()
+            }
+            .build()
+
+    fun newLoader() =
+        ImageLoader.Builder(testApplication)
+            .callFactory(client)
+            .diskCache(null)
+            .networkObserverEnabled(false)
+            .build()
+    fun newController() =
+        photoController(
+            FridgeImageCache(temporary.root, "bucket", { true }, online::get)
+                .session("user", "home"))
+
+    val original =
+        Item(
+            id = "milk",
+            name = "Milk",
+            householdId = "home",
+            image = ItemImage(origin = ItemImageOrigin.REMOTE_IMAGE, reference = url))
+    val item = mutableStateOf(original)
+    val controller = mutableStateOf(newController())
+    val initialLoader = newLoader()
+    val restartedLoader = newLoader()
+    val loader = mutableStateOf(initialLoader)
+    try {
+      compose.setContent {
+        MaterialTheme {
+          FridgeItemImage(item.value, loader.value, personalPhotos = controller.value)
+        }
+      }
+      fun awaitImage() {
+        compose.waitUntil(5_000) {
+          compose.onAllNodesWithTag(C.Tag.fridge_image).fetchSemanticsNodes().size == 1
+        }
+        compose.onNodeWithTag(C.Tag.fridge_image).assertIsDisplayed()
+      }
+      awaitImage()
+
+      compose.runOnIdle {
+        online.set(false)
+        loader.value = restartedLoader
+        controller.value = newController()
+      }
+      awaitImage()
+      assertEquals(1, downloads.get())
+
+      compose.runOnIdle {
+        item.value = original.copy(image = original.image?.copy(reference = "$url?updated"))
+      }
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithTag(C.Tag.fridge_image_placeholder).fetchSemanticsNodes().size == 1
+      }
+      compose.onNodeWithTag(C.Tag.fridge_image).assertDoesNotExist()
+      assertEquals(1, downloads.get())
+    } finally {
+      initialLoader.shutdown()
+      restartedLoader.shutdown()
+    }
   }
 
   @Test

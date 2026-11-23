@@ -21,10 +21,14 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
+import com.android.sharemate.model.image.FridgeImageCacheSession
+import com.android.sharemate.model.image.FridgeImageReference
+import com.android.sharemate.model.image.LoadedFridgeImage
 import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
+import com.android.sharemate.model.item.FridgeAccessDeniedException
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
@@ -55,7 +59,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -1457,9 +1463,11 @@ class FridgeViewModelTest {
       profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
       senderName: String = "Ann",
+      items: ItemRepository = repository,
+      photoCache: FridgeImageCacheSession? = null,
   ): FridgeViewModel =
       FridgeViewModel(
-              repository,
+              items,
               "test-user",
               householdId,
               imageSelector,
@@ -1473,6 +1481,7 @@ class FridgeViewModelTest {
               currentUserDisplayName = null,
               chatRepository = chatRepository,
               activitySenderName = senderName,
+              photoCache = photoCache,
           )
           .also { viewModelStore.put("fridge", it) }
 
@@ -2076,6 +2085,49 @@ class FridgeViewModelTest {
 
     assertTrue(viewModel.uiState.value.loadFailed)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun permissionDenialClearsDisplayedItemsAndRevokesPhotoAccess() = runTest {
+    val denyAccess = CompletableDeferred<Unit>()
+    val items =
+        object : ItemRepository by repository {
+          override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+              flow {
+                emit(listOf(milk))
+                denyAccess.await()
+                throw FridgeAccessDeniedException()
+              }
+        }
+    val cache =
+        object : FridgeImageCacheSession {
+          override val isActive = MutableStateFlow(true)
+
+          override fun memoryKey(reference: FridgeImageReference): String = error("Unexpected load")
+
+          override suspend fun load(
+              reference: FridgeImageReference,
+              download: suspend () -> ByteArray,
+          ): LoadedFridgeImage = error("Unexpected load")
+
+          override suspend fun revoke() {
+            isActive.value = false
+          }
+        }
+    val viewModel = viewModel(items = items, photoCache = cache)
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.visibleItems.collect()
+    }
+    runCurrent()
+    assertEquals(listOf(milk), viewModel.visibleItems.value)
+
+    denyAccess.complete(Unit)
+    runCurrent()
+
+    assertTrue(viewModel.uiState.value.loadFailed)
+    assertTrue(viewModel.uiState.value.items.isEmpty())
+    assertTrue(viewModel.visibleItems.value.isEmpty())
+    assertFalse(cache.isActive.value)
   }
 
   @Test

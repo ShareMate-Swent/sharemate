@@ -4,6 +4,10 @@ package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
 
+/** A server-confirmed rejection of the fridge query. Cached results may no longer be shown. */
+class FridgeAccessDeniedException(cause: Throwable? = null) :
+    Exception("Fridge access denied", cause)
+
 /**
  * Operations available on items. In line with the architecture, this interface abstracts the data
  * source (Firestore).
@@ -16,7 +20,7 @@ interface ItemRepository {
    * are never returned. Blank arguments give an empty stream.
    *
    * The server only accepts this query from a current member of the household: it fails with a
-   * permission error for a user who left it or never belonged to it.
+   * [FridgeAccessDeniedException] for a user who left it or never belonged to it.
    */
   fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
 

@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.image
 
+import android.graphics.BitmapFactory
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.barcode.BarcodeScanResult
@@ -14,7 +15,6 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
-import com.android.sharemate.ui.fridge.decodePersonalThumbnail
 import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.ui.fridge.testPseudoRepository
@@ -374,6 +374,13 @@ class PersonalPhotoStorageEmulatorTest {
     val homes = HouseholdRepositoryFirestore(firestore)
     val home = homes.createHousehold("Gallery home", owner)
     val models = ViewModelStore()
+    val cacheDirectory = temporary.newFolder()
+    fun cache(online: Boolean) =
+        FridgeImageCache(
+            cacheDirectory,
+            storage.reference.bucket,
+            { FirebaseEmulator.auth.uid == it },
+            { online })
     val files =
         object : PersonalPhotoFiles {
           override suspend fun copy(uri: String, fromCamera: Boolean) =
@@ -383,7 +390,7 @@ class PersonalPhotoStorageEmulatorTest {
             file.delete()
           }
         }
-    suspend fun fridge(user: String) =
+    suspend fun fridge(user: String, photoCache: FridgeImageCacheSession? = null) =
         withContext(Dispatchers.Main) {
           FridgeViewModel(
                   FirebaseItemRepository(firestore),
@@ -405,6 +412,7 @@ class PersonalPhotoStorageEmulatorTest {
                   memberNameRepository = testMemberNameRepository(),
                   currentUserDisplayName = null,
                   pseudoRepository = testPseudoRepository(),
+                  photoCache = photoCache,
               )
               .also { models.put("fridge", it) }
         }
@@ -431,19 +439,40 @@ class PersonalPhotoStorageEmulatorTest {
       val reference = PersonalPhotoReference(checkNotNull(saved.image).reference)
       denied(repository.load(reference))
       homes.joinHousehold(home.inviteCode, outsider)
-      val member = fridge(outsider)
+      val member = fridge(outsider, cache(online = true).session(outsider, home.id))
       val reread =
           withTimeout(15_000) { member.uiState.first { it.items.isNotEmpty() } }.items.single()
       assertEquals(saved, reread)
-      val bytes = member.personalPhotos!!.load(reference.path)
-      assertArrayEquals(png, bytes)
-      assertEquals(1, decodePersonalThumbnail(bytes, 80).width)
+      val loaded = member.personalPhotos!!.load(reference)
+      assertFalse(loaded.fromDisk)
+      assertArrayEquals(png, loaded.bytes)
+
+      withContext(Dispatchers.Main) { models.clear() }
+      firestore.disableNetwork().await()
+      val offlineMember =
+          try {
+            val reloaded = fridge(outsider, cache(online = false).session(outsider, home.id))
+            withTimeout(15_000) { reloaded.uiState.first { it.items == listOf(reread) } }
+            val offline = reloaded.personalPhotos!!.load(reference)
+            assertTrue(offline.fromDisk)
+            assertArrayEquals(png, offline.bytes)
+            reloaded
+          } finally {
+            firestore.enableNetwork().await()
+          }
+      val bytes = loaded.bytes
+      val bitmap = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+      try {
+        assertEquals(1, bitmap.width)
+      } finally {
+        bitmap.recycle()
+      }
 
       withContext(Dispatchers.Main) {
-        member.requestRemoval(reread.id)
-        member.confirmRemoval()
+        offlineMember.requestRemoval(reread.id)
+        offlineMember.confirmRemoval()
       }
-      withTimeout(20_000) { member.uiState.first { it.items.isEmpty() && !it.isDeleting } }
+      withTimeout(20_000) { offlineMember.uiState.first { it.items.isEmpty() && !it.isDeleting } }
       val objects = JSONObject(emulatorRequest("GET", "")).optJSONArray("items")
       assertEquals(0, objects?.length() ?: 0)
     } finally {
