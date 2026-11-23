@@ -121,6 +121,14 @@ class FridgeViewModelTest {
           name = "Bread",
           householdId = "test-household",
           sharing = ItemSharing.SHARED)
+  private val pendingMilkEaten =
+      PendingFridgeActivity(
+          id = "milk:EATEN",
+          householdId = "test-household",
+          userId = "test-user",
+          type = MessageType.EATEN,
+          itemName = "Milk",
+      )
 
   @Test
   fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
@@ -517,16 +525,9 @@ class FridgeViewModelTest {
 
   @Test
   fun replayWaitsForPendingWriteToBeConfirmedThenSendsOnce() = runTest {
-    pendingActivityStore.save(
-        PendingFridgeActivity(
-            id = "milk:EATEN",
-            householdId = "test-household",
-            userId = "test-user",
-            type = MessageType.EATEN,
-            itemName = milk.name,
-        ))
+    pendingActivityStore.save(pendingMilkEaten)
     repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
-    repository.pendingWriteItemIds.value = setOf("milk")
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
 
     viewModel()
     runCurrent()
@@ -534,7 +535,7 @@ class FridgeViewModelTest {
     assertTrue(chatRepository.attempts.isEmpty())
     assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
 
-    repository.pendingWriteItemIds.value = emptySet()
+    repository.emitSync(confirmed = listOf(milk.copy(status = ItemStatus.EATEN)))
     runCurrent()
 
     assertEquals(listOf("milk:EATEN"), chatRepository.activities.map { it.activityId })
@@ -542,22 +543,16 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun replayKeepsEntryWhenServerRejectsPendingWrite() = runTest {
-    pendingActivityStore.save(
-        PendingFridgeActivity(
-            id = "milk:EATEN",
-            householdId = "test-household",
-            userId = "test-user",
-            type = MessageType.EATEN,
-            itemName = milk.name,
-        ))
+  fun replayDropsEntryWhenRejectionReachesItemsListenerFirst() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
     repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
-    repository.pendingWriteItemIds.value = setOf("milk")
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
     viewModel()
     runCurrent()
 
     repository.emitItems(listOf(milk))
-    repository.pendingWriteItemIds.value = emptySet()
+    runCurrent()
+    repository.emitSync(confirmed = listOf(milk))
     runCurrent()
 
     assertTrue(chatRepository.attempts.isEmpty())
@@ -565,17 +560,65 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun pendingWriteObservationFailureLeavesReplayWaiting() = runTest {
-    pendingActivityStore.save(
-        PendingFridgeActivity(
-            id = "milk:EATEN",
-            householdId = "test-household",
-            userId = "test-user",
-            type = MessageType.EATEN,
-            itemName = milk.name,
-        ))
+  fun replayDropsEntryWhenRejectionReachesSyncBeforeItemsListener() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
     repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
-    repository.pendingWriteFailure = IOException("Metadata unavailable")
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
+    val vm = viewModel()
+    runCurrent()
+
+    // The server rejected the write: the sync snapshot already shows the reverted item while the
+    // items listener still serves the locally applied EATEN status.
+    repository.emitSync(confirmed = listOf(milk))
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun quickSuccessiveOfflineActionsKeepBothBadgesAcrossRestart() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    repository.statusConfirmation = CompletableDeferred()
+    repository.emitSync(confirmed = listOf(milk, bread))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    // The sync listener lags behind the local writes: each item still reads as confirmed ACTIVE.
+    repository.emitSync(confirmed = listOf(milk, bread.copy(quantity = 2)))
+    runCurrent()
+    vm.setItemStatus(bread.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitSync(confirmed = listOf(bread), pending = setOf("milk"))
+    runCurrent()
+
+    assertEquals(
+        setOf("milk:EATEN", "bread:EATEN"),
+        pendingActivityStore.list("test-household", "test-user").map { it.id }.toSet())
+    assertTrue(chatRepository.attempts.isEmpty())
+
+    // The app closes before reconnecting, then reopens once both writes are confirmed.
+    viewModelStore.clear()
+    repository.emitSync(
+        confirmed =
+            listOf(milk.copy(status = ItemStatus.EATEN), bread.copy(status = ItemStatus.EATEN)))
+    viewModel()
+    runCurrent()
+
+    assertEquals(
+        setOf("milk:EATEN", "bread:EATEN"),
+        chatRepository.activities.map { it.activityId }.toSet())
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun syncObservationFailureLeavesReplayWaiting() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    repository.syncFailure = IOException("Metadata unavailable")
 
     viewModel()
     runCurrent()

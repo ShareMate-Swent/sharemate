@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.util.Log
@@ -21,6 +22,7 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.ExpiryStatuses
+import com.android.sharemate.model.item.FridgeSyncSnapshot
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
@@ -64,7 +66,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "FridgeViewModel"
 private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
 private const val ACTIVITY_SEND_FAILURE_MESSAGE = "Fridge activity message could not be sent"
-private const val PENDING_WRITES_FAILURE_MESSAGE = "Unable to observe pending item writes"
+private const val FRIDGE_SYNC_FAILURE_MESSAGE = "Unable to observe confirmed fridge items"
 private const val PENDING_ACTIVITY_ID_SEPARATOR = ':'
 
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
@@ -154,8 +156,11 @@ class FridgeViewModel(
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
   private val pendingActivityDispatches = mutableSetOf<String>()
-  private var pendingWriteItemIds: Set<String>? = null
-  private var initialItemsLoaded = false
+  // Activities whose status write was issued by this ViewModel: their own confirmation handler
+  // publishes or drops them, so replay must not touch them while the write is in flight. One that
+  // failed transiently stays claimed and is retried by the next ViewModel's replay.
+  private val inFlightActivityIds = mutableSetOf<String>()
+  private var latestSync: FridgeSyncSnapshot? = null
   private var barcodeDialogGeneration = 0L
   private var barcodeScanJob: Job? = null
 
@@ -221,7 +226,7 @@ class FridgeViewModel(
     viewModelScope.launch {
       ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
     }
-    observePendingWrites()
+    observeFridgeSync()
     viewModelScope.launch {
       try {
         itemRepository.getFridgeItems(householdId, userId).collect { items ->
@@ -238,10 +243,6 @@ class FridgeViewModel(
                 pendingRemovalItem = if (stale) null else pending,
                 removalFailed = if (stale) false else state.removalFailed)
           }
-          if (!initialItemsLoaded) {
-            initialItemsLoaded = true
-            replayPendingActivities()
-          }
         }
       } catch (exception: CancellationException) {
         throw exception
@@ -252,25 +253,20 @@ class FridgeViewModel(
   }
 
   /**
-   * Replays queued activities once the first items and the pending-write ids are both known, and
-   * again whenever the pending-write ids change.
+   * Replays queued activities from server-confirmed state on every sync snapshot. Items and their
+   * confirmation come from the same snapshot, so a rejected write is never read as confirmed.
    */
-  private fun replayPendingActivities() {
-    if (!initialItemsLoaded || pendingWriteItemIds == null) return
-    viewModelScope.launch { flushPendingActivities() }
-  }
-
-  private fun observePendingWrites() {
+  private fun observeFridgeSync() {
     viewModelScope.launch {
       try {
-        itemRepository.observePendingWriteItemIds(householdId, userId).collect { ids ->
-          pendingWriteItemIds = ids
-          replayPendingActivities()
+        itemRepository.observeFridgeSync(householdId, userId).collect { sync ->
+          latestSync = sync
+          viewModelScope.launch { flushPendingActivities() }
         }
       } catch (exception: CancellationException) {
         throw exception
       } catch (exception: Exception) {
-        Log.w(TAG, PENDING_WRITES_FAILURE_MESSAGE, exception)
+        Log.w(TAG, FRIDGE_SYNC_FAILURE_MESSAGE, exception)
       }
     }
   }
@@ -390,6 +386,10 @@ class FridgeViewModel(
     latestStatusWrites[itemId] = operation
     mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds + itemId) }
     val pendingActivity = pendingActivity(itemId, item.name, status, item.sharing)
+    // Claimed before anything is persisted so a concurrent replay never drops this entry.
+    pendingActivity?.let { inFlightActivityIds += it.id }
+    var confirmationTracked = false
+    var keepClaim = false
     viewModelScope.launch {
       try {
         if (uiState.value.items.none {
@@ -403,16 +403,23 @@ class FridgeViewModel(
             pendingActivity?.let { removePendingActivity(it) }
             reportStatusError(item.name, false)
           }
-          is ItemWrite.Queued ->
-              trackConfirmation(
-                  write,
-                  onFailure = {
-                    viewModelScope.launch { pendingActivity?.let { removePendingActivity(it) } }
-                    if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
-                  },
-                  onSuccess = {
-                    if (latestStatusWrites[itemId] === operation) postActivity(itemId, status)
-                  })
+          is ItemWrite.Queued -> {
+            confirmationTracked = true
+            trackConfirmation(
+                write,
+                onComplete = {
+                  if (!keepClaim) pendingActivity?.let { inFlightActivityIds -= it.id }
+                },
+                onFailure = {
+                  viewModelScope.launch { pendingActivity?.let { removePendingActivity(it) } }
+                  if (latestStatusWrites[itemId] === operation) reportStatusError(item.name, true)
+                },
+                onSuccess = {
+                  if (latestStatusWrites[itemId] === operation) {
+                    keepClaim = postActivity(itemId, status)
+                  }
+                })
+          }
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -420,31 +427,33 @@ class FridgeViewModel(
         pendingActivity?.let { removePendingActivity(it) }
         reportStatusError(item.name, false)
       } finally {
+        if (!confirmationTracked) pendingActivity?.let { inFlightActivityIds -= it.id }
         mutableUiState.update { it.copy(pendingStatusIds = it.pendingStatusIds - itemId) }
       }
     }
   }
 
-  private suspend fun postActivity(itemId: String, status: ItemStatus) {
-    if (chatRepository == null) return
+  /** Publishes a confirmed action; returns true when its entry is kept for a later attempt. */
+  private suspend fun postActivity(itemId: String, status: ItemStatus): Boolean {
+    if (chatRepository == null) return false
     val item =
         uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
             ?: run {
               removePendingActivity(buildPendingActivity(itemId, "", status))
-              return
+              return false
             }
-    if (fridgeType != FridgeType.SHARED) return
+    if (fridgeType != FridgeType.SHARED) return false
     val expectedStatus = if (status == ItemStatus.EATEN) ItemStatus.EATEN else ItemStatus.DISCARDED
     if (item.status != expectedStatus) {
       removePendingActivity(buildPendingActivity(itemId, item.name, status))
-      return
+      return false
     }
     if (item.sharing != ItemSharing.SHARED) {
       removePendingActivity(buildPendingActivity(itemId, item.name, status))
-      return
+      return false
     }
-    val pending = pendingActivity(itemId, item.name, status, item.sharing) ?: return
-    sendPendingActivity(pending)
+    val pending = pendingActivity(itemId, item.name, status, item.sharing) ?: return false
+    return sendPendingActivity(pending, item.name)
   }
 
   private fun pendingActivity(
@@ -502,13 +511,12 @@ class FridgeViewModel(
   private suspend fun flushPendingActivities() {
     val store = pendingActivityStore ?: return
     if (fridgeType != FridgeType.SHARED) return
+    val sync = latestSync ?: return
     try {
-      // An item whose write is still unconfirmed may be rejected by the server: keep its entry.
-      val unconfirmed = pendingWriteItemIds.orEmpty()
       store
           .list(householdId, userId)
-          .filter { it.id.substringBefore(PENDING_ACTIVITY_ID_SEPARATOR) !in unconfirmed }
-          .forEach { sendPendingActivity(it) }
+          .filter { it.id !in inFlightActivityIds }
+          .forEach { replayPendingActivity(it, sync) }
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
@@ -516,10 +524,16 @@ class FridgeViewModel(
     }
   }
 
-  private suspend fun sendPendingActivity(activity: PendingFridgeActivity) {
-    val repository = chatRepository ?: return
-    if (activity.id in pendingActivityDispatches) return
+  /**
+   * Publishes [activity] only if [sync] shows its status confirmed by the server. An item whose
+   * write is still unconfirmed keeps its entry; any other state means the action did not happen.
+   */
+  private suspend fun replayPendingActivity(
+      activity: PendingFridgeActivity,
+      sync: FridgeSyncSnapshot,
+  ) {
     val itemId = activity.id.substringBefore(PENDING_ACTIVITY_ID_SEPARATOR)
+    if (itemId in sync.pendingWriteIds) return
     val expectedStatus =
         when (activity.type) {
           MessageType.EATEN -> ItemStatus.EATEN
@@ -528,7 +542,7 @@ class FridgeViewModel(
         }
     val item =
         expectedStatus?.let { status ->
-          uiState.value.items.firstOrNull {
+          sync.confirmedItems.firstOrNull {
             it.id == itemId &&
                 it.householdId == householdId &&
                 it.status == status &&
@@ -539,24 +553,36 @@ class FridgeViewModel(
       removePendingActivity(activity)
       return
     }
+    sendPendingActivity(activity, item.name)
+  }
+
+  /** Sends [activity]; returns true when a transient failure kept its entry for a later attempt. */
+  private suspend fun sendPendingActivity(
+      activity: PendingFridgeActivity,
+      itemName: String,
+  ): Boolean {
+    val repository = chatRepository ?: return false
+    if (activity.id in pendingActivityDispatches) return false
     pendingActivityDispatches += activity.id
-    try {
+    return try {
       // A null result is permanent: drop the entry. A thrown failure is transient: keep it.
       if (repository.sendActivity(
           activity.householdId,
           activity.userId,
           activitySenderName,
           activity.type,
-          item.name,
+          itemName,
           activityId = activity.id,
       ) == null) {
         Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE)
       }
       removePendingActivity(activity)
+      false
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
       Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE, failure)
+      true
     } finally {
       pendingActivityDispatches -= activity.id
     }

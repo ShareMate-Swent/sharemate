@@ -2,6 +2,7 @@
 // Co-authored-by: AI Assistant
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -171,7 +172,7 @@ class FirebaseItemRepositoryTest {
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun observePendingWriteItemIds_reportsOnlyDocumentsWithUnconfirmedWrites() =
+  fun observeFridgeSync_splitsEachSnapshotIntoConfirmedItemsAndPendingIds() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
@@ -180,12 +181,12 @@ class FirebaseItemRepositoryTest {
                 as ArgumentCaptor<EventListener<QuerySnapshot>>
         `when`(query.addSnapshotListener(eq(MetadataChanges.INCLUDE), listenerCaptor.capture()))
             .thenReturn(mock(ListenerRegistration::class.java))
-        val emitted = mutableListOf<Set<String>>()
+        val emitted = mutableListOf<FridgeSyncSnapshot>()
         var failure: Throwable? = null
         val job =
             launch(Dispatchers.Unconfined) {
               try {
-                repository.observePendingWriteItemIds("house-1", "user-1").collect { emitted += it }
+                repository.observeFridgeSync("house-1", "user-1").collect { emitted += it }
               } catch (e: Exception) {
                 failure = e
               }
@@ -194,8 +195,11 @@ class FirebaseItemRepositoryTest {
         fun document(id: String, pending: Boolean): DocumentSnapshot {
           val metadata = mock(SnapshotMetadata::class.java)
           `when`(metadata.hasPendingWrites()).thenReturn(pending)
-          val doc = mock(DocumentSnapshot::class.java)
+          val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
           `when`(doc.id).thenReturn(id)
+          `when`(doc.getString("name")).thenReturn("Item $id")
+          `when`(doc.getString("ownerId")).thenReturn("user-1")
+          `when`(doc.getString("householdId")).thenReturn("house-1")
           `when`(doc.metadata).thenReturn(metadata)
           return doc
         }
@@ -205,7 +209,13 @@ class FirebaseItemRepositoryTest {
         listenerCaptor.value.onEvent(snapshot(document("a", true), document("b", false)), null)
         listenerCaptor.value.onEvent(snapshot(document("a", false), document("b", false)), null)
         listenerCaptor.value.onEvent(null, null)
-        assertEquals(listOf(setOf("a"), emptySet<String>()), emitted)
+
+        assertEquals(3, emitted.size)
+        assertEquals(setOf("a"), emitted[0].pendingWriteIds)
+        assertEquals(listOf("b"), emitted[0].confirmedItems.map { it.id })
+        assertTrue(emitted[1].pendingWriteIds.isEmpty())
+        assertEquals(listOf("a", "b"), emitted[1].confirmedItems.map { it.id })
+        assertEquals(FridgeSyncSnapshot(emptyList(), emptySet()), emitted[2])
 
         listenerCaptor.value.onEvent(
             null,
@@ -215,10 +225,11 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
-  fun observePendingWriteItemIds_returnsNothingWithoutQuery_whenHouseholdOrUserIsBlank() =
+  fun observeFridgeSync_returnsNothingWithoutQuery_whenHouseholdOrUserIsBlank() =
       runBlocking<Unit> {
-        assertTrue(repository.observePendingWriteItemIds("", "user-1").first().isEmpty())
-        assertTrue(repository.observePendingWriteItemIds("house-1", " ").first().isEmpty())
+        val empty = FridgeSyncSnapshot(emptyList(), emptySet())
+        assertEquals(empty, repository.observeFridgeSync("", "user-1").first())
+        assertEquals(empty, repository.observeFridgeSync("house-1", " ").first())
         verify(collection, never()).where(any(Filter::class.java))
       }
 

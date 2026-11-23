@@ -1,11 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -54,22 +57,37 @@ class FakeItemRepository : ItemRepository {
     readFailure?.let { failure ->
       return flow { throw failure }
     }
-    return items.map { current ->
-      current.filter {
-        it.householdId == householdId && (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
-      }
-    }
+    return visibleItems(householdId, userId)
   }
 
-  /** Ids of the items whose local write the fake server has not confirmed yet. */
-  val pendingWriteItemIds = MutableStateFlow<Set<String>>(emptySet())
-  var pendingWriteFailure: Exception? = null
+  private fun visibleItems(householdId: String, userId: String): Flow<List<Item>> =
+      items.map { current ->
+        current.filter {
+          it.householdId == householdId &&
+              (it.sharing == ItemSharing.SHARED || it.ownerId == userId)
+        }
+      }
 
-  override fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> {
-    pendingWriteFailure?.let { failure ->
+  /**
+   * Atomic server view used by [observeFridgeSync]. When null, every visible item is reported as
+   * confirmed, which matches an always-online backend.
+   */
+  val syncSnapshot = MutableStateFlow<FridgeSyncSnapshot?>(null)
+  var syncFailure: Exception? = null
+
+  /** Publishes one snapshot in which [confirmed] are acknowledged and [pending] are not. */
+  fun emitSync(confirmed: List<Item>, pending: Set<String> = emptySet()) {
+    syncSnapshot.value = FridgeSyncSnapshot(confirmed, pending)
+  }
+
+  override fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> {
+    syncFailure?.let { failure ->
       return flow { throw failure }
     }
-    return pendingWriteItemIds
+    return combine(visibleItems(householdId, userId), syncSnapshot) { visible, override ->
+          override ?: FridgeSyncSnapshot(visible, emptySet())
+        }
+        .distinctUntilChanged()
   }
 
   override suspend fun addItem(item: Item): String? {

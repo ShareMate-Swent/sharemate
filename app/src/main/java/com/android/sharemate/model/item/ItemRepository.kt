@@ -1,9 +1,10 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * Operations available on items. In line with the architecture, this interface abstracts the data
@@ -22,12 +23,13 @@ interface ItemRepository {
   fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
 
   /**
-   * Reactive stream of the ids of the items, among those of [getFridgeItems], that still have a
-   * local write the server has not confirmed. Emits again when a write is confirmed or rejected.
-   * Implementations without offline writes may keep the default, which reports none.
+   * Reactive stream of the items of [getFridgeItems] split by server confirmation. Each emission is
+   * built from a single snapshot, so an item's status and whether it is confirmed always agree.
+   * Implementations without offline writes may keep the default, which reports every item as
+   * confirmed.
    */
-  fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> =
-      flowOf(emptySet())
+  fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
+      getFridgeItems(householdId, userId).map { FridgeSyncSnapshot(it, emptySet()) }
 
   /**
    * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to
@@ -87,3 +89,15 @@ interface ItemRepository {
    */
   fun deleteItemQueued(itemId: String): ItemWrite
 }
+
+/**
+ * One fridge snapshot split by write state.
+ *
+ * @property confirmedItems Items whose current state the server has acknowledged.
+ * @property pendingWriteIds Ids of the items that still have a local write the server has not
+ *   confirmed; their state may still be rejected.
+ */
+data class FridgeSyncSnapshot(
+    val confirmedItems: List<Item>,
+    val pendingWriteIds: Set<String>,
+)

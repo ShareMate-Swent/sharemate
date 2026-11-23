@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -34,9 +35,9 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
         observe(fridgeQuery(householdId, userId))
       }
 
-  override fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> =
+  override fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
       if (householdId.isBlank() || userId.isBlank()) {
-        flowOf(emptySet())
+        flowOf(FridgeSyncSnapshot(emptyList(), emptySet()))
       } else {
         callbackFlow {
               val registration =
@@ -47,13 +48,14 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                       close(error)
                       return@addSnapshotListener
                     }
-                    val ids =
-                        snapshot
-                            ?.documents
-                            ?.filter { it.metadata.hasPendingWrites() }
-                            ?.map { it.id }
-                            .orEmpty()
-                    trySend(ids.toSet())
+                    // Status and confirmation come from the same snapshot, so a rejected write can
+                    // never be seen as confirmed with the locally applied status.
+                    val (pending, confirmed) =
+                        snapshot?.documents.orEmpty().partition { it.metadata.hasPendingWrites() }
+                    trySend(
+                        FridgeSyncSnapshot(
+                            confirmedItems = confirmed.mapNotNull { it.toItemOrNull() },
+                            pendingWriteIds = pending.map { it.id }.toSet()))
                   }
               awaitClose { registration.remove() }
             }
