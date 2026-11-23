@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,54 +58,57 @@ fun LaunchReveal(
     callback()
     bar.animateTo(1f, tween(LaunchLayout.progressDurationMillis))
   }
-  Column(
-      modifier = modifier.testTag("launch_reveal"),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center) {
-        Box(Modifier.onGloballyPositioned { sourceBounds = it.boundsInRoot() }) {
-          ShareMateBrand(
-              writing = writing.value,
-              logo = logo.value,
-              modifier =
-                  Modifier.graphicsLayer {
-                        val source = sourceBounds
-                        val target = destinationBounds
-                        if (source != null && target != null) {
-                          translationX = (target.left - source.left) * transition
-                          translationY = (target.top - source.top) * transition
+  BoxWithConstraints(modifier.testTag("launch_reveal")) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center) {
+          Box(Modifier.onGloballyPositioned { sourceBounds = it.boundsInRoot() }) {
+            ShareMateBrand(
+                writing = writing.value,
+                logo = logo.value,
+                modifier =
+                    Modifier.graphicsLayer {
+                          val source = sourceBounds
+                          val target = destinationBounds
+                          if (source != null && target != null) {
+                            translationX = (target.left - source.left) * transition
+                            translationY = (target.top - source.top) * transition
+                          }
                         }
-                      }
-                      .testTag("launch_brand"))
+                        .testTag("launch_brand"))
+          }
+          Spacer(Modifier.height(LaunchLayout.brandToProgressGap))
+          Column(
+              Modifier.width(LaunchLayout.progressWidth).graphicsLayer {
+                alpha = bar.value * (1f - transition * 4f).coerceAtLeast(0f)
+              },
+              horizontalAlignment = Alignment.CenterHorizontally) {
+                LinearProgressIndicator(
+                    progress =
+                        progress.coerceIn(0, LaunchLayout.readyProgress) /
+                            LaunchLayout.readyProgress.toFloat(),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .height(LaunchLayout.progressHeight)
+                            .testTag("launch_progress"),
+                    color = LaunchLayout.nameMint,
+                    trackColor = LaunchLayout.progressTrack)
+                Spacer(Modifier.height(LaunchLayout.progressGap))
+                Text(
+                    stringResource(R.string.launch_progress, progress),
+                    color = LaunchLayout.progressLabel)
+              }
+          if (failed) {
+            Text(
+                stringResource(R.string.launch_failed),
+                Modifier.padding(LaunchLayout.failurePadding),
+                color = LaunchLayout.nameDark)
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.launch_retry)) }
+          }
         }
-        Spacer(Modifier.height(LaunchLayout.brandToProgressGap))
-        Column(
-            Modifier.width(LaunchLayout.progressWidth).graphicsLayer {
-              alpha = bar.value * (1f - transition * 4f).coerceAtLeast(0f)
-            },
-            horizontalAlignment = Alignment.CenterHorizontally) {
-              LinearProgressIndicator(
-                  progress =
-                      progress.coerceIn(0, LaunchLayout.readyProgress) /
-                          LaunchLayout.readyProgress.toFloat(),
-                  modifier =
-                      Modifier.fillMaxWidth()
-                          .height(LaunchLayout.progressHeight)
-                          .testTag("launch_progress"),
-                  color = LaunchLayout.nameMint,
-                  trackColor = LaunchLayout.progressTrack)
-              Spacer(Modifier.height(LaunchLayout.progressGap))
-              Text(
-                  stringResource(R.string.launch_progress, progress),
-                  color = LaunchLayout.progressLabel)
-            }
-        if (failed) {
-          Text(
-              stringResource(R.string.launch_failed),
-              Modifier.padding(LaunchLayout.failurePadding),
-              color = LaunchLayout.nameDark)
-          TextButton(onClick = onRetry) { Text(stringResource(R.string.launch_retry)) }
-        }
-      }
+  }
 }
 
 /** The same artwork and dimensions are used during launch and on the welcome screen. */

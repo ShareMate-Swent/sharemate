@@ -112,7 +112,8 @@ fun AuthHouseholdGate(
               startDestination == HouseholdRoutes.PHOTO -> LaunchStatus.READY
               state is HouseholdGateState.Ready -> LaunchStatus.CONTINUE
               state is HouseholdGateState.NeedsHousehold -> LaunchStatus.READY
-              state is HouseholdGateState.Error -> LaunchStatus.ERROR
+              // The error destination is usable: it exposes retry and account sign-out.
+              state is HouseholdGateState.Error -> LaunchStatus.READY
               else -> LaunchStatus.WAITING
             })
         LaunchedEffect(session) { gateViewModel.updateSession(session) }

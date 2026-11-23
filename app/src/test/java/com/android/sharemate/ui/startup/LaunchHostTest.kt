@@ -2,10 +2,14 @@
 package com.android.sharemate.ui.startup
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.ui.auth.AuthTestTags
 import com.android.sharemate.ui.auth.AuthWelcomeScreen
@@ -118,6 +122,16 @@ class LaunchHostTest {
     compose.onNodeWithTag(AuthTestTags.WELCOME_LOGIN).performScrollTo().performClick()
     assertEquals(1, emailClicks)
     assertEquals(1, mounts)
+  }
+
+  @Test
+  fun shortWindowKeepsRetryReachable() {
+    var retries = 0
+    compose.setContent {
+      Box(Modifier.requiredSize(640.dp, 240.dp)) { LaunchReveal(0, true, {}, { retries++ }) }
+    }
+    compose.onNodeWithText("Try again").performScrollTo().assertIsDisplayed().performClick()
+    assertEquals(1, retries)
   }
 
   @Test
