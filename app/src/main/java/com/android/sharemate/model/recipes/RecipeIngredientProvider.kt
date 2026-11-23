@@ -5,7 +5,18 @@ import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import java.text.Normalizer
+import java.util.Date
 import java.util.Locale
+
+/**
+ * One usable stock entry, before recipe request names are deduplicated.
+ *
+ * @property itemId Original fridge item identifier; equal names can belong to different items.
+ * @property name Recipe request name, normalized exactly as in
+ *   [RecipeIngredientProvider.ingredients].
+ * @property expirationDate Copy of the stored UTC expiry day, or null when unknown.
+ */
+data class AvailableIngredient(val itemId: String, val name: String, val expirationDate: Date?)
 
 /** Builds recipe request ingredients from a server-refreshed, user-visible fridge snapshot. */
 class RecipeIngredientProvider(private val items: ItemRepository) {
@@ -16,8 +27,19 @@ class RecipeIngredientProvider(private val items: ItemRepository) {
    * cancellation propagate so they cannot be mistaken for an empty fridge.
    */
   suspend fun ingredients(householdId: String, userId: String): List<String> {
+    return availableIngredients(householdId, userId).map { it.name }.distinct().sorted()
+  }
+
+  /**
+   * Same availability and name rules as [ingredients], retaining each item's identity and expiry.
+   * Results follow inventory order; two stocks with the same name stay separate. Returned dates do
+   * not alias the inventory's mutable [Date] values.
+   */
+  suspend fun availableIngredients(householdId: String, userId: String): List<AvailableIngredient> {
     if (householdId.isBlank() || userId.isBlank()) return emptyList()
-    return items.getFridgeItemsFromServer(householdId, userId).asIngredients(householdId, userId)
+    return items
+        .getFridgeItemsFromServer(householdId, userId)
+        .asAvailableIngredients(householdId, userId)
   }
 
   /**
@@ -34,7 +56,10 @@ class RecipeIngredientProvider(private val items: ItemRepository) {
   }
 }
 
-private fun List<Item>.asIngredients(householdId: String, userId: String): List<String> =
+private fun List<Item>.asAvailableIngredients(
+    householdId: String,
+    userId: String,
+): List<AvailableIngredient> =
     asSequence()
         .filter {
           it.householdId == householdId &&
@@ -42,15 +67,15 @@ private fun List<Item>.asIngredients(householdId: String, userId: String): List<
               it.status == ItemStatus.ACTIVE &&
               it.quantity > 0
         }
-        .map {
-          Normalizer.normalize(it.name, Normalizer.Form.NFKC)
-              .replace(ingredientWhitespace, " ")
-              .trim()
-              .lowercase(Locale.ROOT)
+        .mapNotNull { item ->
+          val name =
+              Normalizer.normalize(item.name, Normalizer.Form.NFKC)
+                  .replace(ingredientWhitespace, " ")
+                  .trim()
+                  .lowercase(Locale.ROOT)
+          if (name.isEmpty()) null
+          else AvailableIngredient(item.id, name, item.expirationDate?.let { Date(it.time) })
         }
-        .filter(String::isNotEmpty)
-        .distinct()
-        .sorted()
         .toList()
 
 private val ingredientWhitespace = Regex("[\\p{Z}\\s]+")
