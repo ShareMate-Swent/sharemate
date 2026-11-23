@@ -15,16 +15,23 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
@@ -35,12 +42,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.ui.receipts.ReceiptDesign
+import com.android.sharemate.ui.receipts.ReceiptExitDialog
+import com.android.sharemate.ui.receipts.ReceiptHeader
+import com.android.sharemate.ui.receipts.ReceiptProgress
 import com.android.sharemate.ui.theme.Dimens
 
 data class PhotoPickerLabels(
     @StringRes val title: Int,
     @StringRes val previewDescription: Int,
     @StringRes val sourceDescription: Int,
+    val receiptProgress: Boolean = false,
 )
 
 /** Captures or imports a photo and waits for the caller to finish using the confirmed selection. */
@@ -49,12 +61,20 @@ fun PhotoPickerDialog(
     viewModel: PhotoPickerViewModel,
     labels: PhotoPickerLabels,
     confirmationError: String? = null,
+    onSaveDraft: (suspend (SelectedPhoto) -> Unit)? = null,
     onImageConfirmed: (suspend (SelectedPhoto) -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsState()
   if (!state.visible) return
   val context = LocalContext.current
   var denied by rememberSaveable { mutableStateOf(false) }
+  var showExitChoice by rememberSaveable { mutableStateOf(false) }
+  val requestClose = {
+    if (!state.busy) {
+      if (onSaveDraft != null && state.selection != null && !state.confirmed) showExitChoice = true
+      else viewModel.closePreview()
+    }
+  }
   var waitingForSettings by rememberSaveable { mutableStateOf(false) }
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   val permission =
@@ -80,117 +100,181 @@ fun PhotoPickerDialog(
     onDispose { lifecycle.removeObserver(observer) }
   }
   Dialog(
-      onDismissRequest = viewModel::closePreview,
+      onDismissRequest = requestClose,
       properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-          Column(
-              Modifier.fillMaxSize()
-                  .safeDrawingPadding()
-                  .padding(Dimens.spacingL)
-                  .verticalScroll(rememberScrollState()),
-              verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
-                Text(stringResource(labels.title), style = MaterialTheme.typography.headlineSmall)
-                if (state.busy)
-                    LinearProgressIndicator(
-                        Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
-                if (state.failed)
-                    Text(
-                        confirmationError.takeIf { state.confirmationFailed }
-                            ?: stringResource(R.string.photo_picker_failed),
-                        color = MaterialTheme.colorScheme.error)
-                when (state.page) {
-                  PhotoPage.CAMERA ->
-                      CameraCapture(
-                          enabled = !state.busy,
-                          onCapture = viewModel::capture,
-                          onFailure = {
-                            viewModel.showSources()
-                            viewModel.reportFailure()
-                          })
-                  PhotoPage.PREVIEW -> {
-                    AsyncImage(
-                        model =
-                            ImageRequest.Builder(context)
-                                .data(state.selection?.uri)
-                                .size(PREVIEW_MAX_PIXELS)
-                                .build(),
-                        contentDescription = stringResource(labels.previewDescription),
-                        contentScale = ContentScale.Fit,
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .height(PhotoFrameHeight)
-                                .testTag(PhotoPickerTestTags.PREVIEW),
-                        onError = { viewModel.reportFailure() })
-                    Button(
-                        onClick = { viewModel.confirm(onImageConfirmed) },
-                        enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CONFIRM)) {
-                          Text(stringResource(R.string.photo_picker_confirm))
-                        }
-                  }
-                  PhotoPage.SOURCE -> Text(stringResource(labels.sourceDescription))
-                }
-                if (denied) {
-                  Text(
-                      stringResource(R.string.photo_picker_camera_denied),
-                      color = MaterialTheme.colorScheme.error)
-                  val activity = context.findActivity()
-                  if (activity != null &&
-                      !ActivityCompat.shouldShowRequestPermissionRationale(
-                          activity, Manifest.permission.CAMERA)) {
-                    TextButton(
-                        onClick = {
-                          try {
-                            waitingForSettings = true
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.parse("package:${context.packageName}")))
-                          } catch (_: Exception) {
-                            waitingForSettings = false
-                            viewModel.reportFailure()
-                          }
-                        }) {
-                          Text(stringResource(R.string.photo_picker_camera_settings))
-                        }
-                  }
-                }
-                if (state.page != PhotoPage.CAMERA)
-                    OutlinedButton(
-                        onClick = {
-                          if (context.hasCameraPermission()) viewModel.showCamera()
-                          else
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color =
+                if (labels.receiptProgress) ReceiptDesign.background
+                else MaterialTheme.colorScheme.surface) {
+              Column(
+                  Modifier.fillMaxSize()
+                      .safeDrawingPadding()
+                      .padding(Dimens.spacingL)
+                      .verticalScroll(rememberScrollState()),
+                  verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
+                    if (labels.receiptProgress) {
+                      ReceiptHeader(stringResource(labels.title), onBack = requestClose)
+                      ReceiptProgress(0)
+                    } else
+                        Text(
+                            stringResource(labels.title),
+                            style = MaterialTheme.typography.headlineSmall)
+                    if (state.busy)
+                        LinearProgressIndicator(
+                            Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
+                    if (state.failed)
+                        Text(
+                            confirmationError.takeIf { state.confirmationFailed }
+                                ?: stringResource(R.string.photo_picker_failed),
+                            color = MaterialTheme.colorScheme.error)
+                    when (state.page) {
+                      PhotoPage.CAMERA ->
+                          CameraCapture(
+                              enabled = !state.busy,
+                              onCapture = viewModel::capture,
+                              onFailure = {
+                                viewModel.showSources()
+                                viewModel.reportFailure()
+                              })
+                      PhotoPage.PREVIEW -> {
+                        AsyncImage(
+                            model =
+                                ImageRequest.Builder(context)
+                                    .data(state.selection?.uri)
+                                    .size(PREVIEW_MAX_PIXELS)
+                                    .build(),
+                            contentDescription = stringResource(labels.previewDescription),
+                            contentScale = ContentScale.Fit,
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .height(PhotoFrameHeight)
+                                    .testTag(PhotoPickerTestTags.PREVIEW),
+                            onError = { viewModel.reportFailure() })
+                        Button(
+                            onClick = { viewModel.confirm(onImageConfirmed) },
+                            enabled = !state.busy,
+                            modifier =
+                                Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CONFIRM)) {
+                              Text(stringResource(R.string.photo_picker_confirm))
+                            }
+                      }
+                      PhotoPage.SOURCE ->
+                          if (!labels.receiptProgress)
+                              Text(stringResource(labels.sourceDescription))
+                    }
+                    if (denied) {
+                      Text(
+                          stringResource(R.string.photo_picker_camera_denied),
+                          color = MaterialTheme.colorScheme.error)
+                      val activity = context.findActivity()
+                      if (activity != null &&
+                          !ActivityCompat.shouldShowRequestPermissionRationale(
+                              activity, Manifest.permission.CAMERA)) {
+                        TextButton(
+                            onClick = {
                               try {
-                                permission.launch(Manifest.permission.CAMERA)
+                                waitingForSettings = true
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")))
                               } catch (_: Exception) {
+                                waitingForSettings = false
                                 viewModel.reportFailure()
                               }
+                            }) {
+                              Text(stringResource(R.string.photo_picker_camera_settings))
+                            }
+                      }
+                    }
+                    if (state.page != PhotoPage.CAMERA)
+                        OutlinedButton(
+                            shape = RoundedCornerShape(14.dp),
+                            colors =
+                                ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surface),
+                            onClick = {
+                              if (context.hasCameraPermission()) viewModel.showCamera()
+                              else
+                                  try {
+                                    permission.launch(Manifest.permission.CAMERA)
+                                  } catch (_: Exception) {
+                                    viewModel.reportFailure()
+                                  }
+                            },
+                            enabled = !state.busy,
+                            modifier =
+                                Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAMERA)) {
+                              if (labels.receiptProgress) ReceiptSourceLabel(true)
+                              else Text(stringResource(R.string.photo_picker_camera))
+                            }
+                    OutlinedButton(
+                        shape = RoundedCornerShape(14.dp),
+                        colors =
+                            ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface),
+                        onClick = {
+                          try {
+                            gallery.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly))
+                          } catch (_: Exception) {
+                            viewModel.reportFailure()
+                          }
                         },
                         enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.CAMERA)) {
-                          Text(stringResource(R.string.photo_picker_camera))
+                        modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
+                          if (labels.receiptProgress) ReceiptSourceLabel(false)
+                          else Text(stringResource(R.string.photo_picker_gallery))
                         }
-                OutlinedButton(
-                    onClick = {
-                      try {
-                        gallery.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly))
-                      } catch (_: Exception) {
-                        viewModel.reportFailure()
-                      }
-                    },
-                    enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
-                      Text(stringResource(R.string.photo_picker_gallery))
-                    }
-                TextButton(
-                    onClick = viewModel::closePreview,
-                    enabled = !state.busy,
-                    modifier = Modifier.testTag(PhotoPickerTestTags.CANCEL)) {
-                      Text(stringResource(R.string.cancel))
-                    }
-              }
+                    if (!labels.receiptProgress)
+                        TextButton(
+                            onClick = viewModel::closePreview,
+                            enabled = !state.busy,
+                            modifier = Modifier.testTag(PhotoPickerTestTags.CANCEL)) {
+                              Text(stringResource(R.string.cancel))
+                            }
+                  }
+            }
+      }
+  if (showExitChoice) {
+    ReceiptExitDialog(
+        busy = state.busy,
+        failed = state.failed,
+        onSaveDraft = { viewModel.confirm(onSaveDraft) },
+        onDiscard = {
+          showExitChoice = false
+          viewModel.reset()
+        },
+        onDismiss = { showExitChoice = false })
+  }
+}
+
+@Composable
+private fun ReceiptSourceLabel(camera: Boolean) {
+  Row(
+      Modifier.fillMaxWidth().padding(vertical = 10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(color = ReceiptDesign.lavender, shape = RoundedCornerShape(10.dp)) {
+          Icon(
+              if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
+              null,
+              Modifier.padding(10.dp).size(24.dp),
+              tint = ReceiptDesign.purple)
+        }
+        Column {
+          Text(
+              stringResource(
+                  if (camera) R.string.receipt_take_photo else R.string.receipt_choose_gallery),
+              fontWeight = FontWeight.Bold,
+              color = ReceiptDesign.ink)
+          Text(
+              stringResource(
+                  if (camera) R.string.receipt_camera_hint else R.string.receipt_gallery_hint),
+              fontSize = 12.sp,
+              color = ReceiptDesign.muted)
         }
       }
 }

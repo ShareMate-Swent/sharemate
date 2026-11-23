@@ -614,9 +614,13 @@ class InventorySaveFlowTest {
         .performClick()
     compose.onNodeWithText("Corrected milk").assertExists()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(StagingTestTags.LIST).performScrollToNode(hasTestTag(StagingTestTags.ADD))
     compose.onNodeWithTag(StagingTestTags.ADD).assertIsDisplayed().assertIsNotEnabled()
     compose.runOnIdle { status.value = InventorySubmissionStatus.MISSING }
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag(StagingTestTags.item("milk")))
     compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
     // A pasted name longer than an item name may be is cut, so it can never be refused later.
     compose
@@ -718,15 +722,14 @@ class InventorySaveFlowTest {
           compose
               .onNodeWithTag(StagingTestTags.ADD)
               .assertIsDisplayed()
-              .assertTextEquals(context.getString(R.string.staging_add_item))
-      val titleBounds =
-          compose
-              .onNodeWithText(context.getString(R.string.staging_title))
-              .fetchSemanticsNode()
-              .boundsInRoot
+              .assertTextContains(context.getString(R.string.staging_add_item), substring = true)
+      val itemBounds =
+          compose.onNodeWithTag(StagingTestTags.item("0")).fetchSemanticsNode().boundsInRoot
       val addBounds = addButton.fetchSemanticsNode().boundsInRoot
-      assertTrue(addBounds.center.x > titleBounds.center.x)
-      assertTrue(addBounds.top < titleBounds.bottom && titleBounds.top < addBounds.bottom)
+      val continueBounds =
+          compose.onNodeWithTag(StagingTestTags.CONFIRM).fetchSemanticsNode().boundsInRoot
+      assertTrue(addBounds.top >= itemBounds.bottom)
+      assertTrue(addBounds.bottom <= continueBounds.top)
       addButton.performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Coffee")
       compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("2")

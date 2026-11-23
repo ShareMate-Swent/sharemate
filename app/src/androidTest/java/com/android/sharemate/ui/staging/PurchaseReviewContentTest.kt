@@ -6,9 +6,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.StagedItem
@@ -34,7 +36,11 @@ class PurchaseReviewContentTest {
     }
     compose.onNodeWithTag("staging_confirm_purchase").assertIsNotEnabled()
     compose.onNodeWithTag("staging_participant_b").performClick()
+    compose.onNodeWithTag(StagingTestTags.LIST).performScrollToNode(hasTestTag("staging_share_b"))
     compose.onNodeWithTag("staging_share_b").assertIsDisplayed()
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag("staging_confirm_purchase"))
     compose.onNodeWithTag("staging_confirm_purchase").performClick()
     compose.runOnIdle {
       assertEquals("a", confirmed?.paidBy)
@@ -107,6 +113,9 @@ class PurchaseReviewContentTest {
     }
     compose.onNodeWithTag("staging_payer_a").performClick()
     compose.onNodeWithTag("staging_participant_a").performClick()
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag("staging_confirm_purchase"))
     compose.onNodeWithTag("staging_confirm_purchase").performClick()
     compose.runOnIdle {
       assertEquals("a", confirmed?.paidBy)

@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
@@ -9,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -48,12 +50,14 @@ fun StagedItemEditDialog(
     onCancel: () -> Unit,
 ) {
   AlertDialog(
+      containerColor = MaterialTheme.colorScheme.surface,
       modifier = Modifier.testTag(StagedItemEditTestTags.DIALOG),
       onDismissRequest = onCancel,
       title = {
         Text(
             stringResource(
-                if (draft.itemId == null) R.string.staging_add_item else R.string.fridge_edit_item))
+                if (draft.itemId == null) R.string.staging_add_item
+                else R.string.receipt_edit_item))
       },
       text = {
         Column(
@@ -82,7 +86,7 @@ fun StagedItemEditDialog(
               value = draft.price,
               onValueChange = onPriceChange,
               label = { Text(stringResource(R.string.staging_price_label)) },
-              prefix = { Text(stringResource(R.string.staging_currency) + " ") },
+              suffix = { Text(" " + stringResource(R.string.staging_currency)) },
               supportingText = { Text(stringResource(R.string.staging_price_hint)) },
               isError = draft.error == StagedItemError.INVALID_PRICE,
               singleLine = true,
@@ -99,8 +103,11 @@ fun StagedItemEditDialog(
         }
       },
       confirmButton = {
-        TextButton(onClick = onSave, modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
-          Text(stringResource(R.string.fridge_save))
+        Button(onClick = onSave, modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
+          Text(
+              stringResource(
+                  if (draft.itemId == null) R.string.staging_add_item
+                  else R.string.receipt_save_changes))
         }
       },
       dismissButton = {
