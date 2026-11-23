@@ -232,11 +232,11 @@ class ReceiptHistoryFlowTest {
     val view = "receipt_card_$id"
     compose.waitUntil(5_000) { compose.onAllNodesWithTag(view).fetchSemanticsNodes().isNotEmpty() }
     compose.onNodeWithTag(view).performClick()
-    val retry = compose.activity.getString(R.string.household_retry)
+    val retry = compose.activity.getString(R.string.receipt_sync_retry)
     compose.onNodeWithText(retry).performClick()
     compose.waitUntil(5_000) { attempts == 1 }
     compose
-        .onNodeWithText(compose.activity.getString(R.string.inventory_save_pending))
+        .onNodeWithText(compose.activity.getString(R.string.receipt_sync_pending))
         .assertIsDisplayed()
     compose.runOnIdle { org.junit.Assert.assertEquals(1, attempts) }
   }
