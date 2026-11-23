@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -26,9 +25,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
-import coil.imageLoader
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FridgeImageCache
@@ -391,7 +390,8 @@ class FridgePersonalPhotoUiTest {
       Result.success(bytes)
     }
     val disk = FridgeImageCache.diskCache(temporary.root)
-    fun cache() = FridgeImageCache(testApplication, disk, "bucket", { it == "user" }, online)
+    fun cache() =
+        FridgeImageCache(testApplication, disk, "bucket", { it == "user" }, { online.value })
 
     val original =
         Item(
@@ -445,7 +445,7 @@ class FridgePersonalPhotoUiTest {
   }
 
   @Test
-  fun returningOnlineRetriesOnlyVisibleCardsMissingTheirThumbnail() {
+  fun webPhotosSurviveOfflineReopeningAndScrollAndMissingPhotosLoadOnNextDisplay() {
     val online = MutableStateFlow(true)
     val downloaded = ConcurrentLinkedQueue<String>()
     val bytes = png(24, 16)
@@ -467,7 +467,8 @@ class FridgePersonalPhotoUiTest {
             .build()
     val disk = FridgeImageCache.diskCache(temporary.root)
     fun newSession() =
-        FridgeImageCache(testApplication, disk, "bucket", { true }, online, callFactory = client)
+        FridgeImageCache(
+                testApplication, disk, "bucket", { true }, { online.value }, callFactory = client)
             .session("user", "home")
 
     val milk =
@@ -485,14 +486,10 @@ class FridgePersonalPhotoUiTest {
     try {
       compose.setContent {
         MaterialTheme {
-          Column {
-            items.value.forEach { item ->
-              key(item.id) {
-                FridgeItemImage(
-                    item, testApplication.imageLoader, personalPhotos = controller.value)
-              }
-            }
-          }
+          FridgeScreen(
+              uiState = FridgeUiState(items = items.value, fridgeType = FridgeType.SHARED),
+              personalPhotos = controller.value,
+              expiryStatuses = emptyMap())
         }
       }
       fun awaitImage(count: Int) {
@@ -514,7 +511,19 @@ class FridgePersonalPhotoUiTest {
       compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
       assertEquals(listOf(url), downloaded.toList())
 
-      online.value = true
+      val filler = List(30) { Item(id = "filler-$it", name = "Filler $it", householdId = "home") }
+      compose.runOnIdle { items.value = listOf(milk, bread) + filler }
+      val grid = compose.onNodeWithTag(C.Tag.fridge_item_list)
+      grid.performScrollToIndex(items.value.lastIndex)
+      compose.onNodeWithContentDescription("Photo of Milk").assertDoesNotExist()
+      grid.performScrollToIndex(0)
+      awaitImage(1)
+      compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
+      assertEquals(listOf(url), downloaded.toList())
+
+      grid.performScrollToIndex(items.value.lastIndex)
+      compose.runOnIdle { online.value = true }
+      grid.performScrollToIndex(0)
       awaitImage(2)
       compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
       compose.onNodeWithContentDescription("Photo of Bread").assertIsDisplayed()

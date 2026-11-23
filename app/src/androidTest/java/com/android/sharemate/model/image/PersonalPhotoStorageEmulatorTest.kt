@@ -39,7 +39,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -386,7 +385,7 @@ class PersonalPhotoStorageEmulatorTest {
             disk,
             storage.reference.bucket,
             { FirebaseEmulator.auth.uid == it },
-            MutableStateFlow(online))
+            isOnline = { online })
     suspend fun load(fridge: FridgeViewModel, reference: PersonalPhotoReference): SuccessResult {
       val photos = checkNotNull(fridge.personalPhotos)
       val session = checkNotNull(photos.imageCache)

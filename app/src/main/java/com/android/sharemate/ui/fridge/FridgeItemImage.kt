@@ -12,13 +12,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -33,7 +29,6 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.android.sharemate.R
 import com.android.sharemate.model.image.FoodImageLicenseIds
-import com.android.sharemate.model.image.FridgeImageOfflineException
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.fridgeImageRequest
 import com.android.sharemate.model.item.Item
@@ -68,37 +63,27 @@ internal fun FridgeItemImage(
       if (request == null || accessRevoked) {
         FoodPlaceholder()
       } else {
-        var retry by remember { mutableIntStateOf(0) }
-        key(retry) {
-          val painter =
-              rememberAsyncImagePainter(
-                  model = request,
-                  imageLoader = cache?.imageLoader ?: imageLoader,
-                  contentScale = ContentScale.Crop)
-          when (val state = painter.state) {
-            is AsyncImagePainter.State.Success ->
-                Image(
-                    painter = painter,
-                    contentDescription =
-                        stringResource(R.string.fridge_image_description, item.name),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
-            is AsyncImagePainter.State.Error -> {
-              FoodPlaceholder()
-              if (cache != null && state.result.throwable is FridgeImageOfflineException) {
-                val online by cache.online.collectAsState()
-                LaunchedEffect(online) { if (online) retry++ }
-              }
-            }
-            AsyncImagePainter.State.Empty,
-            is AsyncImagePainter.State.Loading ->
-                if (showProgress)
-                    CircularProgressIndicator(
-                        modifier =
-                            Modifier.size(FridgeLayout.imageProgressSize)
-                                .testTag(C.Tag.fridge_image_loading))
-                else FoodPlaceholder()
-          }
+        val painter =
+            rememberAsyncImagePainter(
+                model = request,
+                imageLoader = cache?.imageLoader ?: imageLoader,
+                contentScale = ContentScale.Crop)
+        when (painter.state) {
+          is AsyncImagePainter.State.Success ->
+              Image(
+                  painter = painter,
+                  contentDescription = stringResource(R.string.fridge_image_description, item.name),
+                  contentScale = ContentScale.Crop,
+                  modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
+          is AsyncImagePainter.State.Error -> FoodPlaceholder()
+          AsyncImagePainter.State.Empty,
+          is AsyncImagePainter.State.Loading ->
+              if (showProgress)
+                  CircularProgressIndicator(
+                      modifier =
+                          Modifier.size(FridgeLayout.imageProgressSize)
+                              .testTag(C.Tag.fridge_image_loading))
+              else FoodPlaceholder()
         }
       }
     }

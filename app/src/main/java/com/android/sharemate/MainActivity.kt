@@ -5,7 +5,6 @@
 package com.android.sharemate
 
 import android.content.Intent
-import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -67,7 +66,6 @@ import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FridgeImageCache
-import com.android.sharemate.model.image.observeFridgeConnectivity
 import com.android.sharemate.model.incident.FirebaseIncidentPhotoRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
@@ -138,22 +136,12 @@ open class MainActivity : ComponentActivity() {
   private val fridgeImageCache by lazy {
     val context = applicationContext
     processImageCache
-        ?: run {
-          val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-          val connectivity = checkNotNull(context.getSystemService(ConnectivityManager::class.java))
-          // Retire the previous raw-file cache so it cannot outlive session purges.
-          scope.launch(Dispatchers.IO) {
-            File(context.cacheDir, "fridge-personal-photos").deleteRecursively()
-          }
-          FridgeImageCache(
-                  context = context,
-                  diskCache =
-                      FridgeImageCache.diskCache(File(context.cacheDir, "fridge-thumbnails")),
-                  storageBucket = profilePhotoBucket.orEmpty(),
-                  isCurrentUser = { FirebaseAuth.getInstance().currentUser?.uid == it },
-                  online = connectivity.observeFridgeConnectivity(scope))
-              .also { processImageCache = it }
-        }
+        ?: FridgeImageCache(
+                context = context,
+                diskCache = FridgeImageCache.diskCache(File(context.cacheDir, "fridge-thumbnails")),
+                storageBucket = profilePhotoBucket.orEmpty(),
+                isCurrentUser = { FirebaseAuth.getInstance().currentUser?.uid == it })
+            .also { processImageCache = it }
   }
 
   private val authRepository: PushTokenCleaningAuthRepository by lazy {

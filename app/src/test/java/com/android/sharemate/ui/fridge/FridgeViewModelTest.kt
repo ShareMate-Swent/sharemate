@@ -2106,7 +2106,6 @@ class FridgeViewModelTest {
         object : FridgeImageCacheSession {
           override val isActive = MutableStateFlow(true)
 
-          override val online = MutableStateFlow(true)
           override val imageLoader: ImageLoader
             get() = error("Unexpected image loader")
 

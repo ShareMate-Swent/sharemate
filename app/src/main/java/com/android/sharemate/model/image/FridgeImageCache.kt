@@ -4,6 +4,8 @@ package com.android.sharemate.model.image
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import coil.ImageLoader
 import coil.annotation.ExperimentalCoilApi
 import coil.decode.DataSource
@@ -23,6 +25,7 @@ import coil.size.Scale
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,12 +39,9 @@ sealed interface FridgeImageReference
 
 internal data class RemoteFridgeImageReference(val url: String) : FridgeImageReference
 
-internal class FridgeImageOfflineException : IOException("Fridge image is unavailable offline")
-
 /** Image requests and access lifecycle for one authorized fridge session. */
 interface FridgeImageCacheSession {
   val isActive: StateFlow<Boolean>
-  val online: StateFlow<Boolean>
   val imageLoader: ImageLoader
 
   fun request(
@@ -60,15 +60,20 @@ internal class FridgeImageCache(
     private val diskCache: DiskCache,
     private val storageBucket: String,
     private val isCurrentUser: (String) -> Boolean,
-    private val online: StateFlow<Boolean>,
-    private val now: () -> Long = System::currentTimeMillis,
+    private val isOnline: () -> Boolean = {
+      val connectivity = context.getSystemService(ConnectivityManager::class.java)
+      connectivity
+          ?.getNetworkCapabilities(connectivity.activeNetwork)
+          ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    },
     callFactory: Call.Factory? = null,
 ) {
   private val sessions = mutableMapOf<Scope, Session>()
+  private val inFlight = mutableMapOf<MemoryCache.Key, CompletableDeferred<ImageResult?>>()
   private val loader =
       ImageLoader.Builder(context)
           .diskCache(diskCache)
-          // Use the same connectivity state for both Firebase and HTTP requests.
+          // Check connectivity once on a cache miss for both Firebase and HTTP.
           .networkObserverEnabled(false)
           .apply { if (callFactory != null) callFactory(callFactory) }
           .components { add(Interceptor(::intercept)) }
@@ -103,9 +108,6 @@ internal class FridgeImageCache(
   private inner class Session(val scope: Scope) : FridgeImageCacheSession {
     val active = MutableStateFlow(true)
     override val isActive = active.asStateFlow()
-    override val online
-      get() = this@FridgeImageCache.online
-
     override val imageLoader
       get() = loader
 
@@ -136,9 +138,29 @@ internal class FridgeImageCache(
     val memoryKey = MemoryCache.Key("${session.generation}:$diskKey")
     val request = chain.request.newBuilder().memoryCacheKey(memoryKey).build()
     try {
-      if (!session.hasAccess()) return denied(request)
-      val result = load(chain, request, data, diskKey, memoryKey)
-      return if (session.hasAccess()) result else denied(request)
+      while (session.hasAccess()) {
+        val pending = CompletableDeferred<ImageResult?>()
+        val existing = synchronized(inFlight) { inFlight.putIfAbsent(memoryKey, pending) }
+        val result =
+            if (existing == null) {
+              var loaded: ImageResult? = null
+              try {
+                load(chain, request, data, diskKey).also { loaded = it }
+              } finally {
+                synchronized(inFlight) { inFlight.remove(memoryKey) }
+                pending.complete(loaded)
+              }
+            } else {
+              // If the first card left composition, an active card can take over the load.
+              when (val shared = existing.await()) {
+                is SuccessResult -> shared.copy(request = request)
+                is ErrorResult -> shared.copy(request = request)
+                null -> continue
+              }
+            }
+        if (session.hasAccess()) return result
+      }
+      return denied(request)
     } finally {
       // Coil may finish a memory write during or after a purge.
       if (!session.hasAccess()) loader.memoryCache?.remove(memoryKey)
@@ -150,26 +172,10 @@ internal class FridgeImageCache(
       request: ImageRequest,
       data: Thumbnail,
       diskKey: String,
-      memoryKey: MemoryCache.Key,
   ): ImageResult {
-    val isRemote = data.reference is RemoteFridgeImageReference
-    val storedAt =
-        if (isRemote) {
-          loader.memoryCache?.get(memoryKey)?.extras?.get(FETCHED_AT) as? Long
-              ?: withContext(Dispatchers.IO) { cachedAt(diskKey) }
-        } else null
-    val refresh = online.value && storedAt != null && now() - storedAt >= WEB_MAX_AGE_MILLIS
-    if (!refresh) {
-      val local = readThumbnail(chain, request, diskKey)
-      if (local is SuccessResult) {
-        if (isRemote && storedAt != null && local.dataSource == DataSource.DISK) {
-          markMemoryFreshness(data.session, memoryKey, storedAt)
-        }
-        return local
-      }
-    }
-
-    if (!online.value) return ErrorResult(null, request, FridgeImageOfflineException())
+    val local = readThumbnail(chain, request, diskKey)
+    if (local is SuccessResult) return local
+    if (!isOnline()) return local
     if (!data.session.hasAccess()) return denied(request)
     val network = request.newBuilder().memoryCachePolicy(CachePolicy.WRITE_ONLY)
     when (val reference = data.reference) {
@@ -178,25 +184,11 @@ internal class FridgeImageCache(
     }
     val result = chain.proceed(network.build())
     if (result is SuccessResult) {
-      val fetchedAt = now()
       withContext(Dispatchers.IO) {
-        saveThumbnail(data.session, diskKey, result.drawable as? BitmapDrawable, fetchedAt)
-      }
-      if (isRemote) markMemoryFreshness(data.session, memoryKey, fetchedAt)
-      return result
-    }
-
-    // Keep a stale thumbnail usable if the server is unavailable or sends invalid image data.
-    if (refresh) {
-      val local = readThumbnail(chain, request, diskKey)
-      if (local is SuccessResult) {
-        if (isRemote && storedAt != null && local.dataSource == DataSource.DISK) {
-          markMemoryFreshness(data.session, memoryKey, storedAt)
-        }
-        return local
+        saveThumbnail(data.session, diskKey, result.drawable as? BitmapDrawable)
       }
     }
-    return if (online.value) result else ErrorResult(null, request, FridgeImageOfflineException())
+    return result
   }
 
   private suspend fun readThumbnail(
@@ -208,7 +200,7 @@ internal class FridgeImageCache(
         request
             .newBuilder()
             .data(DiskThumbnail(key))
-            .fetcherFactory<DiskThumbnail> { data, options, _ ->
+            .fetcherFactory<DiskThumbnail> { data, _, _ ->
               Fetcher {
                 val snapshot = diskCache.openSnapshot(data.key) ?: throw ThumbnailNotCached()
                 SourceResult(
@@ -225,19 +217,7 @@ internal class FridgeImageCache(
     }
   }
 
-  private fun cachedAt(key: String): Long? =
-      try {
-        diskCache.openSnapshot(key)?.use { diskCache.fileSystem.read(it.metadata) { readLong() } }
-      } catch (_: IOException) {
-        null
-      }
-
-  private fun saveThumbnail(
-      session: Session,
-      key: String,
-      image: BitmapDrawable?,
-      fetchedAt: Long
-  ) {
+  private fun saveThumbnail(session: Session, key: String, image: BitmapDrawable?) {
     if (image == null || !session.hasAccess()) return
     val thumbnail = Buffer()
     if (!image.bitmap.compress(Bitmap.CompressFormat.PNG, 100, thumbnail.outputStream())) return
@@ -251,7 +231,8 @@ internal class FridgeImageCache(
             null
           } ?: return
       try {
-        diskCache.fileSystem.write(editor.metadata) { writeLong(fetchedAt) }
+        // Coil snapshots require both files, even when the entry has no metadata.
+        diskCache.fileSystem.write(editor.metadata) {}
         diskCache.fileSystem.write(editor.data) { writeAll(thumbnail) }
         editor.commit()
       } catch (_: IOException) {
@@ -260,14 +241,6 @@ internal class FridgeImageCache(
       }
     }
   }
-
-  private fun markMemoryFreshness(session: Session, key: MemoryCache.Key, fetchedAt: Long) =
-      synchronized(sessions) {
-        if (!session.hasAccess()) return@synchronized
-        val cache = loader.memoryCache ?: return@synchronized
-        val value = cache[key] ?: return@synchronized
-        cache[key] = value.copy(extras = value.extras + (FETCHED_AT to fetchedAt))
-      }
 
   private fun denied(request: ImageRequest) =
       ErrorResult(null, request, IOException("Fridge image session is no longer active"))
@@ -300,7 +273,5 @@ internal class FridgeImageCache(
     private const val DISK_CACHE_BYTES = 50L * 1024 * 1024
     // A single rendition stays available if the layout width changes while offline.
     internal const val THUMBNAIL_PIXELS = 512
-    internal const val WEB_MAX_AGE_MILLIS = 24 * 60 * 60 * 1000L
-    private const val FETCHED_AT = "fridge:fetched-at"
   }
 }
