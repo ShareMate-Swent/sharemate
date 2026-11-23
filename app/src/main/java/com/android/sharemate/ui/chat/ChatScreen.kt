@@ -3,6 +3,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,6 +46,7 @@ import coil.compose.AsyncImage
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
+import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 import java.util.Locale
@@ -115,6 +118,7 @@ fun ChatContent(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+  ResizeWindowForKeyboard()
   Column(modifier.fillMaxSize().testTag(ChatTestTags.SCREEN)) {
     Text(
         text = stringResource(R.string.chat_title),
@@ -168,6 +172,26 @@ fun ChatContent(
   }
 }
 
+/**
+ * Makes the window resize instead of pan while the chat is shown, so opening the keyboard shrinks
+ * the message list rather than pushing the whole screen (and messages that would still fit) up
+ * out of view. The previous soft input mode is restored when the chat leaves composition.
+ */
+@Composable
+private fun ResizeWindowForKeyboard() {
+  val window = LocalContext.current.findActivity()?.window ?: return
+  DisposableEffect(window) {
+    val previous = window.attributes.softInputMode
+    window.setSoftInputMode(withAdjustResize(previous))
+    onDispose { window.setSoftInputMode(previous) }
+  }
+}
+
+/** Returns [softInputMode] with its adjust flags replaced by `SOFT_INPUT_ADJUST_RESIZE`. */
+internal fun withAdjustResize(softInputMode: Int): Int =
+    (softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
+        WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+
 @Composable
 private fun MessageList(messages: List<Message>, currentUserId: String) {
   val listState = rememberLazyListState()
@@ -182,6 +206,7 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
       }
   val viewportHeight = listState.layoutInfo.viewportSize.height
   // Re-pin to the latest message when the viewport resizes (e.g. keyboard opens or closes).
+  // The list clamps the scroll, so messages that fit above the keyboard stay where they are.
   LaunchedEffect(messages.lastOrNull()?.id, messages.size, viewportHeight) {
     if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
   }
