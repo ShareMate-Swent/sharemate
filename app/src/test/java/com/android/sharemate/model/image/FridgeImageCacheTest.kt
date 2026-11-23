@@ -4,13 +4,17 @@ package com.android.sharemate.model.image
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
 import coil.annotation.ExperimentalCoilApi
 import coil.decode.DataSource
+import coil.disk.DiskCache
 import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.ImageResult
 import coil.request.SuccessResult
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +32,9 @@ import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.ForwardingFileSystem
+import okio.Path
+import okio.Sink
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,8 +46,10 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowNetworkCapabilities
 
 @OptIn(ExperimentalCoilApi::class, ExperimentalCoroutinesApi::class)
 @Config(sdk = [34])
@@ -99,6 +108,53 @@ class FridgeImageCacheTest {
     serve(Color.BLUE)
     assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
     assertEquals(listOf(remote, remote), requestedUrls)
+  }
+
+  @Test
+  fun cacheMissDownloadsOnlyOnAValidatedNetwork() = runBlocking {
+    val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    val shadow = shadowOf(connectivity)
+    val network = connectivity.activeNetwork!!
+    val capabilities = ShadowNetworkCapabilities.newInstance()
+    val session =
+        FridgeImageCache(context, disk, "bucket", { it == currentUser }, callFactory = client)
+            .session("alice", "home")
+    serve(Color.BLUE)
+
+    shadow.setDefaultNetworkActive(false)
+    assertOffline(session.load(remote))
+    shadow.setDefaultNetworkActive(true)
+    shadow.setNetworkCapabilities(network, capabilities)
+    assertOffline(session.load(remote))
+    assertTrue(requestedUrls.isEmpty())
+
+    shadowOf(capabilities).addCapability(NET_CAPABILITY_VALIDATED)
+    assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
+    assertEquals(listOf(remote), requestedUrls)
+  }
+
+  @Test
+  fun diskCacheFailuresStillDisplayTheDownloadedImage() = runBlocking {
+    serve(Color.BLUE)
+    for (failOnOpen in listOf(true, false)) {
+      val unavailableDisk =
+          object : DiskCache by disk {
+            override fun openEditor(key: String): DiskCache.Editor? =
+                if (failOnOpen) throw IOException("Disk unavailable") else disk.openEditor(key)
+
+            override val fileSystem =
+                object : ForwardingFileSystem(disk.fileSystem) {
+                  override fun sink(file: Path, mustCreate: Boolean): Sink =
+                      throw IOException("Disk unavailable")
+                }
+          }
+      val session =
+          FridgeImageCache(
+                  context, unavailableDisk, "bucket", { it == currentUser }, { true }, client)
+              .session("alice", "home")
+      assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
+      assertEquals(0L, disk.size)
+    }
   }
 
   @Test
@@ -185,6 +241,8 @@ class FridgeImageCacheTest {
       assertTrue(session.imageLoader.memoryCache!!.keys.isEmpty())
       online.value = false
       val reopened = cache.session("alice", "home")
+      session.revoke()
+      assertTrue(reopened.isActive.value)
       assertOffline(reopened.load(remote))
       assertOffline(reopened.load(photo))
     }
