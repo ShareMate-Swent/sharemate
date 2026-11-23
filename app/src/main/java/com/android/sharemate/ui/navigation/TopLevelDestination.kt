@@ -21,6 +21,11 @@ enum class TopLevelDestination(
 
   /** Whether [route] is a screen opened from this tab, named `<tab route>/<screen>`. */
   fun isParentOf(route: String?): Boolean = route?.startsWith("${this.route}/") == true
+
+  companion object {
+    /** The tabs of the bottom bar, in order. Settings opens from the profile photo instead. */
+    val bottomBar = listOf(FRIDGE, RECIPES, RECEIPTS, CHAT)
+  }
 }
 
 /** Screens opened from a tab. Each route starts with its tab's route, so the tab stays selected. */

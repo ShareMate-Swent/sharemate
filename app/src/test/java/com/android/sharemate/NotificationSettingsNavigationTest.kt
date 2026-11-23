@@ -2,6 +2,7 @@
 package com.android.sharemate
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -28,13 +29,12 @@ class NotificationSettingsNavigationTest {
   }
 
   @Test
-  fun entryOpensTheSubPageWhileTheBottomBarStaysVisible() {
+  fun entryOpensTheSubPageWithoutTheBottomBar() {
     openNotificationSettings()
 
     compose.onNodeWithTag(NotificationSettingsTestTags.TITLE).assertIsDisplayed()
     compose.onNodeWithTag(NotificationSettingsTestTags.SYSTEM_CARD).assertIsDisplayed()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsDisplayed()
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
   }
 
   @Test
@@ -48,23 +48,14 @@ class NotificationSettingsNavigationTest {
   }
 
   @Test
-  fun leavingForAnotherTabAndComingBackRestoresTheSubPage() {
+  fun systemBackLeavesTheSubPageThenSettings() {
     openNotificationSettings()
 
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
-    compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-
-    compose.onNodeWithTag(NotificationSettingsTestTags.TITLE).assertIsDisplayed()
-  }
-
-  @Test
-  fun tappingTheActiveSettingsTabReturnsToTheSettingsRoot() {
-    openNotificationSettings()
-
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-
-    compose.onNodeWithTag(NotificationSettingsTestTags.TITLE).assertDoesNotExist()
+    compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(NotificationSettingsTestTags.OPEN_ENTRY).assertExists()
+
+    compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+    compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
   }
 }

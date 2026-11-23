@@ -14,6 +14,7 @@ import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -64,7 +65,7 @@ class FridgeWiringTest {
     compose.onNodeWithText("Bread").assertExists()
     compose.onNodeWithText("Milk").assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(SettingsTestTags.BACK).performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.onNodeWithText("Bread").assertExists()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)

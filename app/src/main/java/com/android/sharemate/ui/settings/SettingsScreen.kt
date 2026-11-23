@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -36,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +70,8 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [SettingsScreen]. */
 object SettingsTestTags {
+  /** Returns from Settings to the fridge. */
+  const val BACK = "settings_back"
   const val PROFILE_PHOTO = "settings_profile_photo"
   const val PROFILE_PLACEHOLDER = "settings_profile_placeholder"
   const val PROFILE_NAME = "settings_profile_name"
@@ -141,6 +145,7 @@ fun SettingsScreen(
     onOpenNotificationSettings: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
     onRetryPhotoUpload: () -> Unit = {},
+    onBack: (() -> Unit)? = null,
 ) {
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
   Column(
@@ -151,12 +156,23 @@ fun SettingsScreen(
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     Spacer(Modifier.height(Dimens.spacingL))
-    Text(
-        text = stringResource(R.string.settings_title),
-        modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+      onBack?.let {
+        IconButton(
+            onClick = it,
+            modifier = Modifier.align(Alignment.CenterStart).testTag(SettingsTestTags.BACK)) {
+              Icon(
+                  Icons.AutoMirrored.Filled.ArrowBack,
+                  contentDescription = stringResource(R.string.settings_back))
+            }
+      }
+      Text(
+          text = stringResource(R.string.settings_title),
+          modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
+          style = MaterialTheme.typography.headlineSmall,
+          color = MaterialTheme.colorScheme.onSurface,
+      )
+    }
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
     ProfileHeader(state, onChangePhoto, onRetryPhotoUpload)
     Spacer(Modifier.height(Dimens.spacingL))

@@ -119,6 +119,9 @@
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="household_retry">Try again</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="nav_open_settings">Open settings</string>
+    <string name="nav_add_item">Add an item</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
