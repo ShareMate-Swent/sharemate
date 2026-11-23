@@ -7,7 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -99,12 +98,8 @@ class ReceiptHistoryFlowTest {
       }
     }
 
-    val review = "receipt_card_"
-    compose.waitUntil(5_000) {
-      compose.onAllNodesWithTag(review + secondId).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithTag(review + firstId).assertExists()
-    compose.onNodeWithTag(review + secondId).performClick()
+    historyCard(firstId, 2).assertExists()
+    historyCard(secondId, 2).performClick()
     compose.onAllNodesWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW)[0].performClick()
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertIsDisplayed()
     saveScreenshot("receipt-photo-large.png", ReceiptHistoryTestTags.PHOTO_EXPANDED)
@@ -114,12 +109,9 @@ class ReceiptHistoryFlowTest {
     saveScreenshot("receipt-review.png")
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
-    compose.waitUntil(5_000) {
-      compose.onAllNodesWithTag(review + firstId).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithTag(review + firstId).assertExists()
+    historyCard(firstId, 2).assertExists()
     saveScreenshot("receipt-history.png")
-    compose.onNodeWithTag(review + firstId).performClick()
+    historyCard(firstId, 2).performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
@@ -157,16 +149,11 @@ class ReceiptHistoryFlowTest {
 
     val saved = compose.activity.getString(R.string.receipt_status_saved)
     val pending = compose.activity.getString(R.string.inventory_save_pending)
-    val view = "receipt_card_"
-    compose.waitUntil(5_000) {
-      compose.onAllNodesWithTag(view + savedId).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onAllNodesWithText(saved).assertCountEquals(2)
-    compose.onNodeWithText(pending).assertIsDisplayed()
-    compose.onNodeWithTag(view + pendingId).performClick()
+    historyCard(savedId, 2).assert(hasText(saved))
+    historyCard(pendingId, 2).assert(hasText(pending)).performClick()
     compose.onNodeWithText("Bread").assertIsDisplayed()
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
-    compose.onNodeWithTag(view + savedId).performClick()
+    historyCard(savedId, 2).performClick()
     compose.onNodeWithText("Apple").assertIsDisplayed()
   }
 
@@ -240,14 +227,9 @@ class ReceiptHistoryFlowTest {
     compose.setContent {
       MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
     }
-    val review = "receipt_card_$id"
-    compose.waitUntil(5_000) {
-      compose.onAllNodesWithTag(review).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithTag(review).performClick()
+    historyCard(id).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    val view = "receipt_card_$id"
-    compose.waitUntil(5_000) { compose.onAllNodesWithTag(view).fetchSemanticsNodes().isNotEmpty() }
+    historyCard(id)
     compose.runOnIdle {
       org.junit.Assert.assertEquals(rows, submitted.single().items)
       org.junit.Assert.assertEquals(id, submitted.single().id)
@@ -278,9 +260,7 @@ class ReceiptHistoryFlowTest {
     compose.setContent {
       MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
     }
-    val view = "receipt_card_$id"
-    compose.waitUntil(5_000) { compose.onAllNodesWithTag(view).fetchSemanticsNodes().isNotEmpty() }
-    compose.onNodeWithTag(view).performClick()
+    historyCard(id).performClick()
     val retry = compose.activity.getString(R.string.receipt_sync_retry)
     compose.onNodeWithText(retry).performClick()
     compose.waitUntil(5_000) { attempts == 1 }
@@ -321,47 +301,17 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
-  fun savedReceiptExitsUnchangedAndKeepsEditsWithoutBecomingADraft() {
+  fun savedReceiptExitsUnchangedCanBeRenamedAndDeleted() {
     val fixture = WorkflowFixture(draft = false)
     fixture.open()
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     fixture.awaitHistory()
     compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
     fixture.open()
-    compose.onNodeWithText("Milk").performClick()
-    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Corrected groceries")
-    fixture.failFirstCorrection = true
-    fixture.backAndKeep(waitForHistory = false)
-    compose.waitUntil(10_000) { fixture.corrected == 1 }
-    compose.onNodeWithTag(InventorySaveTestTags.RETRY).performClick()
-    fixture.awaitHistory()
-    assertEquals(2, fixture.corrected)
-    assertEquals(250L, fixture.retained().expense?.totalAmountCents)
-    assertEquals("Corrected groceries", fixture.details().title)
-    assertTrue(!fixture.retained().draft)
-    fixture.open()
     compose.onNodeWithTag("receipt_title").performTextReplacement("Renamed groceries")
     fixture.backAndKeep()
-    assertEquals(3, fixture.corrected)
+    assertEquals(1, fixture.corrected)
     assertEquals("Renamed groceries", fixture.details().title)
-    fixture.open()
-    compose.onNodeWithText("Milk").performClick()
-    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("0.00")
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    fixture.backAndKeep(waitForHistory = false)
-    compose.onNodeWithTag("receipt_save_draft").assertIsDisplayed()
-    assertEquals(3, fixture.corrected)
-    androidx.test.espresso.Espresso.pressBack()
-    compose.onNodeWithText("Milk").performClick()
-    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("3.00")
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().performClick()
-    fixture.awaitHistory()
-    assertEquals(4, fixture.corrected)
-    assertEquals(300L, fixture.retained().expense?.totalAmountCents)
     fixture.open()
     compose.onNodeWithContentDescription("More receipt actions").performClick()
     compose.onNodeWithText("Delete receipt").performClick()
@@ -377,6 +327,46 @@ class ReceiptHistoryFlowTest {
     assertEquals(1, fixture.deleted)
     assertTrue(
         runBlocking { fixture.store.loadById(fixture.owner, fixture.home, fixture.id) } == null)
+  }
+
+  @Test
+  fun savedReceiptRetriesItsCorrectionWithoutBecomingADraft() {
+    val fixture = WorkflowFixture(draft = false)
+    fixture.open()
+    compose.onNodeWithText("Milk").performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    compose.onNodeWithTag("receipt_title").performTextReplacement("Corrected groceries")
+    fixture.failFirstCorrection = true
+    fixture.backAndKeep(waitForHistory = false)
+    compose.waitUntil(10_000) { fixture.corrected == 1 }
+    compose.onNodeWithTag(InventorySaveTestTags.RETRY).assertIsDisplayed().performClick()
+    fixture.awaitHistory()
+    assertEquals(2, fixture.corrected)
+    assertEquals(250L, fixture.retained().expense?.totalAmountCents)
+    assertEquals("Corrected groceries", fixture.details().title)
+    assertTrue(!fixture.retained().draft)
+  }
+
+  @Test
+  fun savedReceiptRejectsZeroTotalAndCanSaveAValidCorrection() {
+    val fixture = WorkflowFixture(draft = false)
+    fixture.open()
+    compose.onNodeWithText("Milk").performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("0.00")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    fixture.backAndKeep(waitForHistory = false)
+    compose.onNodeWithTag("receipt_save_draft").assertIsDisplayed()
+    assertEquals(0, fixture.corrected)
+    androidx.test.espresso.Espresso.pressBack()
+    compose.onNodeWithText("Milk").performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("3.00")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().performClick()
+    fixture.awaitHistory()
+    assertEquals(1, fixture.corrected)
+    assertEquals(300L, fixture.retained().expense?.totalAmountCents)
   }
 
   @Test
@@ -464,6 +454,23 @@ class ReceiptHistoryFlowTest {
     }
   }
 
+  private fun historyCard(id: String, count: Int = 1): SemanticsNodeInteraction {
+    compose.waitUntil(10_000) {
+      compose.onAllNodesWithTag("receipt_history_list").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("receipt_history_list").performScrollToIndex(0)
+    compose.waitUntil(10_000) {
+      compose
+          .onAllNodes(hasTestTag("receipt_filter_0") and hasText(count.toString()))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose
+        .onNodeWithTag("receipt_history_list")
+        .performScrollToNode(hasTestTag("receipt_card_$id"))
+    return compose.onNodeWithTag("receipt_card_$id").assertIsDisplayed()
+  }
+
   private inner class WorkflowFixture(draft: Boolean, seed: Boolean = true) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
@@ -534,9 +541,7 @@ class ReceiptHistoryFlowTest {
     }
 
     fun awaitHistory() {
-      compose.waitUntil(10_000) {
-        compose.onAllNodesWithTag("receipt_card_$id").fetchSemanticsNodes().isNotEmpty()
-      }
+      historyCard(id)
     }
 
     fun open() {
@@ -545,7 +550,12 @@ class ReceiptHistoryFlowTest {
       compose.waitUntil(10_000) {
         compose.onAllNodesWithTag("receipt_title").fetchSemanticsNodes().isNotEmpty()
       }
-      compose.waitForIdle()
+      compose.waitUntil(10_000) {
+        compose
+            .onAllNodes(hasTestTag(StagingTestTags.ADD) and isEnabled())
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
     }
 
     fun backAndKeep(waitForHistory: Boolean = true) {
