@@ -609,8 +609,7 @@ class FridgeViewModelTest {
     runCurrent()
 
     assertEquals(
-        setOf("milk:EATEN", "bread:EATEN"),
-        chatRepository.activities.map { it.activityId }.toSet())
+        setOf("milk:EATEN", "bread:EATEN"), chatRepository.activities.map { it.activityId }.toSet())
     assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
   }
 
