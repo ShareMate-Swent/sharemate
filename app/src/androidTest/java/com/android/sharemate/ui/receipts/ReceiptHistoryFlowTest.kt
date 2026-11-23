@@ -245,6 +245,9 @@ class ReceiptHistoryFlowTest {
   }
 
   private object UnusedItems : ItemRepository {
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = emptyFlow()
 
     override suspend fun addItem(item: Item): String? = error("No inventory write expected")

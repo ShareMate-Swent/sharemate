@@ -10,7 +10,6 @@ import java.io.IOException
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -92,14 +91,13 @@ class RecipeIngredientProviderTest {
   @Test
   fun defendsAgainstOutOfScopeItemsFromRepository() = runTest {
     val repository = mock(ItemRepository::class.java)
-    `when`(repository.getFridgeItems("home", "alice"))
+    `when`(repository.getFridgeItemsFromServer("home", "alice"))
         .thenReturn(
-            flowOf(
-                listOf(
-                    item("Rice"),
-                    item("Bob's personal milk").copy(ownerId = "bob"),
-                    item("Other household").copy(householdId = "other"),
-                )))
+            listOf(
+                item("Rice"),
+                item("Bob's personal milk").copy(ownerId = "bob"),
+                item("Other household").copy(householdId = "other"),
+            ))
     assertEquals(listOf("rice"), RecipeIngredientProvider(repository).ingredients("home", "alice"))
   }
 

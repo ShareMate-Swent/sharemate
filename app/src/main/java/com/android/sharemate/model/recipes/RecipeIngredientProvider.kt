@@ -6,18 +6,18 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemStatus
 import java.text.Normalizer
 import java.util.Locale
-import kotlinx.coroutines.flow.first
 
-/** Builds recipe request ingredients from a fresh, user-visible fridge snapshot. */
+/** Builds recipe request ingredients from a server-refreshed, user-visible fridge snapshot. */
 class RecipeIngredientProvider(private val items: ItemRepository) {
   /**
    * Uses active shared items and the user's own personal items. Expiration does not remove an
    * active item, matching the fridge; consumed/discarded items and zero quantities are excluded.
-   * Read failures and cancellation propagate so they cannot be mistaken for an empty fridge.
+   * Requires a server read; cached inventory cannot complete the request. Offline/read failures and
+   * cancellation propagate so they cannot be mistaken for an empty fridge.
    */
   suspend fun ingredients(householdId: String, userId: String): List<String> {
     if (householdId.isBlank() || userId.isBlank()) return emptyList()
-    return items.getFridgeItems(householdId, userId).first().asIngredients(householdId, userId)
+    return items.getFridgeItemsFromServer(householdId, userId).asIngredients(householdId, userId)
   }
 
   /**

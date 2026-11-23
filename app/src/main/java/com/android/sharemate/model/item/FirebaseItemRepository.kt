@@ -12,6 +12,7 @@ import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -31,16 +32,24 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        // The security rules only accept a query whose every result the caller may read, so it
-        // must name both the household and either the shared items or the caller's own items.
-        observe(
-            items.where(
-                Filter.and(
-                    Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
-                    Filter.or(
-                        Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
-                        Filter.equalTo(ItemFields.OWNER_ID, userId)))))
+        observe(fridgeQuery(householdId, userId))
       }
+
+  override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> {
+    if (householdId.isBlank() || userId.isBlank()) return emptyList()
+    return fridgeQuery(householdId, userId).get(Source.SERVER).await().documents.mapNotNull {
+      it.toItemOrNull()
+    }
+  }
+
+  // Rules require both the household and the shared-or-owned visibility constraint.
+  private fun fridgeQuery(householdId: String, userId: String): Query =
+      items.where(
+          Filter.and(
+              Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
+              Filter.or(
+                  Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
+                  Filter.equalTo(ItemFields.OWNER_ID, userId))))
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity !in ItemQuantity.RANGE) {
