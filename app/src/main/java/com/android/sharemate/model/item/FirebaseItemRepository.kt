@@ -36,12 +36,12 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
         // The security rules only accept a query whose every result the caller may read, so it
         // must name both the household and either the shared items or the caller's own items.
         observe(
-            items.where(
-                Filter.and(
-                    Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
-                    Filter.or(
-                        Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
-                        Filter.equalTo(ItemFields.OWNER_ID, userId)))))
+                items.where(
+                    Filter.and(
+                        Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
+                        Filter.or(
+                            Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
+                            Filter.equalTo(ItemFields.OWNER_ID, userId)))))
             .catch { error ->
               if (error is FirebaseFirestoreException &&
                   error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
