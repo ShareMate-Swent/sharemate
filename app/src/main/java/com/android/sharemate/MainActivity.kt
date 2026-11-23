@@ -378,6 +378,7 @@ open class MainActivity : ComponentActivity() {
                               showBalances = household.canViewBalances(session.uid),
                               onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
                               expenseRepository = expenseRepository,
+                              financeRepository = financeRepository,
                               profileRepository = profileRepository,
                               barcodeScanner = remember { createBarcodeScanner() },
                               productCatalogRepository =
