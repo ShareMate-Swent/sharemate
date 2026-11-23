@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.finance
 
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.staging.ReceiptCorrection
+import com.android.sharemate.model.staging.StagedItem
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
@@ -16,6 +19,62 @@ import org.junit.Test
 import org.mockito.Mockito.*
 
 class FirebaseExpenseSubmissionRepositoryTest {
+  @Test
+  fun correctionSendsOriginalAndRevisedRowsAndChecksItsAcknowledgement() = runTest {
+    val id = "12345678-1234-1234-1234-123456789abc"
+    val original =
+        InventorySubmission(id, "author", "home", listOf(StagedItem("row", "Milk", 2, 100)))
+    val revised =
+        InventorySubmission(
+            id,
+            "author",
+            "home",
+            listOf(StagedItem("row", "Oat milk", 3, 200)),
+            expense = SharedExpense(id, "home", "payer", 200, mapOf("author" to 200L)))
+    val correction = ReceiptCorrection("edit-id", original, revised, "Courses")
+    val wire =
+        mapOf(
+            "operationId" to "edit-id",
+            "ownerId" to "author",
+            "title" to "Courses",
+            "originalExpense" to null,
+            "originalRows" to
+                listOf(
+                    mapOf("id" to "row", "name" to "Milk", "quantity" to 2, "priceCents" to "100")),
+            "rows" to
+                listOf(
+                    mapOf(
+                        "id" to "row",
+                        "name" to "Oat milk",
+                        "quantity" to 3,
+                        "priceCents" to "200")),
+            "expense" to
+                mapOf(
+                    "id" to id,
+                    "householdId" to "home",
+                    "paidBy" to "payer",
+                    "totalAmountCents" to "200",
+                    "shares" to mapOf("author" to "200")))
+    `when`(functions.getHttpsCallable("correctReceipt")).thenReturn(callable)
+    val response =
+        HttpsCallableResult::class
+            .java
+            .getConstructor(Any::class.java)
+            .newInstance(mapOf("operationId" to "edit-id"))
+    `when`(callable.call(wire)).thenReturn(Tasks.forResult(response))
+    repository.correctReceipt(correction)
+    verify(callable).call(wire)
+    val wrong =
+        HttpsCallableResult::class
+            .java
+            .getConstructor(Any::class.java)
+            .newInstance(mapOf("operationId" to "other"))
+    `when`(callable.call(wire)).thenReturn(Tasks.forResult(wrong))
+    assertThrows(IllegalStateException::class.java) {
+      runTest { repository.correctReceipt(correction) }
+    }
+  }
+
   private val functions = mock(FirebaseFunctions::class.java)
   private val callable = mock(HttpsCallableReference::class.java)
   private val repository: ExpenseSubmissionRepository =

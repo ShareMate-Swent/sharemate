@@ -56,7 +56,8 @@ class AndroidReceiptPhotoStore(
       withContext(dispatcher) {
         val id = UUID.fromString(receiptId).toString()
         require(id == receiptId)
-        File(directory, "$id.jpg").delete()
+        val photo = File(directory, "$id.jpg")
+        check(!photo.exists() || photo.delete()) { "Could not delete receipt photo" }
         Unit
       }
 }
