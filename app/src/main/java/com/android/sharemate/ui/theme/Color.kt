@@ -8,8 +8,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Raw colors of one mode of the app's design system, matching the `color/…` variables of the
- * redesign Figma file. Screens should not read these directly: use `MaterialTheme.colorScheme` or
+ * Raw colors of one mode of the app's design system, using the roles of the redesign Figma file.
+ * Screens should not read these directly: use `MaterialTheme.colorScheme` or
  * [ShareMateTheme.statusColors] so a color change happens in one place.
  */
 @Immutable
@@ -22,6 +22,8 @@ internal data class Palette(
     val divider: Color,
     val accent: Color,
     val onAccent: Color,
+    val accentContainer: Color,
+    val onAccentContainer: Color,
     val surfaceContainerLow: Color,
     val surfaceContainerHigh: Color,
     val surfaceContainerHighest: Color,
@@ -35,20 +37,24 @@ internal data class Palette(
     val blueContent: Color,
 )
 
-/** Light mode colors, as drawn in the redesign Figma file. */
+/**
+ * Light mode colors: the redesign's roles with the app's purple accent and purple-grey neutrals.
+ */
 internal val LightPalette =
     Palette(
-        background = Color(0xFFF6F6F3),
+        background = Color(0xFFF7F3F9),
         surface = Color(0xFFFFFFFF),
-        text = Color(0xFF1C1F1D),
-        muted = Color(0xFF5F6661),
-        border = Color(0xFFE2E2DD),
-        divider = Color(0xFFF0F0EC),
-        accent = Color(0xFF1F5C45),
+        text = Color(0xFF1D1B20),
+        muted = Color(0xFF625B6B),
+        border = Color(0xFFE3DEE7),
+        divider = Color(0xFFF0ECF3),
+        accent = Color(0xFF6750A4),
         onAccent = Color(0xFFFFFFFF),
-        surfaceContainerLow = Color(0xFFFBFBF9),
-        surfaceContainerHigh = Color(0xFFF0F0EC),
-        surfaceContainerHighest = Color(0xFFE9E9E4),
+        accentContainer = Color(0xFFEADDFF),
+        onAccentContainer = Color(0xFF4F378B),
+        surfaceContainerLow = Color(0xFFFBF9FC),
+        surfaceContainerHigh = Color(0xFFF0ECF3),
+        surfaceContainerHighest = Color(0xFFE9E4EC),
         greenContainer = Color(0xFFE3F4E8),
         greenContent = Color(0xFF1F6B3A),
         amberContainer = Color(0xFFFDF0D5),
@@ -65,17 +71,19 @@ internal val LightPalette =
  */
 internal val DarkPalette =
     Palette(
-        background = Color(0xFF121513),
-        surface = Color(0xFF1B1F1C),
-        text = Color(0xFFECEFEC),
-        muted = Color(0xFFA3ABA5),
-        border = Color(0xFF353B37),
-        divider = Color(0xFF262B27),
-        accent = Color(0xFF7BC4A2),
-        onAccent = Color(0xFF0E2A1F),
-        surfaceContainerLow = Color(0xFF171A18),
-        surfaceContainerHigh = Color(0xFF252A26),
-        surfaceContainerHighest = Color(0xFF2E342F),
+        background = Color(0xFF141218),
+        surface = Color(0xFF1D1B20),
+        text = Color(0xFFE6E0E9),
+        muted = Color(0xFFCAC4D0),
+        border = Color(0xFF3B3740),
+        divider = Color(0xFF2B2930),
+        accent = Color(0xFFD0BCFF),
+        onAccent = Color(0xFF381E72),
+        accentContainer = Color(0xFF4F378B),
+        onAccentContainer = Color(0xFFEADDFF),
+        surfaceContainerLow = Color(0xFF19171D),
+        surfaceContainerHigh = Color(0xFF2B2930),
+        surfaceContainerHighest = Color(0xFF36343B),
         greenContainer = Color(0xFF1E3328),
         greenContent = Color(0xFF9FD9B4),
         amberContainer = Color(0xFF3A2E14),
@@ -93,8 +101,8 @@ internal fun colorSchemeOf(palette: Palette, dark: Boolean): ColorScheme {
     base.copy(
         primary = accent,
         onPrimary = onAccent,
-        primaryContainer = greenContainer,
-        onPrimaryContainer = greenContent,
+        primaryContainer = accentContainer,
+        onPrimaryContainer = onAccentContainer,
         secondary = text,
         onSecondary = surface,
         secondaryContainer = blueContainer,

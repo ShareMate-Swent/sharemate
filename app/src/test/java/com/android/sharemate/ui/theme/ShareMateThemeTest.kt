@@ -177,6 +177,16 @@ class ShareMateThemeTest {
     assertTrue("surfaceVariant only reaches $ratio against the background", ratio >= minimum)
   }
 
+  @Test
+  fun primaryIsPurpleWhileFreshStatusStaysGreen() {
+    assertEquals(Color(0xFF6750A4), LightColorScheme.primary)
+    assertEquals(Color(0xFFD0BCFF), DarkColorScheme.primary)
+    assertEquals(Color(0xFFEADDFF), LightColorScheme.primaryContainer)
+    assertEquals(Color(0xFF4F378B), DarkColorScheme.primaryContainer)
+    assertEquals(Color(0xFFE3F4E8), LightStatusColors.fresh.container)
+    assertEquals(Color(0xFF1E3328), DarkStatusColors.fresh.container)
+  }
+
   private fun assertReadable(colors: ColorScheme, status: StatusColors) {
     val minimum = 4.5
     val pairs =
