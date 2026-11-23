@@ -5,8 +5,8 @@ const { randomUUID } = require('node:crypto');
 const { initializeApp, deleteApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getStorage } = require('firebase-admin/storage');
-if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST)
-  throw new Error('Run against the Firebase emulators.');
+if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST || !process.env.FIREBASE_STORAGE_EMULATOR_HOST)
+  throw new Error('Run against the Auth, Firestore and Storage emulators.');
 const project = process.env.GCLOUD_PROJECT || 'demo-sharemate';
 const app = initializeApp({ projectId: project }, 'receipt-sharing-tests');
 const db = getFirestore(app);
@@ -66,7 +66,7 @@ test('members read Saved, only the creator reads Draft; all direct Saved edits a
   assert.equal((await request(`receiptBackups/${savedId}`, alice, 'PATCH', { ...backup(savedId, false), photoReady: true })).status, 200);
 });
 test('leaving the household immediately revokes Saved access and stale uploads cannot resurrect deletions', async () => {
-  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+  {
     const bucket = getStorage(app).bucket(`${project}.appspot.com`);
     try {
       for (const id of [savedId, draftId]) await bucket.file(backup(id, false).photoPath).save(Buffer.from('receipt-photo'), { contentType: 'image/jpeg' });
