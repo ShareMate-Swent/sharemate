@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,7 +25,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 
 /**
  * One destination of the [FloatingNavBar].
@@ -113,11 +111,7 @@ private fun RowScope.NavItem(item: FloatingNavItem) {
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Icon(item.icon, null, Modifier.size(ComponentLayout.navIconSize))
-        Text(
-            text = item.label,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis)
+        SingleLineText(item.label, MaterialTheme.typography.labelMedium)
       }
     } else {
       Box(Modifier.size(ComponentLayout.navItemSize), contentAlignment = Alignment.Center) {

@@ -6,15 +6,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.ui.theme.Dimens
 import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -55,6 +60,34 @@ class CommonComponentsTest {
     }
     listOf("Save", "Off", "Later", "Never").forEach { compose.onNodeWithText(it).performClick() }
     assertEquals(listOf("save", "later"), calls)
+  }
+
+  @Test
+  fun buttonsUseTheAppButtonHeight() {
+    show {
+      AppPrimaryButton("Save", {}, Modifier.testTag("primary"))
+      AppSecondaryButton("Later", {}, Modifier.testTag("secondary"))
+    }
+    compose.onNodeWithTag("primary").assertHeightIsEqualTo(Dimens.buttonHeight)
+    compose.onNodeWithTag("secondary").assertHeightIsEqualTo(Dimens.buttonHeight)
+  }
+
+  @Test
+  fun singleLineTextCutsLongTextWithAnEllipsis() {
+    show {
+      SingleLineText(
+          text = "A very long label ".repeat(10),
+          style = MaterialTheme.typography.bodyLarge,
+          modifier = Modifier.width(120.dp).testTag("text"))
+    }
+    val layouts = mutableListOf<TextLayoutResult>()
+    compose.onNodeWithTag("text").performSemanticsAction(SemanticsActions.GetTextLayoutResult) {
+      it(layouts)
+    }
+    val layout = layouts.single()
+    assertEquals(1, layout.lineCount)
+    assertEquals(1, layout.layoutInput.maxLines)
+    assertEquals(TextOverflow.Ellipsis, layout.layoutInput.overflow)
   }
 
   @Test

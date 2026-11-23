@@ -5,16 +5,12 @@ import androidx.compose.ui.unit.dp
 
 /** Sizes of the shared components, from the `Components` frame of the redesign Figma file. */
 internal object ComponentLayout {
-  /** Height of the primary and secondary buttons. */
-  val buttonHeight = 56.dp
   /** Elevation of the secondary button. */
   val secondaryButtonElevation = 1.dp
   /** Visible height of a chip; its touch target stays at the Material minimum. */
   val chipHeight = 40.dp
   /** Horizontal padding inside a chip. */
   val chipHorizontalPadding = 18.dp
-  /** Border width of an unselected chip. */
-  val chipBorderWidth = 1.dp
   /** Horizontal padding inside a tag. */
   val tagHorizontalPadding = 10.dp
   /** Vertical padding inside a tag. */

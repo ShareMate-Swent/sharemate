@@ -10,12 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import com.android.sharemate.ui.theme.Dimens
 
 /**
@@ -68,18 +66,14 @@ fun AppListRow(
     Column(
         Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(ComponentLayout.listRowTextSpacing)) {
-          Text(
+          SingleLineText(
               text = title,
-              style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis)
+              style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
           subtitle?.let {
-            Text(
+            SingleLineText(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
         }
     trailing?.invoke()

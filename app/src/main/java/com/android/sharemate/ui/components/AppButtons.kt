@@ -6,11 +6,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.text.style.TextOverflow
+import com.android.sharemate.ui.theme.Dimens
 
 /**
  * The main action of a screen: a full-width button in the primary color.
@@ -31,9 +30,9 @@ fun AppPrimaryButton(
       onClick = onClick,
       enabled = enabled,
       shape = MaterialTheme.shapes.medium,
-      modifier = modifier.fillMaxWidth().height(ComponentLayout.buttonHeight),
+      modifier = modifier.fillMaxWidth().height(Dimens.buttonHeight),
   ) {
-    ButtonLabel(text)
+    SingleLineText(text, MaterialTheme.typography.labelLarge)
   }
 }
 
@@ -65,19 +64,9 @@ fun AppSecondaryButton(
       modifier =
           modifier
               .fillMaxWidth()
-              .height(ComponentLayout.buttonHeight)
+              .height(Dimens.buttonHeight)
               .shadow(ComponentLayout.secondaryButtonElevation, MaterialTheme.shapes.medium),
   ) {
-    ButtonLabel(text)
+    SingleLineText(text, MaterialTheme.typography.labelLarge)
   }
-}
-
-/** A one-line button label in the button text style. */
-@Composable
-private fun ButtonLabel(text: String) {
-  Text(
-      text = text,
-      style = MaterialTheme.typography.labelLarge,
-      maxLines = 1,
-      overflow = TextOverflow.Ellipsis)
 }

@@ -8,12 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import com.android.sharemate.ui.theme.Dimens
 
 /**
  * A rounded choice, such as a category filter. Selected, it uses the primary color; selected and
@@ -53,19 +52,14 @@ fun AppChip(
       shape = CircleShape,
       color = container,
       contentColor = content,
-      border =
-          if (selected) null else BorderStroke(ComponentLayout.chipBorderWidth, colors.outline),
+      border = if (selected) null else BorderStroke(Dimens.borderWidth, colors.outline),
       modifier = modifier.minimumInteractiveComponentSize(),
   ) {
     Box(
         Modifier.height(ComponentLayout.chipHeight)
             .padding(horizontal = ComponentLayout.chipHorizontalPadding),
         contentAlignment = Alignment.Center) {
-          Text(
-              text = label,
-              style = MaterialTheme.typography.labelMedium,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis)
+          SingleLineText(label, MaterialTheme.typography.labelMedium)
         }
   }
 }
