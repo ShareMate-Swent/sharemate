@@ -42,10 +42,15 @@ fun ProfilePhotoPicker(
   PhotoPickerDialog(
       camera,
       labels =
-          PhotoPickerLabels(title, R.string.profile_photo_preview, R.string.profile_photo_sources),
+          PhotoPickerLabels(
+              title,
+              R.string.profile_photo_preview,
+              R.string.profile_photo_sources,
+              galleryImportError = R.string.personal_photo_invalid),
       onImageConfirmed = { onPhotoConfirmed(it.uri, it.source == PhotoSource.CAMERA) })
 }
 
 /** Returns the camera/gallery ViewModel for the profile photo, retained in the current store. */
 @Composable
-fun profilePhotoCamera(): PhotoPickerViewModel = photoPickerViewModel(PROFILE_PHOTO_CAMERA_KEY)
+fun profilePhotoCamera(): PhotoPickerViewModel =
+    photoPickerViewModel(PROFILE_PHOTO_CAMERA_KEY, personalGalleryOnly = true)

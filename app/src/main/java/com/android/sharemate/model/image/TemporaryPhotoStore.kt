@@ -29,9 +29,14 @@ interface TemporaryPhotoStore {
   suspend fun delete(uri: String)
 }
 
-class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
+class AndroidTemporaryPhotoStore(
+    context: Context,
+    private val personalGalleryOnly: Boolean = false,
+) : TemporaryPhotoStore {
   private val resolver = context.applicationContext.contentResolver
   private val directory = temporaryPhotoDirectory(context)
+  private val galleryMaxBytes =
+      if (personalGalleryOnly) PersonalPhotoRepository.MAX_BYTES.toLong() else MAX_INPUT_PHOTO_BYTES
 
   override suspend fun createCapture(): String {
     var created: File? = null
@@ -57,12 +62,12 @@ class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
         imported = target
         resolver.openInputStream(Uri.parse(uri))?.use { input ->
           ownedFile(target).outputStream().use { output ->
-            input.copyPhotoTo(output, MAX_INPUT_PHOTO_BYTES, checkActive = { ensureActive() }) {
+            input.copyPhotoTo(output, galleryMaxBytes, checkActive = { ensureActive() }) {
               IOException("Image exceeds size limit")
             }
           }
         } ?: throw IOException("Image is unavailable")
-        validate(target)
+        validate(target, requirePersonalFormat = personalGalleryOnly)
         target
       }
     } catch (failure: Throwable) {
@@ -71,7 +76,9 @@ class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
     }
   }
 
-  override suspend fun validate(uri: String) =
+  override suspend fun validate(uri: String) = validate(uri, requirePersonalFormat = false)
+
+  private suspend fun validate(uri: String, requirePersonalFormat: Boolean) =
       withContext(Dispatchers.IO) {
         val file = ownedFile(uri)
         if (!file.isFile || file.length() !in 1..MAX_INPUT_PHOTO_BYTES)
@@ -82,6 +89,10 @@ class AndroidTemporaryPhotoStore(context: Context) : TemporaryPhotoStore {
             throw IOException("Image cannot be decoded")
         if (bounds.outWidth.toLong() * bounds.outHeight > MAX_INPUT_PHOTO_PIXELS)
             throw IOException("Image exceeds pixel limit")
+        if (requirePersonalFormat &&
+            bounds.outMimeType != PhotoMimeTypes.JPEG &&
+            bounds.outMimeType != PhotoMimeTypes.PNG)
+            throw IOException("Personal photos must be JPEG or PNG")
       }
 
   override suspend fun delete(uri: String) =

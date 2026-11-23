@@ -38,6 +38,7 @@ data class PhotoPickerState(
     val failed: Boolean = false,
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
+    val galleryImportFailed: Boolean = false,
 )
 
 class PhotoPickerViewModel(
@@ -100,12 +101,16 @@ class PhotoPickerViewModel(
 
   fun reportFailure() {
     // A failed replacement must not make the previous image eligible for a second handoff.
-    mutableState.update { it.copy(failed = true, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(failed = true, confirmationFailed = false, galleryImportFailed = false)
+    }
   }
 
   fun select(uri: String?) {
     if (uri != null && state.value.visible)
-        runOperation { replace(SelectedPhoto(store.importImage(uri), PhotoSource.GALLERY)) }
+        runOperation(galleryImport = true) {
+          replace(SelectedPhoto(store.importImage(uri), PhotoSource.GALLERY))
+        }
   }
 
   fun capture(takePicture: suspend (String) -> Unit) {
@@ -183,9 +188,11 @@ class PhotoPickerViewModel(
         withContext(NonCancellable) { store.delete(previous) }
   }
 
-  private fun runOperation(action: suspend () -> Unit) {
+  private fun runOperation(galleryImport: Boolean = false, action: suspend () -> Unit) {
     if (state.value.busy) return
-    mutableState.update { it.copy(busy = true, failed = false, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(busy = true, failed = false, confirmationFailed = false, galleryImportFailed = false)
+    }
     operation =
         viewModelScope.launch {
           try {
@@ -193,7 +200,7 @@ class PhotoPickerViewModel(
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
-            mutableState.update { it.copy(failed = true) }
+            mutableState.update { it.copy(failed = true, galleryImportFailed = galleryImport) }
           } finally {
             mutableState.update { it.copy(busy = false) }
           }

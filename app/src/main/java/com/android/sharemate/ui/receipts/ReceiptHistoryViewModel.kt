@@ -47,6 +47,9 @@ class ReceiptHistoryViewModel(
   private val mutableError = MutableStateFlow(false)
   /** True when local history could not be read or edited; successful operations clear it. */
   val error = mutableError.asStateFlow()
+  private val mutableScanToReview = MutableStateFlow<String?>(null)
+  /** Newly scanned receipt whose review has yet to be opened. */
+  val scanToReview = mutableScanToReview.asStateFlow()
   private val mutableSavedReview = MutableStateFlow<String?>(null)
   private var reviewRequest = 0
   /**
@@ -90,13 +93,17 @@ class ReceiptHistoryViewModel(
    */
   suspend fun retainScan(uri: String, items: List<StagedItem>): String =
       try {
-        addDraft(uri, items)
+        addDraft(uri, items).also { mutableScanToReview.value = it }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (failure: Exception) {
         mutableError.value = true
         throw failure
       }
+
+  fun scanReviewOpened(id: String) {
+    mutableScanToReview.compareAndSet(id, null)
+  }
 
   init {
     viewModelScope.launch { refresh() }

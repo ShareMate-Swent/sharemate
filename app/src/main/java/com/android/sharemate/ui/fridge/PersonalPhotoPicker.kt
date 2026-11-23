@@ -29,7 +29,8 @@ internal fun PersonalPhotoPicker(
     draft: PersonalPhotoDraft,
     photos: PersonalPhotoController,
     enabled: Boolean,
-    camera: PhotoPickerViewModel = photoPickerViewModel("add-item-personal-photo"),
+    camera: PhotoPickerViewModel =
+        photoPickerViewModel("add-item-personal-photo", personalGalleryOnly = true),
 ) {
   val state by camera.state.collectAsState()
   DiscardPhotoOnDispose(camera)
@@ -59,6 +60,7 @@ internal fun PersonalPhotoPicker(
           PhotoPickerLabels(
               R.string.personal_photo_add,
               R.string.personal_photo_preview,
-              R.string.personal_photo_sources),
+              R.string.personal_photo_sources,
+              galleryImportError = R.string.personal_photo_invalid),
       onImageConfirmed = { photos.selectAndWait(it.uri, it.source == PhotoSource.CAMERA) })
 }

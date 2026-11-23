@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowBitmapFactory
@@ -120,6 +122,39 @@ class TemporaryPhotoStoreTest {
       }
       assertTrue(directory.listFiles().orEmpty().isEmpty())
     }
+  }
+
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun personalGalleryRejectsOversizedImagesAndUnsupportedFormatsBeforePreview() = runTest {
+    val personalStore = AndroidTemporaryPhotoStore(context, personalGalleryOnly = true)
+    val limit = PersonalPhotoRepository.MAX_BYTES.toLong()
+    val gif =
+        Base64.getDecoder().decode("R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==")
+    val sources =
+        mapOf(
+            "valid" to PaddedImage(png(), limit),
+            "too-large" to PaddedImage(png(), limit + 1),
+            "gif" to gif.inputStream())
+    for ((name, stream) in sources) {
+      val uri = Uri.parse("content://photos/personal/$name")
+      shadowOf(context.contentResolver).registerInputStream(uri, stream)
+      if (name == "valid") {
+        val copy = personalStore.importImage(uri.toString())
+        assertEquals(limit, File(Uri.parse(copy).path!!).length())
+        personalStore.delete(copy)
+      } else {
+        assertTrue(
+            runCatching { personalStore.importImage(uri.toString()) }.exceptionOrNull()
+                is IOException)
+      }
+      assertTrue(directory.listFiles().orEmpty().isEmpty())
+    }
+    val receipt = Uri.parse("content://photos/receipt/gif")
+    shadowOf(context.contentResolver).registerInputStream(receipt, gif.inputStream())
+    val receiptCopy = store.importImage(receipt.toString())
+    assertArrayEquals(gif, File(Uri.parse(receiptCopy).path!!).readBytes())
+    store.delete(receiptCopy)
   }
 
   @Test

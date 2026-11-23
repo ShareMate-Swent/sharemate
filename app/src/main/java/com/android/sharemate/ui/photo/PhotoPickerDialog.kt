@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
@@ -41,6 +40,7 @@ data class PhotoPickerLabels(
     @StringRes val title: Int,
     @StringRes val previewDescription: Int,
     @StringRes val sourceDescription: Int,
+    @StringRes val galleryImportError: Int = R.string.photo_picker_failed,
 )
 
 /** Captures or imports a photo and waits for the caller to finish using the confirmed selection. */
@@ -62,10 +62,9 @@ fun PhotoPickerDialog(
         denied = !granted
         if (granted) viewModel.showCamera()
       }
-  val gallery =
-      rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {
-        viewModel.select(it?.toString())
-      }
+  val openGallery =
+      rememberPhotoGalleryLauncher(
+          onResult = { viewModel.select(it.toString()) }, onFailure = viewModel::reportFailure)
   DisposableEffect(lifecycle, waitingForSettings) {
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_RESUME && waitingForSettings) {
@@ -95,8 +94,11 @@ fun PhotoPickerDialog(
                         Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
                 if (state.failed)
                     Text(
-                        confirmationError.takeIf { state.confirmationFailed }
-                            ?: stringResource(R.string.photo_picker_failed),
+                        when {
+                          state.confirmationFailed && confirmationError != null -> confirmationError
+                          state.galleryImportFailed -> stringResource(labels.galleryImportError)
+                          else -> stringResource(R.string.photo_picker_failed)
+                        },
                         color = MaterialTheme.colorScheme.error)
                 when (state.page) {
                   PhotoPage.CAMERA ->
@@ -171,15 +173,7 @@ fun PhotoPickerDialog(
                           Text(stringResource(R.string.photo_picker_camera))
                         }
                 OutlinedButton(
-                    onClick = {
-                      try {
-                        gallery.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly))
-                      } catch (_: Exception) {
-                        viewModel.reportFailure()
-                      }
-                    },
+                    onClick = openGallery,
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
                       Text(stringResource(R.string.photo_picker_gallery))

@@ -41,11 +41,12 @@ class PhotoPickerDialogTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
-  fun deniedCameraKeepsGalleryAvailableAndPickerCancellationIsSilent() {
+  fun deniedCameraKeepsGalleryAvailableAndRepeatedClicksWaitForCancellation() {
     shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
     val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
     var permissionRequests = 0
     var galleryRequests = 0
+    var cancelGallery: () -> Unit = {}
     val owner =
         object : ActivityResultRegistryOwner {
           override val activityResultRegistry =
@@ -64,7 +65,7 @@ class PhotoPickerDialogTest {
                     }
                     is ActivityResultContracts.PickVisualMedia -> {
                       galleryRequests++
-                      dispatchResult<Uri?>(requestCode, null)
+                      cancelGallery = { dispatchResult<Uri?>(requestCode, null) }
                     }
                     else -> fail("Unexpected external activity")
                   }
@@ -84,12 +85,19 @@ class PhotoPickerDialogTest {
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performClick()
     compose.runOnIdle {
       assertEquals(1, permissionRequests)
       assertEquals(1, galleryRequests)
+      cancelGallery()
       assertNull(vm.state.value.selection?.uri)
       assertFalse(vm.state.value.failed)
       assertFalse(vm.state.value.busy)
+    }
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performClick()
+    compose.runOnIdle {
+      assertEquals(2, galleryRequests)
+      cancelGallery()
     }
     compose
         .onNodeWithText(

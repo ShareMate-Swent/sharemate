@@ -207,7 +207,7 @@ private val receiptPhotoLabels =
         R.string.scan_receipt, R.string.receipt_photo_preview, R.string.receipt_photo_choose)
 
 @Composable
-private fun ReceiptHistoryFlow(
+internal fun ReceiptHistoryFlow(
     photo: PhotoPickerViewModel,
     reader: ReceiptReader,
     history: ReceiptHistoryViewModel,
@@ -227,10 +227,12 @@ private fun ReceiptHistoryFlow(
               viewModelFactory {
                 initializer { ReceiptScanViewModel(reader, createSavedStateHandle()) }
               })
-  var newReceiptId by remember { mutableStateOf<String?>(null) }
+  val newReceiptId by history.scanToReview.collectAsStateWithLifecycle()
   LaunchedEffect(newReceiptId) {
-    newReceiptId?.let { nav.navigate("receipt/$it") }
-    newReceiptId = null
+    newReceiptId?.let { id ->
+      nav.navigate("receipt/$id") { launchSingleTop = true }
+      history.scanReviewOpened(id)
+    }
   }
   NavHost(nav, startDestination = RECEIPTS_ROUTE) {
     composable(RECEIPTS_ROUTE) {
@@ -309,9 +311,7 @@ private fun ReceiptHistoryFlow(
           labels = receiptPhotoLabels,
           confirmationError = stringResource(R.string.receipt_unreadable),
           onImageConfirmed = { selection ->
-            scan.read(selection.uri) { items ->
-              newReceiptId = history.retainScan(selection.uri, items)
-            }
+            scan.read(selection.uri) { items -> history.retainScan(selection.uri, items) }
           })
     }
     composable("receipt/{id}") { entry ->
