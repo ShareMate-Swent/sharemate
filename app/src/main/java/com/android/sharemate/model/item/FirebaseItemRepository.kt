@@ -19,6 +19,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
@@ -41,6 +42,13 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                     Filter.or(
                         Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
                         Filter.equalTo(ItemFields.OWNER_ID, userId)))))
+            .catch { error ->
+              if (error is FirebaseFirestoreException &&
+                  error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                throw FridgeAccessDeniedException(error)
+              }
+              throw error
+            }
       }
 
   override suspend fun addItem(item: Item): String? {
@@ -232,10 +240,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
             val registration =
                 query.addSnapshotListener { snapshot, error ->
                   if (error != null) {
-                    close(
-                        if (error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
-                            FridgeAccessDeniedException(error)
-                        else error)
+                    close(error)
                     return@addSnapshotListener
                   }
                   // `snapshot` is nullable in Firestore's callback (though never null when there is
