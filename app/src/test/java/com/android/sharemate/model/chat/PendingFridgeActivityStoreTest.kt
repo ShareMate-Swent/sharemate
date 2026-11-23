@@ -61,4 +61,28 @@ class PendingFridgeActivityStoreTest {
     assertTrue(store.list("home", "user").isEmpty())
     preferences.edit().clear().commit()
   }
+
+  @Test
+  fun malformedActivityEntriesAndUnknownTypesAreIgnored() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val store = AndroidPendingFridgeActivityStore(app)
+    val preferences = app.getSharedPreferences("pending_fridge_activities", Context.MODE_PRIVATE)
+    preferences
+        .edit()
+        .putString(
+            "scope:home:user",
+            """[
+              null,
+              {"id":"","householdId":"home","userId":"user","type":"EATEN","itemName":"Milk"},
+              {"id":"milk:EATEN","householdId":"other","userId":"user","type":"EATEN","itemName":"Milk"},
+              {"id":"milk:EATEN","householdId":"home","userId":"other","type":"EATEN","itemName":"Milk"},
+              {"id":"milk:EATEN","householdId":"home","userId":"user","type":"UNKNOWN","itemName":"Milk"},
+              {"id":"milk:EATEN","householdId":"home","userId":"user","type":"EATEN","itemName":" "}
+            ]""",
+        )
+        .commit()
+
+    assertTrue(store.list("home", "user").isEmpty())
+    preferences.edit().clear().commit()
+  }
 }

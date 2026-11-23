@@ -312,6 +312,60 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun staleReplayWithoutMatchingItemIsRemoved() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "missing:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = "Missing",
+        ))
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun staleReplayWithWrongStatusOrSharingIsRemoved() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(
+        listOf(milk.copy(status = ItemStatus.EATEN, sharing = ItemSharing.PERSONAL)))
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
   fun pendingStoreFailuresDoNotFailStatusOrViewModelInitialization() = runTest {
     pendingActivityStore.listFailure = IOException("Cannot load")
     repository.emitItems(listOf(milk))
