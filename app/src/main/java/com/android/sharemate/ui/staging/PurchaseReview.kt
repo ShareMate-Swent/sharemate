@@ -71,7 +71,7 @@ data class PurchaseReview(
           total > MAX_PURCHASE_CENTS -> PurchaseReviewError.TOTAL_TOO_LARGE
           total <= 0 -> PurchaseReviewError.NONPOSITIVE_TOTAL
           paidBy.isNullOrBlank() || paidBy !in members -> PurchaseReviewError.INVALID_PAYER
-          currentUserId.isNullOrBlank() || paidBy != currentUserId ->
+          currentUserId.isNullOrBlank() || currentUserId !in members ->
               PurchaseReviewError.PAYER_MUST_SUBMIT
           participants.isEmpty() -> PurchaseReviewError.NO_PARTICIPANTS
           participants.any { it.isBlank() || it !in members } ->
