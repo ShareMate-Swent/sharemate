@@ -7,10 +7,12 @@ import android.view.WindowManager.LayoutParams
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -390,5 +392,15 @@ class ChatScreenTest {
     composeTestRule
         .onNodeWithTag(ChatTestTags.OTHER_MESSAGE)
         .assertTopPositionInRootIsEqualTo(listTop)
+  }
+
+  @Test
+  fun chatRendersWithoutAnActivityContext() {
+    composeTestRule.setContent {
+      CompositionLocalProvider(LocalContext provides composeTestRule.activity.applicationContext) {
+        ChatContent(ChatUiState(isLoading = false), "me", {}, {})
+      }
+    }
+    composeTestRule.onNodeWithTag(ChatTestTags.EMPTY).assertIsDisplayed()
   }
 }
