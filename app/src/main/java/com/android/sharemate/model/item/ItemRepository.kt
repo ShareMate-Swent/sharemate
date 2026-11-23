@@ -3,6 +3,7 @@
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Operations available on items. In line with the architecture, this interface abstracts the data
@@ -19,6 +20,14 @@ interface ItemRepository {
    * permission error for a user who left it or never belonged to it.
    */
   fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
+
+  /**
+   * Reactive stream of the ids of the items, among those of [getFridgeItems], that still have a
+   * local write the server has not confirmed. Emits again when a write is confirmed or rejected.
+   * Implementations without offline writes may keep the default, which reports none.
+   */
+  fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> =
+      flowOf(emptySet())
 
   /**
    * Adds a new item. [Item.householdId] is required; [Item.sharing] tells whether it is private to

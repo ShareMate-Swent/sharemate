@@ -31,16 +31,44 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        // The security rules only accept a query whose every result the caller may read, so it
-        // must name both the household and either the shared items or the caller's own items.
-        observe(
-            items.where(
-                Filter.and(
-                    Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
-                    Filter.or(
-                        Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
-                        Filter.equalTo(ItemFields.OWNER_ID, userId)))))
+        observe(fridgeQuery(householdId, userId))
       }
+
+  override fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> =
+      if (householdId.isBlank() || userId.isBlank()) {
+        flowOf(emptySet())
+      } else {
+        callbackFlow {
+              val registration =
+                  fridgeQuery(householdId, userId).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
+                    if (error != null) {
+                      close(error)
+                      return@addSnapshotListener
+                    }
+                    val ids =
+                        snapshot
+                            ?.documents
+                            ?.filter { it.metadata.hasPendingWrites() }
+                            ?.map { it.id }
+                            .orEmpty()
+                    trySend(ids.toSet())
+                  }
+              awaitClose { registration.remove() }
+            }
+            .distinctUntilChanged()
+      }
+
+  // The security rules only accept a query whose every result the caller may read, so it must name
+  // both the household and either the shared items or the caller's own items.
+  private fun fridgeQuery(householdId: String, userId: String): Query =
+      items.where(
+          Filter.and(
+              Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
+              Filter.or(
+                  Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
+                  Filter.equalTo(ItemFields.OWNER_ID, userId))))
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity !in ItemQuantity.RANGE) {

@@ -16,8 +16,10 @@ import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SnapshotMetadata
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +36,7 @@ import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
@@ -165,6 +168,59 @@ class FirebaseItemRepositoryTest {
       job.cancel()
     }
   }
+
+  @Suppress("UNCHECKED_CAST")
+  @Test
+  fun observePendingWriteItemIds_reportsOnlyDocumentsWithUnconfirmedWrites() =
+      runBlocking<Unit> {
+        val query = mock(Query::class.java)
+        `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
+                as ArgumentCaptor<EventListener<QuerySnapshot>>
+        `when`(query.addSnapshotListener(eq(MetadataChanges.INCLUDE), listenerCaptor.capture()))
+            .thenReturn(mock(ListenerRegistration::class.java))
+        val emitted = mutableListOf<Set<String>>()
+        var failure: Throwable? = null
+        val job =
+            launch(Dispatchers.Unconfined) {
+              try {
+                repository.observePendingWriteItemIds("house-1", "user-1").collect { emitted += it }
+              } catch (e: Exception) {
+                failure = e
+              }
+            }
+
+        fun document(id: String, pending: Boolean): DocumentSnapshot {
+          val metadata = mock(SnapshotMetadata::class.java)
+          `when`(metadata.hasPendingWrites()).thenReturn(pending)
+          val doc = mock(DocumentSnapshot::class.java)
+          `when`(doc.id).thenReturn(id)
+          `when`(doc.metadata).thenReturn(metadata)
+          return doc
+        }
+        fun snapshot(vararg docs: DocumentSnapshot): QuerySnapshot =
+            mock(QuerySnapshot::class.java).also { `when`(it.documents).thenReturn(docs.toList()) }
+
+        listenerCaptor.value.onEvent(snapshot(document("a", true), document("b", false)), null)
+        listenerCaptor.value.onEvent(snapshot(document("a", false), document("b", false)), null)
+        listenerCaptor.value.onEvent(null, null)
+        assertEquals(listOf(setOf("a"), emptySet<String>()), emitted)
+
+        listenerCaptor.value.onEvent(
+            null,
+            FirebaseFirestoreException("Error", FirebaseFirestoreException.Code.PERMISSION_DENIED))
+        assertTrue(failure is FirebaseFirestoreException)
+        job.cancel()
+      }
+
+  @Test
+  fun observePendingWriteItemIds_returnsNothingWithoutQuery_whenHouseholdOrUserIsBlank() =
+      runBlocking<Unit> {
+        assertTrue(repository.observePendingWriteItemIds("", "user-1").first().isEmpty())
+        assertTrue(repository.observePendingWriteItemIds("house-1", " ").first().isEmpty())
+        verify(collection, never()).where(any(Filter::class.java))
+      }
 
   @Suppress("UNCHECKED_CAST")
   @Test

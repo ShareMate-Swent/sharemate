@@ -61,6 +61,17 @@ class FakeItemRepository : ItemRepository {
     }
   }
 
+  /** Ids of the items whose local write the fake server has not confirmed yet. */
+  val pendingWriteItemIds = MutableStateFlow<Set<String>>(emptySet())
+  var pendingWriteFailure: Exception? = null
+
+  override fun observePendingWriteItemIds(householdId: String, userId: String): Flow<Set<String>> {
+    pendingWriteFailure?.let { failure ->
+      return flow { throw failure }
+    }
+    return pendingWriteItemIds
+  }
+
   override suspend fun addItem(item: Item): String? {
     addedItems += item
     addGate?.await()

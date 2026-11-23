@@ -64,7 +64,7 @@ import kotlinx.coroutines.launch
 private const val TAG = "FridgeViewModel"
 private const val OWNER_NAMES_FAILURE_MESSAGE = "Owner names"
 private const val ACTIVITY_SEND_FAILURE_MESSAGE = "Fridge activity message could not be sent"
-private const val MAX_ACTIVITY_SEND_ATTEMPTS = 3
+private const val PENDING_WRITES_FAILURE_MESSAGE = "Unable to observe pending item writes"
 private const val PENDING_ACTIVITY_ID_SEPARATOR = ':'
 
 /** An item owner offered by the Owner filter; [pseudo] is null when the owner has none. */
@@ -154,7 +154,7 @@ class FridgeViewModel(
   private val confirmationHandlers = mutableMapOf<Any, DisposableHandle?>()
   private val latestStatusWrites = mutableMapOf<String, Any>()
   private val pendingActivityDispatches = mutableSetOf<String>()
-  private val activitySendAttempts = mutableMapOf<String, Int>()
+  private var pendingWriteItemIds: Set<String>? = null
   private var initialItemsLoaded = false
   private var barcodeDialogGeneration = 0L
   private var barcodeScanJob: Job? = null
@@ -221,6 +221,7 @@ class FridgeViewModel(
     viewModelScope.launch {
       ownerNames.names.collect { names -> mutableUiState.update { it.copy(ownerNames = names) } }
     }
+    observePendingWrites()
     viewModelScope.launch {
       try {
         itemRepository.getFridgeItems(householdId, userId).collect { items ->
@@ -239,13 +240,37 @@ class FridgeViewModel(
           }
           if (!initialItemsLoaded) {
             initialItemsLoaded = true
-            viewModelScope.launch { flushPendingActivities() }
+            replayPendingActivities()
           }
         }
       } catch (exception: CancellationException) {
         throw exception
       } catch (exception: Exception) {
         mutableUiState.update { it.copy(isLoading = false, loadFailed = true) }
+      }
+    }
+  }
+
+  /**
+   * Replays queued activities once the first items and the pending-write ids are both known, and
+   * again whenever the pending-write ids change.
+   */
+  private fun replayPendingActivities() {
+    if (!initialItemsLoaded || pendingWriteItemIds == null) return
+    viewModelScope.launch { flushPendingActivities() }
+  }
+
+  private fun observePendingWrites() {
+    viewModelScope.launch {
+      try {
+        itemRepository.observePendingWriteItemIds(householdId, userId).collect { ids ->
+          pendingWriteItemIds = ids
+          replayPendingActivities()
+        }
+      } catch (exception: CancellationException) {
+        throw exception
+      } catch (exception: Exception) {
+        Log.w(TAG, PENDING_WRITES_FAILURE_MESSAGE, exception)
       }
     }
   }
@@ -405,7 +430,7 @@ class FridgeViewModel(
     val item =
         uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
             ?: run {
-              pendingActivityStore?.remove(buildPendingActivity(itemId, "", status))
+              removePendingActivity(buildPendingActivity(itemId, "", status))
               return
             }
     if (fridgeType != FridgeType.SHARED) return
@@ -478,7 +503,12 @@ class FridgeViewModel(
     val store = pendingActivityStore ?: return
     if (fridgeType != FridgeType.SHARED) return
     try {
-      store.list(householdId, userId).forEach { sendPendingActivity(it) }
+      // An item whose write is still unconfirmed may be rejected by the server: keep its entry.
+      val unconfirmed = pendingWriteItemIds.orEmpty()
+      store
+          .list(householdId, userId)
+          .filter { it.id.substringBefore(PENDING_ACTIVITY_ID_SEPARATOR) !in unconfirmed }
+          .forEach { sendPendingActivity(it) }
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
@@ -511,6 +541,7 @@ class FridgeViewModel(
     }
     pendingActivityDispatches += activity.id
     try {
+      // A null result is permanent: drop the entry. A thrown failure is transient: keep it.
       if (repository.sendActivity(
           activity.householdId,
           activity.userId,
@@ -520,22 +551,12 @@ class FridgeViewModel(
           activityId = activity.id,
       ) == null) {
         Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE)
-        removePendingActivity(activity)
-      } else {
-        activitySendAttempts.remove(activity.id)
-        removePendingActivity(activity)
       }
+      removePendingActivity(activity)
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
       Log.w(TAG, ACTIVITY_SEND_FAILURE_MESSAGE, failure)
-      val attempts = activitySendAttempts.getOrDefault(activity.id, 0) + 1
-      if (attempts >= MAX_ACTIVITY_SEND_ATTEMPTS) {
-        activitySendAttempts.remove(activity.id)
-        removePendingActivity(activity)
-      } else {
-        activitySendAttempts[activity.id] = attempts
-      }
     } finally {
       pendingActivityDispatches -= activity.id
     }
