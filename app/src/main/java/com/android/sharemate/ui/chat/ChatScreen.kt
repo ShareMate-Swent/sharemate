@@ -180,7 +180,9 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
           resources.getString(R.string.chat_sender_identity, name, number)
         }
       }
-  LaunchedEffect(messages.lastOrNull()?.id, messages.size) {
+  val viewportHeight = listState.layoutInfo.viewportSize.height
+  // Re-pin to the latest message when the viewport resizes (e.g. keyboard opens or closes).
+  LaunchedEffect(messages.lastOrNull()?.id, messages.size, viewportHeight) {
     if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
   }
   LazyColumn(
