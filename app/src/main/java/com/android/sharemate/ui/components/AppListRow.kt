@@ -43,7 +43,7 @@ fun AppCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -
  * @param modifier Applied to the row.
  * @param subtitle The secondary text, if any.
  * @param onClick Called when the row is tapped; without it the row is not clickable.
- * @param leading Shown before the text, usually a [LetterAvatar].
+ * @param leading Shown before the text, such as a `ProfileAvatar`.
  * @param trailing Shown after the text, usually an [AppTag] or a date.
  */
 @Composable

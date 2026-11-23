@@ -19,8 +19,6 @@ internal object ComponentLayout {
   val tagHorizontalPadding = 10.dp
   /** Vertical padding inside a tag. */
   val tagVerticalPadding = 5.dp
-  /** Size of a letter avatar. */
-  val avatarSize = 44.dp
   /** Space between the parts of a list row. */
   val listRowSpacing = 14.dp
   /** Vertical padding of a list row. */

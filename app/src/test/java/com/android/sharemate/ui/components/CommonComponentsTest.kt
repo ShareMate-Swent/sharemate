@@ -78,21 +78,6 @@ class CommonComponentsTest {
   }
 
   @Test
-  fun avatarInitialHandlesCaseSpacesBlankAndEmoji() {
-    assertEquals("A", initialOf("  alex"))
-    assertEquals("É", initialOf("élodie"))
-    assertEquals("?", initialOf("   "))
-    assertEquals("🍎", initialOf("🍎 apple"))
-  }
-
-  @Test
-  fun avatarIsHiddenFromScreenReaders() {
-    show { LetterAvatar("Alex", Modifier.testTag("avatar")) }
-    compose.onNodeWithTag("avatar").assertExists()
-    compose.onNodeWithText("A").assertDoesNotExist()
-  }
-
-  @Test
   fun listRowShowsItsPartsAndClicksOnlyWithAHandler() {
     show {
       AppCard {
