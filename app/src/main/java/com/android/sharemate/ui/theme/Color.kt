@@ -66,7 +66,7 @@ internal val LightPalette =
     )
 
 /**
- * Dark mode colors: the same roles on dark green-grey surfaces, with a lighter accent and light
+ * Dark mode colors: the same roles on dark purple-grey surfaces, with a lighter accent and light
  * text on deep pastel containers so every pair stays readable.
  */
 internal val DarkPalette =

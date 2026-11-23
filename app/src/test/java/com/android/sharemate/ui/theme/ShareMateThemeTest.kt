@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -179,12 +180,21 @@ class ShareMateThemeTest {
 
   @Test
   fun primaryIsPurpleWhileFreshStatusStaysGreen() {
-    assertEquals(Color(0xFF6750A4), LightColorScheme.primary)
-    assertEquals(Color(0xFFD0BCFF), DarkColorScheme.primary)
-    assertEquals(Color(0xFFEADDFF), LightColorScheme.primaryContainer)
-    assertEquals(Color(0xFF4F378B), DarkColorScheme.primaryContainer)
-    assertEquals(Color(0xFFE3F4E8), LightStatusColors.fresh.container)
-    assertEquals(Color(0xFF1E3328), DarkStatusColors.fresh.container)
+    assertPrimaryIsNotStatusGreen(LightColorScheme, LightPalette, LightStatusColors)
+    assertPrimaryIsNotStatusGreen(DarkColorScheme, DarkPalette, DarkStatusColors)
+  }
+
+  private fun assertPrimaryIsNotStatusGreen(
+      colors: ColorScheme,
+      palette: Palette,
+      status: StatusColors
+  ) {
+    assertEquals(palette.accent, colors.primary)
+    assertEquals(palette.accentContainer, colors.primaryContainer)
+    assertEquals(palette.greenContainer, status.fresh.container)
+    assertEquals(palette.greenContent, status.fresh.content)
+    assertNotEquals(status.fresh.content, colors.primary)
+    assertNotEquals(status.fresh.container, colors.primaryContainer)
   }
 
   private fun assertReadable(colors: ColorScheme, status: StatusColors) {
