@@ -78,6 +78,15 @@ class ExpiryDateParserTest {
   }
 
   @Test
+  fun acceptsLabelSeparatorsImmediatelyBeforeDates() {
+    listOf("/", ".", "-").forEach { separator ->
+      listOf("12/10/26", "12.10.2026", "2026-10-12", "12 OCT 2026").forEach { date ->
+        assertDate("EXP$separator$date", october12)
+      }
+    }
+  }
+
+  @Test
   fun returnsDistinctDatesInTextOrderRatherThanChronologicalOrder() {
     assertEquals(
         listOf(october12, LocalDate.of(2026, 1, 1)),

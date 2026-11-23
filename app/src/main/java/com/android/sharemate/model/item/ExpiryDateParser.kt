@@ -14,8 +14,9 @@ import java.util.Locale
  * English month names and abbreviations are case-insensitive. Two-digit years always mean
  * 2000–2099; four-digit years must be in 1–9999. Day-first dates accept horizontal whitespace
  * around separators, but a date must fit on one line. Invalid calendar dates are ignored rather
- * than adjusted. Numeric chains with extra components are ignored, including numeric date ranges
- * joined by a date separator; separate those dates with a comma or newline instead.
+ * than adjusted. Label punctuation may immediately precede a date. Numeric chains with extra
+ * components are ignored, including numeric date ranges joined by a date separator; separate those
+ * dates with a comma or newline instead.
  *
  * [findDates] returns distinct dates in text order, including past dates. It does not decide which
  * date is the expiry date: packaging may also show a production date, so the caller must ask the
@@ -25,7 +26,7 @@ import java.util.Locale
 object ExpiryDateParser {
   private const val TWO_DIGIT_YEAR_BASE = 2000
   private const val SPACE = "[\\p{Zs}\\t]"
-  private const val EDGE = "\\p{L}\\p{N}/.\\-"
+  private const val EDGE = "\\p{L}\\p{N}"
   private val datePattern =
       Regex(
           "(?<![$EDGE])(?:" +
