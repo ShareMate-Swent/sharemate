@@ -245,6 +245,43 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun itemRemovedBeforeStatusConfirmationClearsPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(emptyList())
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun unknownReplayTypeIsRemovedWithoutSendingActivity() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:TEXT",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.TEXT,
+            itemName = milk.name,
+        ))
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
   fun sameNameItemsUseDistinctReplayActivities() = runTest {
     val secondMilk = milk.copy(id = "milk-friday", name = milk.name, status = ItemStatus.ACTIVE)
     pendingActivityStore.save(
@@ -373,6 +410,20 @@ class FridgeViewModelTest {
     runCurrent()
 
     pendingActivityStore.saveFailure = IOException("Cannot save")
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.statusError == null)
+  }
+
+  @Test
+  fun pendingStoreRemoveFailureDoesNotFailStatusChange() = runTest {
+    repository.emitItems(listOf(milk))
+    pendingActivityStore.removeFailure = IOException("Cannot remove")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
     vm.setItemStatus(milk.id, ItemStatus.EATEN)
     runCurrent()
 
@@ -2840,6 +2891,7 @@ class FridgeViewModelTest {
 
     var saveFailure: Exception? = null
     var listFailure: Exception? = null
+    var removeFailure: Exception? = null
 
     override suspend fun save(activity: PendingFridgeActivity) {
       saveFailure?.let { throw it }
@@ -2848,6 +2900,7 @@ class FridgeViewModelTest {
     }
 
     override suspend fun remove(activity: PendingFridgeActivity) {
+      removeFailure?.let { throw it }
       activities.removeAll { it.id == activity.id }
     }
 
