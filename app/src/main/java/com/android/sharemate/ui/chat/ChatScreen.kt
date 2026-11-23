@@ -35,6 +35,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -51,6 +53,8 @@ import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 
 /** Semantic test tags for the chat screen and its messages. */
 object ChatTestTags {
@@ -204,11 +208,19 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
           resources.getString(R.string.chat_sender_identity, name, number)
         }
       }
-  val viewportHeight = listState.layoutInfo.viewportSize.height
+  LaunchedEffect(messages.lastOrNull()?.id, messages.size) {
+    if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
+  }
   // Re-pin to the latest message when the viewport resizes (e.g. keyboard opens or closes).
   // The list clamps the scroll, so messages that fit above the keyboard stay where they are.
-  LaunchedEffect(messages.lastOrNull()?.id, messages.size, viewportHeight) {
-    if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
+  // The height is observed outside composition: reading layoutInfo while composing would
+  // recompose after every layout and never settle.
+  val lastIndex by rememberUpdatedState(messages.lastIndex)
+  LaunchedEffect(listState) {
+    snapshotFlow { listState.layoutInfo.viewportSize.height }
+        .distinctUntilChanged()
+        .drop(1)
+        .collect { if (lastIndex >= 0) listState.scrollToItem(lastIndex) }
   }
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(ChatTestTags.LIST),
