@@ -2,11 +2,15 @@
 package com.android.sharemate.model.chat
 
 import android.content.Context
+import android.content.SharedPreferences
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
@@ -106,5 +110,28 @@ class PendingFridgeActivityStoreTest {
 
     assertEquals(listOf("c:THROWN"), store.list("home", "user").map { it.id })
     preferences.edit().clear().commit()
+  }
+
+  @Test
+  fun saveFailsWhenPreferencesCannotBeCommitted() = runTest {
+    val editor = mock(SharedPreferences.Editor::class.java)
+    val preferences = mock(SharedPreferences::class.java)
+    val context = mock(Context::class.java)
+    `when`(context.applicationContext).thenReturn(context)
+    `when`(context.getSharedPreferences("pending_fridge_activities", Context.MODE_PRIVATE))
+        .thenReturn(preferences)
+    `when`(preferences.edit()).thenReturn(editor)
+    `when`(
+            editor.putString(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(editor)
+    `when`(editor.commit()).thenReturn(false)
+
+    val failure = runCatching {
+      AndroidPendingFridgeActivityStore(context)
+          .save(PendingFridgeActivity("m:EATEN", "home", "user", MessageType.EATEN, "Milk"))
+    }
+
+    assertTrue(failure.exceptionOrNull() is IOException)
   }
 }

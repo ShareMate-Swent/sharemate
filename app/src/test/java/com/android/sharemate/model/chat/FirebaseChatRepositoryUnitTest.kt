@@ -32,6 +32,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
@@ -304,6 +305,37 @@ class FirebaseChatRepositoryUnitTest {
         val captor = ArgumentCaptor.forClass(String::class.java)
         verify(collection, times(2)).document(captor.capture())
         assertNotEquals(captor.allValues[0], captor.allValues[1])
+      }
+
+  @Test
+  fun sendActivity_transientExistenceCheckFailureIsThrownAndNothingIsWritten() =
+      runBlocking<Unit> {
+        listOf(
+                FirebaseFirestoreException.Code.UNAVAILABLE,
+                FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
+            .forEach { code ->
+              `when`(document.get())
+                  .thenReturn(Tasks.forException(FirebaseFirestoreException("offline", code)))
+              try {
+                repository.sendActivity(
+                    "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "i:EATEN")
+                fail("Expected TransientActivityException")
+              } catch (_: TransientActivityException) {}
+            }
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendActivity_permanentExistenceCheckFailureReturnsNull() =
+      runBlocking<Unit> {
+        `when`(document.get())
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+        assertNull(
+            repository.sendActivity(
+                "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "i:EATEN"))
       }
 
   @Test

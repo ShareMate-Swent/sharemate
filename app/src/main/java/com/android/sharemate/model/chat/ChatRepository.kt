@@ -23,8 +23,9 @@ interface ChatRepository {
 
   /**
    * Posts a fridge activity ([type] EATEN or THROWN) on [itemName] done by [senderId]; returns the
-   * new message id after acknowledgement, or null if invalid or failed. The cached profile name is
-   * preferred; [senderName] is used on a cache miss.
+   * new message id after acknowledgement, or null if invalid or rejected. Throws
+   * [TransientActivityException] when the failure is transient and the caller should retry. The
+   * cached profile name is preferred; [senderName] is used on a cache miss.
    */
   suspend fun sendActivity(
       householdId: String,
@@ -52,3 +53,10 @@ interface ChatRepository {
       photo: IncidentPhotoReference
   ): String?
 }
+
+/**
+ * Thrown by [ChatRepository.sendActivity] when publication failed for a transient reason (for
+ * example the backend is unreachable) and may succeed if retried, unlike a null result which means
+ * the activity was rejected.
+ */
+class TransientActivityException(cause: Throwable) : Exception(cause.message, cause)

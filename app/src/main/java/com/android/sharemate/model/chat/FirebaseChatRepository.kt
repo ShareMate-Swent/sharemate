@@ -179,15 +179,26 @@ class FirebaseChatRepository(
     return try {
       val document =
           documentId?.let { messages(householdId).document(it) } ?: messages(householdId).document()
-      if (skipExisting && document.get().await().exists()) return document.id
+      if (skipExisting && documentExists(document)) return document.id
       writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
       document.id
     } catch (cancelled: CancellationException) {
       throw cancelled
+    } catch (transient: TransientActivityException) {
+      throw transient
     } catch (_: Exception) {
       null
     }
   }
+
+  /** Rethrows transient failures so callers can retry instead of treating them as rejections. */
+  private suspend fun documentExists(document: DocumentReference): Boolean =
+      try {
+        document.get().await().exists()
+      } catch (error: FirebaseFirestoreException) {
+        if (error.code in TRANSIENT_CODES) throw TransientActivityException(error)
+        throw error
+      }
 
   private suspend fun messageData(
       id: String,
@@ -244,6 +255,10 @@ class FirebaseChatRepository(
     const val TAG = "FirebaseChatRepository"
     const val HASH_ALGORITHM = "SHA-256"
     const val SEPARATOR = "|"
+    val TRANSIENT_CODES =
+        setOf(
+            FirebaseFirestoreException.Code.UNAVAILABLE,
+            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
     val ACTIVITY_TYPES = setOf(MessageType.EATEN, MessageType.THROWN)
   }
 }

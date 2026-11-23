@@ -1,7 +1,9 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.model.chat
 
+import android.annotation.SuppressLint
 import android.content.Context
+import java.io.IOException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -45,7 +47,8 @@ interface PendingFridgeActivityStore {
  * SharedPreferences-backed [PendingFridgeActivityStore].
  *
  * Read-modify-write operations run on [Dispatchers.IO] and are serialized with [Mutex] so an app
- * process never performs two queue mutations concurrently.
+ * process never performs two queue mutations concurrently. Writes are synchronous; an [IOException]
+ * is thrown when they cannot be committed.
  */
 class AndroidPendingFridgeActivityStore(
     context: Context,
@@ -130,6 +133,8 @@ class AndroidPendingFridgeActivityStore(
     }
   }
 
+  // commit() is deliberate: the queue must be on disk before the caller treats it as persisted.
+  @SuppressLint("ApplySharedPref")
   private fun writeActivities(
       householdId: String,
       userId: String,
@@ -147,13 +152,16 @@ class AndroidPendingFridgeActivityStore(
                     .put(FIELD_ITEM_NAME, activity.itemName))
           }
         }
-    preferences.edit().putString(scopeKey(householdId, userId), array.toString()).apply()
+    val committed =
+        preferences.edit().putString(scopeKey(householdId, userId), array.toString()).commit()
+    if (!committed) throw IOException(PERSIST_FAILURE_MESSAGE)
   }
 
   private fun scopeKey(householdId: String, userId: String): String =
       "$SCOPE_PREFIX$householdId:$userId"
 
   private companion object {
+    const val PERSIST_FAILURE_MESSAGE = "Unable to persist pending fridge activities"
     const val FILE_NAME = "pending_fridge_activities"
     const val SCOPE_PREFIX = "scope:"
     const val FIELD_ID = "id"

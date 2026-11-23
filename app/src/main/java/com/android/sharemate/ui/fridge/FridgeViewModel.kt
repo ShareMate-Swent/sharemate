@@ -405,41 +405,17 @@ class FridgeViewModel(
     val item =
         uiState.value.items.firstOrNull { it.id == itemId && it.householdId == householdId }
             ?: run {
-              val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
-              pendingActivityStore?.remove(
-                  PendingFridgeActivity(
-                      id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
-                      householdId = householdId,
-                      userId = userId,
-                      type = type,
-                      itemName = "",
-                  ))
+              pendingActivityStore?.remove(buildPendingActivity(itemId, "", status))
               return
             }
     if (fridgeType != FridgeType.SHARED) return
     val expectedStatus = if (status == ItemStatus.EATEN) ItemStatus.EATEN else ItemStatus.DISCARDED
     if (item.status != expectedStatus) {
-      val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
-      removePendingActivity(
-          PendingFridgeActivity(
-              id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
-              householdId = householdId,
-              userId = userId,
-              type = type,
-              itemName = item.name,
-          ))
+      removePendingActivity(buildPendingActivity(itemId, item.name, status))
       return
     }
     if (item.sharing != ItemSharing.SHARED) {
-      val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
-      removePendingActivity(
-          PendingFridgeActivity(
-              id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
-              householdId = householdId,
-              userId = userId,
-              type = type,
-              itemName = item.name,
-          ))
+      removePendingActivity(buildPendingActivity(itemId, item.name, status))
       return
     }
     val pending = pendingActivity(itemId, item.name, status, item.sharing) ?: return
@@ -458,13 +434,21 @@ class FridgeViewModel(
         itemName.isBlank()) {
       return null
     }
+    return buildPendingActivity(itemId, itemName.trim(), status)
+  }
+
+  private fun buildPendingActivity(
+      itemId: String,
+      itemName: String,
+      status: ItemStatus,
+  ): PendingFridgeActivity {
     val type = if (status == ItemStatus.EATEN) MessageType.EATEN else MessageType.THROWN
     return PendingFridgeActivity(
         id = "$itemId$PENDING_ACTIVITY_ID_SEPARATOR${type.name}",
         householdId = householdId,
         userId = userId,
         type = type,
-        itemName = itemName.trim(),
+        itemName = itemName,
     )
   }
 

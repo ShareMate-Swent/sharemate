@@ -14,6 +14,7 @@ import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.chat.PendingFridgeActivity
 import com.android.sharemate.model.chat.PendingFridgeActivityStore
+import com.android.sharemate.model.chat.TransientActivityException
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
@@ -494,6 +495,24 @@ class FridgeViewModelTest {
     }
 
     assertEquals(3, chatRepository.attempts.size)
+  }
+
+  @Test
+  fun transientActivityFailureKeepsPendingActivityUntilMaxAttempts() = runTest {
+    chatRepository.failure = TransientActivityException(IOException("Offline"))
+    repository.emitItems(listOf(milk))
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
+
+    chatRepository.failure = null
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+    assertEquals(1, chatRepository.activities.size)
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
   }
 
   @Test
