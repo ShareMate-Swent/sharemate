@@ -2,11 +2,14 @@
 package com.android.sharemate.ui.startup
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
@@ -126,12 +129,37 @@ class LaunchHostTest {
 
   @Test
   fun shortWindowKeepsRetryReachable() {
-    var retries = 0
+    var destinationClicks = 0
+    compose.mainClock.autoAdvance = false
     compose.setContent {
-      Box(Modifier.requiredSize(640.dp, 240.dp)) { LaunchReveal(0, true, {}, { retries++ }) }
+      Box(Modifier.requiredSize(320.dp, 240.dp)) {
+        LaunchHost {
+          val attempt = LocalLaunchAttempt.current
+          ReportLaunch(
+              LaunchStage.AUTH, if (attempt == 0) LaunchStatus.ERROR else LaunchStatus.READY)
+          Box(Modifier.fillMaxSize().clickable { destinationClicks++ }) { Text("Recovered") }
+        }
+      }
     }
-    compose.onNodeWithText("Try again").performScrollTo().assertIsDisplayed().performClick()
-    assertEquals(1, retries)
+    compose.mainClock.advanceTimeBy(6000)
+    compose.onNodeWithTag("launch_reveal").performTouchInput { click(center) }
+    repeat(3) {
+      compose.onNodeWithTag("launch_reveal").performTouchInput {
+        down(Offset(centerX, height * 0.9f))
+        // Begin below touch slop, as a finger naturally does before dragging.
+        repeat(8) { moveBy(Offset(0f, -1f), delayMillis = 16) }
+        moveTo(Offset(centerX, height * 0.1f), delayMillis = 500)
+        up()
+      }
+      compose.mainClock.advanceTimeBy(1000)
+    }
+    compose.onNodeWithText("Try again").assertIsDisplayed().performTouchInput { click() }
+    compose.mainClock.advanceTimeBy(6000)
+    compose.onNodeWithTag("launch_reveal").assertDoesNotExist()
+    compose.onNodeWithText("Recovered").assertIsDisplayed()
+    assertEquals(0, destinationClicks)
+    compose.onNodeWithText("Recovered").performTouchInput { click() }
+    assertEquals(1, destinationClicks)
   }
 
   @Test

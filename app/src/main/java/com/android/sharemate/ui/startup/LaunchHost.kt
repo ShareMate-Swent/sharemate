@@ -72,6 +72,15 @@ fun LaunchHost(content: @Composable () -> Unit) {
               }
           if (!finished) {
             BackHandler {}
+            // Block the destination without consuming gestures inside the interactive reveal.
+            Box(
+                Modifier.fillMaxSize().pointerInput(Unit) {
+                  awaitPointerEventScope {
+                    while (true) {
+                      awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                  }
+                })
             key(attempt) {
               LaunchReveal(
                   progress = progress.value.toInt(),
@@ -82,14 +91,7 @@ fun LaunchHost(content: @Composable () -> Unit) {
                   destinationBounds = state.welcomeBrandBounds,
                   modifier =
                       Modifier.fillMaxSize()
-                          .background(Color.White.copy(alpha = 1f - transition.value))
-                          .pointerInput(Unit) {
-                            awaitPointerEventScope {
-                              while (true) {
-                                awaitPointerEvent().changes.forEach { it.consume() }
-                              }
-                            }
-                          })
+                          .background(Color.White.copy(alpha = 1f - transition.value)))
             }
           }
         }
