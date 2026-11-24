@@ -9,17 +9,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
+import com.android.sharemate.model.image.PhotoImportPolicy
 
 /** Each form action supplies a stable key so its preview survives rotation independently. */
 @Composable
-internal fun photoPickerViewModel(key: String): PhotoPickerViewModel {
+internal fun photoPickerViewModel(
+    key: String,
+    importPolicy: PhotoImportPolicy = PhotoImportPolicy.STANDARD,
+): PhotoPickerViewModel {
   val context = LocalContext.current.applicationContext
   return viewModel(
       key = key,
       factory =
           viewModelFactory {
             initializer {
-              PhotoPickerViewModel(AndroidTemporaryPhotoStore(context), createSavedStateHandle())
+              PhotoPickerViewModel(
+                  AndroidTemporaryPhotoStore(context, importPolicy), createSavedStateHandle())
             }
           })
 }

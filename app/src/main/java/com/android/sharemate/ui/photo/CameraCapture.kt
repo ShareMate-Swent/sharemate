@@ -8,6 +8,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.sharemate.R
 import com.google.common.util.concurrent.ListenableFuture
@@ -44,6 +46,7 @@ internal fun CameraCapture(
   val previewView = remember {
     PreviewView(context).apply {
       implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+      scaleType = PreviewView.ScaleType.FIT_CENTER
       // AndroidView does not clip the transformed camera texture to its Compose bounds.
       outlineProvider = ViewOutlineProvider.BOUNDS
       clipToOutline = true
@@ -62,10 +65,27 @@ internal fun CameraCapture(
         {
           if (!disposed) {
             try {
-              provider = future.get()
-              preview.setSurfaceProvider(previewView.surfaceProvider)
-              provider?.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
-              ready = true
+              val cameraProvider = future.get()
+              previewView.doOnLayout {
+                if (!disposed) {
+                  try {
+                    // Both streams show the same sensor area while fitting the entire image.
+                    val useCases =
+                        UseCaseGroup.Builder()
+                            .setViewPort(checkNotNull(previewView.viewPort))
+                            .addUseCase(preview)
+                            .addUseCase(capture)
+                            .build()
+                    preview.setSurfaceProvider(previewView.surfaceProvider)
+                    provider = cameraProvider
+                    cameraProvider.bindToLifecycle(
+                        owner, CameraSelector.DEFAULT_BACK_CAMERA, useCases)
+                    ready = true
+                  } catch (_: Exception) {
+                    failure()
+                  }
+                }
+              }
             } catch (_: Exception) {
               failure()
             }

@@ -4,6 +4,8 @@ package com.android.sharemate.ui.photo
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.image.PhotoImportRejection
+import com.android.sharemate.model.image.PhotoImportValidationException
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +40,7 @@ data class PhotoPickerState(
     val failed: Boolean = false,
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
+    val galleryImportRejection: PhotoImportRejection? = null,
 )
 
 class PhotoPickerViewModel(
@@ -100,7 +103,9 @@ class PhotoPickerViewModel(
 
   fun reportFailure() {
     // A failed replacement must not make the previous image eligible for a second handoff.
-    mutableState.update { it.copy(failed = true, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(failed = true, confirmationFailed = false, galleryImportRejection = null)
+    }
   }
 
   fun select(uri: String?) {
@@ -185,15 +190,22 @@ class PhotoPickerViewModel(
 
   private fun runOperation(action: suspend () -> Unit) {
     if (state.value.busy) return
-    mutableState.update { it.copy(busy = true, failed = false, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(
+          busy = true, failed = false, confirmationFailed = false, galleryImportRejection = null)
+    }
     operation =
         viewModelScope.launch {
           try {
             action()
           } catch (cancelled: CancellationException) {
             throw cancelled
-          } catch (_: Exception) {
-            mutableState.update { it.copy(failed = true) }
+          } catch (failure: Exception) {
+            mutableState.update {
+              it.copy(
+                  failed = true,
+                  galleryImportRejection = (failure as? PhotoImportValidationException)?.rejection)
+            }
           } finally {
             mutableState.update { it.copy(busy = false) }
           }

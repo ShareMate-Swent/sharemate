@@ -5,6 +5,8 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +69,9 @@ class CameraCaptureTest {
     val binding =
         mockingDetails(provider).invocations.single { it.method.name == "bindToLifecycle" }
     assertSame(CameraSelector.DEFAULT_BACK_CAMERA, binding.rawArguments[1])
-    val useCases = binding.rawArguments[2] as Array<*>
+    val group = binding.rawArguments[2] as UseCaseGroup
+    assertEquals(ViewPort.FIT, group.viewPort?.scaleType)
+    val useCases = group.useCases.toTypedArray()
     assertTrue(useCases[0] is Preview)
     assertSame(capture, useCases[1])
     compose.runOnIdle { visible.value = false }
