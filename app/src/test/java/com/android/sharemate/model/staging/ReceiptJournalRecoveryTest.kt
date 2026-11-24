@@ -73,7 +73,9 @@ class ReceiptJournalRecoveryTest {
         a.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }.thenReturn(auth)
         w.`when`<WorkManager> { WorkManager.getInstance(context) }.thenReturn(manager)
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val store = AndroidInventorySubmissionStore(context, dispatcher, scheduleSync = true)
+        val store =
+            AndroidInventorySubmissionStore(
+                context, dispatcher, scheduleSync = true, viewerId = "owner")
         val own = receipt()
         val peer = receipt("peer")
         store.save(own)

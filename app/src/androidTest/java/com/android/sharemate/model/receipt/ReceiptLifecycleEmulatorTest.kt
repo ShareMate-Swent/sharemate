@@ -8,7 +8,6 @@ import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.utils.FirebaseEmulator
-import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import java.util.UUID
 import kotlinx.coroutines.flow.first
@@ -25,10 +24,8 @@ class ReceiptLifecycleEmulatorTest {
   @Test
   fun leaveEvictsLocalHistoryAndRejoinRestoresTheSameCloudReceipt() = runBlocking {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
-    val port =
-        InstrumentationRegistry.getArguments().getString("receiptFirestorePort")?.toInt()
-            ?: FirebaseEmulator.FIRESTORE_PORT
-    val db = FirebaseFirestore.getInstance().apply { useEmulator(FirebaseEmulator.HOST, port) }
+    // Reuse the suite's configured client: other repository tests have already initialized it.
+    val db = FirebaseEmulator.firestore
     val storage =
         FirebaseStorage.getInstance().apply {
           useEmulator(FirebaseEmulator.HOST, FirebaseEmulator.STORAGE_PORT)

@@ -66,27 +66,15 @@ class ReceiptCacheLifecycle(context: Context) {
   suspend fun evict(viewer: String, home: String) =
       withContext(Dispatchers.IO) {
         synchronized(lock) {
-          val scope = JSONArray(listOf(viewer, home)).toString()
-          val shared = JSONArray(preferences.getString("shared:$scope", "[]"))
-          val cached = JSONArray(preferences.getString("cached:$scope", "[]"))
-          val references =
-              ((0 until shared.length()).map(shared::getJSONObject) +
-                      (0 until cached.length()).map(cached::getJSONObject))
-                  .map { row ->
-                    JSONArray(listOf(row.getString("owner"), home)).toString() to
-                        row.getString("id")
-                  }
-          val prefixes =
-              listOf("receipt:", "details:", "deferred:", "correction:", "deleted:", "download:")
-          val keys =
-              preferences.all.keys.filter { key ->
-                key == scope ||
-                    key == "index:$scope" ||
-                    key == "shared:$scope" ||
-                    key == "cached:$scope" ||
-                    prefixes.any { key.startsWith("$it$scope:") } ||
-                    references.any { (author, id) -> prefixes.any { key == "$it$author:$id" } }
-              }
+          val keys = preferences.all.keys.filter { key ->
+            val start = key.indexOf('[')
+            val end = key.indexOf(']', start)
+            if (start < 0 || end < start) false
+            else runCatching {
+              val scope = JSONArray(key.substring(start, end + 1))
+              scope.getString(0) == viewer && scope.getString(1) == home
+            }.getOrDefault(false)
+          }
           val photos =
               keys
                   .filter { it.startsWith("details:") }
@@ -111,11 +99,6 @@ class ReceiptCacheLifecycle(context: Context) {
           }
           val editor = preferences.edit()
           keys.forEach(editor::remove)
-          references.groupBy({ it.first }, { it.second }).forEach { (author, ids) ->
-            val index = JSONArray(preferences.getString("index:$author", "[]"))
-            val remaining = (0 until index.length()).map(index::getString).filterNot { it in ids }
-            editor.putString("index:$author", JSONArray(remaining).toString())
-          }
           check(editor.commit())
         }
       }

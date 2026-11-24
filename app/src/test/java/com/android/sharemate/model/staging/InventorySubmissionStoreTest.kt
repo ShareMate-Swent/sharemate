@@ -44,7 +44,7 @@ class InventorySubmissionStoreTest {
             ReceiptDetails(
                 receipt.id, receipt.ownerId, receipt.householdId, "photo", 1, title = "Courses"))
     store.cacheShared("bob", "home", listOf(entry(saved), entry(draft)))
-    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher, viewerId = "bob")
     assertEquals(listOf(saved), restored.sharedReceipts("bob", "home"))
     assertEquals("Courses", restored.details("alice", "home", saved.id)?.title)
     assertTrue(restored.sharedReceipts("outsider", "home").isEmpty())
