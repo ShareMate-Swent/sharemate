@@ -28,15 +28,22 @@ class ReceiptDepartureSync(
     fun create(
         context: android.content.Context,
         items: com.android.sharemate.model.item.ItemRepository
+    ): ReceiptDepartureSync =
+        create(
+            com.android.sharemate.model.staging.AndroidInventorySubmissionStore(context),
+            items,
+            com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository(
+                com.google.firebase.functions.FirebaseFunctions.getInstance("europe-west6")),
+            FirebaseReceiptCloudRepository(context)::upload)
+
+    internal fun create(
+        store: InventorySubmissionStore,
+        items: com.android.sharemate.model.item.ItemRepository,
+        expenses: com.android.sharemate.model.finance.ExpenseSubmissionRepository,
+        upload: suspend (ReceiptCloudEntry) -> Unit,
     ): ReceiptDepartureSync {
-      val store = com.android.sharemate.model.staging.AndroidInventorySubmissionStore(context)
-      val cloud = FirebaseReceiptCloudRepository(context)
       val sync =
-          com.android.sharemate.model.staging.ReceiptSynchronization(
-              store,
-              items,
-              com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository(
-                  com.google.firebase.functions.FirebaseFunctions.getInstance("europe-west6"))) {}
+          com.android.sharemate.model.staging.ReceiptSynchronization(store, items, expenses) {}
       return ReceiptDepartureSync(store) { receipt ->
         val owner = receipt.ownerId
         val home = receipt.householdId
@@ -47,8 +54,7 @@ class ReceiptDepartureSync(
               latest.draft ||
                   latest.expenseProgress ==
                       com.android.sharemate.model.item.ExpenseProgress.CONFIRMED)
-          cloud.upload(
-              ReceiptCloudEntry(latest, checkNotNull(store.details(owner, home, receipt.id))))
+          upload(ReceiptCloudEntry(latest, checkNotNull(store.details(owner, home, receipt.id))))
           true
         }
       }

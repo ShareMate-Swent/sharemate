@@ -82,6 +82,96 @@ class ReceiptCacheLifecycleTest {
     assertFalse(photo.exists())
   }
 
+  @Test
+  fun failedPhotoRemovalKeepsTheBarrierAndCanBeRetried() = runTest {
+    val row = receipt("alice", "home")
+    val store = AndroidInventorySubmissionStore(app)
+    store.save(row)
+    store.saveDetails(details(row))
+    val path = File(app.filesDir, "receipts/${row.id}.jpg")
+    path.mkdirs()
+    val child = File(path, "busy")
+    child.writeText("locked payload")
+    val lifecycle = ReceiptCacheLifecycle(app)
+    assertTrue(runCatching { lifecycle.evict("alice", "home") }.isFailure)
+    assertFalse(lifecycle.isCurrent("home"))
+    assertNotNull(store.loadById("alice", "home", row.id))
+    assertTrue(runCatching { store.save(row) }.isFailure)
+    assertTrue(child.delete())
+    lifecycle.evict("alice", "home")
+    assertFalse(path.exists())
+    assertNull(store.loadById("alice", "home", row.id))
+  }
+
+  @Test
+  fun evictionSkipsMalformedAndForeignScopesAndRejectsUnsafePhotoNames() = runTest {
+    val prefs =
+        app.getSharedPreferences("inventory-submissions", android.content.Context.MODE_PRIVATE)
+    prefs
+        .edit()
+        .putString("broken:[", "retained")
+        .putString("broken:[not-json]", "retained")
+        .putString("short:[]", "retained")
+        .putString("download:[\"bob\",\"home\"]:photo", "photo")
+        .putString("download:[\"alice\",\"home\"]:unsafe", "../outside")
+        .commit()
+    val lifecycle = ReceiptCacheLifecycle(app)
+    assertTrue(runCatching { lifecycle.reconcile("alice", emptySet()) }.isFailure)
+    assertFalse(lifecycle.isCurrent("home"))
+    prefs.edit().remove("download:[\"alice\",\"home\"]:unsafe").commit()
+    lifecycle.evict("alice", "home")
+    assertEquals("retained", prefs.getString("broken:[not-json]", null))
+    assertEquals("photo", prefs.getString("download:[\"bob\",\"home\"]:photo", null))
+    lifecycle.activate("home")
+    val current = ReceiptCacheLifecycle(app)
+    assertTrue(current.isCurrent("home"))
+    assertFalse(lifecycle.isCurrent("home"))
+  }
+
+  @Test
+  fun departedStoreCannotRecacheSharedEntriesOrAcknowledgeAnExpenseAfterRejoin() = runTest {
+    val id = UUID.randomUUID().toString()
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "alice", 100, mapOf("alice" to 100L))
+    val row =
+        InventorySubmission(
+            id,
+            "alice",
+            "home",
+            listOf(com.android.sharemate.model.staging.StagedItem("milk", "Milk", 1, 100)),
+            expense = expense)
+    val old = AndroidInventorySubmissionStore(app)
+    old.save(row)
+    val lifecycle = ReceiptCacheLifecycle(app)
+    lifecycle.evict("alice", "home")
+    lifecycle.activate("home")
+    val fresh = AndroidInventorySubmissionStore(app)
+    fresh.save(row)
+    assertTrue(runCatching { old.acknowledgeExpense("alice", "home", id, expense) }.isFailure)
+    var enqueued = false
+    assertTrue(
+        runCatching {
+              old.recoverInventory("alice", "home", id) {
+                enqueued = true
+                com.android.sharemate.model.item.ItemWrite.Rejected(
+                    IllegalStateException("Unexpected"))
+              }
+            }
+            .isFailure)
+    assertFalse(enqueued)
+    val peer = receipt("bob", "home", false)
+    assertTrue(
+        runCatching {
+              old.cacheShared("alice", "home", listOf(ReceiptCloudEntry(peer, details(peer))))
+            }
+            .isFailure)
+    assertTrue(fresh.sharedReceipts("alice", "home").isEmpty())
+    assertEquals(
+        com.android.sharemate.model.item.ExpenseProgress.QUEUED,
+        fresh.loadById("alice", "home", id)?.expenseProgress)
+  }
+
   private fun receipt(owner: String, home: String, draft: Boolean = true) =
       InventorySubmission(
           UUID.randomUUID().toString(),

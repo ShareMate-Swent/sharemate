@@ -34,7 +34,14 @@ class ReceiptLifecycleEmulatorTest {
     val lifecycle = ReceiptCacheLifecycle(context)
     val households =
         ReceiptHouseholdRepository(
-            HouseholdRepositoryFirestore(db), lifecycle::evict, lifecycle::activate)
+            HouseholdRepositoryFirestore(db),
+            lifecycle::evict,
+            lifecycle::activate,
+            beforeLeave = { viewer, household ->
+              ReceiptDepartureSync.create(
+                      context, com.android.sharemate.model.item.FirebaseItemRepository(db))
+                  .prepare(viewer, household)
+            })
     val home = households.createHousehold("Receipt lifecycle", owner)
     val receipt =
         InventorySubmission(UUID.randomUUID().toString(), owner, home.id, emptyList(), draft = true)
@@ -49,7 +56,7 @@ class ReceiptLifecycleEmulatorTest {
     val store = AndroidInventorySubmissionStore(context)
     store.save(receipt)
     store.saveDetails(entry.details)
-    FirebaseReceiptCloudRepository(context, db, storage).upload(entry)
+    // The departure hook must upload this local-only draft before membership is removed.
     val memberships = ReceiptMembershipObserver(db)
     assertTrue(
         withTimeout(TIMEOUT) { memberships.observe(owner).first { home.id in it } }

@@ -351,8 +351,7 @@ class AndroidInventorySubmissionStore(
               preferences.edit().putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
           purge(editor, ownerId, householdId, id)
           check(commit(householdId, editor))
-          if (scheduleSync && submission != null)
-              enqueue(submission, delete = true)
+          if (scheduleSync && submission != null) enqueue(submission, delete = true)
         }
       }
 
