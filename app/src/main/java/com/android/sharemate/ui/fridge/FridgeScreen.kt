@@ -50,6 +50,7 @@ private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
  *
  * @param expiryStatuses how close each item, by id, is to its expiration date, already worked out;
  *   an item missing from it is shown as [ExpiryStatus.NORMAL].
+ * @param headerTrailing Shown at the end of the header, such as the profile photo.
  */
 @Composable
 fun FridgeScreen(
@@ -82,6 +83,7 @@ fun FridgeScreen(
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
+    headerTrailing: (@Composable () -> Unit)? = null,
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val screenModifier =
@@ -90,13 +92,18 @@ fun FridgeScreen(
           .background(MaterialTheme.colorScheme.surface)
           .testTag(C.Tag.fridge_screen_container)
   Column(modifier = screenModifier) {
-    Text(
-        text = stringResource(R.string.fridge_title),
-        modifier =
-            Modifier.align(Alignment.CenterHorizontally)
-                .padding(vertical = FridgeLayout.headerVerticalPadding)
-                .testTag(C.Tag.fridge_title),
-        style = MaterialTheme.typography.headlineSmall)
+    Box(Modifier.fillMaxWidth()) {
+      Box(Modifier.align(Alignment.CenterEnd).padding(end = Dimens.spacingXs)) {
+        headerTrailing?.invoke()
+      }
+      Text(
+          text = stringResource(R.string.fridge_title),
+          modifier =
+              Modifier.align(Alignment.Center)
+                  .padding(vertical = FridgeLayout.headerVerticalPadding)
+                  .testTag(C.Tag.fridge_title),
+          style = MaterialTheme.typography.headlineSmall)
+    }
 
     Text(
         text =
@@ -303,11 +310,16 @@ fun FridgeScreen(
   }
 }
 
-/** Connects the fridge presentation to its existing inventory ViewModel. */
+/**
+ * Connects the fridge presentation to its existing inventory ViewModel.
+ *
+ * @param headerTrailing Shown at the end of the header, such as the profile photo.
+ */
 @Composable
 fun FridgeScreen(
     viewModel: FridgeViewModel,
     modifier: Modifier = Modifier,
+    headerTrailing: (@Composable () -> Unit)? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
@@ -356,6 +368,7 @@ fun FridgeScreen(
       onCancelRemoval = viewModel::cancelRemoval,
       onConfirmRemoval = viewModel::confirmRemoval,
       personalPhotos = viewModel.personalPhotos,
+      headerTrailing = headerTrailing,
   )
 }
 
