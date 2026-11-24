@@ -4,26 +4,42 @@
 package com.android.sharemate.ui.chat
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -135,14 +151,14 @@ class ChatScreenTest {
   fun disambiguatesHistoricalNamesAndOwnMessages() {
     val messages =
         listOf(
-            Message("1", "me", "Sam", "Own"),
-            Message("2", "other", " sam ", "Other"),
+            Message("1", "other", " sam ", "Other"),
+            Message("2", "me", "Sam", "Own"),
             Message("3", "other", "Alex", "Renamed"))
-    assertEquals(mapOf("me" to 1, "other" to 2), disambiguators(messages))
+    assertEquals(mapOf("other" to 1, "me" to 2), disambiguators(messages))
     show(ChatUiState(isLoading = false, messages = messages))
-    composeTestRule.onNodeWithText("sam · Member 2").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Alex · Member 2").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Sam · Member 1").assertDoesNotExist()
+    composeTestRule.onNodeWithText("sam · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Alex · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 2").assertDoesNotExist()
   }
 
   @Test
@@ -188,30 +204,28 @@ class ChatScreenTest {
   }
 
   @Test
-  fun showsTimestampWhenPresent() {
+  fun showsTimeOfEachMessage() {
     show(
         ChatUiState(
-            isLoading = false, messages = listOf(Message("1", "me", "Alex", "Hello", Date(0)))))
-    composeTestRule
-        .onNodeWithText(
-            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
-        .assertIsDisplayed()
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "me", "Alex", "Hello", Date(0)),
+                    Message("2", "other", "Sam", "Hi", Date(HOUR)))))
+    composeTestRule.onNodeWithText(time(Date(0))).assertIsDisplayed()
+    composeTestRule.onNodeWithText(time(Date(HOUR))).assertIsDisplayed()
   }
 
   @Test
-  fun showsEatenActivityBadgeWithItemImageAndTimestamp() {
+  fun showsEatenActivityWithNameAndTimeButNoItemImage() {
     val message =
         Message("1", "other", "Sam", "", Date(0), MessageType.EATEN, "Milk", "file:///milk")
     show(ChatUiState(isLoading = false, messages = listOf(message)))
 
     composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
-    composeTestRule.onNodeWithText("Sam").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Ate Milk").assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText(
-            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(0)))
-        .assertIsDisplayed()
-    composeTestRule.onNodeWithContentDescription("Image of Milk").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam ate Milk").assertIsDisplayed()
+    composeTestRule.onNodeWithText(time(Date(0))).assertIsDisplayed()
+    composeTestRule.onNodeWithContentDescription("Milk", substring = true).assertDoesNotExist()
   }
 
   @Test
@@ -225,8 +239,7 @@ class ChatScreenTest {
                         "1", "other", "Sam", "", type = MessageType.THROWN, itemName = "Bread"))))
 
     composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertIsDisplayed()
-    composeTestRule.onNodeWithText("Threw away Bread").assertIsDisplayed()
-    composeTestRule.onNodeWithContentDescription("Image of Bread").assertDoesNotExist()
+    composeTestRule.onNodeWithText("Sam threw away Bread").assertIsDisplayed()
   }
 
   @Test
@@ -240,7 +253,7 @@ class ChatScreenTest {
                         "1", "activity", "Sam", "", type = MessageType.EATEN, itemName = "Milk"),
                     Message("2", "member", "sam", "Hello"))))
 
-    composeTestRule.onNodeWithText("Sam · Member 1").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Sam · Member 1 ate Milk").assertIsDisplayed()
     composeTestRule.onNodeWithText("sam · Member 2").assertIsDisplayed()
   }
 
@@ -252,7 +265,7 @@ class ChatScreenTest {
             messages =
                 listOf(Message(senderName = "", type = MessageType.EATEN, itemName = "Eggs"))))
 
-    composeTestRule.onNodeWithText("Member").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Member ate Eggs").assertIsDisplayed()
   }
 
   @Test
@@ -323,5 +336,229 @@ class ChatScreenTest {
     composeTestRule.onNodeWithText("The washing machine is leaking").assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatTestTags.OTHER_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatTestTags.ACTIVITY).assertDoesNotExist()
+  }
+
+  @Test
+  fun headerShowsHouseholdNameAndPluralMemberCount() {
+    showWithHeader(ChatUiState(isLoading = false), "Casa Rosa", 4)
+    composeTestRule.onNodeWithText("Chat").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertTextEquals("Casa Rosa · 4 members")
+  }
+
+  @Test
+  fun headerUsesSingularForOneMember() {
+    showWithHeader(ChatUiState(isLoading = false), "Studio", 1)
+    composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertTextEquals("Studio · 1 member")
+  }
+
+  @Test
+  fun headerShowsOnlyCountWhenNameIsBlank() {
+    showWithHeader(ChatUiState(isLoading = false), "  ", 2)
+    composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertTextEquals("2 members")
+  }
+
+  @Test
+  fun headerHidesSubtitleWithoutNameOrMembers() {
+    show(ChatUiState(isLoading = false))
+    composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertDoesNotExist()
+  }
+
+  @Test
+  fun emptyChatShowsInvitationAndNoHeaderAvatars() {
+    showWithHeader(ChatUiState(isLoading = false), "Casa Rosa", 4)
+    composeTestRule.onNodeWithText("No messages yet. Say hello!").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatTestTags.HEADER_AVATARS).assertDoesNotExist()
+  }
+
+  @Test
+  fun headerShowsInitialsOfOtherSendersOnly() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "alex", "Alex", "Milk?"),
+                    Message("2", "me", "Me", "Later"),
+                    Message(
+                        "3", "lucia", "Lucía", "", type = MessageType.EATEN, itemName = "Yogurt"))))
+    composeTestRule.onNodeWithTag(ChatTestTags.HEADER_AVATARS).assertIsDisplayed()
+    val inHeader = hasAnyAncestor(hasTestTag(ChatTestTags.HEADER_AVATARS))
+    composeTestRule
+        .onAllNodes(hasTestTag(ChatTestTags.AVATAR_INITIALS) and inHeader)
+        .assertCountEquals(2)
+    val alex = composeTestRule.onNode(hasText("AL") and inHeader).getBoundsInRoot()
+    val lucia = composeTestRule.onNode(hasText("LU") and inHeader).getBoundsInRoot()
+    // First appearance order: Alex wrote before Lucía.
+    assertTrue(alex.left < lucia.left)
+  }
+
+  @Test
+  fun avatarsShowProfilePhotoWhenAvailable() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages = listOf(Message("1", "other", "Sam", "Hi")),
+            memberPhotos = mapOf("other" to "https://lh3.googleusercontent.com/a/photo")))
+    // One avatar in the header and one next to the message.
+    composeTestRule.onAllNodesWithTag(ChatTestTags.AVATAR_PHOTO).assertCountEquals(2)
+    composeTestRule.onAllNodesWithContentDescription("Photo of Sam").assertCountEquals(2)
+  }
+
+  @Test
+  fun avatarsFallBackToInitialsWithoutPhoto() {
+    show(ChatUiState(isLoading = false, messages = listOf(Message("1", "other", "Sam", "Hi"))))
+    composeTestRule.onAllNodesWithTag(ChatTestTags.AVATAR_PHOTO).assertCountEquals(0)
+    composeTestRule.onAllNodesWithText("SA").assertCountEquals(2)
+  }
+
+  @Test
+  fun ownMessagesHaveNoAvatarOrName() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages = listOf(Message("1", "me", "Alex", "Hello")),
+            memberPhotos = mapOf("me" to "https://lh3.googleusercontent.com/a/me")))
+    composeTestRule.onAllNodesWithTag(ChatTestTags.AVATAR_PHOTO).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(ChatTestTags.AVATAR_INITIALS).assertCountEquals(0)
+    composeTestRule.onNodeWithText("Alex").assertDoesNotExist()
+  }
+
+  @Test
+  fun consecutiveMessagesShowNameOnceAndOneAvatar() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "other", "Sam", "First"), Message("2", "other", "Sam", "Second"))))
+    composeTestRule.onAllNodesWithText("Sam").assertCountEquals(1)
+    // One avatar in the header and one next to the last message of the run.
+    composeTestRule.onAllNodesWithText("SA").assertCountEquals(2)
+  }
+
+  @Test
+  fun ownMessagesAndActivitiesAreOnTheRightOthersOnTheLeft() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "me", "Me", "Mine"),
+                    Message("2", "other", "Sam", "Theirs"),
+                    Message("3", "me", "Me", "", type = MessageType.EATEN, itemName = "Milk"),
+                    Message(
+                        "4", "other", "Sam", "", type = MessageType.THROWN, itemName = "Kale"))))
+    val root = composeTestRule.onNodeWithTag(ChatTestTags.LIST).getBoundsInRoot()
+    val middle = (root.left + root.right) / 2
+    val own = composeTestRule.onNodeWithTag(ChatTestTags.OWN_MESSAGE).getBoundsInRoot()
+    val other = composeTestRule.onNodeWithTag(ChatTestTags.OTHER_MESSAGE).getBoundsInRoot()
+    val activities = composeTestRule.onAllNodesWithTag(ChatTestTags.ACTIVITY)
+    val ownActivity = activities[0].getBoundsInRoot()
+    val otherActivity = activities[1].getBoundsInRoot()
+
+    assertTrue(own.left > middle)
+    assertTrue(ownActivity.left > middle)
+    assertTrue(other.right < root.right && other.left < middle)
+    assertTrue(otherActivity.left < middle)
+    // Own rows touch the right padding, the others' activities touch the left padding.
+    assertTrue(root.right - own.right <= Dimens.spacingS + 1.dp)
+    assertTrue(root.right - ownActivity.right <= Dimens.spacingS + 1.dp)
+    assertTrue(otherActivity.left - root.left <= Dimens.spacingS + 1.dp)
+  }
+
+  @Test
+  fun daySeparatorsShowTodayYesterdayAndOlderDates() {
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val older = LocalDate.of(2020, 1, 15)
+    fun noon(day: LocalDate) = Date.from(day.atTime(12, 0).atZone(zone).toInstant())
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "other", "Sam", "Old", noon(older)),
+                    Message("2", "other", "Sam", "Before", noon(today.minusDays(1))),
+                    Message("3", "other", "Sam", "Now", noon(today)),
+                    Message("4", "me", "Me", "Pending"))))
+    composeTestRule.onAllNodesWithTag(ChatTestTags.DAY_SEPARATOR).assertCountEquals(3)
+    composeTestRule
+        .onNodeWithText(
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                .withLocale(Locale.getDefault())
+                .format(older))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithText("Yesterday").assertExists()
+    composeTestRule.onNodeWithText("Today").assertExists()
+  }
+
+  @Test
+  fun eatenAndThrownUseTheirOwnIcons() {
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "other", "Sam", "", type = MessageType.EATEN, itemName = "Milk"),
+                    Message(
+                        "2", "other", "Sam", "", type = MessageType.THROWN, itemName = "Kale"))))
+    composeTestRule.onNodeWithText("Sam ate Milk").assertExists()
+    composeTestRule.onNodeWithText("Sam threw away Kale").assertExists()
+    composeTestRule.onAllNodesWithTag(ChatTestTags.ACTIVITY).assertCountEquals(2)
+  }
+
+  @Test
+  fun screenPassesHouseholdToHeader() {
+    val viewModel = ChatViewModel(EmptyChatRepository, "h", "me", "Alex")
+    composeTestRule.setContent { ChatScreen(viewModel, "Casa Rosa", 3) }
+    composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertTextEquals("Casa Rosa · 3 members")
+  }
+
+  private fun showWithHeader(state: ChatUiState, householdName: String, memberCount: Int) {
+    composeTestRule.setContent {
+      ChatContent(
+          state,
+          "me",
+          onDraftChange = {},
+          onSend = { sends++ },
+          householdName = householdName,
+          memberCount = memberCount)
+    }
+  }
+
+  private fun time(date: Date): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(date)
+
+  private object EmptyChatRepository : ChatRepository {
+    override fun observeMessages(householdId: String): Flow<List<Message>> =
+        MutableStateFlow(emptyList())
+
+    override suspend fun sendMessage(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        text: String
+    ): String? = null
+
+    override suspend fun sendActivity(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        type: MessageType,
+        itemName: String,
+        itemImageUrl: String?,
+        activityId: String?,
+    ): String? = null
+
+    override suspend fun sendIncident(
+        householdId: String,
+        senderId: String,
+        senderName: String,
+        description: String,
+        photo: IncidentPhotoReference
+    ): String? = null
+  }
+
+  private companion object {
+    const val HOUR = 3_600_000L
   }
 }

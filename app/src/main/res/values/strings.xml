@@ -242,9 +242,16 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
-    <string name="chat_activity_eaten">Ate %1$s</string>
-    <string name="chat_activity_thrown">Threw away %1$s</string>
-    <string name="chat_activity_image_description">Image of %1$s</string>
+    <string name="chat_activity_eaten">%1$s ate %2$s</string>
+    <string name="chat_activity_thrown">%1$s threw away %2$s</string>
+    <string name="chat_today">Today</string>
+    <string name="chat_yesterday">Yesterday</string>
+    <string name="chat_header_subtitle">%1$s · %2$s</string>
+    <plurals name="chat_member_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <string name="chat_avatar_description">Photo of %1$s</string>
     <string name="chat_sender_identity">%1$s · Member %2$d</string>
     <string name="fridge_personal">Personal</string>
     <string name="fridge_item_owner">Owner: %1$s</string>

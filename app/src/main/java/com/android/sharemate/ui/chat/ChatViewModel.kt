@@ -1,10 +1,13 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.profile.supportedPhotoUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +24,8 @@ import kotlinx.coroutines.launch
  * @property draft The text being typed.
  * @property isSending Whether a message is being sent.
  * @property error Whether loading or sending last failed.
+ * @property memberPhotos Profile photo URL of each household member who has a supported one, by
+ *   uid.
  */
 data class ChatUiState(
     val messages: List<Message> = emptyList(),
@@ -28,6 +33,7 @@ data class ChatUiState(
     val draft: String = "",
     val isSending: Boolean = false,
     val error: ChatError? = null,
+    val memberPhotos: Map<String, String> = emptyMap(),
 ) {
   val canSend: Boolean
     get() = !isSending && Message.isValidText(draft)
@@ -38,12 +44,23 @@ enum class ChatError {
   SEND_FAILED
 }
 
-/** Streams the household chat and sends messages as the current user. */
+/**
+ * Streams the household chat and sends messages as the current user.
+ *
+ * It also follows the members' profiles to show their photos next to their messages. Photos are
+ * optional: messages never wait for them, and a profile failure only leaves the photos out. Photos
+ * from sources ShareMate does not support are dropped (see [supportedPhotoUrl]).
+ *
+ * @param profileRepository Source of the members' photos; null shows no photos.
+ * @param photoBucket Storage bucket of uploaded profile photos; null keeps Google photos only.
+ */
 class ChatViewModel(
     private val chatRepository: ChatRepository,
     private val householdId: String,
     val userId: String,
     private val userName: String,
+    private val profileRepository: UserProfileRepository? = null,
+    private val photoBucket: String? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(ChatUiState())
   val state: StateFlow<ChatUiState> = mutableState.asStateFlow()
@@ -64,8 +81,32 @@ class ChatViewModel(
             }
           }
     }
+    profileRepository?.let(::observePhotos)
   }
 
+  private fun observePhotos(repository: UserProfileRepository) {
+    viewModelScope.launch {
+      try {
+        repository.observeMembers(householdId).collect { profiles ->
+          val photos =
+              profiles
+                  .mapNotNull { profile ->
+                    supportedPhotoUrl(profile.photoUrl, profile.uid, photoBucket)?.let {
+                      profile.uid to it
+                    }
+                  }
+                  .toMap()
+          mutableState.update { it.copy(memberPhotos = photos) }
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // Photos are decorative: avatars fall back to initials and the chat stays usable.
+      }
+    }
+  }
+
+  /** Updates the draft, cut to [Message.MAX_TEXT_LENGTH], and clears a previous send error. */
   fun onDraftChange(text: String) {
     mutableState.update {
       it.copy(
@@ -74,6 +115,7 @@ class ChatViewModel(
     }
   }
 
+  /** Sends the draft if it is valid and no message is being sent; keeps it if sending fails. */
   fun send() {
     val current = mutableState.value
     if (!current.canSend) return
