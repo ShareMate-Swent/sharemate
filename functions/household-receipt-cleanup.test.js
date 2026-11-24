@@ -20,7 +20,7 @@ test("deleted private household loses backups and photos; shared departure keeps
   try {
     for (const row of rows) {
       await db.doc(`households/${row.householdId}`).set({ type: row.householdId === privateHome ? "PRIVATE" : "SHARED", memberIds: [] });
-      await db.doc(`receiptBackups/${row.id}`).set({ householdId: row.householdId });
+      await db.doc(`users/alice/receiptBackups/${row.id}`).set({ householdId: row.householdId });
       await bucket.file(`receiptPhotos/${row.householdId}/alice/${row.id}.jpg`).save("photo");
     }
     await cleanupHouseholdReceipts(db, bucket, sharedHome);
@@ -29,12 +29,12 @@ test("deleted private household loses backups and photos; shared departure keeps
     await cleanupHouseholdReceipts(db, bucket, privateHome);
     for (const row of rows) {
       const retained = row.householdId === sharedHome;
-      assert.equal((await db.doc(`receiptBackups/${row.id}`).get()).exists, retained);
+      assert.equal((await db.doc(`users/alice/receiptBackups/${row.id}`).get()).exists, retained);
       assert.equal((await bucket.file(`receiptPhotos/${row.householdId}/alice/${row.id}.jpg`).exists())[0], retained);
     }
   } finally {
     for (const row of rows) {
-      await db.doc(`receiptBackups/${row.id}`).delete();
+      await db.doc(`users/alice/receiptBackups/${row.id}`).delete();
       await db.doc(`households/${row.householdId}`).delete();
       await bucket.deleteFiles({ prefix: `receiptPhotos/${row.householdId}/` });
     }

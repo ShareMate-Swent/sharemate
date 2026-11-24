@@ -27,6 +27,7 @@ function fixture(exists = false) {
       } };
     },
   };
+  db.collectionGroup = name => db.collection(name);
   return { db, rows, deletedPhotos, bucket: { deleteFiles: async options => deletedPhotos.push(options) } };
 }
 

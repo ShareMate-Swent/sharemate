@@ -5,7 +5,8 @@ const DELETE_BATCH_SIZE = 400;
 async function cleanupHouseholdReceipts(db, bucket, householdId) {
   if ((await db.collection("households").doc(householdId).get()).exists) return;
   for (const collection of ["receiptBackups", "receipts"]) {
-    const query = db.collection(collection).where("householdId", "==", householdId)
+    const source = collection === "receiptBackups" ? db.collectionGroup(collection) : db.collection(collection);
+    const query = source.where("householdId", "==", householdId)
       .limit(DELETE_BATCH_SIZE);
     for (;;) {
       const snapshot = await query.get();
