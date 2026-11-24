@@ -39,7 +39,7 @@ class AppBottomBarTest {
                 NavigationTestTags.CHAT_TAB)
             .map { compose.onNodeWithTag(it).assertIsDisplayed().getUnclippedBoundsInRoot().left }
     assertEquals(order.sortedBy { it.value }, order)
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).assertDoesNotExist()
   }
 
   @Test
@@ -69,7 +69,7 @@ class AppBottomBarTest {
     compose.onNodeWithTag(ProfileEntryTestTags.PLACEHOLDER, useUnmergedTree = true).assertExists()
     compose.onNodeWithTag(ProfileEntryTestTags.PHOTO, useUnmergedTree = true).assertDoesNotExist()
     compose
-        .onNodeWithTag(NavigationTestTags.SETTINGS_TAB)
+        .onNodeWithTag(NavigationTestTags.PROFILE_ENTRY)
         .assertContentDescriptionEquals(compose.activity.getString(R.string.nav_open_settings))
         .assertHeightIsAtLeast(ProfileEntryMinimumTouch)
         .performClick()
@@ -102,7 +102,7 @@ class AppBottomBarTest {
             .onNodeWithTag(ProfileEntryTestTags.PHOTO, useUnmergedTree = true)
             .getUnclippedBoundsInRoot()
     assertTrue("The settings icon must come before the photo", icon.right <= photo.left)
-    val oval = compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB)
+    val oval = compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY)
     val bounds = oval.getUnclippedBoundsInRoot()
     assertTrue(
         "The entry must be wider than tall",

@@ -14,7 +14,7 @@ enum class TopLevelDestination(
   RECIPES("recipes", R.string.recipes_title, NavigationTestTags.RECIPES_TAB),
   RECEIPTS("receipts", R.string.receipts_title, NavigationTestTags.RECEIPTS_TAB),
   CHAT("chat", R.string.chat_title, NavigationTestTags.CHAT_TAB),
-  SETTINGS("settings", R.string.settings_title, NavigationTestTags.SETTINGS_TAB);
+  SETTINGS("settings", R.string.settings_title, NavigationTestTags.PROFILE_ENTRY);
 
   /** Whether this tab should show as selected while [route] is the current screen. */
   fun isSelected(route: String?): Boolean = route == this.route || isParentOf(route)
@@ -25,6 +25,12 @@ enum class TopLevelDestination(
   companion object {
     /** The tabs of the bottom bar, in order. Settings opens from the profile photo instead. */
     val bottomBar = listOf(FRIDGE, RECIPES, RECEIPTS, CHAT)
+
+    /**
+     * Whether the bottom bar shows on [route]: only on its tabs and the screens opened from them,
+     * so a new screen has no bar unless it belongs to one of them.
+     */
+    fun showsBottomBar(route: String?): Boolean = bottomBar.any { it.isSelected(route) }
   }
 }
 

@@ -31,7 +31,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -97,6 +96,8 @@ import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.ProfileEntry
 import com.android.sharemate.ui.navigation.TopLevelDestination
+import com.android.sharemate.ui.navigation.leaveSettings
+import com.android.sharemate.ui.navigation.selectTab
 import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
@@ -268,19 +269,8 @@ open class MainActivity : ComponentActivity() {
                   modifier =
                       Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
                   bottomBar = {
-                    if (!TopLevelDestination.SETTINGS.isSelected(currentRoute)) {
-                      AppBottomBar(
-                          currentRoute = currentRoute,
-                          onSelect = { destination ->
-                            navController.navigate(destination.route) {
-                              popUpTo(navController.graph.findStartDestination().id) {
-                                // Retain the fridge ViewModel and its image jobs across tabs.
-                                saveState = true
-                              }
-                              launchSingleTop = true
-                              restoreState = true
-                            }
-                          })
+                    if (TopLevelDestination.showsBottomBar(currentRoute)) {
+                      AppBottomBar(currentRoute = currentRoute, onSelect = navController::selectTab)
                     }
                   },
               ) { innerPadding ->
@@ -450,11 +440,7 @@ open class MainActivity : ComponentActivity() {
                             },
                             onChangePhoto = photoCamera::open,
                             onRetryPhotoUpload = settingsViewModel::retryPhotoUpload,
-                            onBack = {
-                              // Pops only Settings, even if Back is tapped twice.
-                              navController.popBackStack(
-                                  TopLevelDestination.SETTINGS.route, inclusive = true)
-                            })
+                            onBack = navController::leaveSettings)
                         ProfilePhotoPicker(
                             onPhotoConfirmed = settingsViewModel::changePhoto,
                             camera = photoCamera,

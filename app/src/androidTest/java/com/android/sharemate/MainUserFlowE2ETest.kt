@@ -148,7 +148,7 @@ class MainUserFlowE2ETest {
         .assertIsDisplayed()
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
 
     waitUntil("signed-out welcome screen", 10_000) {
@@ -215,7 +215,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithText(privateItemName).assertIsDisplayed()
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
     waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()

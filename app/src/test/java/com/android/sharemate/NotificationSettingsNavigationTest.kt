@@ -24,7 +24,7 @@ class NotificationSettingsNavigationTest {
   private fun openNotificationSettings() {
     compose.runOnIdle { firebase.resolveInitialHousehold() }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(NotificationSettingsTestTags.OPEN_ENTRY).performScrollTo().performClick()
   }
 

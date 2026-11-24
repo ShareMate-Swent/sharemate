@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
+import com.android.sharemate.ui.components.ComponentLayout
 import com.android.sharemate.ui.components.FloatingNavAction
 import com.android.sharemate.ui.components.FloatingNavBar
 import com.android.sharemate.ui.components.FloatingNavItem
@@ -38,12 +39,12 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Sizes of the oval, with the settings icon and the profile photo, that opens Settings. */
 private object ProfileEntryLayout {
-  /** Height of the oval, which is also its minimum touch target. */
-  val height = 48.dp
+  /** Height of the oval: that of the bar's add button, which is also the minimum touch target. */
+  val height = ComponentLayout.navAddSize
   /** Diameter of the photo. */
   val avatarSize = 40.dp
-  /** Size of the placeholder icon and of the settings icon. */
-  val iconSize = 22.dp
+  /** Size of the placeholder icon and of the settings icon, the same as in the bottom bar. */
+  val iconSize = ComponentLayout.navIconSize
   /** Space before the settings icon. */
   val startPadding = 10.dp
   /** Space around the photo, so it sits inside the oval. */
@@ -116,12 +117,12 @@ internal fun ProfileEntry(photoUrl: String?, onClick: () -> Unit, modifier: Modi
           .background(MaterialTheme.colorScheme.surfaceVariant)
           .clickable(role = Role.Button, onClick = onClick)
           .semantics(mergeDescendants = true) { contentDescription = description }
-          .testTag(NavigationTestTags.SETTINGS_TAB)
+          .testTag(NavigationTestTags.PROFILE_ENTRY)
           .padding(start = ProfileEntryLayout.startPadding, end = ProfileEntryLayout.endPadding),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(ProfileEntryLayout.gap)) {
         Icon(
-            imageVector = Icons.Filled.Settings,
+            imageVector = TopLevelDestination.SETTINGS.icon(),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier =

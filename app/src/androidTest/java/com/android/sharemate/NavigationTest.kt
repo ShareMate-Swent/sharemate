@@ -88,7 +88,7 @@ class MainActivityTest : TestCase() {
     }
     step("Open Settings from the profile photo and come back") {
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
-      composeTestRule.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
       composeTestRule
           .onNodeWithTag(NavigationTestTags.PAGE_CONTENT)
           .assertTextEquals(composeTestRule.activity.getString(R.string.settings_title))

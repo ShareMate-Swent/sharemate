@@ -22,7 +22,7 @@ class HouseholdMembersNavigationTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   private fun openMembers() {
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SHOW_MEMBERS).performScrollTo().performClick()
     compose.onNodeWithTag(HouseholdMembersTestTags.SCREEN).assertIsDisplayed()
   }

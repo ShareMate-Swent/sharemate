@@ -78,7 +78,7 @@ class PrivateFridgeCreationTest {
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Private")
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose
         .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
         .performScrollTo()
