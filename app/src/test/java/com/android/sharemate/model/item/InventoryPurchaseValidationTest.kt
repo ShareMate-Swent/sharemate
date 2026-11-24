@@ -14,10 +14,12 @@ class InventoryPurchaseValidationTest {
   fun journalRejectsInconsistentPurchasePayloadAndProgress() {
     val id = "12345678-1234-1234-1234-123456789abc"
     val expense = SharedExpense(id, "home", "alice", 1000, shares)
+    val recordedByBob = InventorySubmission(id, "bob", "home", rows, expense = expense)
+    assertEquals("bob", recordedByBob.ownerId)
+    assertEquals("alice", recordedByBob.expense?.paidBy)
     val invalid =
         listOf<() -> InventorySubmission>(
             { InventorySubmission(id, "alice", "other", rows, expense = expense) },
-            { InventorySubmission(id, "bob", "home", rows, expense = expense) },
             {
               InventorySubmission(
                   java.util.UUID.randomUUID().toString(), "alice", "home", rows, expense = expense)
