@@ -4,7 +4,8 @@
     <string name="photo_picker_gallery">Choose from gallery</string>
     <string name="photo_picker_capture">Take photo</string>
     <string name="photo_picker_confirm">Use this photo</string>
-    <string name="photo_picker_failed">Unable to use this photo. Try again or choose another image (maximum 20 MB).</string>
+    <string name="photo_picker_failed">Unable to use this photo. Try again or choose another image.</string>
+    <string name="photo_picker_pixel_limit">Choose a photo with a resolution of %1$d megapixels or less.</string>
     <string name="photo_picker_camera_denied">Camera access is needed to take a photo. You can still choose a photo from your gallery.</string>
     <string name="photo_picker_camera_settings">Open app settings</string>
 </resources>

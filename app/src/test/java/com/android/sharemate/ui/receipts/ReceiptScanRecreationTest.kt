@@ -26,6 +26,7 @@ import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.staging.StagingTestTags
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +51,7 @@ class ReceiptScanRecreationTest {
       assertReviewAfterRecreation(useHistory = false)
 
   @Test
-  fun historyScanOpensTheRetainedReceiptAfterActivityRecreation() =
+  fun historyScanOpensTheReviewOnceAcrossActivityRecreations() =
       assertReviewAfterRecreation(useHistory = true)
 
   private fun assertReviewAfterRecreation(useHistory: Boolean) {
@@ -117,6 +118,16 @@ class ReceiptScanRecreationTest {
           }
         }
       }
+      fun recreateActivity() {
+        val previous = compose.activity
+        compose.activityRule.scenario.recreate()
+        compose.activityRule.scenario.onActivity {
+          assertNotSame(previous, it)
+          it.setContent(content = content)
+          it.window.decorView.requestLayout()
+        }
+        compose.waitForIdle()
+      }
       compose.setContent(content)
       compose.onNodeWithText(firstActivity.getString(R.string.scan_receipt)).performClick()
       compose.runOnIdle { photo.select(Uri.fromFile(file).toString()) }
@@ -128,13 +139,7 @@ class ReceiptScanRecreationTest {
       val firstPhoto = photo
 
       // Recreate while the callback is suspended, before any products or navigation exist.
-      compose.activityRule.scenario.recreate()
-      compose.activityRule.scenario.onActivity {
-        assertNotSame(firstActivity, it)
-        it.setContent(content = content)
-        it.window.decorView.requestLayout()
-      }
-      compose.waitForIdle()
+      recreateActivity()
       compose.runOnIdle {
         assertSame(firstPhoto, photo)
         result.complete(listOf(ReceiptItem("Lait", 240), ReceiptItem("Pain", 310)))
@@ -152,6 +157,14 @@ class ReceiptScanRecreationTest {
       compose
           .onNodeWithText(compose.activity.getString(R.string.staging_price, "3.10"))
           .assertIsDisplayed()
+      if (useHistory) {
+        val reviewButton = context.getString(R.string.receipt_review_items)
+        compose.onNodeWithTag(StagingTestTags.BACK).performClick()
+        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        recreateActivity()
+        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        compose.onNodeWithTag(StagingTestTags.LIST).assertDoesNotExist()
+      }
       assertEquals(1, reads)
     } finally {
       result.cancel()

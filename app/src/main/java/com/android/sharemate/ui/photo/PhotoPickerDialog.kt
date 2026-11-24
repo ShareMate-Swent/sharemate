@@ -34,13 +34,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.model.image.MAX_INPUT_PHOTO_PIXELS
+import com.android.sharemate.model.image.PhotoImportRejection
 import com.android.sharemate.ui.theme.Dimens
 
 data class PhotoPickerLabels(
     @StringRes val title: Int,
     @StringRes val previewDescription: Int,
     @StringRes val sourceDescription: Int,
-    @StringRes val galleryImportError: Int = R.string.photo_picker_failed,
 )
 
 /** Captures or imports a photo and waits for the caller to finish using the confirmed selection. */
@@ -96,7 +97,13 @@ fun PhotoPickerDialog(
                     Text(
                         when {
                           state.confirmationFailed && confirmationError != null -> confirmationError
-                          state.galleryImportFailed -> stringResource(labels.galleryImportError)
+                          state.galleryImportRejection ==
+                              PhotoImportRejection.PERSONAL_REQUIREMENTS ->
+                              stringResource(R.string.personal_photo_invalid)
+                          state.galleryImportRejection == PhotoImportRejection.PIXEL_LIMIT ->
+                              stringResource(
+                                  R.string.photo_picker_pixel_limit,
+                                  MAX_INPUT_PHOTO_PIXELS / 1_000_000)
                           else -> stringResource(R.string.photo_picker_failed)
                         },
                         color = MaterialTheme.colorScheme.error)

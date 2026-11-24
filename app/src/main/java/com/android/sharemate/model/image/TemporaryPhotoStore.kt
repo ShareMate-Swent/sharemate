@@ -31,12 +31,10 @@ interface TemporaryPhotoStore {
 
 class AndroidTemporaryPhotoStore(
     context: Context,
-    private val personalGalleryOnly: Boolean = false,
+    private val importPolicy: PhotoImportPolicy = PhotoImportPolicy.STANDARD,
 ) : TemporaryPhotoStore {
   private val resolver = context.applicationContext.contentResolver
   private val directory = temporaryPhotoDirectory(context)
-  private val galleryMaxBytes =
-      if (personalGalleryOnly) PersonalPhotoRepository.MAX_BYTES.toLong() else MAX_INPUT_PHOTO_BYTES
 
   override suspend fun createCapture(): String {
     var created: File? = null
@@ -63,19 +61,14 @@ class AndroidTemporaryPhotoStore(
         val file = ownedFile(target)
         resolver.openInputStream(Uri.parse(uri))?.use { input ->
           file.outputStream().use { output ->
-            input.copyPhotoTo(output, galleryMaxBytes, checkActive = { ensureActive() }) {
-              IOException("Image exceeds size limit")
+            input.copyPhotoTo(output, importPolicy.maxBytes, checkActive = { ensureActive() }) {
+              importPolicy.reject(
+                  PhotoImportRejection.PERSONAL_REQUIREMENTS, "Image exceeds size limit")
             }
           }
         } ?: throw IOException("Image is unavailable")
-        validateBounds(file)
-        if (personalGalleryOnly) {
-          try {
-            validatePersonalGalleryPhoto(file)
-          } catch (failure: IllegalArgumentException) {
-            throw IOException("Personal photos must be JPEG or PNG", failure)
-          }
-        }
+        validateBounds(file, importPolicy)
+        importPolicy.validateContent(file)
         target
       }
     } catch (failure: Throwable) {
@@ -87,14 +80,15 @@ class AndroidTemporaryPhotoStore(
   override suspend fun validate(uri: String) =
       withContext(Dispatchers.IO) { validateBounds(ownedFile(uri)) }
 
-  private fun validateBounds(file: File) {
+  private fun validateBounds(file: File, policy: PhotoImportPolicy = PhotoImportPolicy.STANDARD) {
     if (!file.isFile || file.length() !in 1..MAX_INPUT_PHOTO_BYTES)
         throw IOException("Image is unavailable")
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(file.path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Image cannot be decoded")
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0)
+        throw policy.reject(PhotoImportRejection.PERSONAL_REQUIREMENTS, "Image cannot be decoded")
     if (bounds.outWidth.toLong() * bounds.outHeight > MAX_INPUT_PHOTO_PIXELS)
-        throw IOException("Image exceeds pixel limit")
+        throw policy.reject(PhotoImportRejection.PIXEL_LIMIT, "Image exceeds pixel limit")
   }
 
   override suspend fun delete(uri: String) =

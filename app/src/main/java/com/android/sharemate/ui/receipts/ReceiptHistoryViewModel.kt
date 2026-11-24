@@ -101,6 +101,7 @@ class ReceiptHistoryViewModel(
         throw failure
       }
 
+  /** Consumes the automatic review request if [id] still matches the pending receipt. */
   fun scanReviewOpened(id: String) {
     mutableScanToReview.compareAndSet(id, null)
   }

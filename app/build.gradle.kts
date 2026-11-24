@@ -226,9 +226,6 @@ dependencies {
 }
 
 tasks.withType<Test> {
-    // Robolectric downloads Android SDK jars separately from Gradle's dependency resolver.
-    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
-
     // Configure Jacoco for each tests
     configure<JacocoTaskExtension> {
         isIncludeNoLocationClasses = true
