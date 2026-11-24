@@ -7,6 +7,7 @@ import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.receipt.ReceiptCacheLifecycle
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -121,7 +122,6 @@ class AndroidInventorySubmissionStore(
     private val viewerId: String? = null,
     private val lifecycle: ReceiptCacheLifecycle = ReceiptCacheLifecycle(context),
 ) : InventorySubmissionStore {
-  private val lifecycle = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(context)
   private val applicationContext = context.applicationContext
 
   override fun invalidations(householdId: String): kotlinx.coroutines.flow.Flow<Unit> =

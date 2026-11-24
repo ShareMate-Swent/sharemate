@@ -24,7 +24,8 @@ class ReceiptCacheLifecycleTest {
     val shared = receipt("bob", "home", false)
     val otherHome = receipt("alice", "other")
     val otherAccountDraft = receipt("bob", "home")
-    for (row in listOf(own, otherHome, otherAccountDraft)) {
+    val otherAccountSaved = receipt("bob", "home", false)
+    for (row in listOf(own, otherHome, otherAccountDraft, otherAccountSaved)) {
       store.save(row)
       store.saveDetails(details(row))
     }
@@ -41,7 +42,8 @@ class ReceiptCacheLifecycleTest {
     assertFalse(photo.exists())
     assertFalse(store.isDeleted("alice", "home", own.id))
     assertEquals(listOf(otherHome), store.list("alice", "other"))
-    assertEquals(listOf(otherAccountDraft), store.list("bob", "home"))
+    assertEquals(listOf(otherAccountSaved, otherAccountDraft), store.list("bob", "home"))
+    assertNull(store.forViewer("alice").loadById("bob", "home", shared.id))
   }
 
   @Test
