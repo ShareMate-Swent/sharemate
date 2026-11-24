@@ -37,7 +37,11 @@ class FirebaseReceiptCloudRepository(
     val details = entry.details
     if (!receipt.draft && receipt.expenseProgress != ExpenseProgress.CONFIRMED) return
     val photoPath = "receiptPhotos/${receipt.householdId}/${receipt.ownerId}/${receipt.id}.jpg"
-    val ref = db.collection("receiptBackups").document(receipt.id)
+    val ref =
+        db.collection("users")
+            .document(receipt.ownerId)
+            .collection("receiptBackups")
+            .document(receipt.id)
     val payload =
         mapOf(
             "ownerId" to receipt.ownerId,
@@ -70,11 +74,11 @@ class FirebaseReceiptCloudRepository(
 
   override fun observe(ownerId: String, householdId: String): Flow<List<ReceiptCloudEntry>> {
     val shared =
-        db.collection("receiptBackups")
+        db.collectionGroup("receiptBackups")
             .whereEqualTo("householdId", householdId)
             .whereEqualTo("draft", false)
     val drafts =
-        db.collection("receiptBackups")
+        db.collectionGroup("receiptBackups")
             .whereEqualTo("householdId", householdId)
             .whereEqualTo("ownerId", ownerId)
             .whereEqualTo("draft", true)

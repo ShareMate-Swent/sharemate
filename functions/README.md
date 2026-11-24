@@ -48,3 +48,14 @@ leaving a shared household it finishes uploading its own retained receipts; an u
 keeps membership and local history intact. Server membership snapshots also reconcile local
 caches after a departure or deletion on another device. Offline snapshots never trigger eviction.
 Rejoining downloads the household history again through the existing receipt synchronization.
+
+Receipt backups are scoped by their immutable creator at
+`users/{ownerId}/receiptBackups/{receiptId}`. Deploy `firestore.indexes.json` with the rules and
+updated clients; household history uses a `receiptBackups` collection-group query. Existing
+preview backups at the old top-level path must be migrated by a trusted administrator before
+switching clients; never accept a caller-supplied owner as a migration authority.
+
+Corrections send `originalTitle` alongside the original rows and expense. The server compares
+all three before applying a new correction. The original title must be retained in the local
+correction journal so retries preserve the same request identity. Older clients that omit it
+must refresh/update rather than overwrite a newer title.

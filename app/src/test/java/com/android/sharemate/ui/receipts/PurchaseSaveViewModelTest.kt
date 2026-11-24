@@ -43,13 +43,15 @@ class PurchaseSaveViewModelTest {
     store.saved = savedOriginal()
     store.metadata =
         com.android.sharemate.model.staging.ReceiptDetails(
-            store.saved!!.id, "alice", "home", "photo", 1)
+            store.saved!!.id, "alice", "home", "photo", 1, title = "Original title")
     val vm = model()
+    store.metadata = store.metadata!!.copy(title = "Changed remotely after opening")
     expenses.correctionFailure = IOException("Offline")
     assertTrue(vm.correctPurchase(purchase, members, "  Groceries  "))
     vm.retry()
     runCurrent()
     val correction = store.correction
+    assertEquals("Original title", correction?.originalTitle)
     assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
     store.correctionReadFailure = IOException("Storage unavailable")
     vm.retry()
@@ -73,6 +75,9 @@ class PurchaseSaveViewModelTest {
     assertEquals("Groceries", store.metadata?.title)
     assertTrue(expenses.corrections.all { it == correction })
     assertTrue(inventory.calls.isEmpty())
+    assertTrue(vm.correctPurchase(purchase, members, "Second title"))
+    runCurrent()
+    assertEquals("Groceries", expenses.corrections.last().originalTitle)
   }
 
   @Test
