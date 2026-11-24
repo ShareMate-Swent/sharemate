@@ -34,3 +34,21 @@ the full test command above also runs callable/Firestore emulator scenarios.
 The household join batch now submits the invite code with the private profile link.
 Deploy the rules in coordination with the Android update. An older client cannot add a
 new membership under the tightened rules because its join batch omits this field.
+
+## Private household deletion
+
+`deletePrivateHousehold` in the same region deletes a private household with everything in it:
+its items and their photos, its receipts, its sub-collections and incident photos, and finally the
+household document together with the link on the creator's profile. Only the creator can call it,
+only for a private household with no other member, so a shared household is never deleted this way.
+Clients cannot delete a household directly; the Firestore rules deny it.
+
+The household document goes last, so a failed call leaves the household in place and calling again
+only redoes what is left. A household that is already gone counts as deleted. The Android adapter
+sends `{ householdId }` and treats any error as "not deleted", with no offline queue. The function
+and its Storage access need deployment before the app can use it, and its tests run without
+emulators:
+
+```sh
+node --test functions/private-household.unit.test.js
+```

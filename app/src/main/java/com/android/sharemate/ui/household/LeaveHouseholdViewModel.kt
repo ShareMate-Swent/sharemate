@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModel
@@ -14,11 +15,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Errors that can occur while leaving a household. */
+/** Errors that can occur while leaving or deleting a household. */
 enum class LeaveHouseholdError {
   NO_SESSION,
   PRIVATE_HOUSEHOLD,
-  LEAVE_FAILED
+  LEAVE_FAILED,
+  /** Deleting a private household failed; the server did not confirm it. */
+  DELETE_FAILED
 }
 
 /**

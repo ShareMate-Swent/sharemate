@@ -1,10 +1,11 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -82,14 +83,17 @@ class PrivateFridgeCreationTest {
     compose
         .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
         .performScrollTo()
-        .assertIsNotEnabled()
+        .assertIsEnabled()
         .performClick()
-    compose.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertDoesNotExist()
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertIsDisplayed()
     compose
-        .onNodeWithText(compose.activity.getString(R.string.leave_private_household_blocked))
-        .performScrollTo()
+        .onNodeWithText(
+            compose.activity.getString(
+                R.string.delete_private_household_message, "My private fridge"))
         .assertIsDisplayed()
     screenshot("private-fridge-settings")
+    // Nothing is deleted: the test only checks the warning, then backs out.
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.activityRule.scenario.recreate()
