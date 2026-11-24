@@ -92,7 +92,7 @@ class ReceiptPersistenceReviewTest {
           val value = invocation.callRealMethod()
           if (!editStarted) {
             editStarted = true
-            launch(dispatcher) {
+            launch(dispatcher, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
               peer.saveCorrection(next)
               editFinished = true
             }
