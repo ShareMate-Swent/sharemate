@@ -19,6 +19,7 @@ class FirebaseReceiptCloudRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
 ) : ReceiptCloudRepository {
+  private val lifecycle = ReceiptCacheLifecycle(context)
   private val codec = AndroidInventorySubmissionStore(context, scheduleSync = false)
 
   override fun observeDeleted(ownerId: String, householdId: String): Flow<Set<String>> =
@@ -32,6 +33,7 @@ class FirebaseReceiptCloudRepository(
   /** Uploads one durable local snapshot. A deletion tombstone prevents stale resurrection. */
   suspend fun upload(entry: ReceiptCloudEntry) {
     val receipt = entry.submission
+    check(lifecycle.isCurrent(receipt.householdId))
     val details = entry.details
     if (!receipt.draft && receipt.expenseProgress != ExpenseProgress.CONFIRMED) return
     val photoPath = "receiptPhotos/${receipt.householdId}/${receipt.ownerId}/${receipt.id}.jpg"
@@ -51,7 +53,8 @@ class FirebaseReceiptCloudRepository(
     db.runTransaction { tx ->
           val existing = tx.get(ref)
           // Saved content is updated only by correctReceipt's atomic ledger transaction.
-          if (!existing.exists() || existing.getBoolean("draft") == true) tx.set(ref, payload)
+          if (!existing.exists() || existing.getBoolean("draft") == true)
+              tx.set(ref, payload + ("photoReady" to (existing.getBoolean("photoReady") == true)))
         }
         .await()
     if (details.photoUri.startsWith("file:")) {
@@ -86,10 +89,13 @@ class FirebaseReceiptCloudRepository(
             val photo = File(directory, "${submission.id}.jpg")
             val path = "receiptPhotos/$householdId/$author/${submission.id}.jpg"
             if (!photo.exists() && document.getBoolean("photoReady") == true) {
+              lifecycle.trackDownload(ownerId, householdId, submission.id)
               val pending = File.createTempFile("receipt-download-", ".tmp", directory)
               try {
                 storage.reference.child(path).getFile(pending).await()
-                check(pending.length() > 0 && pending.renameTo(photo))
+                lifecycle.write(householdId) {
+                  check(pending.length() > 0 && pending.renameTo(photo))
+                }
               } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
               } catch (_: Exception) {

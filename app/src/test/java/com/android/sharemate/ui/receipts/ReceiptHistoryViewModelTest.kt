@@ -29,6 +29,34 @@ import org.mockito.Mockito.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiptHistoryViewModelTest {
   @Test
+  fun householdInvalidationClearsVisibleHistoryAndRejectsDelayedRefresh() = runTest {
+    val memory = MemoryStore()
+    val invalidated = MutableSharedFlow<Unit>()
+    val store =
+        object : InventorySubmissionStore by memory {
+          override fun invalidations(householdId: String) = invalidated
+        }
+    memory.save(
+        InventorySubmission(
+            "00000000-0000-0000-0000-000000000099", "owner", "home", emptyList(), draft = true))
+    val history =
+        ReceiptHistoryViewModel(
+            mock(ItemRepository::class.java),
+            store,
+            mock(ReceiptPhotoStore::class.java),
+            "owner",
+            "home")
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    assertEquals(1, history.receipts.value.size)
+    invalidated.emit(Unit)
+    runCurrent()
+    assertTrue(history.receipts.value.isEmpty())
+    history.refresh()
+    assertTrue(history.receipts.value.isEmpty())
+  }
+
+  @Test
   fun savedDeletionKeepsLocalDataOnServerFailureAndCanRetry() = runTest {
     val store = MemoryStore()
     val photos = mock(ReceiptPhotoStore::class.java)

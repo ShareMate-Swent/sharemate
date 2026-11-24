@@ -42,6 +42,7 @@ class ReceiptHistoryViewModel(
     private val cloud: com.android.sharemate.model.receipt.ReceiptCloudRepository? = null,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
+  private var accessEnded = false
   /** Receipts belonging to this account and household, including pending and failed saves. */
   val receipts = mutableReceipts.asStateFlow()
   private val observations = mutableMapOf<String, Job>()
@@ -178,6 +179,14 @@ class ReceiptHistoryViewModel(
 
   init {
     viewModelScope.launch {
+      store.invalidations(householdId).collect {
+        accessEnded = true
+        mutableReceipts.value = emptyList()
+        observations.values.forEach { it.cancel() }
+        observations.clear()
+      }
+    }
+    viewModelScope.launch {
       refresh()
       try {
         store.resumeSync(ownerId, householdId)
@@ -254,7 +263,7 @@ class ReceiptHistoryViewModel(
                         else if (details?.savedAtMillis != null) InventorySavePhase.CONFIRMED
                         else InventorySavePhase.PENDING)
           }
-      mutableReceipts.value = entries
+      mutableReceipts.value = if (accessEnded) emptyList() else entries
       entries
           .filter { it.phase == InventorySavePhase.PENDING && it.submission.expense == null }
           .forEach { observe(it.submission) }

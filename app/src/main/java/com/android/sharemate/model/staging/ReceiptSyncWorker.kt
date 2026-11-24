@@ -45,6 +45,10 @@ class ReceiptSyncWorker(
     val home = inputData.getString("home") ?: return Result.failure()
     val id = inputData.getString("id") ?: return Result.failure()
     val actor = inputData.getString("actor") ?: owner
+    val lifecycle = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(applicationContext)
+    if (!lifecycle.isCurrent(home) ||
+        inputData.getLong("generation", 0) != lifecycle.generation(home))
+        return Result.success()
     if (currentUserId() != actor) return Result.retry()
     return try {
       withTimeout(60_000) {
@@ -74,8 +78,13 @@ class ReceiptSyncWorker(
               "receipt-sync-${receipt.ownerId}-${receipt.id}",
               if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
               OneTimeWorkRequestBuilder<ReceiptSyncWorker>()
+                  .addTag("receipt-household-${receipt.householdId}")
                   .setInputData(
                       workDataOf(
+                          "generation" to
+                              com.android.sharemate.model.receipt
+                                  .ReceiptCacheLifecycle(context)
+                                  .generation(receipt.householdId),
                           "owner" to receipt.ownerId,
                           "delete" to delete,
                           "actor" to

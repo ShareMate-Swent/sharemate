@@ -1,10 +1,11 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 # Financial services
 
 Run the backend tests from the repository root with Node.js 22 and Firebase CLI installed.
 
 ```sh
 npm --prefix functions install
-firebase emulators:exec --only auth,firestore,functions --project demo-sharemate "npm --prefix functions test"
+firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate "npm --prefix functions test"
 ```
 
 The callable runs in `europe-west6`. Create the Android adapter with a Firebase Functions
@@ -34,3 +35,16 @@ the full test command above also runs callable/Firestore emulator scenarios.
 The household join batch now submits the invite code with the private profile link.
 Deploy the rules in coordination with the Android update. An older client cannot add a
 new membership under the tightened rules because its join batch omits this field.
+
+`cleanupDeletedHouseholdReceipts` runs only after a household document is deleted. It removes
+the household's `receiptBackups`, legacy `receipts`, and `receiptPhotos/{householdId}/` files.
+Leaving a shared household does not trigger this function and keeps its history available to
+the remaining members. Cleanup is asynchronous and retries on failure; membership rules revoke
+access immediately. Deploy the new function alongside the Android update. This change does not
+alter whether the household feature permits leaving a private household.
+
+The Android client clears its receipt cache and photos after a successful departure. Before
+leaving a shared household it finishes uploading its own retained receipts; an upload failure
+keeps membership and local history intact. Server membership snapshots also reconcile local
+caches after a departure or deletion on another device. Offline snapshots never trigger eviction.
+Rejoining downloads the household history again through the existing receipt synchronization.
