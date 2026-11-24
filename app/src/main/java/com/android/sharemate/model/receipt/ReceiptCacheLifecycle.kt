@@ -66,15 +66,18 @@ class ReceiptCacheLifecycle(context: Context) {
   suspend fun evict(viewer: String, home: String) =
       withContext(Dispatchers.IO) {
         synchronized(lock) {
-          val keys = preferences.all.keys.filter { key ->
-            val start = key.indexOf('[')
-            val end = key.indexOf(']', start)
-            if (start < 0 || end < start) false
-            else runCatching {
-              val scope = JSONArray(key.substring(start, end + 1))
-              scope.getString(0) == viewer && scope.getString(1) == home
-            }.getOrDefault(false)
-          }
+          val keys =
+              preferences.all.keys.filter { key ->
+                val start = key.indexOf('[')
+                val end = key.indexOf(']', start)
+                if (start < 0 || end < start) false
+                else
+                    runCatching {
+                          val scope = JSONArray(key.substring(start, end + 1))
+                          scope.getString(0) == viewer && scope.getString(1) == home
+                        }
+                        .getOrDefault(false)
+              }
           val photos =
               keys
                   .filter { it.startsWith("details:") }

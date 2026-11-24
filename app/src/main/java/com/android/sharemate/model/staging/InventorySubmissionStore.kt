@@ -146,6 +146,7 @@ class AndroidInventorySubmissionStore(
       lifecycle.write(receipt.householdId) {
         ReceiptSyncWorker.enqueue(applicationContext, receipt, delete, replace)
       }
+
   override fun forViewer(viewerId: String): InventorySubmissionStore =
       AndroidInventorySubmissionStore(
           applicationContext, dispatcher, legacyActive, scheduleSync, viewerId, lifecycle)
@@ -196,7 +197,8 @@ class AndroidInventorySubmissionStore(
           val id = entry.getString("id")
           if (isDeleted(owner, householdId, id)) null
           else
-              AndroidInventorySubmissionStore(applicationContext, dispatcher, viewerId = viewerId, lifecycle = lifecycle)
+              AndroidInventorySubmissionStore(
+                      applicationContext, dispatcher, viewerId = viewerId, lifecycle = lifecycle)
                   .loadById(owner, householdId, id)
         }
       }
@@ -207,7 +209,9 @@ class AndroidInventorySubmissionStore(
       entries: List<com.android.sharemate.model.receipt.ReceiptCloudEntry>
   ) {
     check(lifecycle.isCurrent(householdId))
-    val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher, viewerId = viewerId, lifecycle = lifecycle)
+    val cache =
+        AndroidInventorySubmissionStore(
+            applicationContext, dispatcher, viewerId = viewerId, lifecycle = lifecycle)
     val shared =
         entries.filter {
           it.submission.ownerId != viewerId &&
@@ -504,7 +508,10 @@ class AndroidInventorySubmissionStore(
   override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
         mutationMutex.withLock {
-          check(preferences.edit().remove("correction:${key(ownerId, householdId)}:$id").let { lifecycle.commit(householdId, it) })
+          check(
+              preferences.edit().remove("correction:${key(ownerId, householdId)}:$id").let {
+                lifecycle.commit(householdId, it)
+              })
         }
       }
 
@@ -532,7 +539,7 @@ class AndroidInventorySubmissionStore(
           }
           check(lifecycle.commit(original.householdId, editor))
         }
-        if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, correction.replacement)
+        if (scheduleSync) enqueue(correction.replacement)
       }
 
   internal fun decode(value: String, ownerId: String, householdId: String): InventorySubmission {
