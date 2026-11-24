@@ -161,7 +161,7 @@ internal fun EmptyChat(modifier: Modifier = Modifier) {
       }
 }
 
-/** Label before the first message of [day]: "Today", "Yesterday" or a localized date. */
+/** Centered badge before the first message of [day]: "Today", "Yesterday" or a localized date. */
 @Composable
 internal fun DaySeparatorLabel(day: LocalDate, today: LocalDate) {
   val label =
@@ -173,13 +173,21 @@ internal fun DaySeparatorLabel(day: LocalDate, today: LocalDate) {
                 .withLocale(Locale.getDefault())
                 .format(day)
       }
-  Text(
-      label,
-      modifier =
-          Modifier.padding(top = Dimens.spacingXs, start = Dimens.spacingXxs)
-              .testTag(ChatTestTags.DAY_SEPARATOR),
-      style = MaterialTheme.typography.labelMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant)
+  Box(
+      Modifier.fillMaxWidth().padding(top = Dimens.spacingXs),
+      contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.testTag(ChatTestTags.DAY_SEPARATOR),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant) {
+              Text(
+                  label,
+                  modifier =
+                      Modifier.padding(horizontal = Dimens.spacingS, vertical = Dimens.spacingXxs),
+                  style = MaterialTheme.typography.labelMedium)
+            }
+      }
 }
 
 /**

@@ -36,6 +36,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
@@ -490,6 +491,18 @@ class ChatScreenTest {
         .assertIsDisplayed()
     composeTestRule.onNodeWithText("Yesterday").assertExists()
     composeTestRule.onNodeWithText("Today").assertExists()
+  }
+
+  @Test
+  fun daySeparatorIsACenteredBadge() {
+    show(ChatUiState(isLoading = false, messages = listOf(Message("1", "other", "Sam", "Hi"))))
+    val list = composeTestRule.onNodeWithTag(ChatTestTags.LIST).getBoundsInRoot()
+    val badge = composeTestRule.onNodeWithTag(ChatTestTags.DAY_SEPARATOR).getBoundsInRoot()
+    val listCenter = (list.left + list.right) / 2
+    val badgeCenter = (badge.left + badge.right) / 2
+    assertTrue(abs(listCenter.value - badgeCenter.value) <= 1f)
+    // A badge, not a full-width row.
+    assertTrue(badge.right - badge.left < (list.right - list.left) / 2)
   }
 
   @Test
