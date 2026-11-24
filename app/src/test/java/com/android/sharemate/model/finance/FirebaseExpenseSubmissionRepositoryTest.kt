@@ -152,6 +152,7 @@ class FirebaseExpenseSubmissionRepositoryTest {
             "title" to "Courses",
             "originalExpense" to null,
             "originalTitle" to "",
+            "originalRevision" to 0L,
             "originalRows" to
                 listOf(
                     mapOf("id" to "row", "name" to "Milk", "quantity" to 2, "priceCents" to "100")),

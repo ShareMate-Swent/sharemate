@@ -10,8 +10,10 @@ data class ReceiptCorrection(
     val replacement: InventorySubmission,
     val title: String,
     val originalTitle: String = "",
+    val originalRevision: Long = 0,
 ) {
   init {
+    require(originalRevision >= 0 && originalRevision < Long.MAX_VALUE)
     require(
         original.id == replacement.id &&
             original.ownerId == replacement.ownerId &&
