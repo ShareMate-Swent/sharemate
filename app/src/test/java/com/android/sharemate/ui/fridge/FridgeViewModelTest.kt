@@ -12,6 +12,9 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
+import com.android.sharemate.model.chat.PendingFridgeActivity
+import com.android.sharemate.model.chat.PendingFridgeActivityStore
+import com.android.sharemate.model.chat.TransientActivityException
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImage
 import com.android.sharemate.model.image.FoodImageRepository
@@ -26,6 +29,7 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -82,6 +86,7 @@ import org.junit.Test
 class FridgeViewModelTest {
   private val repository = FakeItemRepository()
   private val chatRepository = RecordingChatRepository()
+  private val pendingActivityStore = FakePendingFridgeActivityStore()
   private val imageRepository = FakeFoodImageRepository()
   private val imageSelector = FoodImageSelector(imageRepository)
   private val barcodeScanner = FakeBarcodeScanner()
@@ -99,6 +104,7 @@ class FridgeViewModelTest {
   @Before
   fun setUp() {
     Dispatchers.setMain(StandardTestDispatcher())
+    pendingActivityStore.clear()
   }
 
   @After
@@ -116,21 +122,29 @@ class FridgeViewModelTest {
           name = "Bread",
           householdId = "test-household",
           sharing = ItemSharing.SHARED)
+  private val pendingMilkEaten =
+      PendingFridgeActivity(
+          id = "milk:EATEN",
+          householdId = "test-household",
+          userId = "test-user",
+          type = MessageType.EATEN,
+          itemName = "Milk",
+      )
 
   @Test
   fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    val active = milk.copy(ownerId = "other-member", category = "Dairy")
+    val active = milk.copy(ownerId = "other-member", category = ItemCategory.DAIRY)
     val history =
         listOf(
             active.copy(id = "eaten", status = ItemStatus.EATEN),
             active.copy(id = "discarded", status = ItemStatus.DISCARDED))
-    repository.emitItems(history + bread.copy(category = "Bakery") + active)
+    repository.emitItems(history + bread.copy(category = ItemCategory.PANTRY) + active)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     assertEquals(listOf(bread.id, milk.id), vm.visibleItems.value.map { it.id })
-    vm.setCategoryFilter(" dairy ")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setOwnerFilter("other-member")
     runCurrent()
     assertEquals(listOf(active), vm.visibleItems.value)
@@ -210,8 +224,458 @@ class FridgeViewModelTest {
     assertEquals(
         listOf(
             RecordingChatRepository.Activity(
-                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name)),
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name, "milk:EATEN")),
         chatRepository.activities)
+  }
+
+  @Test
+  fun cancelledStatusActionLeavesNoPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun rejectedStatusWriteLeavesNoPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusFailure = IOException("Rejected")
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun itemRemovedBeforeStatusConfirmationClearsPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(emptyList())
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun unknownReplayTypeIsRemovedWithoutSendingActivity() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:TEXT",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.TEXT,
+            itemName = milk.name,
+        ))
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun sameNameItemsUseDistinctReplayActivities() = runTest {
+    val secondMilk = milk.copy(id = "milk-friday", name = milk.name, status = ItemStatus.ACTIVE)
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk-friday:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(
+        listOf(milk.copy(status = ItemStatus.EATEN), secondMilk.copy(status = ItemStatus.EATEN)))
+    viewModel()
+    runCurrent()
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name, "milk:EATEN"),
+            RecordingChatRepository.Activity(
+                "test-household",
+                "test-user",
+                "Ann",
+                MessageType.EATEN,
+                milk.name,
+                "milk-friday:EATEN")),
+        chatRepository.activities)
+  }
+
+  @Test
+  fun offlineActivityIsPersistedAndReplayedAfterViewModelRestart() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            PendingFridgeActivity(
+                id = "milk:EATEN",
+                householdId = "test-household",
+                userId = "test-user",
+                type = MessageType.EATEN,
+                itemName = milk.name)),
+        pendingActivityStore.list("test-household", "test-user"))
+
+    viewModelStore.clear()
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            RecordingChatRepository.Activity(
+                "test-household", "test-user", "Ann", MessageType.EATEN, milk.name, "milk:EATEN")),
+        chatRepository.activities)
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun staleReplayWithoutMatchingItemIsRemoved() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "missing:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = "Missing",
+        ))
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun staleReplayWithWrongStatusOrSharingIsRemoved() = runTest {
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+
+    pendingActivityStore.save(
+        PendingFridgeActivity(
+            id = "milk:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = milk.name,
+        ))
+    repository.emitItems(
+        listOf(milk.copy(status = ItemStatus.EATEN, sharing = ItemSharing.PERSONAL)))
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun pendingStoreFailuresDoNotFailStatusOrViewModelInitialization() = runTest {
+    pendingActivityStore.listFailure = IOException("Cannot load")
+    repository.emitItems(listOf(milk))
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    pendingActivityStore.saveFailure = IOException("Cannot save")
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.statusError == null)
+  }
+
+  @Test
+  fun confirmationWithDifferentStatusClearsPendingActivity() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.DISCARDED)))
+    runCurrent()
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun pendingStoreCancellationDoesNotReportStatusError() = runTest {
+    repository.emitItems(listOf(milk))
+    pendingActivityStore.saveFailure = CancellationException("Save cancelled")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertNull(vm.uiState.value.statusError)
+    assertTrue(vm.uiState.value.pendingStatusIds.isEmpty())
+  }
+
+  @Test
+  fun pendingStoreCancellationDuringReplayLeavesStoredActivity() = runTest {
+    val stale =
+        PendingFridgeActivity(
+            id = "missing:EATEN",
+            householdId = "test-household",
+            userId = "test-user",
+            type = MessageType.EATEN,
+            itemName = "Missing",
+        )
+    pendingActivityStore.save(stale)
+    pendingActivityStore.removeFailure = CancellationException("Remove cancelled")
+    repository.emitItems(listOf(milk))
+
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertEquals(listOf(stale), pendingActivityStore.list("test-household", "test-user"))
+  }
+
+  @Test
+  fun pendingStoreCancellationWhileLoadingReplayIsIgnored() = runTest {
+    pendingActivityStore.listFailure = CancellationException("List cancelled")
+    repository.emitItems(listOf(milk))
+
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    assertFalse(vm.uiState.value.loadFailed)
+    assertTrue(chatRepository.activities.isEmpty())
+  }
+
+  @Test
+  fun repeatedActivitySendFailuresNeverDropPendingActivity() = runTest {
+    chatRepository.failure = IOException("Chat unavailable")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    repeat(4) {
+      repository.emitItems(listOf(milk))
+      runCurrent()
+      vm.setItemStatus(milk.id, ItemStatus.EATEN)
+      runCurrent()
+      assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
+    }
+
+    assertEquals(4, chatRepository.attempts.size)
+  }
+
+  @Test
+  fun nullActivityResultDropsPendingActivity() = runTest {
+    chatRepository.returnNull = true
+    repository.emitItems(listOf(milk))
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun replayWaitsForPendingWriteToBeConfirmedThenSendsOnce() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
+
+    viewModel()
+    runCurrent()
+
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
+
+    repository.emitSync(confirmed = listOf(milk.copy(status = ItemStatus.EATEN)))
+    runCurrent()
+
+    assertEquals(listOf("milk:EATEN"), chatRepository.activities.map { it.activityId })
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun replayDropsEntryWhenRejectionReachesItemsListenerFirst() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
+    viewModel()
+    runCurrent()
+
+    repository.emitItems(listOf(milk))
+    runCurrent()
+    repository.emitSync(confirmed = listOf(milk))
+    runCurrent()
+
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun replayDropsEntryWhenRejectionReachesSyncBeforeItemsListener() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    repository.emitSync(confirmed = emptyList(), pending = setOf("milk"))
+    val vm = viewModel()
+    runCurrent()
+
+    // The server rejected the write: the sync snapshot already shows the reverted item while the
+    // items listener still serves the locally applied EATEN status.
+    repository.emitSync(confirmed = listOf(milk))
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun quickSuccessiveOfflineActionsKeepBothBadgesAcrossRestart() = runTest {
+    repository.emitItems(listOf(milk, bread))
+    repository.statusConfirmation = CompletableDeferred()
+    repository.emitSync(confirmed = listOf(milk, bread))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    // The sync listener lags behind the local writes: each item still reads as confirmed ACTIVE.
+    repository.emitSync(confirmed = listOf(milk, bread.copy(quantity = 2)))
+    runCurrent()
+    vm.setItemStatus(bread.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitSync(confirmed = listOf(bread), pending = setOf("milk"))
+    runCurrent()
+
+    assertEquals(
+        setOf("milk:EATEN", "bread:EATEN"),
+        pendingActivityStore.list("test-household", "test-user").map { it.id }.toSet())
+    assertTrue(chatRepository.attempts.isEmpty())
+
+    // The app closes before reconnecting, then reopens once both writes are confirmed.
+    viewModelStore.clear()
+    repository.emitSync(
+        confirmed =
+            listOf(milk.copy(status = ItemStatus.EATEN), bread.copy(status = ItemStatus.EATEN)))
+    viewModel()
+    runCurrent()
+
+    assertEquals(
+        setOf("milk:EATEN", "bread:EATEN"), chatRepository.activities.map { it.activityId }.toSet())
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun syncObservationFailureLeavesReplayWaiting() = runTest {
+    pendingActivityStore.save(pendingMilkEaten)
+    repository.emitItems(listOf(milk.copy(status = ItemStatus.EATEN)))
+    repository.syncFailure = IOException("Metadata unavailable")
+
+    viewModel()
+    runCurrent()
+
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
+  }
+
+  @Test
+  fun deletedItemPendingActivityRemovalFailureDoesNotCrash() = runTest {
+    repository.emitItems(listOf(milk))
+    repository.statusConfirmation = CompletableDeferred()
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    repository.emitItems(emptyList())
+    runCurrent()
+    pendingActivityStore.removeFailure = IOException("Disk full")
+
+    repository.statusConfirmation!!.complete(Result.success(Unit))
+    runCurrent()
+
+    assertTrue(chatRepository.attempts.isEmpty())
+    assertFalse(vm.uiState.value.loadFailed)
+  }
+
+  @Test
+  fun transientActivityFailureKeepsPendingActivityUntilMaxAttempts() = runTest {
+    chatRepository.failure = TransientActivityException(IOException("Offline"))
+    repository.emitItems(listOf(milk))
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+    assertEquals(1, pendingActivityStore.list("test-household", "test-user").size)
+
+    chatRepository.failure = null
+    viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+    assertEquals(1, chatRepository.activities.size)
+    assertTrue(pendingActivityStore.list("test-household", "test-user").isEmpty())
+  }
+
+  @Test
+  fun pendingStoreRemoveFailureDoesNotFailStatusChange() = runTest {
+    repository.emitItems(listOf(milk))
+    pendingActivityStore.removeFailure = IOException("Cannot remove")
+    val vm = viewModel(pendingStore = pendingActivityStore)
+    runCurrent()
+
+    vm.setItemStatus(milk.id, ItemStatus.EATEN)
+    runCurrent()
+
+    assertEquals(ItemStatus.EATEN, vm.uiState.value.items.single().status)
+    assertTrue(vm.uiState.value.statusError == null)
   }
 
   @Test
@@ -231,7 +695,7 @@ class FridgeViewModelTest {
     assertEquals(
         listOf(
             RecordingChatRepository.Activity(
-                "test-household", "test-user", "Ann", MessageType.EATEN, "Oat milk")),
+                "test-household", "test-user", "Ann", MessageType.EATEN, "Oat milk", "milk:EATEN")),
         chatRepository.activities)
   }
 
@@ -275,7 +739,12 @@ class FridgeViewModelTest {
     assertEquals(
         listOf(
             RecordingChatRepository.Activity(
-                "test-household", "test-user", "Ann", MessageType.EATEN, privateItem.name)),
+                "test-household",
+                "test-user",
+                "Ann",
+                MessageType.EATEN,
+                privateItem.name,
+                "milk:EATEN")),
         chatRepository.activities)
   }
 
@@ -315,7 +784,12 @@ class FridgeViewModelTest {
     assertEquals(
         listOf(
             RecordingChatRepository.Activity(
-                "test-household", "test-user", "Ann", MessageType.THROWN, bread.name)),
+                "test-household",
+                "test-user",
+                "Ann",
+                MessageType.THROWN,
+                bread.name,
+                "bread:THROWN")),
         chatRepository.activities)
   }
 
@@ -562,7 +1036,7 @@ class FridgeViewModelTest {
 
   @Test
   fun editPrefillsAllFieldsAndCancelDiscardsChanges() = runTest {
-    val original = milk.copy(quantity = 3, category = "Dairy", expirationDate = Date(0))
+    val original = milk.copy(quantity = 3, category = ItemCategory.DAIRY, expirationDate = Date(0))
     repository.emitItems(listOf(original))
     val vm = viewModel()
     runCurrent()
@@ -570,7 +1044,7 @@ class FridgeViewModelTest {
     assertEquals(milk.id, vm.uiState.value.editingItemId)
     assertEquals("Milk", vm.uiState.value.itemName)
     assertEquals("3", vm.uiState.value.itemQuantity)
-    assertEquals("Dairy", vm.uiState.value.itemCategory)
+    assertEquals(ItemCategory.DAIRY, vm.uiState.value.itemCategory)
     assertEquals("1970-01-01", vm.uiState.value.expirationDateInput)
     vm.updateName("Changed")
     vm.updateQuantity("5")
@@ -621,7 +1095,7 @@ class FridgeViewModelTest {
     runCurrent()
     vm.updateName(" Cheese ")
     vm.updateQuantity(" 4 ")
-    vm.updateCategory(" Dairy ")
+    vm.updateCategory(ItemCategory.DAIRY)
     vm.updateExpirationDate("2026-12-31")
     vm.saveItem()
     vm.saveItem()
@@ -632,7 +1106,7 @@ class FridgeViewModelTest {
         latest.copy(
             name = "Cheese",
             quantity = 4,
-            category = "Dairy",
+            category = ItemCategory.DAIRY,
             expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 12, 31)))
     assertEquals(listOf(expected, bread), vm.uiState.value.items)
     assertEquals(1, repository.edits.size)
@@ -643,7 +1117,7 @@ class FridgeViewModelTest {
 
   @Test
   fun invalidEditInputsNeverSubmitAndOptionalFieldsCanBeCleared() = runTest {
-    repository.emitItems(listOf(milk.copy(category = "Dairy", expirationDate = Date(0))))
+    repository.emitItems(listOf(milk.copy(category = ItemCategory.DAIRY, expirationDate = Date(0))))
     val vm = viewModel()
     runCurrent()
     vm.openEditItemDialog(milk.id)
@@ -662,7 +1136,7 @@ class FridgeViewModelTest {
     }
     assertTrue(repository.edits.isEmpty())
     vm.updateQuantity(ItemQuantity.MAX.toString())
-    vm.updateCategory(" ")
+    vm.updateCategory(null)
     vm.saveItem()
     runCurrent()
     assertEquals(milk.copy(quantity = ItemQuantity.MAX), vm.uiState.value.items.single())
@@ -808,10 +1282,11 @@ class FridgeViewModelTest {
 
   @Test
   fun editedFieldsImmediatelyReapplyExistingFiltersAndSorting() = runTest {
-    repository.emitItems(listOf(milk.copy(category = "Dairy"), bread.copy(category = "Dairy")))
+    repository.emitItems(
+        listOf(milk.copy(category = ItemCategory.DAIRY), bread.copy(category = ItemCategory.DAIRY)))
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    vm.setCategoryFilter("dairy")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     vm.openEditItemDialog(milk.id)
@@ -820,10 +1295,10 @@ class FridgeViewModelTest {
     runCurrent()
     assertEquals(listOf("Apple", "Bread"), vm.visibleItems.value.map { it.name })
     vm.openEditItemDialog(milk.id)
-    vm.updateCategory("Fruit")
+    vm.updateCategory(ItemCategory.FRUITS)
     vm.saveItem()
     runCurrent()
-    assertEquals(listOf(bread.copy(category = "Dairy")), vm.visibleItems.value)
+    assertEquals(listOf(bread.copy(category = ItemCategory.DAIRY)), vm.visibleItems.value)
   }
 
   @Test
@@ -848,14 +1323,14 @@ class FridgeViewModelTest {
   @Test
   fun offlineRemovalReappliesFiltersAndSortingWithoutAwaitingConfirmation() = runTest {
     Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-    val apple = milk.copy(id = "apple", name = "Apple", category = "Dairy")
-    val cheese = milk.copy(id = "cheese", name = "Cheese", category = "Dairy")
+    val apple = milk.copy(id = "apple", name = "Apple", category = ItemCategory.DAIRY)
+    val cheese = milk.copy(id = "cheese", name = "Cheese", category = ItemCategory.DAIRY)
     repository.emitItems(listOf(cheese, apple, bread))
     val confirmation = CompletableDeferred<Result<Unit>>()
     repository.deleteConfirmation = confirmation
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    vm.setCategoryFilter("Dairy")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     vm.requestRemoval(apple.id)
@@ -1457,6 +1932,7 @@ class FridgeViewModelTest {
       profiles: PseudoRepository = testPseudoRepository(),
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
       senderName: String = "Ann",
+      pendingStore: PendingFridgeActivityStore = pendingActivityStore,
   ): FridgeViewModel =
       FridgeViewModel(
               repository,
@@ -1473,6 +1949,7 @@ class FridgeViewModelTest {
               currentUserDisplayName = null,
               chatRepository = chatRepository,
               activitySenderName = senderName,
+              pendingActivityStore = pendingStore,
           )
           .also { viewModelStore.put("fridge", it) }
 
@@ -1809,7 +2286,7 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("  Milk  ")
-    viewModel.updateCategory("  Dairy  ")
+    viewModel.updateCategory(ItemCategory.DAIRY)
     viewModel.updateExpirationDate("  2026-10-12  ")
     viewModel.saveItem()
     runCurrent()
@@ -1820,7 +2297,7 @@ class FridgeViewModelTest {
             ownerId = "test-user",
             householdId = "test-household",
             expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 10, 12)),
-            category = "Dairy")
+            category = ItemCategory.DAIRY)
     assertEquals(listOf(expected), repository.addedItems)
     assertEquals(listOf(expected.copy(id = "item-1")), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
@@ -1835,7 +2312,7 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Bread")
-    viewModel.updateCategory(" ")
+    viewModel.updateCategory(null)
     viewModel.updateExpirationDate(" ")
     viewModel.saveItem()
     runCurrent()
@@ -1897,13 +2374,13 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
-    viewModel.updateCategory("Dairy")
+    viewModel.updateCategory(ItemCategory.DAIRY)
     viewModel.updateExpirationDate("2026-10-12")
     viewModel.dismissAddItemDialog()
 
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
     assertEquals("", viewModel.uiState.value.itemName)
-    assertEquals("", viewModel.uiState.value.itemCategory)
+    assertNull(viewModel.uiState.value.itemCategory)
     assertEquals("", viewModel.uiState.value.expirationDateInput)
     assertTrue(repository.addedItems.isEmpty())
   }
@@ -2114,25 +2591,78 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun categoryFilterIgnoresCaseAndWhitespaceAndCanBeCleared() = runTest {
+  fun itemsWithoutACategoryOnlyShowUnderAllWhileOtherHasItsOwnFilter() = runTest {
     val viewModel = viewModel()
     val collection =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
           viewModel.visibleItems.collect()
         }
-    val milk = item("milk", category = " Dairy ")
-    val apple = item("apple", category = "Fruit")
-    repository.emitItems(listOf(milk, apple))
-    viewModel.setCategoryFilter(" dairy ")
+    val milk = item("milk", category = ItemCategory.DAIRY)
+    val misc = item("misc", category = ItemCategory.OTHER)
+    val plain = item("plain")
+    repository.emitItems(listOf(milk, misc, plain))
+    viewModel.setCategoryFilter(ItemCategory.DAIRY)
     runCurrent()
-
     assertEquals(listOf(milk), viewModel.visibleItems.value)
 
-    viewModel.setCategoryFilter("")
+    viewModel.setCategoryFilter(ItemCategory.OTHER)
+    runCurrent()
+    assertEquals(listOf(misc), viewModel.visibleItems.value)
+
+    viewModel.setCategoryFilter(null)
     runCurrent()
     assertNull(viewModel.selectedCategory.value)
-    assertEquals(listOf(milk, apple), viewModel.visibleItems.value)
+    assertEquals(listOf(milk, misc, plain), viewModel.visibleItems.value)
     collection.cancel()
+  }
+
+  @Test
+  fun addFormDefaultsToNoCategoryAndSavesThePickedOne() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog()
+    assertNull(vm.uiState.value.itemCategory)
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    assertNull(repository.addedItems.single().category)
+
+    vm.openAddItemDialog()
+    assertNull(vm.uiState.value.itemCategory)
+    vm.updateName("Apple")
+    vm.updateCategory(ItemCategory.FRUITS)
+    vm.saveItem()
+    runCurrent()
+    assertEquals(ItemCategory.FRUITS, repository.addedItems.last().category)
+  }
+
+  @Test
+  fun editSavesTheCategoryOnlyWhenTheUserChangesIt() = runTest {
+    repository.emitItems(listOf(milk.copy(category = ItemCategory.OTHER)))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.openEditItemDialog(milk.id)
+    assertEquals(ItemCategory.OTHER, vm.uiState.value.itemCategory)
+    vm.updateName("Oat milk")
+    vm.saveItem()
+    runCurrent()
+    // Untouched, so an older free-text category read as Other is not overwritten.
+    assertFalse(repository.edits.last().second.updatesCategory)
+
+    vm.openEditItemDialog(milk.id)
+    vm.updateCategory(ItemCategory.DAIRY)
+    vm.saveItem()
+    runCurrent()
+    assertTrue(repository.edits.last().second.updatesCategory)
+    assertEquals(ItemCategory.DAIRY, repository.edits.last().second.category)
+
+    vm.openEditItemDialog(milk.id)
+    vm.updateCategory(null)
+    vm.saveItem()
+    runCurrent()
+    assertTrue(repository.edits.last().second.updatesCategory)
+    assertNull(repository.edits.last().second.category)
   }
 
   @Test
@@ -2142,17 +2672,17 @@ class FridgeViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
           viewModel.visibleItems.collect()
         }
-    val matching = item("matching", category = "Dairy", ownerId = "owner-1")
-    val otherOwner = item("other-owner", category = "Dairy", ownerId = "owner-2")
-    val otherCategory = item("other-category", category = "Fruit", ownerId = "owner-1")
+    val matching = item("matching", category = ItemCategory.DAIRY, ownerId = "owner-1")
+    val otherOwner = item("other-owner", category = ItemCategory.DAIRY, ownerId = "owner-2")
+    val otherCategory = item("other-category", category = ItemCategory.FRUITS, ownerId = "owner-1")
     repository.emitItems(listOf(matching, otherOwner, otherCategory))
-    viewModel.setCategoryFilter("dairy")
+    viewModel.setCategoryFilter(ItemCategory.DAIRY)
     viewModel.setOwnerFilter("owner-1")
     runCurrent()
 
     assertEquals(listOf(matching), viewModel.visibleItems.value)
 
-    val anotherMatch = item("another-match", category = "Dairy", ownerId = "owner-1")
+    val anotherMatch = item("another-match", category = ItemCategory.DAIRY, ownerId = "owner-1")
     repository.emitItems(listOf(matching, otherOwner, otherCategory, anotherMatch))
     runCurrent()
     assertEquals(listOf(matching, anotherMatch), viewModel.visibleItems.value)
@@ -2663,6 +3193,37 @@ class FridgeViewModelTest {
     }
   }
 
+  private class FakePendingFridgeActivityStore : PendingFridgeActivityStore {
+    private val activities = mutableListOf<PendingFridgeActivity>()
+
+    fun clear() {
+      activities.clear()
+    }
+
+    var saveFailure: Exception? = null
+    var listFailure: Exception? = null
+    var removeFailure: Exception? = null
+
+    override suspend fun save(activity: PendingFridgeActivity) {
+      saveFailure?.let { throw it }
+      activities.removeAll { it.id == activity.id }
+      activities += activity
+    }
+
+    override suspend fun remove(activity: PendingFridgeActivity) {
+      removeFailure?.let { throw it }
+      activities.removeAll { it.id == activity.id }
+    }
+
+    override suspend fun list(
+        householdId: String,
+        userId: String,
+    ): List<PendingFridgeActivity> {
+      listFailure?.let { throw it }
+      return activities.filter { it.householdId == householdId && it.userId == userId }
+    }
+  }
+
   private class RecordingChatRepository : ChatRepository {
     data class Activity(
         val householdId: String,
@@ -2670,6 +3231,7 @@ class FridgeViewModelTest {
         val senderName: String,
         val type: MessageType,
         val itemName: String,
+        val activityId: String? = null,
     )
 
     val activities = mutableListOf<Activity>()
@@ -2701,8 +3263,9 @@ class FridgeViewModelTest {
         type: MessageType,
         itemName: String,
         itemImageUrl: String?,
+        activityId: String?,
     ): String? {
-      val activity = Activity(householdId, senderId, senderName, type, itemName)
+      val activity = Activity(householdId, senderId, senderName, type, itemName, activityId)
       attempts += activity
       failure?.let { throw it }
       if (returnNull) return null
@@ -2721,7 +3284,7 @@ private fun item(
     id: String,
     name: String = id,
     expirationDate: Date? = null,
-    category: String? = null,
+    category: ItemCategory? = null,
     ownerId: String = "test-user",
 ) =
     Item(

@@ -29,7 +29,8 @@ class FridgeWiringTest {
 
   @Test
   fun inventoryIsNotObservedUntilHouseholdIsResolved() {
-    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertExists()
+    compose.onNodeWithTag("launch_reveal").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     assertEquals(emptyList<String>(), firebase.observedHouseholds)
     resolve()

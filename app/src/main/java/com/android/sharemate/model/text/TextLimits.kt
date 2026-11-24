@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.text
 
 /**
@@ -12,9 +13,6 @@ object TextLimits {
 
   /** Longest item name, also applied to the rows of a scanned receipt. */
   const val ITEM_NAME = 80
-
-  /** Longest optional item category. */
-  const val ITEM_CATEGORY = 40
 
   /** Longest new password; firebase itself accepts up to 4096 characters. */
   const val PASSWORD = 128

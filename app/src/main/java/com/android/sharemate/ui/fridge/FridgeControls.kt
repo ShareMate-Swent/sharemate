@@ -1,9 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,16 +12,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +41,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.android.sharemate.R
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.components.AppChip
 import java.security.MessageDigest
 
 internal fun ownerFallbackCodes(ownerIds: Collection<String>): Map<String, String> {
@@ -69,23 +67,30 @@ internal fun ownerFallbackCodes(ownerIds: Collection<String>): Map<String, Strin
 @Composable
 internal fun FridgeControls(
     sortOrder: FridgeSortOrder?,
-    selectedCategory: String?,
+    selectedCategory: ItemCategory?,
     selectedOwnerId: String?,
-    categories: List<String>,
+    categories: List<ItemCategory>,
     owners: List<OwnerOption>,
     onSortOrderChange: ((FridgeSortOrder) -> Unit)?,
-    onCategoryFilterChange: ((String?) -> Unit)?,
+    onCategoryFilterChange: ((ItemCategory?) -> Unit)?,
     onOwnerFilterChange: ((String?) -> Unit)?,
     onAddItem: (() -> Unit)?,
     isSaving: Boolean,
+    hasItems: Boolean = true,
 ) {
   val hasFunctionalFilters =
       sortOrder != null &&
           onSortOrderChange != null &&
           onCategoryFilterChange != null &&
           onOwnerFilterChange != null
-  val availableCategories = (categories + listOfNotNull(selectedCategory)).distinct()
-  val categoryEnabled = hasFunctionalFilters && availableCategories.isNotEmpty()
+  // The selected chip stays while its last item goes, so the filter can still be cleared.
+  val availableCategories =
+      (categories + listOfNotNull(selectedCategory)).distinct().sortedBy(ItemCategory::ordinal)
+  // With an empty fridge there is nothing to filter, unless a filter is still set and must clear.
+  val categoryEnabled =
+      hasFunctionalFilters &&
+          availableCategories.isNotEmpty() &&
+          (hasItems || selectedCategory != null)
 
   Row(
       modifier =
@@ -93,19 +98,18 @@ internal fun FridgeControls(
               .horizontalScroll(rememberScrollState())
               .padding(horizontal = FridgeLayout.categoryHorizontalPadding),
       horizontalArrangement = Arrangement.spacedBy(FridgeLayout.chipSpacing)) {
-        CategoryChip(
+        AppChip(
             label = stringResource(R.string.fridge_category_all),
             selected = selectedCategory == null,
             enabled = categoryEnabled,
-            tag = C.Tag.fridge_filter_category_all,
-            showCheckmark = selectedCategory == null,
+            modifier = Modifier.testTag(C.Tag.fridge_filter_category_all),
             onClick = { onCategoryFilterChange?.invoke(null) })
         availableCategories.forEach { category ->
-          CategoryChip(
-              label = category,
+          AppChip(
+              label = stringResource(category.labelRes()),
               selected = selectedCategory == category,
-              enabled = hasFunctionalFilters,
-              tag = C.Tag.fridgeFilterCategory(category),
+              enabled = categoryEnabled,
+              modifier = Modifier.testTag(C.Tag.fridgeFilterCategory(category)),
               onClick = { onCategoryFilterChange?.invoke(category) })
         }
       }
@@ -139,45 +143,6 @@ internal fun FridgeControls(
       }
 
   OwnershipControls()
-}
-
-@Composable
-private fun CategoryChip(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    tag: String,
-    showCheckmark: Boolean = false,
-    onClick: () -> Unit,
-) {
-  FilterChip(
-      selected = selected,
-      enabled = enabled,
-      onClick = onClick,
-      label = {
-        Text(
-            label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Normal))
-      },
-      modifier = Modifier.testTag(tag),
-      shape = RoundedCornerShape(FridgeLayout.chipCornerRadius),
-      border =
-          if (selected) null
-          else BorderStroke(FridgeLayout.chipBorderWidth, MaterialTheme.colorScheme.outlineVariant),
-      colors =
-          FilterChipDefaults.filterChipColors(
-              containerColor = MaterialTheme.colorScheme.surface,
-              labelColor = MaterialTheme.colorScheme.onSurface,
-              selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-              selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-              selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-              disabledContainerColor = MaterialTheme.colorScheme.surface,
-              disabledSelectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-              disabledLabelColor = MaterialTheme.colorScheme.onSurface,
-              disabledLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer),
-      leadingIcon =
-          if (showCheckmark) {
-            { Icon(Icons.Default.Check, null, modifier = Modifier.size(FridgeLayout.iconSize)) }
-          } else null)
 }
 
 @Composable

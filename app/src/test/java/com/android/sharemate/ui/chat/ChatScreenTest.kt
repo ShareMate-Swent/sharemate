@@ -275,7 +275,8 @@ class ChatScreenTest {
               senderName: String,
               type: MessageType,
               itemName: String,
-              itemImageUrl: String?
+              itemImageUrl: String?,
+              activityId: String?,
           ): String? = null
 
           override suspend fun sendIncident(

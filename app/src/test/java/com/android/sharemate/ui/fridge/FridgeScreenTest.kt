@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -36,6 +38,7 @@ import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -398,13 +401,13 @@ class FridgeScreenTest {
                 Item(
                     id = "milk",
                     name = "Milk",
-                    category = "Dairy",
+                    category = ItemCategory.DAIRY,
                     ownerId = "owner-1",
                     householdId = "household-1"),
                 Item(
                     id = "bread",
                     name = "Bread",
-                    category = "Bakery",
+                    category = ItemCategory.PANTRY,
                     ownerId = "owner-2",
                     householdId = "household-1")))
     val imageRepository =
@@ -443,8 +446,11 @@ class FridgeScreenTest {
         .onNodeWithText(testApplication.getString(R.string.fridge_sort_expiration_date))
         .assertDoesNotExist()
 
-    composeRule.onNodeWithTag(C.Tag.fridgeFilterCategory("Dairy")).performScrollTo().performClick()
-    assertEquals("Dairy", viewModel.selectedCategory.value)
+    composeRule
+        .onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.DAIRY))
+        .performScrollTo()
+        .performClick()
+    assertEquals(ItemCategory.DAIRY, viewModel.selectedCategory.value)
 
     composeRule
         .onNodeWithText(testApplication.getString(R.string.fridge_owner_filter))
@@ -457,7 +463,7 @@ class FridgeScreenTest {
     composeRule.onNodeWithContentDescription("Owner: Alice").performClick()
     composeRule.onNodeWithTag(C.Tag.fridge_filter_owner_all).performClick()
     assertEquals(null, viewModel.selectedOwnerId.value)
-    assertEquals("Dairy", viewModel.selectedCategory.value)
+    assertEquals(ItemCategory.DAIRY, viewModel.selectedCategory.value)
 
     composeRule.onNodeWithText(testApplication.getString(R.string.fridge_sort)).performClick()
     composeRule
@@ -539,16 +545,19 @@ class FridgeScreenTest {
         FakeItemRepository(
             listOf(
                 Item(
-                    id = "apple", name = "Apple", category = "Fruits", householdId = "household-1"),
+                    id = "apple",
+                    name = "Apple",
+                    category = ItemCategory.FRUITS,
+                    householdId = "household-1"),
                 Item(
                     id = "banana",
                     name = "Banana",
-                    category = "Fruits",
+                    category = ItemCategory.FRUITS,
                     householdId = "household-1"),
                 Item(
                     id = "carrot",
                     name = "Carrot",
-                    category = "Vegetables",
+                    category = ItemCategory.VEGETABLES,
                     householdId = "household-1")))
     val imageRepository =
         object : FoodImageRepository {
@@ -571,14 +580,15 @@ class FridgeScreenTest {
         )
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
 
-    for (category in listOf("Fruits", "Vegetables")) {
+    for ((category, label) in
+        listOf(ItemCategory.FRUITS to "Fruits", ItemCategory.VEGETABLES to "Vegetables")) {
       composeRule
           .onNodeWithTag(C.Tag.fridgeFilterCategory(category))
           .performScrollTo()
           .performClick()
-      composeRule.onAllNodesWithText("Category: $category").assertCountEquals(0)
+      composeRule.onAllNodesWithText("Category: $label").assertCountEquals(0)
       composeRule.onNodeWithTag(C.Tag.fridgeFilterCategory(category)).assertIsSelected()
-      composeRule.onAllNodesWithText(category).assertCountEquals(1)
+      composeRule.onAllNodesWithText(label).assertCountEquals(1)
       composeRule.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
       composeRule.onNodeWithTag(C.Tag.fridgeFilterCategory(category)).assertIsNotSelected()
       composeRule.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
@@ -587,15 +597,19 @@ class FridgeScreenTest {
   }
 
   @Test
-  fun allRealCategoriesRemainReachableAndSelectedFiltersCanBeCleared() {
-    val selectedCategory = mutableStateOf<String?>(null)
-    val categories = (1..12).map { "Category $it" }
+  fun everyCategoryHasAChipInTheFixedOrderEvenWhenNoItemUsesIt() {
+    val selectedCategory = mutableStateOf<ItemCategory?>(null)
+    val categories = ItemCategory.entries
     composeRule.setContent {
       MaterialTheme {
+        // One item without a category and no categories passed: the chips are the whole fixed
+        // list, as in the Figma.
         FridgeScreen(
-            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
+            uiState =
+                FridgeUiState(
+                    fridgeType = FridgeType.SHARED,
+                    items = listOf(Item(id = "plain", name = "Plain", householdId = "home"))),
             sortOrder = FridgeSortOrder.NAME,
-            categories = categories,
             selectedCategory = selectedCategory.value,
             onSortOrderChange = {},
             onCategoryFilterChange = { selectedCategory.value = it },
@@ -604,6 +618,11 @@ class FridgeScreenTest {
       }
     }
     composeRule.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
+    val lefts =
+        categories.map {
+          composeRule.onNodeWithTag(C.Tag.fridgeFilterCategory(it)).getUnclippedBoundsInRoot().left
+        }
+    assertEquals(lefts.sortedBy { it.value }, lefts)
     composeRule
         .onNodeWithTag(C.Tag.fridgeFilterCategory(categories.last()))
         .performScrollTo()
@@ -731,6 +750,9 @@ class FridgeScreenTest {
 
   private class FakeItemRepository(items: List<Item>) : ItemRepository {
     private val sharedItems = MutableStateFlow(items)
+
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
 
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = sharedItems
 

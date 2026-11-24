@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.resources
+
+import com.android.sharemate.model.item.ItemCategory
 
 // Like R, but C
 object C {
@@ -42,7 +45,11 @@ object C {
     /** Owner-name tag prefix; append the item ID. */
     const val fridge_owner_name_prefix = "fridge_owner_name_"
 
-    fun fridgeFilterCategory(category: String) = "fridge_filter_category_$category"
+    fun fridgeFilterCategory(category: ItemCategory) = "fridge_filter_category_${category.name}"
+
+    /** An option of the category picker; null is "No category". */
+    fun fridgeCategoryOption(category: ItemCategory?) =
+        "fridge_category_option_${category?.name ?: "NONE"}"
 
     fun fridgeFilterOwner(ownerId: String) = "fridge_filter_owner_$ownerId"
 

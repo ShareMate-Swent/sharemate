@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import java.util.Date
@@ -16,13 +17,17 @@ enum class ItemStatus {
  * four ordinary values. Null [ItemEdit.sharing] preserves the latest persisted sharing value; a
  * non-null value changes it atomically with the ordinary fields. Identity, lifecycle and image
  * metadata are deliberately excluded.
+ *
+ * @property updatesCategory False keeps the stored category as it is, so an older free-text
+ *   category survives an edit that does not change it.
  */
 data class ItemEdit(
     val name: String,
     val quantity: Int,
-    val category: String?,
+    val category: ItemCategory?,
     val expirationDate: Date?,
     val sharing: ItemSharing? = null,
+    val updatesCategory: Boolean = true,
 )
 
 /**
