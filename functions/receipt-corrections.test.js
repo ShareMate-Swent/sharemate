@@ -42,7 +42,7 @@ async function seed(id) {
     id: `${id}_${i}`, name: row.name, quantity: BigInt(row.quantity), ownerId: author.localId,
     householdId: homeId, status: "ACTIVE", sharing: "SHARED", category: "groceries",
   });
-  return { operationId: `${id}-edit`, title: "Courses Migros", originalRows: rows, originalExpense: expense,
+  return { operationId: `${id}-edit`, title: "Courses Migros", originalTitle: "", originalRows: rows, originalExpense: expense,
     rows: [{ ...rows[0], name: "Oat milk", quantity: 3, priceCents: "500" }, { id: "apples", name: "Apples", quantity: 1, priceCents: "300" }],
     expense: { ...expense, paidBy: other.localId, totalAmountCents: "800", shares: { [author.localId]: "400", [other.localId]: "400" } } };
 }
@@ -56,7 +56,7 @@ before(async () => {
 
 test('current member corrects another creator receipt through callable and revoked member cannot replay', async () => {
   const payload = { ...await seed('member-correction'), ownerId: author.localId };
-  const backup = db.doc('receiptBackups/member-correction');
+  const backup = db.doc(`users/${author.localId}/receiptBackups/member-correction`);
   await backup.set({ ownerId: author.localId, householdId: homeId, draft: false, photoReady: true });
   try {
     const result = await call(payload, other);
@@ -94,7 +94,7 @@ test("callable corrects the same expense and fridge atomically; concurrent retri
   assert.equal(links.title, "Courses Migros");
   assert.equal((await db.collection("items").doc(links.links.apples).get()).data().name, "Apples");
   // A second edit uses retained links, even though row order changed and a row was added.
-  const second = { ...payload, operationId: "correction-second", originalRows: payload.rows, originalExpense: payload.expense,
+  const second = { ...payload, operationId: "correction-second", originalTitle: payload.title, originalRows: payload.rows, originalExpense: payload.expense,
     rows: [payload.rows[1], { ...payload.rows[0], quantity: 4 }] };
   assert.ok((await call(second)).result);
   assert.equal((await db.collection("items").doc("correction-roundtrip_0").get()).data().quantity, 4n);
@@ -115,4 +115,32 @@ test("rejects stale data and unauthorized changes without partially updating the
   assert.equal((await db.collection("items").doc("correction-rejected_1").get()).exists, true);
   const operation = db.collection("users").doc(author.localId).collection("receiptCorrections").doc(payload.operationId);
   assert.equal((await operation.get()).exists, false);
+});
+
+
+test("namespaced backups prevent a peer draft from blocking correction or deletion", async () => {
+  const payload = await seed("namespace-collision");
+  const id = payload.expense.id;
+  const backupPath = uid => `users/${uid}/receiptBackups/${id}`;
+  async function putBackup(path, account, owner) {
+    const data = { ownerId: owner, householdId: homeId, draft: true, submission: "{}", title: "",
+      scannedAtMillis: 1, draftPaidBy: null, photoPath: `receiptPhotos/${homeId}/${owner}/${id}.jpg`, photoReady: false };
+    const fields = Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
+      value === null ? { nullValue: null } : typeof value === "boolean" ? { booleanValue: value }
+        : typeof value === "number" ? { integerValue: String(value) } : { stringValue: value }]));
+    return fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/projects/${projectId}/databases/(default)/documents/${path}`, {
+      method: "PATCH", headers: { authorization: `Bearer ${account.idToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ fields }),
+    });
+  }
+  assert.equal((await putBackup(backupPath(other.localId), other, other.localId)).status, 200);
+  assert.equal((await putBackup(backupPath(author.localId), other, other.localId)).status, 403);
+  assert.equal((await putBackup(`receiptBackups/${id}`, other, other.localId)).status, 403);
+  assert.equal((await putBackup(backupPath(author.localId), author, author.localId)).status, 200);
+  assert.deepEqual((await call(payload)).result, { operationId: payload.operationId });
+  const peerDraft = (await db.doc(backupPath(other.localId)).get()).data();
+  await require("./receipt-deletions").deleteReceipt(db, author.localId, { id, householdId: homeId });
+  assert.equal((await db.doc(backupPath(author.localId)).get()).exists, false);
+  assert.deepEqual((await db.doc(backupPath(other.localId)).get()).data(), peerDraft);
+  await db.doc(backupPath(other.localId)).delete();
 });

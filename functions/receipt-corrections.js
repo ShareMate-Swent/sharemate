@@ -28,8 +28,9 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
 async function correctReceipt(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
   const ownerId = request?.ownerId ?? uid;
-  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId').sort().join() !== "expense,operationId,originalExpense,originalRows,rows,title" ||
-      !isId(request.operationId) || request.operationId.length > 128 || typeof request.title !== "string" || [...request.title].length > 80)
+  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId').sort().join() !== "expense,operationId,originalExpense,originalRows,originalTitle,rows,title" ||
+      !isId(request.operationId) || request.operationId.length > 128 || typeof request.title !== "string" || [...request.title].length > 80 ||
+      typeof request.originalTitle !== "string" || [...request.originalTitle].length > 80)
     throw new HttpsError("invalid-argument", "Invalid correction.");
   const expense = parseExpense(request.expense);
   const originalExpense = request.originalExpense === null ? null : parseExpense(request.originalExpense);
@@ -47,7 +48,7 @@ async function correctReceipt(db, uid, request) {
   const expenseRef = home.collection("expenses").doc(expense.id);
   const expenseMarker = user.collection("expenseSubmissions").doc(expense.id);
   const revision = home.collection("financeMetadata").doc("settlementRevision");
-  const backupRef = db.collection('receiptBackups').doc(expense.id);
+  const backupRef = user.collection('receiptBackups').doc(expense.id);
   const rejection = await db.runTransaction(async tx => {
     try {
       const household = (await tx.get(home)).data();
@@ -68,7 +69,8 @@ async function correctReceipt(db, uid, request) {
           !sameRows(current.rows, original) ||
           (ledger && (!originalExpense || !sameExpense(ledger, originalExpense) || ownership?.householdId !== expense.householdId)) ||
           (!ledger && ownership)) throw new HttpsError("failed-precondition", "Receipt changed or is still syncing. Refresh and retry.");
-      const storedLinks = (await tx.get(linksRef)).data()?.links;
+      const storedReceipt = (await tx.get(linksRef)).data();
+      const storedLinks = storedReceipt?.links;
       const oldLinks = new Map(original.map((row, i) => [row.id, storedLinks && Object.hasOwn(storedLinks, row.id) ? storedLinks[row.id] : `${expense.id}_${i}`]));
       const existingItems = new Map();
       for (const [rowId, itemId] of oldLinks) {
@@ -79,6 +81,12 @@ async function correctReceipt(db, uid, request) {
       const backup = (await tx.get(backupRef)).data();
       if (backup && (backup.ownerId !== ownerId || backup.householdId !== expense.householdId))
         throw new HttpsError('permission-denied', 'Receipt ownership mismatch.');
+      if ((storedReceipt?.title ?? backup?.title ?? "") !== request.originalTitle)
+        throw new HttpsError("failed-precondition", "Receipt title changed. Refresh and retry.");
+      const authorizeItem = item => {
+        if (item && item.ownerId !== uid && item.sharing !== "SHARED")
+          throw new HttpsError("permission-denied", "Only the owner can modify a personal item.");
+      };
       const writes = [], nextLinks = {};
       for (let i = 0; i < revised.length; i++) {
         const row = revised[i], before = original.find(r => r.id === row.id), stored = existingItems.get(row.id);
@@ -88,6 +96,7 @@ async function correctReceipt(db, uid, request) {
           writes.push(() => tx.create(db.collection("items").doc(itemId), { id: itemId, name: row.name, quantity: row.quantity,
             ownerId: ownerId, householdId: expense.householdId, sharing: "SHARED", status: "ACTIVE", expirationDate: null, category: null, image: null }));
         } else if (row.name !== before.name || row.quantity !== before.quantity) {
+          authorizeItem(stored.data);
           if (!stored.data || stored.data.ownerId !== ownerId || stored.data.householdId !== expense.householdId || stored.data.status !== "ACTIVE")
             throw new HttpsError("failed-precondition", "This fridge item is no longer editable.");
           const quantity = stored.data.quantity + row.quantity - before.quantity;
@@ -99,6 +108,7 @@ async function correctReceipt(db, uid, request) {
         const stored = existingItems.get(row.id);
         if (stored.data && (stored.data.ownerId !== ownerId || stored.data.householdId !== expense.householdId))
           throw new HttpsError("permission-denied", "Fridge item ownership changed.");
+        authorizeItem(stored.data);
         if (stored.data) writes.push(() => tx.delete(stored.ref));
       }
       writes.forEach(write => write());
