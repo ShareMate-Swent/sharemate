@@ -40,8 +40,19 @@ test("records only the canonical ledger fields and returns the original wire pay
   const size = records.size;
   await recordExpense(db, "author", payload);
   assert.equal(records.size, size);
-  await assert.rejects(recordExpense(db, "author", { ...payload, paidBy: "payer" }), { code: "permission-denied" });
-  await assert.rejects(recordExpense(db, "payer", payload), { code: "permission-denied" });
+  await assert.rejects(recordExpense(db, "author", { ...payload, paidBy: "payer" }), { code: "already-exists" });
+  await assert.rejects(recordExpense(db, "payer", payload), { code: "already-exists" });
+});
+
+test("a member can record another member as payer without transferring retry ownership", async () => {
+  const { db, records, payload } = fixture();
+  const purchase = { ...payload, paidBy: "payer" };
+  await recordExpense(db, "author", purchase);
+  await recordExpense(db, "author", purchase);
+  assert.equal(records.get("households/home/expenses/operation").paidBy, "payer");
+  assert.ok(records.has("users/author/expenseSubmissions/operation"));
+  assert.equal(records.has("users/payer/expenseSubmissions/operation"), false);
+  await assert.rejects(recordExpense(db, "payer", purchase), { code: "already-exists" });
 });
 
 test("rejects malformed payloads and does not write on validation failure", async () => {

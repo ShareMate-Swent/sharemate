@@ -78,7 +78,7 @@ class PrivateFridgeCreationTest {
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Private")
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose
         .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
         .performScrollTo()
@@ -90,7 +90,7 @@ class PrivateFridgeCreationTest {
         .performScrollTo()
         .assertIsDisplayed()
     screenshot("private-fridge-settings")
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(SettingsTestTags.BACK).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.activityRule.scenario.recreate()
     waitFor(C.Tag.fridge_type)
