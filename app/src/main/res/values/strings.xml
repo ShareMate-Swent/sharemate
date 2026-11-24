@@ -183,7 +183,10 @@
     </plurals>
     <string name="leave_household">Leave household</string>
     <string name="leave_household_title">Leave household?</string>
-    <string name="leave_private_household_blocked">You cannot leave a private fridge because it has no invite code to rejoin. Your fridge and items stay linked to your account.</string>
+    <string name="leave_private_household_blocked">This household is private, so it can only be deleted. Close this window and try again.</string>
+    <string name="delete_private_household_message">Leaving deletes %1$s and everything in it for good: its items, their photos and its receipts. This cannot be undone.</string>
+    <string name="delete_household_confirm">Delete</string>
+    <string name="delete_household_failed">Could not finish deleting the household. Check your connection and try again.</string>
     <string name="leave_household_message">You will no longer see %1$s\'s fridge. The other members keep the household and its items. You can join again with the invite code.</string>
     <string name="leave_household_failed">Could not leave the household. Check your connection and try again.</string>
     <string name="leave_household_no_session">Your session has ended. Sign in again to leave the household.</string>

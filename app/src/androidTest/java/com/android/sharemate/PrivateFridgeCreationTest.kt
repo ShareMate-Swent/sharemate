@@ -1,10 +1,11 @@
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -79,17 +80,18 @@ class PrivateFridgeCreationTest {
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Private")
     compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
-    compose
-        .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
-        .performScrollTo()
-        .assertIsNotEnabled()
-        .performClick()
-    compose.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertDoesNotExist()
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.leave_private_household_blocked))
-        .performScrollTo()
-        .assertIsDisplayed()
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performScrollTo().assertIsEnabled()
+    // Before the dialog opens: a dialog is a second root, and the screenshot needs a single one.
     screenshot("private-fridge-settings")
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performClick()
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_DIALOG).assertIsDisplayed()
+    compose
+        .onNodeWithText(
+            compose.activity.getString(
+                R.string.delete_private_household_message, "My private fridge"))
+        .assertIsDisplayed()
+    // Nothing is deleted: the test only checks the warning, then backs out.
+    compose.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
     compose.onNodeWithTag(SettingsTestTags.BACK).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.activityRule.scenario.recreate()

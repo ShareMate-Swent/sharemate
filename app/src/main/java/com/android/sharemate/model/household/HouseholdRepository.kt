@@ -1,11 +1,15 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import java.util.UUID
 
-/** A private fridge must stay linked to its owner because it has no invitation-based recovery. */
+/**
+ * A private fridge cannot be left, only deleted with its content through
+ * [PrivateHouseholdDeletionRepository].
+ */
 class PrivateHouseholdLeaveException : IllegalStateException("Private fridges cannot be left")
 
 /**
