@@ -46,24 +46,24 @@ before(async () => {
   await db.doc(`users/${alice.localId}/expenseSubmissions/${savedId}`).set({ householdId: home });
 });
 after(async () => {
-  await Promise.all([db.doc(`receiptBackups/${savedId}`).delete(), db.doc(`receiptBackups/${draftId}`).delete()]);
+  await Promise.all([db.doc(`users/${alice.localId}/receiptBackups/${savedId}`).delete(), db.doc(`users/${alice.localId}/receiptBackups/${draftId}`).delete()]);
   await db.recursiveDelete(db.doc(`households/${home}`));
   await deleteApp(app);
 });
 test('members read Saved, only the creator reads Draft; all direct Saved edits are denied', async () => {
-  assert.equal((await request(`receiptBackups/${randomUUID()}`, alice)).status, 404);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${randomUUID()}`, alice)).status, 404);
   for (const [id, draft] of [[savedId, false], [draftId, true]]) {
-    const response = await request(`receiptBackups/${id}`, alice, 'PATCH', backup(id, draft));
+    const response = await request(`users/${alice.localId}/receiptBackups/${id}`, alice, 'PATCH', backup(id, draft));
     assert.equal(response.status, 200, await response.text());
   }
-  assert.equal((await request(`receiptBackups/${savedId}`, bob)).status, 200);
-  assert.equal((await request(`receiptBackups/${draftId}`, alice)).status, 200);
-  assert.equal((await request(`receiptBackups/${draftId}`, bob)).status, 403);
-  assert.equal((await request(`receiptBackups/${savedId}`, outsider)).status, 403);
-  assert.equal((await request(`receiptBackups/${savedId}`, bob, 'PATCH', { ...backup(savedId, false), title: 'Forged' })).status, 403);
-  assert.equal((await request(`receiptBackups/${savedId}`, alice, 'PATCH', { ...backup(savedId, false), title: 'Bypass correction' })).status, 403);
-  assert.equal((await request(`receiptBackups/${draftId}`, alice, 'PATCH', { ...backup(draftId, true), title: 'Private edit' })).status, 200);
-  assert.equal((await request(`receiptBackups/${savedId}`, alice, 'PATCH', { ...backup(savedId, false), photoReady: true })).status, 200);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, bob)).status, 200);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${draftId}`, alice)).status, 200);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${draftId}`, bob)).status, 403);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, outsider)).status, 403);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, bob, 'PATCH', { ...backup(savedId, false), title: 'Forged' })).status, 403);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, alice, 'PATCH', { ...backup(savedId, false), title: 'Bypass correction' })).status, 403);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${draftId}`, alice, 'PATCH', { ...backup(draftId, true), title: 'Private edit' })).status, 200);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, alice, 'PATCH', { ...backup(savedId, false), photoReady: true })).status, 200);
 });
 test('leaving the household immediately revokes Saved access and stale uploads cannot resurrect deletions', async () => {
   {
@@ -82,8 +82,8 @@ test('leaving the household immediately revokes Saved access and stale uploads c
     }
   }
   await db.doc(`households/${home}`).update({ memberIds: [alice.localId] });
-  assert.equal((await request(`receiptBackups/${savedId}`, bob)).status, 403);
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${savedId}`, bob)).status, 403);
   await db.doc(`users/${alice.localId}/receiptDeletions/${draftId}`).set({ householdId: home });
-  await db.doc(`receiptBackups/${draftId}`).delete();
-  assert.equal((await request(`receiptBackups/${draftId}`, alice, 'PATCH', backup(draftId, true))).status, 403);
+  await db.doc(`users/${alice.localId}/receiptBackups/${draftId}`).delete();
+  assert.equal((await request(`users/${alice.localId}/receiptBackups/${draftId}`, alice, 'PATCH', backup(draftId, true))).status, 403);
 });

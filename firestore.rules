@@ -10,12 +10,18 @@ service cloud.firestore {
     match /users/{userId}/receiptDeletions/{receiptId} {
       allow read: if signedIn() && request.auth.uid == userId;
     }
-    match /receiptBackups/{receiptId} {
-      // A transaction must be able to observe absence before creating its first backup.
-      allow get: if signedIn() && !exists(/databases/$(database)/documents/receiptBackups/$(receiptId));
+    // Collection-group reads keep saved history shared; writes are bound to the creator path.
+    match /{path=**}/receiptBackups/{receiptId} {
       allow read: if signedIn() && isCurrentMember(resource.data.householdId)
           && (resource.data.ownerId == request.auth.uid || resource.data.draft == false);
-      allow create, update: if signedIn()
+    }
+    match /users/{receiptOwner}/receiptBackups/{receiptId} {
+      // A transaction must be able to observe absence before creating its first backup.
+      allow get: if signedIn() && request.auth.uid == receiptOwner
+          && !exists(/databases/$(database)/documents/users/$(receiptOwner)/receiptBackups/$(receiptId));
+      allow read: if signedIn() && isCurrentMember(resource.data.householdId)
+          && (resource.data.ownerId == request.auth.uid || resource.data.draft == false);
+      allow create, update: if signedIn() && request.auth.uid == receiptOwner
           && request.resource.data.ownerId == request.auth.uid
           && isCurrentMember(request.resource.data.householdId)
           && request.resource.data.keys().hasOnly(['ownerId', 'householdId', 'draft', 'submission', 'title', 'scannedAtMillis', 'draftPaidBy', 'draftParticipants', 'photoPath', 'photoReady'])
