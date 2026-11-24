@@ -10,7 +10,13 @@ import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.time.LocalDate
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,4 +80,51 @@ class ExpiryDateOcrTest {
       file.delete()
     }
   }
+
+  /** Temporary diagnostic on the isolated probe branch; original PR tests remain unchanged. */
+  @Test
+  fun compareRawOcrFromMonospaceAndSansSerif() = runBlocking {
+    val mono = readDiagnosticFixture(Typeface.MONOSPACE)
+    val sans = readDiagnosticFixture(Typeface.SANS_SERIF)
+    val expected = listOf(
+        LocalDate.of(2026, 10, 11),
+        LocalDate.of(2026, 10, 12),
+        LocalDate.of(2026, 10, 13),
+        LocalDate.of(2026, 10, 14))
+    assertEquals(
+        "MONOSPACE RAW: [${mono.first}] CANDIDATES: ${mono.second}\n" +
+            "SANS_SERIF RAW: [${sans.first}] CANDIDATES: ${sans.second}",
+        listOf(expected, expected),
+        listOf(mono.second, sans.second))
+  }
+
+  private suspend fun readDiagnosticFixture(font: Typeface): Pair<String, List<LocalDate>> =
+      withContext(Dispatchers.IO) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File.createTempFile("synthetic-expiry-probe-", ".png", context.cacheDir)
+        val bitmap = Bitmap.createBitmap(IMAGE_WIDTH, IMAGE_HEIGHT, Bitmap.Config.ARGB_8888)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+          val canvas = Canvas(bitmap)
+          canvas.drawColor(Color.WHITE)
+          val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = TEXT_SIZE
+            typeface = font
+          }
+          listOf("MFD 11/10/26", "EXP 12/10/26", "EXP 13.10.2026", "EXP 14 OCT 2026")
+              .forEachIndexed { index, line ->
+                canvas.drawText(line, MARGIN, FIRST_BASELINE + index * ROW_HEIGHT, ink)
+              }
+          file.outputStream().use {
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY_IGNORED, it))
+          }
+          val text = recognizer.process(InputImage.fromFilePath(context, Uri.fromFile(file))).await().text
+          text to ExpiryDateParser.findDates(text)
+        } finally {
+          recognizer.close()
+          bitmap.recycle()
+          file.delete()
+        }
+      }
 }
