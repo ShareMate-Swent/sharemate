@@ -1,3 +1,4 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 # Financial services
 
 Run the backend tests from the repository root with Node.js 22 and Firebase CLI installed.
@@ -34,6 +35,17 @@ the full test command above also runs callable/Firestore emulator scenarios.
 The household join batch now submits the invite code with the private profile link.
 Deploy the rules in coordination with the Android update. An older client cannot add a
 new membership under the tightened rules because its join batch omits this field.
+
+Receipt backups are scoped by their immutable creator at
+`users/{ownerId}/receiptBackups/{receiptId}`. Deploy `firestore.indexes.json` with the rules and
+updated clients; household history uses a `receiptBackups` collection-group query. Existing
+preview backups at the old top-level path must be migrated by a trusted administrator before
+switching clients; never accept a caller-supplied owner as a migration authority.
+
+Corrections send `originalTitle` alongside the original rows and expense. The server compares
+all three before applying a new correction. The original title must be retained in the local
+correction journal so retries preserve the same request identity. Older clients that omit it
+must refresh/update rather than overwrite a newer title.
 
 ## Private household deletion
 

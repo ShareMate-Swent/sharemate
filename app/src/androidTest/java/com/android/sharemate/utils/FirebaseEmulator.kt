@@ -26,7 +26,8 @@ import org.json.JSONObject
  */
 object FirebaseEmulator {
   const val HOST = "10.0.2.2"
-  const val FIRESTORE_PORT = 8080
+  val FIRESTORE_PORT =
+      InstrumentationRegistry.getArguments().getString("firestorePort")?.toInt() ?: 8080
   const val AUTH_PORT = 9099
   const val STORAGE_PORT = 9199
   const val FUNCTIONS_PORT = 5001

@@ -4,6 +4,20 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    match /receiptPhotos/{householdId}/{ownerId}/{fileName} {
+      function receipt() {
+        let id = fileName.replace('[.]jpg$', '');
+        return firestore.get(/databases/(default)/documents/users/$(ownerId)/receiptBackups/$(id)).data;
+      }
+      allow get: if request.auth != null && isCurrentMember(householdId)
+          && receipt().ownerId == ownerId && receipt().householdId == householdId
+          && (request.auth.uid == ownerId || receipt().draft == false);
+      allow create, update: if request.auth != null && request.auth.uid == ownerId
+          && isCurrentMember(householdId) && receipt().ownerId == ownerId
+          && receipt().householdId == householdId
+          && request.resource.size > 0 && request.resource.size <= 20 * 1024 * 1024
+          && request.resource.contentType in ['image/jpeg', 'image/png'];
+    }
     function hasValidPhotoData() {
       let maxPhotoBytes = 5 * 1024 * 1024;
       let photoContentTypes = ['image/jpeg', 'image/png'];

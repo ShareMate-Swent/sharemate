@@ -60,7 +60,7 @@ jobs:
       - name: Install settlement function dependencies
         run: npm --prefix functions install --ignore-scripts --no-package-lock
 
-      - name: Run settlement function emulator tests
+      - name: Run finance and receipt emulator tests
         run: >-
           firebase emulators:exec --only auth,firestore,storage,functions
           --project demo-sharemate-ci "npm --prefix functions test"

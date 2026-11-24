@@ -37,6 +37,16 @@ exports.recordExpense = onCall({ region: SETTLEMENT_REGION }, (request) => {
   return recordExpense(database(), request.auth?.uid, request.data);
 });
 
+exports.correctReceipt = onCall({ region: SETTLEMENT_REGION }, (request) => {
+  return require("./receipt-corrections").correctReceipt(database(), request.auth?.uid, request.data);
+});
+exports.deleteReceipt = onCall({ region: SETTLEMENT_REGION }, (request) => {
+  const firestore = database();
+  const { getStorage } = require('firebase-admin/storage');
+  return require("./receipt-deletions").deleteReceipt(firestore, request.auth?.uid, request.data,
+    path => getStorage().bucket().file(path).delete({ ignoreNotFound: true }));
+});
+
 exports.deletePrivateHousehold = onCall(
   { region: SETTLEMENT_REGION, timeoutSeconds: DELETE_HOUSEHOLD_TIMEOUT_SECONDS },
   (request) => {
