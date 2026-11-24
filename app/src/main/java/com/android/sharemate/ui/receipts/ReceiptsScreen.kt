@@ -300,7 +300,7 @@ private fun ReceiptHistoryFlow(
                           InventorySaveViewModel(
                               itemRepository,
                               ReceiptSubmissionStore(
-                                  AndroidInventorySubmissionStore(context, scheduleSync = true),
+                                  AndroidInventorySubmissionStore(context, scheduleSync = true, viewerId = userId),
                                   receipt.submission.id,
                                   receipt.submission.ownerId),
                               userId,
