@@ -323,7 +323,7 @@ class AndroidInventorySubmissionStore(
                   .putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
                   .putString(indexKey(scope), JSONArray(remaining).toString())
                   .let { lifecycle.commit(householdId, it) })
-          if (scheduleSync) enqueue(submission, delete = true)
+          if (scheduleSync && submission != null) enqueue(submission, delete = true)
         }
       }
 
