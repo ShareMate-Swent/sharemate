@@ -89,6 +89,15 @@ internal fun ColumnScope.HouseholdReady(
       textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.spacingM),
   )
+  Spacer(Modifier.height(Dimens.spacingS))
+  Text(
+      text =
+          stringResource(
+              if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared),
+      style = MaterialTheme.typography.labelLarge,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.fillMaxWidth(),
+  )
   Spacer(Modifier.height(Dimens.spacingL))
   if (!isPrivate) InviteCodeCard(name, inviteCode)
   Spacer(Modifier.weight(1f))

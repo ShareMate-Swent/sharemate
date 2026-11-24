@@ -191,6 +191,9 @@ class CreateHouseholdScreenTest {
             useUnmergedTree = true)
         .assertIsDisplayed()
     composeTestRule.onNodeWithText("ABC123").assertDoesNotExist()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.fridge_type_private))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
@@ -261,6 +264,9 @@ class CreateHouseholdScreenTest {
         .assertIsDisplayed()
     composeTestRule
         .onNodeWithText(activity.getString(R.string.household_invite_code_label, "Kitchen"))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.fridge_type_shared))
         .assertIsDisplayed()
   }
 
