@@ -956,23 +956,70 @@ class FirestoreSecurityRulesTest {
     for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
       val activityId =
           chat.sendActivity(
-              household.id, senderId, "Sender", type, " Milk ", "https://example.com/image")
+              household.id,
+              senderId,
+              "Sender",
+              type,
+              " Milk ",
+              "https://example.com/image",
+              "${household.id}:${type.name}")
       assertNotNull(activityId)
       val stored = Tasks.await(messageReference(household.id, activityId!!).get())
       assertEquals(type.name, stored.getString("type"))
       assertEquals("Milk", stored.getString("itemName"))
     }
 
-    assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+    assertNotNull(
+        chat.sendActivity(
+            household.id,
+            senderId,
+            "Sender",
+            MessageType.EATEN,
+            "Milk",
+            "https://example.com/image",
+            "milk-eaten-monday"))
+    assertNotNull(
+        chat.sendActivity(
+            household.id,
+            senderId,
+            "Sender",
+            MessageType.EATEN,
+            "Milk",
+            activityId = "milk-eaten-friday"))
     val ordered =
         Tasks.await(
             householdReference(household.id)
                 .collection(FirestoreCollections.MESSAGES)
                 .orderBy("timestamp")
                 .get(Source.SERVER))
+    assertEquals(5, ordered.documents.size)
     val timestamps = ordered.documents.map { checkNotNull(it.getTimestamp("timestamp")) }
     assertEquals(timestamps.sorted(), timestamps)
     assertEquals(textId, ordered.documents.first().id)
+  }
+
+  @Test
+  fun chatActivityReplayRequiresOriginalSenderAndKnownKeys() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    val memberId = FirebaseEmulator.signInAs("member")
+    repository.joinHousehold(household.inviteCode, memberId)
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(creatorId)
+            .set(mapOf("displayName" to "Alice")))
+    val ref = messageReference(household.id, "activity")
+    val base = activityData("activity", creatorId) + ("senderName" to "Alice")
+    Tasks.await(ref.set(base))
+
+    FirebaseEmulator.signInAs("member")
+    assertDenied(ref.set(base))
+
+    FirebaseEmulator.signInAs("creator")
+    assertDenied(ref.set(base + ("unexpected" to "field")))
+    assertDenied(ref.set(base + ("itemName" to "Banana")))
   }
 
   @Test

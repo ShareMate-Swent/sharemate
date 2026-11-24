@@ -1,8 +1,10 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * Operations available on items. In line with the architecture, this interface abstracts the data
@@ -19,6 +21,15 @@ interface ItemRepository {
    * permission error for a user who left it or never belonged to it.
    */
   fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>>
+
+  /**
+   * Reactive stream of the items of [getFridgeItems] split by server confirmation. Each emission is
+   * built from a single snapshot, so an item's status and whether it is confirmed always agree.
+   * Implementations without offline writes may keep the default, which reports every item as
+   * confirmed.
+   */
+  fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
+      getFridgeItems(householdId, userId).map { FridgeSyncSnapshot(it, emptySet()) }
 
   /**
    * Reads the same visible inventory as [getFridgeItems], requiring a server response without cache
@@ -86,3 +97,15 @@ interface ItemRepository {
    */
   fun deleteItemQueued(itemId: String): ItemWrite
 }
+
+/**
+ * One fridge snapshot split by write state.
+ *
+ * @property confirmedItems Items whose current state the server has acknowledged.
+ * @property pendingWriteIds Ids of the items that still have a local write the server has not
+ *   confirmed; their state may still be rejected.
+ */
+data class FridgeSyncSnapshot(
+    val confirmedItems: List<Item>,
+    val pendingWriteIds: Set<String>,
+)

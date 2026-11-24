@@ -53,6 +53,7 @@ import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
+import com.android.sharemate.model.chat.AndroidPendingFridgeActivityStore
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
 import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
@@ -157,6 +158,7 @@ open class MainActivity : ComponentActivity() {
     FirebaseChatRepository(
         FirebaseFirestore.getInstance(), FirebaseIncidentPhotoRepository.create())
   }
+  private val pendingActivityStore by lazy { AndroidPendingFridgeActivityStore(applicationContext) }
 
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
@@ -356,6 +358,7 @@ open class MainActivity : ComponentActivity() {
                                             memberNameRepository = memberNameRepository,
                                             currentUserDisplayName = session.displayName,
                                             chatRepository = chatRepository,
+                                            pendingActivityStore = pendingActivityStore,
                                             activitySenderName =
                                                 session.displayName
                                                     ?: session.email

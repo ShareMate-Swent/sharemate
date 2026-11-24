@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -33,6 +34,33 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
         flowOf(emptyList())
       } else {
         observe(fridgeQuery(householdId, userId))
+      }
+
+  override fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
+      if (householdId.isBlank() || userId.isBlank()) {
+        flowOf(FridgeSyncSnapshot(emptyList(), emptySet()))
+      } else {
+        callbackFlow {
+              val registration =
+                  fridgeQuery(householdId, userId).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
+                    if (error != null) {
+                      close(error)
+                      return@addSnapshotListener
+                    }
+                    // Status and confirmation come from the same snapshot, so a rejected write can
+                    // never be seen as confirmed with the locally applied status.
+                    val (pending, confirmed) =
+                        snapshot?.documents.orEmpty().partition { it.metadata.hasPendingWrites() }
+                    trySend(
+                        FridgeSyncSnapshot(
+                            confirmedItems = confirmed.mapNotNull { it.toItemOrNull() },
+                            pendingWriteIds = pending.map { it.id }.toSet()))
+                  }
+              awaitClose { registration.remove() }
+            }
+            .distinctUntilChanged()
       }
 
   override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> {
