@@ -7,7 +7,7 @@ service firebase.storage {
     match /receiptPhotos/{householdId}/{ownerId}/{fileName} {
       function receipt() {
         let id = fileName.replace('[.]jpg$', '');
-        return firestore.get(/databases/(default)/documents/receiptBackups/$(id)).data;
+        return firestore.get(/databases/(default)/documents/users/$(ownerId)/receiptBackups/$(id)).data;
       }
       allow get: if request.auth != null && isCurrentMember(householdId)
           && receipt().ownerId == ownerId && receipt().householdId == householdId
