@@ -94,9 +94,10 @@ test("callable corrects the same expense and fridge atomically; concurrent retri
   assert.equal(links.title, "Courses Migros");
   assert.equal((await db.collection("items").doc(links.links.apples).get()).data().name, "Apples");
   // A second edit uses retained links, even though row order changed and a row was added.
-  const second = { ...payload, operationId: "correction-second", originalTitle: payload.title, originalRows: payload.rows, originalExpense: payload.expense,
+  const second = { ...payload, operationId: "correction-second", originalRevision: 1, originalTitle: payload.title, originalRows: payload.rows, originalExpense: payload.expense,
     rows: [payload.rows[1], { ...payload.rows[0], quantity: 4 }] };
-  assert.ok((await call(second)).result);
+  const secondResult = await call(second);
+  assert.ok(secondResult.result, JSON.stringify(secondResult));
   assert.equal((await db.collection("items").doc("correction-roundtrip_0").get()).data().quantity, 4n);
   const count = (await db.collection("items").where("householdId", "==", homeId).get()).size;
   assert.equal(count, 2);

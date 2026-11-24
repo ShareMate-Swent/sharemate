@@ -40,6 +40,27 @@ class ReceiptSynchronizationTest {
         override suspend fun pendingCorrection(ownerId: String, householdId: String, id: String) =
             correction
 
+        override suspend fun acknowledgeExpense(
+            ownerId: String,
+            householdId: String,
+            id: String,
+            expense: SharedExpense
+        ) {
+          val current = receipt ?: return
+          if (current.expense == expense && correction == null)
+              receipt = current.withProgress(true, ExpenseProgress.CONFIRMED)
+        }
+
+        override suspend fun recoverInventory(
+            ownerId: String,
+            householdId: String,
+            id: String,
+            enqueue: (InventorySubmission) -> ItemWrite
+        ): ItemWrite? =
+            receipt
+                ?.takeIf { !it.draft && !it.inventoryConfirmed && correction == null }
+                ?.let(enqueue)
+
         override suspend fun acknowledgeCorrection(correction: ReceiptCorrection) {
           if (this.correction?.operationId != correction.operationId) return
           receipt = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
@@ -125,12 +146,17 @@ class ReceiptSynchronizationTest {
   }
 
   @Test
-  fun missingInventoryDoesNotCreateExpenseOrPublishSavedReceipt() = runTest {
-    `when`(items.observeSubmission(store.receipt!!))
-        .thenReturn(flowOf(InventorySubmissionStatus.MISSING))
-    assertFalse(sync.synchronize("alice", "home", id, "alice", false))
-    verifyNoInteractions(expenses)
-    assertTrue(uploaded.isEmpty())
+  fun missingInventoryRestartsTheOriginalBatchBeforeRecordingExpense() = runTest {
+    val original = store.receipt!!
+    `when`(items.observeSubmission(original)).thenReturn(flowOf(InventorySubmissionStatus.MISSING))
+    `when`(items.addItems(original))
+        .thenReturn(ItemWrite.Queued(kotlinx.coroutines.CompletableDeferred(Result.success(Unit))))
+    assertTrue(sync.synchronize("alice", "home", id, "alice", false))
+    val order = inOrder(items, expenses)
+    order.verify(items).observeSubmission(original)
+    order.verify(items).addItems(original)
+    order.verify(expenses).recordExpense(expense)
+    assertEquals(ExpenseProgress.CONFIRMED, store.receipt!!.expenseProgress)
   }
 
   @Test
