@@ -2,11 +2,13 @@
 package com.android.sharemate.model.staging
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.android.sharemate.model.finance.FinanceFields
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemWrite
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -56,6 +58,26 @@ interface InventorySubmissionStore {
     error("Atomic correction acknowledgement unavailable")
   }
 
+  /** Updates the current rows' progress without replacing content captured before an await. */
+  suspend fun acknowledgeExpense(
+      ownerId: String,
+      householdId: String,
+      id: String,
+      expense: SharedExpense
+  ) {
+    error("Atomic expense acknowledgement unavailable")
+  }
+
+  /** Hands an unacknowledged purchase to the SDK under the local deletion lock. */
+  suspend fun recoverInventory(
+      ownerId: String,
+      householdId: String,
+      id: String,
+      enqueue: (InventorySubmission) -> ItemWrite
+  ): ItemWrite? {
+    error("Inventory recovery unavailable")
+  }
+
   suspend fun clearCorrection(ownerId: String, householdId: String, id: String) {}
   /** Removes a draft whose photo metadata could not be committed. */
   suspend fun deleteDraft(ownerId: String, householdId: String, id: String) {}
@@ -103,6 +125,7 @@ data class ReceiptDetails(
     val title: String = "",
     val draftPaidBy: String? = null,
     val draftParticipants: Set<String> = emptySet(),
+    val revision: Long = 0,
 )
 
 /** Private submissions per user/household, using checked disk commits on [dispatcher]. */
@@ -173,29 +196,52 @@ class AndroidInventorySubmissionStore(
       householdId: String,
       entries: List<com.android.sharemate.model.receipt.ReceiptCloudEntry>
   ) {
-    val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher, viewerId = viewerId)
     val shared =
         entries.filter {
           it.submission.ownerId != viewerId &&
               !it.submission.draft &&
-              it.submission.householdId == householdId &&
-              !isDeleted(it.submission.ownerId, householdId, it.submission.id)
+              it.submission.householdId == householdId
         }
     for (entry in shared) {
-      cache.save(entry.submission)
-      cache.saveDetails(entry.details)
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          val row = entry.submission
+          if (isDeleted(row.ownerId, householdId, row.id)) return@withLock
+          val scope = viewerKey(viewerId, row.ownerId, householdId)
+          val revision = preferences.getLong(revisionKey(scope, row.id), 0)
+          if (entry.details.revision < revision ||
+              preferences.contains("correction:$scope:${row.id}"))
+              return@withLock
+          require(
+              entry.details.id == row.id &&
+                  entry.details.ownerId == row.ownerId &&
+                  entry.details.householdId == householdId &&
+                  entry.details.revision >= 0)
+          val editor = preferences.edit()
+          retain(editor, scope, row)
+          editor
+              .putString(detailsKey(scope, row.id), encodeDetails(entry.details).toString())
+              .putLong(revisionKey(scope, row.id), entry.details.revision)
+          check(commit(householdId, editor))
+        }
+      }
     }
     withContext(dispatcher) {
-      val ids =
-          JSONArray(
-              shared.map {
-                JSONObject().put("owner", it.submission.ownerId).put("id", it.submission.id)
-              })
-      check(
-          preferences
-              .edit()
-              .putString("shared:${key(viewerId, householdId)}", ids.toString())
-              .commit())
+      mutationMutex.withLock {
+        val visible =
+            shared.filter { !isDeleted(it.submission.ownerId, householdId, it.submission.id) }
+        val ids =
+            JSONArray(
+                visible.map {
+                  JSONObject().put("owner", it.submission.ownerId).put("id", it.submission.id)
+                })
+        check(
+            commit(
+                householdId,
+                preferences
+                    .edit()
+                    .putString("shared:${ownerKey(viewerId, householdId)}", ids.toString())))
+      }
     }
   }
 
@@ -263,21 +309,13 @@ class AndroidInventorySubmissionStore(
   ) =
       withContext(dispatcher) {
         mutationMutex.withLock {
-          val scope = key(ownerId, householdId)
           val submission = loadById(ownerId, householdId, id)
           if (draftOnly && submission == null) return@withLock
           require(!draftOnly || submission!!.draft)
-          val encoded = preferences.getString(indexKey(scope), "[]")
-          val index = JSONArray(encoded)
-          val remaining = (0 until index.length()).map(index::getString).filterNot { it == id }
-          check(
-              preferences
-                  .edit()
-                  .remove(receiptKey(scope, id))
-                  .remove(detailsKey(scope, id))
-                  .putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
-                  .putString(indexKey(scope), JSONArray(remaining).toString())
-                  .commit())
+          val editor =
+              preferences.edit().putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
+          purge(editor, ownerId, householdId, id)
+          check(commit(householdId, editor))
           if (scheduleSync && submission != null)
               ReceiptSyncWorker.enqueue(applicationContext, submission, delete = true)
         }
@@ -301,7 +339,9 @@ class AndroidInventorySubmissionStore(
                       ?.let { participants ->
                         (0 until participants.length()).map(participants::getString).toSet()
                       }
-                      .orEmpty())
+                      .orEmpty(),
+                  preferences.getLong(
+                      revisionKey(key(ownerId, householdId), id), json.optLong(REVISION, 0)))
               .also {
                 require(it.id == id && it.ownerId == ownerId && it.householdId == householdId)
               }
@@ -318,26 +358,43 @@ class AndroidInventorySubmissionStore(
 
   private suspend fun saveDetailsLocally(details: ReceiptDetails) =
       withContext(dispatcher) {
-        require(loadById(details.ownerId, details.householdId, details.id) != null)
-        val json =
-            JSONObject()
-                .put(Fields.ID, details.id)
-                .put(Fields.OWNER, details.ownerId)
-                .put(Fields.HOUSEHOLD, details.householdId)
-                .put(PHOTO_URI, details.photoUri)
-                .put(SCANNED_AT, details.scannedAtMillis)
-                .put("title", details.title)
-                .put("draftParticipants", JSONArray(details.draftParticipants.toList()))
-        details.draftPaidBy?.let { json.put("draftPaidBy", it) }
-        details.savedAtMillis?.let { json.put(SAVED_AT, it) }
-        check(
-            preferences
-                .edit()
-                .putString(
-                    detailsKey(key(details.ownerId, details.householdId), details.id),
-                    json.toString())
-                .commit())
+        mutationMutex.withLock {
+          require(loadById(details.ownerId, details.householdId, details.id) != null)
+          check(!isDeleted(details.ownerId, details.householdId, details.id))
+          check(
+              commit(
+                  details.householdId,
+                  preferences
+                      .edit()
+                      .putString(
+                          detailsKey(key(details.ownerId, details.householdId), details.id),
+                          encodeDetails(details).toString())
+                      .putLong(
+                          revisionKey(key(details.ownerId, details.householdId), details.id),
+                          maxOf(
+                              details.revision,
+                              preferences.getLong(
+                                  revisionKey(
+                                      key(details.ownerId, details.householdId), details.id),
+                                  0)))))
+        }
       }
+
+  private fun encodeDetails(details: ReceiptDetails): JSONObject {
+    val json =
+        JSONObject()
+            .put(Fields.ID, details.id)
+            .put(Fields.OWNER, details.ownerId)
+            .put(Fields.HOUSEHOLD, details.householdId)
+            .put(PHOTO_URI, details.photoUri)
+            .put(SCANNED_AT, details.scannedAtMillis)
+            .put("title", details.title)
+            .put("draftParticipants", JSONArray(details.draftParticipants.toList()))
+            .put(REVISION, details.revision)
+    details.draftPaidBy?.let { json.put("draftPaidBy", it) }
+    details.savedAtMillis?.let { json.put(SAVED_AT, it) }
+    return json
+  }
 
   override suspend fun save(submission: InventorySubmission) {
     saveLocally(submission)
@@ -434,7 +491,8 @@ class AndroidInventorySubmissionStore(
                   decode(json.getJSONObject("original").toString(), ownerId, householdId),
                   decode(json.getJSONObject("replacement").toString(), ownerId, householdId),
                   json.getString("title"),
-                  json.optString("originalTitle", ""))
+                  json.optString("originalTitle", ""),
+                  json.optLong("originalRevision", 0))
               .also { correction -> require(correction.original.id == id) }
         }
       }
@@ -443,6 +501,7 @@ class AndroidInventorySubmissionStore(
       withContext(dispatcher) {
         mutationMutex.withLock {
           val original = correction.original
+          check(!isDeleted(original.ownerId, original.householdId, original.id))
           val json =
               JSONObject()
                   .put("operationId", correction.operationId)
@@ -450,6 +509,7 @@ class AndroidInventorySubmissionStore(
                   .put("replacement", encode(correction.replacement))
                   .put("title", correction.title)
                   .put("originalTitle", correction.originalTitle)
+                  .put("originalRevision", correction.originalRevision)
           check(
               preferences
                   .edit()
@@ -485,15 +545,117 @@ class AndroidInventorySubmissionStore(
                       encode(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
                           .toString())
                   .remove("correction:$scope:${original.id}")
+                  .putLong(revisionKey(scope, original.id), correction.originalRevision + 1)
           preferences.getString(detailsKey(scope, original.id), null)?.let {
             editor.putString(
                 detailsKey(scope, original.id),
-                JSONObject(it).put("title", correction.title).toString())
+                JSONObject(it)
+                    .put("title", correction.title)
+                    .put(REVISION, correction.originalRevision + 1)
+                    .toString())
           }
           check(editor.commit())
         }
         if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, correction.replacement)
       }
+
+  override suspend fun acknowledgeExpense(
+      ownerId: String,
+      householdId: String,
+      id: String,
+      expense: SharedExpense
+  ) =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          if (isDeleted(ownerId, householdId, id)) return@withLock
+          val current = loadById(ownerId, householdId, id) ?: return@withLock
+          if (current.expense != expense || pendingCorrection(ownerId, householdId, id) != null)
+              return@withLock
+          check(
+              commit(
+                  householdId,
+                  preferences
+                      .edit()
+                      .putString(
+                          receiptKey(key(ownerId, householdId), id),
+                          encode(current.withProgress(true, ExpenseProgress.CONFIRMED))
+                              .toString())))
+        }
+      }
+
+  override suspend fun recoverInventory(
+      ownerId: String,
+      householdId: String,
+      id: String,
+      enqueue: (InventorySubmission) -> ItemWrite
+  ): ItemWrite? =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          if (isDeleted(ownerId, householdId, id)) return@withLock null
+          val current = loadById(ownerId, householdId, id) ?: return@withLock null
+          if (current.draft ||
+              current.inventoryConfirmed ||
+              current.expenseProgress == ExpenseProgress.CONFIRMED ||
+              pendingCorrection(ownerId, householdId, id) != null)
+              return@withLock null
+          enqueue(current)
+        }
+      }
+
+  private fun retain(editor: SharedPreferences.Editor, scope: String, row: InventorySubmission) {
+    val index = JSONArray(preferences.getString(indexKey(scope), "[]"))
+    val ids = (0 until index.length()).map(index::getString).toMutableList()
+    if (row.id !in ids) ids.add(0, row.id)
+    editor
+        .putString(receiptKey(scope, row.id), encode(row).toString())
+        .putString(indexKey(scope), JSONArray(ids).toString())
+  }
+
+  /** Removes every local copy of this creator's receipt, including retired viewer indexes. */
+  private fun purge(editor: SharedPreferences.Editor, owner: String, home: String, id: String) {
+    val scopes =
+        preferences.all.keys
+            .mapNotNull { name ->
+              val start = name.indexOf('[')
+              val end = name.indexOf(']', start)
+              if (start < 0 || end < start) null else name.substring(start, end + 1)
+            }
+            .toSet()
+    for (scope in scopes) {
+      val parts = JSONArray(scope)
+      if (parts.optString(1) != home) continue
+      val author = if (parts.length() == 3) parts.getString(2) else parts.getString(0)
+      if (author == owner) {
+        listOf("receipt", "details", "correction", "deferred", REVISION).forEach {
+          editor.remove("$it:$scope:$id")
+        }
+        preferences.getString(scope, null)?.let {
+          if (JSONObject(it).optString(Fields.ID) == id) editor.remove(scope)
+        }
+        val index = JSONArray(preferences.getString(indexKey(scope), "[]"))
+        editor.putString(
+            indexKey(scope),
+            JSONArray((0 until index.length()).map(index::getString).filterNot { it == id })
+                .toString())
+      }
+      for (prefix in listOf("shared", "cached")) {
+        val index = JSONArray(preferences.getString("$prefix:$scope", "[]"))
+        val remaining =
+            (0 until index.length()).map(index::getJSONObject).filterNot {
+              it.optString("owner") == owner && it.optString("id") == id
+            }
+        if (index.length() != remaining.size)
+            editor.putString("$prefix:$scope", JSONArray(remaining).toString())
+      }
+    }
+  }
+
+  private fun commit(home: String, editor: SharedPreferences.Editor): Boolean {
+    require(home.isNotBlank())
+    return editor.commit()
+  }
+
+  private fun revisionKey(scope: String, id: String) = "$REVISION:$scope:$id"
 
   internal fun decode(value: String, ownerId: String, householdId: String): InventorySubmission {
     val json = JSONObject(value)
@@ -589,7 +751,11 @@ class AndroidInventorySubmissionStore(
 
   private fun key(ownerId: String, householdId: String) =
       if (viewerId == null || viewerId == ownerId) ownerKey(ownerId, householdId)
-      else JSONArray(listOf(viewerId, householdId, ownerId)).toString()
+      else viewerKey(viewerId, ownerId, householdId)
+
+  private fun viewerKey(viewer: String, owner: String, home: String) =
+      if (viewer == owner) ownerKey(owner, home)
+      else JSONArray(listOf(viewer, home, owner)).toString()
 
   private fun JSONObject.requiredString(field: String): String =
       get(field) as? String ?: error("Invalid submission field")
@@ -601,6 +767,7 @@ class AndroidInventorySubmissionStore(
   }
 
   private companion object {
+    const val REVISION = "revision"
     const val FILE = "inventory-submissions"
     const val PHOTO_URI = "photoUri"
     const val SCANNED_AT = "scannedAtMillis"
