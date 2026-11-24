@@ -182,8 +182,10 @@ class TemporaryPhotoStoreTest {
               override fun read(): Int = throw readError
             })
     val personalStore = AndroidTemporaryPhotoStore(context, PhotoImportPolicy.PERSONAL)
-    assertSame(
-        readError, runCatching { personalStore.importImage(source.toString()) }.exceptionOrNull())
+    val failure = runCatching { personalStore.importImage(source.toString()) }.exceptionOrNull()
+    // Coroutine stack-trace recovery can copy the exception when returning from Dispatchers.IO.
+    assertEquals(IOException::class.java, failure?.javaClass)
+    assertEquals(readError.message, failure?.message)
     assertTrue(directory.listFiles().orEmpty().isEmpty())
   }
 
