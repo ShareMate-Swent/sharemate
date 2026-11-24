@@ -278,7 +278,8 @@ class AndroidInventorySubmissionStore(
                   .putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
                   .putString(indexKey(scope), JSONArray(remaining).toString())
                   .commit())
-          if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, submission, delete = true)
+          if (scheduleSync && submission != null)
+              ReceiptSyncWorker.enqueue(applicationContext, submission, delete = true)
         }
       }
 
