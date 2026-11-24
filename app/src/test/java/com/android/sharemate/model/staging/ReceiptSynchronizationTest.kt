@@ -40,6 +40,13 @@ class ReceiptSynchronizationTest {
         override suspend fun pendingCorrection(ownerId: String, householdId: String, id: String) =
             correction
 
+        override suspend fun acknowledgeCorrection(correction: ReceiptCorrection) {
+          if (this.correction?.operationId != correction.operationId) return
+          receipt = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
+          metadata = metadata?.copy(title = correction.title)
+          this.correction = null
+        }
+
         override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) {
           correction = null
         }

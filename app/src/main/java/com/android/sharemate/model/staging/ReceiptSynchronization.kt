@@ -27,12 +27,7 @@ internal class ReceiptSynchronization(
     val receipt = store.loadById(owner, home, id) ?: return true
     store.pendingCorrection(owner, home, id)?.let { correction ->
       expenses.correctReceipt(correction)
-      // A foreground coordinator may already have completed or replaced this operation.
-      if (store.pendingCorrection(owner, home, id)?.operationId == correction.operationId) {
-        store.save(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
-        store.details(owner, home, id)?.let { store.saveDetails(it.copy(title = correction.title)) }
-        store.clearCorrection(owner, home, id)
-      }
+      store.acknowledgeCorrection(correction)
       if (actor == owner) store.loadById(owner, home, id)?.let { upload(it) }
       return true
     }
