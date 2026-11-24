@@ -50,9 +50,9 @@ test('requires authentication and valid identifiers', async () => {
 
 test('photo cleanup retries after an atomic deletion, including private draft backups', async () => {
   const { db, records } = fixture();
-  records.set('receiptBackups/draft', { ownerId: 'alice', householdId: 'home', draft: true });
+  records.set('users/alice/receiptBackups/draft', { ownerId: 'alice', householdId: 'home', draft: true });
   await assert.rejects(deleteReceipt(db, 'alice', { id: 'draft', householdId: 'home' }, async () => { throw Error('Network'); }));
-  assert.equal(records.has('receiptBackups/draft'), false);
+  assert.equal(records.has('users/alice/receiptBackups/draft'), false);
   assert.equal(records.has('users/alice/receiptDeletions/draft'), true);
   let photo;
   await deleteReceipt(db, 'alice', { id: 'draft', householdId: 'home' }, async path => { photo = path; });

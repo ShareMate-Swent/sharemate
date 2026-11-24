@@ -26,7 +26,7 @@ function fixture() {
     writes.forEach(write => write());
     return result;
   }};
-  const request = { operationId: "correction", title: "Courses Migros", originalRows, originalExpense: expense,
+  const request = { operationId: "correction", title: "Courses Migros", originalTitle: "", originalRows, originalExpense: expense,
     rows: [{ ...originalRows[0], name: "Oat milk", quantity: 3, priceCents: "450" }, { id: "apples", name: "Apples", quantity: 1, priceCents: "150" }],
     expense: { ...expense, paidBy: "bob" } };
   return { db, records, request };
@@ -49,12 +49,12 @@ test("updates inventory and ledger once and preserves unrelated item metadata", 
 
 test("current household member edits another author's saved receipt without changing ownership", async () => {
   const { db, records, request } = fixture();
-  records.set('receiptBackups/receipt', { ownerId: 'alice', householdId: 'home', draft: false, photoReady: true });
+  records.set('users/alice/receiptBackups/receipt', { ownerId: 'alice', householdId: 'home', draft: false, photoReady: true });
   await correctReceipt(db, "bob", { ...request, ownerId: "alice" });
   assert.equal(records.get("users/alice/inventorySubmissions/receipt").ownerId, "alice");
   assert.equal(records.get("items/receipt_edit_correction_1").ownerId, "alice");
   assert.equal(records.has("users/bob/inventorySubmissions/receipt"), false);
-  const backup = records.get('receiptBackups/receipt');
+  const backup = records.get('users/alice/receiptBackups/receipt');
   assert.equal(backup.title, request.title);
   assert.equal(backup.photoReady, true);
   const snapshot = JSON.parse(backup.submission);
@@ -105,4 +105,35 @@ test("detects stale edits and never recreates a consumed or removed item", async
   const priceOnly = { ...request, rows: request.originalRows, expense: request.originalExpense };
   await correctReceipt(db, "alice", priceOnly);
   assert.equal(records.has("items/receipt_0"), false);
+});
+
+
+test("peers cannot rename, change quantity or remove a personal item; owners can", async () => {
+  for (const mode of ["rename", "quantity", "remove"]) {
+    const { db, records, request } = fixture();
+    records.get("items/receipt_0").sharing = "PERSONAL";
+    const revised = request.originalRows.map(row => ({ ...row }));
+    if (mode === "rename") revised[0].name = "Private milk";
+    if (mode === "quantity") revised[0].quantity++;
+    if (mode === "remove") { revised.shift(); revised[0].priceCents = "600"; }
+    const edit = { ...request, ownerId: "alice", rows: revised, expense: request.originalExpense };
+    const before = structuredClone(records);
+    await assert.rejects(correctReceipt(db, "bob", edit), { code: "permission-denied" });
+    assert.deepEqual(records, before);
+    await correctReceipt(db, "alice", edit);
+    assert.equal(records.has("users/alice/receiptCorrections/correction"), true);
+  }
+});
+
+test("title-only corrections invalidate stale peer edits but identical retries still succeed", async () => {
+  const { db, records, request } = fixture();
+  const first = { ...request, rows: request.originalRows, expense: request.originalExpense, title: "New title" };
+  await correctReceipt(db, "alice", first);
+  await correctReceipt(db, "alice", first);
+  const before = structuredClone(records);
+  const stale = { ...request, ownerId: "alice", operationId: "peer-edit" };
+  await assert.rejects(correctReceipt(db, "bob", stale), { code: "failed-precondition" });
+  assert.deepEqual(records, before);
+  await correctReceipt(db, "bob", { ...stale, originalTitle: "New title" });
+  assert.equal(records.get("users/alice/receiptItemLinks/receipt").title, request.title);
 });
