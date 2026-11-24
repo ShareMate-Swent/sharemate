@@ -1,0 +1,51 @@
+# Co-authored-by: OpenAI Codex <noreply@openai.com>
+# Temporary focused diagnostic only; this branch is not intended for merging.
+name: Expiry OCR diagnostic
+
+on:
+  push:
+    branches: [feature/21-expiry-ocr-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v7
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Configure SDK and wrapper
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Inspect real OCR from both synthetic fonts offline
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: adb shell svc wifi disable && adb shell svc data disable && adb shell settings put global airplane_mode_on 1 && ./gradlew connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.android.sharemate.model.item.ExpiryDateOcrTest" --no-daemon --stacktrace --init-script .github/firebase-emulator.init.gradle
+      - name: Upload synthetic diagnostic reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expiry-ocr-diagnostic-reports
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: ignore
