@@ -418,7 +418,7 @@ class AndroidInventorySubmissionStore(
                   decode(json.getJSONObject("original").toString(), ownerId, householdId),
                   decode(json.getJSONObject("replacement").toString(), ownerId, householdId),
                   json.getString("title"),
-                    json.optString("originalTitle", ""))
+                  json.optString("originalTitle", ""))
               .also { correction -> require(correction.original.id == id) }
         }
       }
