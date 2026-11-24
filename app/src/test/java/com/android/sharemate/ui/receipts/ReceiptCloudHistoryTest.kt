@@ -27,7 +27,7 @@ class ReceiptCloudHistoryTest {
     val lifecycle = ViewModelStore()
     try {
       val app = RuntimeEnvironment.getApplication()
-      val store = AndroidInventorySubmissionStore(app, dispatcher)
+      val store = AndroidInventorySubmissionStore(app, dispatcher).forViewer("bob")
       val cloud = Cloud()
       val history =
           ReceiptHistoryViewModel(
@@ -48,7 +48,7 @@ class ReceiptCloudHistoryTest {
       val restarted =
           ReceiptHistoryViewModel(
               mock(ItemRepository::class.java),
-              AndroidInventorySubmissionStore(app, dispatcher),
+              AndroidInventorySubmissionStore(app, dispatcher).forViewer("bob"),
               mock(ReceiptPhotoStore::class.java),
               "bob",
               "home")
