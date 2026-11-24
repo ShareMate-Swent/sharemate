@@ -67,19 +67,24 @@ test("deletes the household with its items, photos, receipts and sub-collections
   await db.doc("items/full-1").set({ householdId: id, ownerId: owner.localId });
   await db.doc("items/full-2").set({ householdId: id, ownerId: owner.localId });
   await db.doc("receipts/full-1").set({ householdId: id, ownerId: owner.localId });
+  await db.doc(`users/${owner.localId}/receiptBackups/full-1`).set({ householdId: id, ownerId: owner.localId });
+  await db.doc(`users/${owner.localId}/receiptDeletions/full-2`).set({ householdId: id });
   await bucket.file("itemPhotos/full-1/photo").save("jpeg");
   await bucket.file("itemPhotos/full-2/photo").save("jpeg");
+  await bucket.file(`receiptPhotos/${id}/${owner.localId}/full-1.jpg`).save("jpeg");
   await bucket.file(`incidentPhotos/${id}/${owner.localId}/photo`).save("jpeg");
 
   const response = await call({ householdId: id });
 
   assert.deepEqual(response, { result: { householdId: id } });
   for (const path of [`households/${id}`, `households/${id}/memberNames/${owner.localId}`,
-    "items/full-1", "items/full-2", "receipts/full-1"]) {
+    "items/full-1", "items/full-2", "receipts/full-1",
+    `users/${owner.localId}/receiptBackups/full-1`, `users/${owner.localId}/receiptDeletions/full-2`]) {
     assert.equal(await exists(path), false, path);
   }
   assert.deepEqual(await files("itemPhotos/full-"), []);
   assert.deepEqual(await files(`incidentPhotos/${id}/`), []);
+  assert.deepEqual(await files(`receiptPhotos/${id}/`), []);
   const profile = (await db.doc(`users/${owner.localId}`).get()).data();
   assert.deepEqual(profile, { keep: "me" });
 });
@@ -93,7 +98,9 @@ test("leaves other households, other items, photos and personal receipts alone",
   await db.doc("items/scoped-mine").set({ householdId: id, ownerId: owner.localId });
   await db.doc("items/scoped-shared").set({ householdId: sharedId, ownerId: owner.localId });
   await db.doc("receipts/scoped-personal").set({ ownerId: owner.localId });
+  await db.doc(`users/${owner.localId}/receiptBackups/scoped-shared`).set({ householdId: sharedId, ownerId: owner.localId });
   await bucket.file("itemPhotos/scoped-shared/photo").save("jpeg");
+  await bucket.file(`receiptPhotos/${sharedId}/${owner.localId}/scoped.jpg`).save("jpeg");
 
   await call({ householdId: id });
 
@@ -102,6 +109,8 @@ test("leaves other households, other items, photos and personal receipts alone",
   assert.equal(await exists(`households/${sharedId}`), true);
   assert.equal(await exists("receipts/scoped-personal"), true);
   assert.deepEqual(await files("itemPhotos/scoped-shared/"), ["itemPhotos/scoped-shared/photo"]);
+  assert.equal(await exists(`users/${owner.localId}/receiptBackups/scoped-shared`), true);
+  assert.deepEqual(await files(`receiptPhotos/${sharedId}/`), [`receiptPhotos/${sharedId}/${owner.localId}/scoped.jpg`]);
 });
 
 test("deleting twice succeeds, and the second call leaves orphans of the old household untouched", async () => {

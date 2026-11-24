@@ -50,8 +50,9 @@ must refresh/update rather than overwrite a newer title.
 ## Private household deletion
 
 `deletePrivateHousehold` in the same region deletes a private household with everything in it:
-its items and their photos, its receipts, its sub-collections and incident photos, and finally the
-household document together with the link on the creator's profile. Only the creator can call it,
+its items and their photos, its receipts, the creator's receipt backups and deletion markers for
+it, its sub-collections, incident and receipt photos, and finally the household document together
+with the link on the creator's profile. Only the creator can call it,
 only for a private household with no other member, so a shared household is never deleted this way.
 Clients cannot delete a household directly; the Firestore rules deny it.
 

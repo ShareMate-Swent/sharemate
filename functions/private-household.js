@@ -7,11 +7,15 @@ const { HOUSEHOLDS, PRIVATE_FRIDGE_TYPE, isId } = require("./finance-common");
 const USERS = "users";
 const ITEMS = "items";
 const RECEIPTS = "receipts";
+/** Sub-collections of a user, each document carrying the `householdId` it belongs to. */
+const RECEIPT_BACKUPS = "receiptBackups";
+const RECEIPT_DELETIONS = "receiptDeletions";
 const HOUSEHOLD_ID_FIELD = "householdId";
 const JOIN_CODE_FIELD = "joinCode";
 const REQUEST_FIELD = "householdId";
 const ITEM_PHOTOS_PREFIX = "itemPhotos/";
-const INCIDENT_PHOTOS_PREFIX = "incidentPhotos/";
+/** Storage folders named after the household: `{prefix}{householdId}/...`. */
+const HOUSEHOLD_PHOTO_PREFIXES = ["incidentPhotos/", "receiptPhotos/"];
 /** Documents deleted per batch; Firestore accepts at most 500 writes in one batch. */
 const PAGE_SIZE = 200;
 /**
@@ -39,13 +43,14 @@ function assertDeletableBy(uid, household) {
 }
 
 /**
- * Deletes the documents of [collection] that belong to the household, page by page, and returns
- * how many it deleted. It stops after a page that is not full, so documents added while it runs
- * cannot keep it busy forever: the next cleaning pass picks them up. [beforeDelete] runs on a page
- * first, so a failure there leaves the documents in place for the next attempt.
+ * Deletes the documents of [collection] (a collection reference) that belong to the household, page
+ * by page, and returns how many it deleted. It stops after a page that is not full, so documents
+ * added while it runs cannot keep it busy forever: the next cleaning pass picks them up.
+ * [beforeDelete] runs on a page first, so a failure there leaves the documents in place for the
+ * next attempt.
  */
 async function deleteHouseholdDocuments(db, collection, householdId, beforeDelete) {
-  const query = db.collection(collection).where(HOUSEHOLD_ID_FIELD, "==", householdId).limit(PAGE_SIZE);
+  const query = collection.where(HOUSEHOLD_ID_FIELD, "==", householdId).limit(PAGE_SIZE);
   let deleted = 0;
   for (;;) {
     const page = await query.get();
@@ -70,16 +75,25 @@ async function deleteSubcollections(db, householdRef) {
 }
 
 /**
- * One pass over everything that belongs to the household: items with their photos, receipts,
- * sub-collections and incident photos. Returns how many items and receipts it found.
+ * One pass over everything that belongs to the household: items with their photos, receipts, the
+ * owner's receipt backups and deletion markers for it, sub-collections, and the Storage folders
+ * named after it (incident and receipt photos). Returns how many documents it found in the
+ * collections that can keep receiving writes.
  */
-async function cleanHouseholdOnce(db, bucket, householdRef) {
+async function cleanHouseholdOnce(db, bucket, householdRef, userRef) {
   const householdId = householdRef.id;
-  const items = await deleteHouseholdDocuments(db, ITEMS, householdId, (docs) => deleteItemPhotos(bucket, docs));
-  const receipts = await deleteHouseholdDocuments(db, RECEIPTS, householdId, async () => {});
+  const noPhotos = async () => {};
+  let found = await deleteHouseholdDocuments(db, db.collection(ITEMS), householdId,
+    (docs) => deleteItemPhotos(bucket, docs));
+  for (const collection of [db.collection(RECEIPTS), userRef.collection(RECEIPT_BACKUPS),
+    userRef.collection(RECEIPT_DELETIONS)]) {
+    found += await deleteHouseholdDocuments(db, collection, householdId, noPhotos);
+  }
   await deleteSubcollections(db, householdRef);
-  await bucket.deleteFiles({ prefix: `${INCIDENT_PHOTOS_PREFIX}${householdId}/` });
-  return items + receipts;
+  for (const prefix of HOUSEHOLD_PHOTO_PREFIXES) {
+    await bucket.deleteFiles({ prefix: `${prefix}${householdId}/` });
+  }
+  return found;
 }
 
 /**
@@ -88,9 +102,9 @@ async function cleanHouseholdOnce(db, bucket, householdRef) {
  * it out. If the household keeps receiving writes, it gives up and leaves the household in place
  * so that the caller can try again.
  */
-async function cleanHousehold(db, bucket, householdRef) {
+async function cleanHousehold(db, bucket, householdRef, userRef) {
   for (let pass = 0; pass < MAX_CLEANUP_PASSES; pass++) {
-    if ((await cleanHouseholdOnce(db, bucket, householdRef)) === 0) return;
+    if ((await cleanHouseholdOnce(db, bucket, householdRef, userRef)) === 0) return;
   }
   throw new HttpsError("aborted", "The household is still being written to. Try again.");
 }
@@ -128,7 +142,8 @@ function isSameInstance(current, authorized) {
 
 /**
  * Deletes the caller's private household with everything in it: its items and their photos, its
- * receipts, its sub-collections and any incident photos. It cleans until a pass finds nothing. The
+ * receipts and receipt backups, its sub-collections and any incident or receipt photos. It cleans
+ * until a pass finds nothing. The
  * household document goes last, in the same transaction that unlinks the caller's profile, so a
  * failed attempt leaves the household in place and calling again only redoes what is left. A
  * household that no longer exists counts as already deleted, so a retry after a lost response
@@ -144,14 +159,15 @@ async function deletePrivateHousehold(db, bucket, uid, request) {
   const householdId = parseHouseholdId(request);
   if (!householdId) throw new HttpsError("invalid-argument", "Invalid household.");
   const householdRef = db.collection(HOUSEHOLDS).doc(householdId);
+  const userRef = db.collection(USERS).doc(uid);
   const snapshot = await householdRef.get();
   let authorized = null;
   if (snapshot.exists) {
     assertDeletableBy(uid, snapshot.data());
     authorized = snapshot;
-    await cleanHousehold(db, bucket, householdRef);
+    await cleanHousehold(db, bucket, householdRef, userRef);
   }
-  await removeHouseholdAndLink(db, householdRef, db.collection(USERS).doc(uid), authorized);
+  await removeHouseholdAndLink(db, householdRef, userRef, authorized);
   return { [REQUEST_FIELD]: householdId };
 }
 

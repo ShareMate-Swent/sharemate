@@ -336,3 +336,40 @@ test("a household deleted by another call before the final step is not an error 
 
   assert.equal(env.records.get(`users/${OWNER}`).householdId, FieldValue.delete());
 });
+
+test("deletes the owner's receipt backups, deletion markers and receipt photos of the household only", async () => {
+  const env = fixture();
+  const other = OTHER_HOME;
+  env.add(`users/${OWNER}/receiptBackups/mine`, { householdId: HOME });
+  env.add(`users/${OWNER}/receiptBackups/other`, { householdId: other });
+  env.add(`users/${OWNER}/receiptDeletions/mine`, { householdId: HOME });
+  env.add(`users/${OWNER}/receiptDeletions/other`, { householdId: other });
+  env.files.add(`receiptPhotos/${HOME}/${OWNER}/mine.jpg`);
+  env.files.add(`receiptPhotos/${other}/${OWNER}/other.jpg`);
+
+  await run(env);
+
+  assert.equal(env.records.has(`users/${OWNER}/receiptBackups/mine`), false);
+  assert.equal(env.records.has(`users/${OWNER}/receiptDeletions/mine`), false);
+  assert.equal(env.files.has(`receiptPhotos/${HOME}/${OWNER}/mine.jpg`), false);
+  assert.equal(env.records.has(`users/${OWNER}/receiptBackups/other`), true);
+  assert.equal(env.records.has(`users/${OWNER}/receiptDeletions/other`), true);
+  assert.equal(env.files.has(`receiptPhotos/${other}/${OWNER}/other.jpg`), true);
+  assert.equal(env.records.has(`households/${HOME}`), false);
+});
+
+test("a receipt backup saved while an earlier pass runs is deleted by the next pass", async () => {
+  const env = fixture();
+  env.add(`users/${OWNER}/receiptBackups/first`, { householdId: HOME });
+  let once = true;
+  env.hooks.afterCommit = () => {
+    if (!once) return;
+    once = false;
+    env.add(`users/${OWNER}/receiptBackups/late`, { householdId: HOME });
+  };
+
+  await run(env);
+
+  assert.equal(env.records.has(`users/${OWNER}/receiptBackups/late`), false);
+  assert.equal(env.records.has(`households/${HOME}`), false);
+});
