@@ -54,10 +54,10 @@ object HouseholdMembersTestTags {
 /**
  * The members of the user's household, opened from the member count in Settings.
  *
- * Each member is a row of a card with their photo and name, and a "You" tag for the signed-in
- * user. Like the Settings header, a member without a photo gets a placeholder avatar and a member
- * without a name shows their email. The email is not shown next to a name, so members only see each
- * other's email when there is nothing else to recognize them by.
+ * Each member is a row of a card with their photo and name, and a "You" tag for the signed-in user.
+ * Like the Settings header, a member without a photo gets a placeholder avatar and a member without
+ * a name shows their email. The email is not shown next to a name, so members only see each other's
+ * email when there is nothing else to recognize them by.
  *
  * @param state Members, loading and error state from [HouseholdMembersViewModel].
  * @param onRetry Loads the list again after an error.

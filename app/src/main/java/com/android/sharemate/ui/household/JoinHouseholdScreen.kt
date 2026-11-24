@@ -53,8 +53,7 @@ object JoinHouseholdTestTags {
   const val ERROR = "join_household_error"
 
   /** The test tags of the six code boxes, in display order. */
-  val CODE_BOXES =
-      listOf(CODE_BOX_1, CODE_BOX_2, CODE_BOX_3, CODE_BOX_4, CODE_BOX_5, CODE_BOX_6)
+  val CODE_BOXES = listOf(CODE_BOX_1, CODE_BOX_2, CODE_BOX_3, CODE_BOX_4, CODE_BOX_5, CODE_BOX_6)
 }
 
 /** Screen for joining a household with its invite code. */

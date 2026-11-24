@@ -37,9 +37,7 @@ fun AppStepIndicator(currentStep: Int, stepCount: Int, modifier: Modifier = Modi
           if (index < reached) MaterialTheme.colorScheme.primary
           else MaterialTheme.colorScheme.outlineVariant
       Box(
-          Modifier.weight(1f)
-              .height(ComponentLayout.stepHeight)
-              .background(color, CircleShape),
+          Modifier.weight(1f).height(ComponentLayout.stepHeight).background(color, CircleShape),
       )
     }
   }

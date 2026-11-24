@@ -62,4 +62,3 @@ class HouseholdChoiceScreenTest {
         .assertIsDisplayed()
   }
 }
-
