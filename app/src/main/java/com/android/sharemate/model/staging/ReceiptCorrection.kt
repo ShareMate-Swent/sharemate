@@ -8,7 +8,8 @@ data class ReceiptCorrection(
     val operationId: String,
     val original: InventorySubmission,
     val replacement: InventorySubmission,
-    val title: String
+    val title: String,
+    val originalTitle: String = "",
 ) {
   init {
     require(
