@@ -35,7 +35,6 @@ import com.android.sharemate.ui.components.AppCard
 import com.android.sharemate.ui.components.AppScreenTitle
 import com.android.sharemate.ui.components.AppStepIndicator
 import com.android.sharemate.ui.theme.Dimens
-import com.android.sharemate.ui.theme.ShareMateTheme
 
 /** Test tags used by [HouseholdChoiceScreen]. */
 object HouseholdChoiceTestTags {
@@ -50,7 +49,6 @@ fun HouseholdChoiceScreen(
     onJoinHousehold: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
-  val statusColors = ShareMateTheme.statusColors
   Surface(color = colors.surfaceContainerLow) {
     Column(
         modifier =
@@ -69,7 +67,7 @@ fun HouseholdChoiceScreen(
       ChoiceCard(
           icon = Icons.Outlined.Home,
           iconBackground = colors.primaryContainer,
-          iconTint = statusColors.fresh.content,
+          iconTint = colors.primary,
           title = stringResource(R.string.create_a_household),
           description = stringResource(R.string.create_a_household_description),
           emphasized = true,
@@ -78,8 +76,8 @@ fun HouseholdChoiceScreen(
       )
       ChoiceCard(
           icon = Icons.Outlined.Key,
-          iconBackground = statusColors.shared.container,
-          iconTint = statusColors.shared.content,
+          iconBackground = colors.secondaryContainer,
+          iconTint = colors.onSecondaryContainer,
           title = stringResource(R.string.join_a_household),
           description = stringResource(R.string.join_a_household_description),
           emphasized = false,
