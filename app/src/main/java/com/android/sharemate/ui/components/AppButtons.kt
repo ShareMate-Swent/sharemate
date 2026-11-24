@@ -37,6 +37,7 @@ fun AppPrimaryButton(
     loading: Boolean = false,
     loadingTestTag: String? = null,
 ) {
+  val progressTag = if (loadingTestTag == null) Modifier else Modifier.testTag(loadingTestTag)
   Button(
       onClick = onClick,
       enabled = enabled && !loading,
@@ -45,7 +46,7 @@ fun AppPrimaryButton(
   ) {
     if (loading) {
       CircularProgressIndicator(
-          modifier = Modifier.size(Dimens.progressSize).then(loadingTestTag.asTestTag()),
+          modifier = Modifier.size(Dimens.progressSize).then(progressTag),
           color = LocalContentColor.current,
           strokeWidth = Dimens.progressStrokeWidth,
       )
@@ -89,6 +90,3 @@ fun AppSecondaryButton(
     SingleLineText(text, MaterialTheme.typography.labelLarge)
   }
 }
-
-/** A test tag modifier for this tag, or no modifier when there is none. */
-private fun String?.asTestTag(): Modifier = if (this == null) Modifier else Modifier.testTag(this)
