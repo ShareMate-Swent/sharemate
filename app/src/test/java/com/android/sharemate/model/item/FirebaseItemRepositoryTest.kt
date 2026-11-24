@@ -2,6 +2,7 @@
 // Co-authored-by: AI Assistant
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -16,8 +17,10 @@ import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.SnapshotMetadata
 import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,7 @@ import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
@@ -174,6 +178,69 @@ class FirebaseItemRepositoryTest {
       job.cancel()
     }
   }
+
+  @Suppress("UNCHECKED_CAST")
+  @Test
+  fun observeFridgeSync_splitsEachSnapshotIntoConfirmedItemsAndPendingIds() =
+      runBlocking<Unit> {
+        val query = mock(Query::class.java)
+        `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
+        val listenerCaptor =
+            ArgumentCaptor.forClass(EventListener::class.java)
+                as ArgumentCaptor<EventListener<QuerySnapshot>>
+        `when`(query.addSnapshotListener(eq(MetadataChanges.INCLUDE), listenerCaptor.capture()))
+            .thenReturn(mock(ListenerRegistration::class.java))
+        val emitted = mutableListOf<FridgeSyncSnapshot>()
+        var failure: Throwable? = null
+        val job =
+            launch(Dispatchers.Unconfined) {
+              try {
+                repository.observeFridgeSync("house-1", "user-1").collect { emitted += it }
+              } catch (e: Exception) {
+                failure = e
+              }
+            }
+
+        fun document(id: String, pending: Boolean): DocumentSnapshot {
+          val metadata = mock(SnapshotMetadata::class.java)
+          `when`(metadata.hasPendingWrites()).thenReturn(pending)
+          val doc = mock(DocumentSnapshot::class.java).stubRequiredItemFields()
+          `when`(doc.id).thenReturn(id)
+          `when`(doc.getString("name")).thenReturn("Item $id")
+          `when`(doc.getString("ownerId")).thenReturn("user-1")
+          `when`(doc.getString("householdId")).thenReturn("house-1")
+          `when`(doc.metadata).thenReturn(metadata)
+          return doc
+        }
+        fun snapshot(vararg docs: DocumentSnapshot): QuerySnapshot =
+            mock(QuerySnapshot::class.java).also { `when`(it.documents).thenReturn(docs.toList()) }
+
+        listenerCaptor.value.onEvent(snapshot(document("a", true), document("b", false)), null)
+        listenerCaptor.value.onEvent(snapshot(document("a", false), document("b", false)), null)
+        listenerCaptor.value.onEvent(null, null)
+
+        assertEquals(3, emitted.size)
+        assertEquals(setOf("a"), emitted[0].pendingWriteIds)
+        assertEquals(listOf("b"), emitted[0].confirmedItems.map { it.id })
+        assertTrue(emitted[1].pendingWriteIds.isEmpty())
+        assertEquals(listOf("a", "b"), emitted[1].confirmedItems.map { it.id })
+        assertEquals(FridgeSyncSnapshot(emptyList(), emptySet()), emitted[2])
+
+        listenerCaptor.value.onEvent(
+            null,
+            FirebaseFirestoreException("Error", FirebaseFirestoreException.Code.PERMISSION_DENIED))
+        assertTrue(failure is FirebaseFirestoreException)
+        job.cancel()
+      }
+
+  @Test
+  fun observeFridgeSync_returnsNothingWithoutQuery_whenHouseholdOrUserIsBlank() =
+      runBlocking<Unit> {
+        val empty = FridgeSyncSnapshot(emptyList(), emptySet())
+        assertEquals(empty, repository.observeFridgeSync("", "user-1").first())
+        assertEquals(empty, repository.observeFridgeSync("house-1", " ").first())
+        verify(collection, never()).where(any(Filter::class.java))
+      }
 
   @Suppress("UNCHECKED_CAST")
   @Test
@@ -333,7 +400,7 @@ class FirebaseItemRepositoryTest {
 
     val date = Date()
     `when`(doc.getTimestamp("expirationDate")).thenReturn(Timestamp(date))
-    `when`(doc.getString("category")).thenReturn("Dairy")
+    `when`(doc.get("category")).thenReturn("Dairy")
     `when`(doc.get("image"))
         .thenReturn(
             mapOf(
@@ -355,7 +422,7 @@ class FirebaseItemRepositoryTest {
     assertEquals("user-1", item?.ownerId)
     assertEquals("house-1", item?.householdId)
     assertEquals(date, item?.expirationDate)
-    assertEquals("Dairy", item?.category)
+    assertEquals(ItemCategory.DAIRY, item?.category)
     assertEquals(
         ItemImage(
             origin = ItemImageOrigin.REMOTE_IMAGE,
@@ -378,10 +445,9 @@ class FirebaseItemRepositoryTest {
           Filter.or(Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", userId)))
 
   @Test
-  fun addItem_refusesTextsOverTheLimitsWithoutWriting() =
+  fun addItem_refusesANameOverTheLimitWithoutWriting() =
       runBlocking<Unit> {
         val tooLongName = "n".repeat(TextLimits.ITEM_NAME + 1)
-        val tooLongCategory = "c".repeat(TextLimits.ITEM_CATEGORY + 1)
         assertNull(repository.addItem(Item(name = tooLongName, ownerId = "u", householdId = "h")))
         assertNull(
             repository.addItem(
@@ -389,9 +455,6 @@ class FirebaseItemRepositoryTest {
                     name = "😀".repeat(TextLimits.ITEM_NAME + 1),
                     ownerId = "u",
                     householdId = "h")))
-        assertNull(
-            repository.addItem(
-                Item(name = "Milk", category = tooLongCategory, ownerId = "u", householdId = "h")))
         verifyNoInteractions(collection)
       }
 
@@ -407,18 +470,21 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
-  fun addItem_acceptsTextsAtTheLimitsAfterTrimming() =
+  fun addItem_acceptsANameAtTheLimitAfterTrimming() =
       runBlocking<Unit> {
         val document = mock(DocumentReference::class.java)
         `when`(collection.document()).thenReturn(document)
         `when`(document.id).thenReturn("generated-id")
         `when`(document.set(any(Item::class.java))).thenReturn(Tasks.forResult(null))
         val name = "n".repeat(TextLimits.ITEM_NAME)
-        val category = "c".repeat(TextLimits.ITEM_CATEGORY)
 
         val id =
             repository.addItem(
-                Item(name = " $name ", category = category, ownerId = "u", householdId = "h"))
+                Item(
+                    name = " $name ",
+                    category = ItemCategory.DAIRY,
+                    ownerId = "u",
+                    householdId = "h"))
 
         assertEquals("generated-id", id)
       }

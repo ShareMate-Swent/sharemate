@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -175,6 +176,25 @@ class ShareMateThemeTest {
     val minimum = 1.1
     val ratio = contrast(colors.surfaceVariant, colors.background)
     assertTrue("surfaceVariant only reaches $ratio against the background", ratio >= minimum)
+  }
+
+  @Test
+  fun primaryIsPurpleWhileFreshStatusStaysGreen() {
+    assertPrimaryIsNotStatusGreen(LightColorScheme, LightPalette, LightStatusColors)
+    assertPrimaryIsNotStatusGreen(DarkColorScheme, DarkPalette, DarkStatusColors)
+  }
+
+  private fun assertPrimaryIsNotStatusGreen(
+      colors: ColorScheme,
+      palette: Palette,
+      status: StatusColors
+  ) {
+    assertEquals(palette.accent, colors.primary)
+    assertEquals(palette.accentContainer, colors.primaryContainer)
+    assertEquals(palette.greenContainer, status.fresh.container)
+    assertEquals(palette.greenContent, status.fresh.content)
+    assertNotEquals(status.fresh.content, colors.primary)
+    assertNotEquals(status.fresh.container, colors.primaryContainer)
   }
 
   private fun assertReadable(colors: ColorScheme, status: StatusColors) {

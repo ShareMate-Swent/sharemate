@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.background
@@ -22,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -32,10 +32,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.ExpiryStatus
-import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.ReportLaunch
 import com.android.sharemate.ui.theme.Dimens
 import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.delay
@@ -56,16 +59,16 @@ fun FridgeScreen(
     onAddItem: (() -> Unit)? = null,
     onDismissAddItem: () -> Unit = {},
     onNameChange: (String) -> Unit = {},
-    onCategoryChange: (String) -> Unit = {},
+    onCategoryChange: (ItemCategory?) -> Unit = {},
     onExpirationDateChange: (String) -> Unit = {},
     onSaveItem: () -> Unit = {},
     sortOrder: FridgeSortOrder? = null,
-    selectedCategory: String? = null,
+    selectedCategory: ItemCategory? = null,
     selectedOwnerId: String? = null,
-    categories: List<String> = emptyList(),
+    categories: List<ItemCategory> = ItemCategory.entries,
     owners: List<OwnerOption> = emptyList(),
     onSortOrderChange: ((FridgeSortOrder) -> Unit)? = null,
-    onCategoryFilterChange: ((String?) -> Unit)? = null,
+    onCategoryFilterChange: ((ItemCategory?) -> Unit)? = null,
     onOwnerFilterChange: ((String?) -> Unit)? = null,
     onRemoveItem: ((String) -> Unit)? = null,
     onCancelRemoval: () -> Unit = {},
@@ -121,6 +124,7 @@ fun FridgeScreen(
         onOwnerFilterChange = onOwnerFilterChange,
         onAddItem = onAddItem,
         isSaving = uiState.isSaving,
+        hasItems = activeItems.isNotEmpty(),
     )
 
     uiState.editSyncError?.let { error ->
@@ -307,18 +311,19 @@ fun FridgeScreen(
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val visibleItems by viewModel.visibleItems.collectAsState()
+  ReportLaunch(
+      LaunchStage.DESTINATION,
+      when {
+        uiState.loadFailed -> LaunchStatus.ERROR
+        uiState.isLoading -> LaunchStatus.WAITING
+        visibleItems.map { it.id }.toSet() !=
+            uiState.items.filter { it.status == ItemStatus.ACTIVE }.map { it.id }.toSet() ->
+            LaunchStatus.WAITING
+        else -> LaunchStatus.READY
+      })
   val sortOrder by viewModel.sortOrder.collectAsState()
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
-  val categories =
-      remember(uiState.items) {
-        uiState.items
-            .mapNotNull(Item::category)
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .sorted()
-      }
   val owners by viewModel.ownerOptions.collectAsState()
   val expiryStatuses by viewModel.expiryStatuses.collectAsStateWithLifecycle()
 
@@ -344,7 +349,6 @@ fun FridgeScreen(
       sortOrder = sortOrder,
       selectedCategory = selectedCategory,
       selectedOwnerId = selectedOwnerId,
-      categories = categories,
       owners = owners,
       onSortOrderChange = viewModel::setSortOrder,
       onCategoryFilterChange = viewModel::setCategoryFilter,

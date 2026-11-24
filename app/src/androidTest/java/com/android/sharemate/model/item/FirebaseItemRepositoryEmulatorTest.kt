@@ -68,6 +68,28 @@ class FirebaseItemRepositoryEmulatorTest {
   }
 
   @Test
+  fun serverInventoryReadRequiresNetworkEvenWithWarmCache() = runBlocking {
+    val id =
+        checkNotNull(repository.addItem(Item(name = "Rice", ownerId = owner, householdId = homeId)))
+    assertEquals(listOf(id), repository.getFridgeItemsFromServer(homeId, owner).map { it.id })
+    await(firestore.disableNetwork())
+    try {
+      assertTrue(
+          await(firestore.collection(FirestoreCollections.ITEMS).get(Source.CACHE))
+              .documents
+              .isNotEmpty())
+      try {
+        repository.getFridgeItemsFromServer(homeId, owner)
+        fail("A warm cache must not satisfy a server-only read")
+      } catch (failure: FirebaseFirestoreException) {
+        assertEquals(FirebaseFirestoreException.Code.UNAVAILABLE, failure.code)
+      }
+    } finally {
+      await(firestore.enableNetwork())
+    }
+  }
+
+  @Test
   fun imageAttachmentPreservesAllOtherFieldsAndRoundTripsCredits() = runBlocking {
     val household = HouseholdRepositoryFirestore(firestore).createHousehold("Home", owner)
     val original =
@@ -75,7 +97,7 @@ class FirebaseItemRepositoryEmulatorTest {
             name = "Milk",
             ownerId = owner,
             householdId = household.id,
-            category = "Dairy",
+            category = ItemCategory.DAIRY,
             expirationDate = Date(1_800_000_000_000),
             quantity = 4,
             status = ItemStatus.EATEN)
@@ -176,7 +198,7 @@ class FirebaseItemRepositoryEmulatorTest {
         Item(
             name = "Milk",
             ownerId = owner,
-            category = "Dairy",
+            category = ItemCategory.DAIRY,
             expirationDate = Date(1_800_000_000_000),
             quantity = 3,
             householdId = homeId)
@@ -196,8 +218,8 @@ class FirebaseItemRepositoryEmulatorTest {
     assertEquals(owner, snapshot.getString("ownerId"))
     assertEquals(homeId, snapshot.getString("householdId"))
     val newExpiry = Date(1_900_000_000_000)
-    confirm(repository.updateItem(id, ItemEdit("Oat milk", 2, "Dairy", newExpiry)))
-    val dated = edited.copy(category = "Dairy", expirationDate = newExpiry)
+    confirm(repository.updateItem(id, ItemEdit("Oat milk", 2, ItemCategory.DAIRY, newExpiry)))
+    val dated = edited.copy(category = ItemCategory.DAIRY, expirationDate = newExpiry)
     val datedSnapshot = await(doc.get(Source.SERVER))
     assertEquals(dated, datedSnapshot.toItemOrNull())
     assertEquals("https://example.org/milk", datedSnapshot.getString("imageUrl"))
@@ -215,6 +237,27 @@ class FirebaseItemRepositoryEmulatorTest {
     confirm(repository.deleteItemQueued(id))
     assertEquals(404, adminRequest(id).first)
     confirm(repository.deleteItemQueued(id))
+  }
+
+  @Test
+  fun oldFreeTextCategoryIsReadAsItsCategoryAndKeptByEditsThatLeaveIt() = runBlocking {
+    val id =
+        checkNotNull(
+            repository.addItem(Item(name = "Apple", ownerId = owner, householdId = homeId)))
+    val doc = document(id)
+    // Written as the app did before the fixed list, bypassing the rules.
+    adminPatch(id, JSONObject().put("category", field("stringValue", "fruta")))
+    assertEquals(ItemCategory.FRUITS, await(doc.get(Source.SERVER)).toItemOrNull()?.category)
+
+    confirm(
+        repository.updateItem(
+            id, ItemEdit("Green apple", 1, ItemCategory.FRUITS, null, updatesCategory = false)))
+    val kept = await(doc.get(Source.SERVER))
+    assertEquals("Green apple", kept.getString("name"))
+    assertEquals("fruta", kept.getString("category"))
+
+    confirm(repository.updateItem(id, ItemEdit("Green apple", 1, ItemCategory.OTHER, null)))
+    assertEquals("OTHER", await(doc.get(Source.SERVER)).getString("category"))
   }
 
   @Test
@@ -271,7 +314,8 @@ class FirebaseItemRepositoryEmulatorTest {
             })
         val member = FirebaseEmulator.signInAs("item-member")
         householdRepository.joinHousehold(household.inviteCode, member)
-        confirm(repository.updateItem(sharedId, ItemEdit("Member edit", 2, "Pantry", null)))
+        confirm(
+            repository.updateItem(sharedId, ItemEdit("Member edit", 2, ItemCategory.PANTRY, null)))
         assertEquals(owner, await(document(sharedId).get(Source.SERVER)).getString("ownerId"))
         assertEquals(
             household.id, await(document(sharedId).get(Source.SERVER)).getString("householdId"))
@@ -376,7 +420,8 @@ class FirebaseItemRepositoryEmulatorTest {
     await(firestore.disableNetwork())
     try {
       val edit =
-          repository.updateItem(id, ItemEdit("Offline milk", 5, "Dairy", null)) as ItemWrite.Queued
+          repository.updateItem(id, ItemEdit("Offline milk", 5, ItemCategory.DAIRY, null))
+              as ItemWrite.Queued
       val status = repository.setItemStatus(id, ItemStatus.EATEN) as ItemWrite.Queued
       val local =
           withTimeout(10_000) {
@@ -388,7 +433,7 @@ class FirebaseItemRepositoryEmulatorTest {
               }
               .single { it.id == id }
       assertEquals(5, local.quantity)
-      assertEquals("Dairy", local.category)
+      assertEquals(ItemCategory.DAIRY, local.category)
       assertTrue(await(document(id).get(Source.CACHE)).metadata.hasPendingWrites())
       assertFalse(edit.confirmation.isCompleted)
       assertFalse(status.confirmation.isCompleted)
@@ -633,11 +678,15 @@ class FirebaseItemRepositoryEmulatorTest {
       val id = checkNotNull(repository.addItem(original))
       await(document(id).update("shared", sharing == ItemSharing.SHARED))
       val next = if (sharing == ItemSharing.SHARED) ItemSharing.PERSONAL else ItemSharing.SHARED
-      confirm(repository.updateItem(id, ItemEdit("Oat milk", 3, "Dairy", null, next)))
+      confirm(repository.updateItem(id, ItemEdit("Oat milk", 3, ItemCategory.DAIRY, null, next)))
       val stored = await(document(id).get(Source.SERVER))
       assertEquals(
           original.copy(
-              id = id, name = "Oat milk", quantity = 3, category = "Dairy", sharing = next),
+              id = id,
+              name = "Oat milk",
+              quantity = 3,
+              category = ItemCategory.DAIRY,
+              sharing = next),
           stored.toItemOrNull())
       assertFalse(stored.contains("shared"))
     }
@@ -743,13 +792,11 @@ class FirebaseItemRepositoryEmulatorTest {
 
   private fun field(type: String, value: Any) = JSONObject().put(type, value)
 
+  /** Writes only the given [fields], bypassing the rules. */
   private fun adminPatch(id: String, fields: JSONObject) {
+    val mask = fields.keys().asSequence().joinToString("&") { "updateMask.fieldPaths=$it" }
     val response =
-        adminRequest(
-            id,
-            "PATCH",
-            JSONObject().put("fields", fields).toString(),
-            "?updateMask.fieldPaths=imageUrl")
+        adminRequest(id, "PATCH", JSONObject().put("fields", fields).toString(), "?$mask")
     assertEquals(200, response.first)
   }
 

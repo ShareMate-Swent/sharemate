@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -53,7 +54,7 @@ class FirebaseItemRepositoryFirestoreTest {
                 name = "Milk",
                 ownerId = userId,
                 householdId = household.id,
-                category = "Dairy",
+                category = ItemCategory.DAIRY,
                 image = expectedImage))
 
     val stored =
@@ -62,7 +63,7 @@ class FirebaseItemRepositoryFirestoreTest {
             .first { items -> items.any { it.id == itemId } }
             .single { it.id == itemId }
 
-    assertEquals("Dairy", stored.category)
+    assertEquals(ItemCategory.DAIRY, stored.category)
     assertNotNull(stored.image)
     assertEquals(expectedImage, stored.image)
   }
