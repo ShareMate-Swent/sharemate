@@ -400,6 +400,7 @@ class AndroidInventorySubmissionStore(
                 .put("original", encode(original))
                 .put("replacement", encode(correction.replacement))
                 .put("title", correction.title)
+                .put("originalTitle", correction.originalTitle)
         check(
             preferences
                 .edit()
