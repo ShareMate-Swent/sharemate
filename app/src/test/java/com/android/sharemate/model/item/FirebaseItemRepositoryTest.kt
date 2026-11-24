@@ -2,6 +2,7 @@
 // Co-authored-by: AI Assistant
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -324,7 +325,7 @@ class FirebaseItemRepositoryTest {
 
     val date = Date()
     `when`(doc.getTimestamp("expirationDate")).thenReturn(Timestamp(date))
-    `when`(doc.getString("category")).thenReturn("Dairy")
+    `when`(doc.get("category")).thenReturn("Dairy")
     `when`(doc.get("image"))
         .thenReturn(
             mapOf(
@@ -346,7 +347,7 @@ class FirebaseItemRepositoryTest {
     assertEquals("user-1", item?.ownerId)
     assertEquals("house-1", item?.householdId)
     assertEquals(date, item?.expirationDate)
-    assertEquals("Dairy", item?.category)
+    assertEquals(ItemCategory.DAIRY, item?.category)
     assertEquals(
         ItemImage(
             origin = ItemImageOrigin.REMOTE_IMAGE,
@@ -369,10 +370,9 @@ class FirebaseItemRepositoryTest {
           Filter.or(Filter.equalTo("sharing", "SHARED"), Filter.equalTo("ownerId", userId)))
 
   @Test
-  fun addItem_refusesTextsOverTheLimitsWithoutWriting() =
+  fun addItem_refusesANameOverTheLimitWithoutWriting() =
       runBlocking<Unit> {
         val tooLongName = "n".repeat(TextLimits.ITEM_NAME + 1)
-        val tooLongCategory = "c".repeat(TextLimits.ITEM_CATEGORY + 1)
         assertNull(repository.addItem(Item(name = tooLongName, ownerId = "u", householdId = "h")))
         assertNull(
             repository.addItem(
@@ -380,9 +380,6 @@ class FirebaseItemRepositoryTest {
                     name = "😀".repeat(TextLimits.ITEM_NAME + 1),
                     ownerId = "u",
                     householdId = "h")))
-        assertNull(
-            repository.addItem(
-                Item(name = "Milk", category = tooLongCategory, ownerId = "u", householdId = "h")))
         verifyNoInteractions(collection)
       }
 
@@ -398,18 +395,21 @@ class FirebaseItemRepositoryTest {
       }
 
   @Test
-  fun addItem_acceptsTextsAtTheLimitsAfterTrimming() =
+  fun addItem_acceptsANameAtTheLimitAfterTrimming() =
       runBlocking<Unit> {
         val document = mock(DocumentReference::class.java)
         `when`(collection.document()).thenReturn(document)
         `when`(document.id).thenReturn("generated-id")
         `when`(document.set(any(Item::class.java))).thenReturn(Tasks.forResult(null))
         val name = "n".repeat(TextLimits.ITEM_NAME)
-        val category = "c".repeat(TextLimits.ITEM_CATEGORY)
 
         val id =
             repository.addItem(
-                Item(name = " $name ", category = category, ownerId = "u", householdId = "h"))
+                Item(
+                    name = " $name ",
+                    category = ItemCategory.DAIRY,
+                    ownerId = "u",
+                    householdId = "h"))
 
         assertEquals("generated-id", id)
       }

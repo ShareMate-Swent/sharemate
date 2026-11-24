@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.util.Log
@@ -20,6 +21,7 @@ import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.ExpiryStatuses
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -150,11 +152,11 @@ class FridgeViewModel(
   private var barcodeScanJob: Job? = null
 
   private val sortOrderState = MutableStateFlow(FridgeSortOrder.EXPIRATION_DATE)
-  private val categoryFilterState = MutableStateFlow<String?>(null)
+  private val categoryFilterState = MutableStateFlow<ItemCategory?>(null)
   private val ownerFilterState = MutableStateFlow<String?>(null)
 
   val sortOrder: StateFlow<FridgeSortOrder> = sortOrderState
-  val selectedCategory: StateFlow<String?> = categoryFilterState
+  val selectedCategory: StateFlow<ItemCategory?> = categoryFilterState
   val selectedOwnerId: StateFlow<String?> = ownerFilterState
 
   /** The owners of the loaded items, with the pseudo to show for each. */
@@ -186,8 +188,8 @@ class FridgeViewModel(
             val filteredItems =
                 state.items.filter { item ->
                   item.status == ItemStatus.ACTIVE &&
-                      (category == null ||
-                          item.category?.trim()?.equals(category, ignoreCase = true) == true) &&
+                      // An item without a category only shows under "All".
+                      (category == null || item.category == category) &&
                       (ownerId == null || item.ownerId == ownerId)
                 }
 
@@ -408,8 +410,9 @@ class FridgeViewModel(
     mutableUiState.update { if (it.statusError === error) it.copy(statusError = null) else it }
   }
 
-  fun setCategoryFilter(category: String?) {
-    categoryFilterState.value = category.normalizedFilter()
+  /** Shows only the items of [category], or every item when it is null ("All"). */
+  fun setCategoryFilter(category: ItemCategory?) {
+    categoryFilterState.value = category
   }
 
   fun setOwnerFilter(ownerId: String?) {
@@ -642,7 +645,8 @@ class FridgeViewModel(
           canChangeSharing = supportsSharing && item.ownerId == userId,
           itemName = item.name,
           itemQuantity = item.quantity.toString(),
-          itemCategory = item.category.orEmpty(),
+          itemCategory = item.category,
+          originalItemCategory = item.category,
           expirationDateInput = ExpirationDates.formatInput(item.expirationDate),
           formError = null)
     }
@@ -658,9 +662,9 @@ class FridgeViewModel(
     it.copy(itemName = name.limitedTo(TextLimits.ITEM_NAME), formError = null)
   }
 
-  /** Updates the category, cut to [TextLimits.ITEM_CATEGORY] characters. */
-  fun updateCategory(category: String) = updateDraft {
-    it.copy(itemCategory = category.limitedTo(TextLimits.ITEM_CATEGORY), formError = null)
+  /** Picks the category of the item in the form; null is "No category". */
+  fun updateCategory(category: ItemCategory?) = updateDraft {
+    it.copy(itemCategory = category, formError = null)
   }
 
   fun updateExpirationDate(date: String) = updateDraft {
@@ -689,7 +693,7 @@ class FridgeViewModel(
       mutableUiState.update { it.copy(formError = FridgeFormError.NAME_REQUIRED) }
       return
     }
-    validateItemTexts(name, state.itemCategory.trim())?.let { error ->
+    validateItemTexts(name)?.let { error ->
       mutableUiState.update { it.copy(formError = error) }
       return
     }
@@ -713,12 +717,14 @@ class FridgeViewModel(
           ItemEdit(
               name,
               quantity,
-              state.itemCategory.trim().takeIf(String::isNotEmpty),
+              state.itemCategory,
               expirationDate,
               // Compare to the opened draft, not live snapshots: untouched sharing must not
               // overwrite a change made by another client while this dialog was open.
               sharing =
-                  state.itemSharing.takeIf { supportsSharing && it != state.originalItemSharing }))
+                  state.itemSharing.takeIf { supportsSharing && it != state.originalItemSharing },
+              // An untouched category keeps its stored value, even an older free-text one.
+              updatesCategory = state.itemCategory != state.originalItemCategory))
       return
     }
     val draftItem =
@@ -728,7 +734,7 @@ class FridgeViewModel(
             householdId = householdId,
             quantity = quantity,
             expirationDate = expirationDate,
-            category = state.itemCategory.trim().takeIf { it.isNotEmpty() },
+            category = state.itemCategory,
             sharing = if (supportsSharing) state.itemSharing else ItemSharing.PERSONAL)
     mutableUiState.update { it.copy(isSaving = true, formError = null) }
     viewModelScope.launch {

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.text
 
 import org.junit.Assert.assertEquals
@@ -14,7 +15,6 @@ class TextLimitsTest {
   fun limitsAreTheDocumentedOnes() {
     assertEquals(40, TextLimits.HOUSEHOLD_NAME)
     assertEquals(80, TextLimits.ITEM_NAME)
-    assertEquals(40, TextLimits.ITEM_CATEGORY)
   }
 
   @Test
@@ -29,7 +29,7 @@ class TextLimitsTest {
   fun exceedsIsFalseAtTheLimitAndTrueOneCodePointAbove() {
     assertFalse("".exceeds(0))
     assertTrue("a".exceeds(0))
-    for (max in listOf(TextLimits.HOUSEHOLD_NAME, TextLimits.ITEM_NAME, TextLimits.ITEM_CATEGORY)) {
+    for (max in listOf(TextLimits.HOUSEHOLD_NAME, TextLimits.ITEM_NAME)) {
       assertFalse("a".repeat(max - 1).exceeds(max))
       assertFalse("a".repeat(max).exceeds(max))
       assertTrue("a".repeat(max + 1).exceeds(max))

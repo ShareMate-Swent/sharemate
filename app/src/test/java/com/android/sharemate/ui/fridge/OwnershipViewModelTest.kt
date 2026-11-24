@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.MemberNameRepository
@@ -197,23 +199,29 @@ class OwnershipViewModelTest {
                 "Zucchini",
                 "bob",
                 "home",
-                category = "Veg",
+                category = ItemCategory.VEGETABLES,
                 expirationDate = Date(1),
                 sharing = ItemSharing.SHARED),
-            Item("a", "Apple", "alice", "home", category = "Fruit", expirationDate = Date(2)),
+            Item(
+                "a",
+                "Apple",
+                "alice",
+                "home",
+                category = ItemCategory.FRUITS,
+                expirationDate = Date(2)),
             Item(
                 "b",
                 "Banana",
                 "bob",
                 "home",
-                category = "Fruit",
+                category = ItemCategory.FRUITS,
                 expirationDate = Date(3),
                 sharing = ItemSharing.SHARED)))
     val vm = vm()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
     runCurrent()
     assertEquals(listOf("z", "a", "b"), vm.visibleItems.value.map { it.id })
-    vm.setCategoryFilter("Fruit")
+    vm.setCategoryFilter(ItemCategory.FRUITS)
     vm.setOwnerFilter("bob")
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
@@ -222,7 +230,7 @@ class OwnershipViewModelTest {
     runCurrent()
     assertEquals(listOf("b"), vm.visibleItems.value.map { it.id })
     assertEquals("bob", vm.selectedOwnerId.value)
-    assertEquals("Fruit", vm.selectedCategory.value)
+    assertEquals(ItemCategory.FRUITS, vm.selectedCategory.value)
     assertEquals(FridgeSortOrder.NAME, vm.sortOrder.value)
   }
 

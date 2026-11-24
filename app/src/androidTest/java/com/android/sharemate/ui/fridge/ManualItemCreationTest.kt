@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -33,6 +34,7 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -166,10 +168,8 @@ class ManualItemCreationTest {
         .onNodeWithTag(C.Tag.fridge_name_input)
         .performScrollTo()
         .performTextInput("Milk")
-    composeTestRule
-        .onNodeWithTag(C.Tag.fridge_category_input)
-        .performScrollTo()
-        .performTextInput("Dairy")
+    composeTestRule.onNodeWithTag(C.Tag.fridge_category_input).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(C.Tag.fridgeCategoryOption(ItemCategory.DAIRY)).performClick()
     composeTestRule
         .onNodeWithTag(C.Tag.fridge_expiration_input)
         .performScrollTo()
@@ -211,7 +211,7 @@ class ManualItemCreationTest {
               ownerId = "test-user",
               householdId = "test-household",
               expirationDate = storedExpirationDate,
-              category = "Dairy")
+              category = ItemCategory.DAIRY)
       assertEquals(listOf(expected), repository.submissions)
       assertEquals(listOf(expected.copy(id = "test-item-1")), viewModel.uiState.value.items)
     }

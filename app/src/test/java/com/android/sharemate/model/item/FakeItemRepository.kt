@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import kotlinx.coroutines.CompletableDeferred
@@ -128,7 +129,7 @@ class FakeItemRepository : ItemRepository {
       it.copy(
           name = edit.name.trim(),
           quantity = edit.quantity,
-          category = edit.category,
+          category = if (edit.updatesCategory) edit.category else it.category,
           expirationDate = edit.expirationDate,
           sharing = edit.sharing ?: it.sharing)
     }

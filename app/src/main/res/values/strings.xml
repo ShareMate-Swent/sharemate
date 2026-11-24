@@ -26,9 +26,15 @@
     <string name="fridge_card_expired">Expired: %1$s</string>
     <string name="fridge_card_expiring_soon">Expires soon: %1$s</string>
     <string name="fridge_category_all">All</string>
+    <string name="fridge_category_none">No category</string>
     <string name="fridge_category_fruits">Fruits</string>
     <string name="fridge_category_vegetables">Vegetables</string>
-    <string name="fridge_category_canned_goods">Canned goods</string>
+    <string name="fridge_category_dairy">Dairy</string>
+    <string name="fridge_category_meat_fish">Meat &amp; fish</string>
+    <string name="fridge_category_drinks">Drinks</string>
+    <string name="fridge_category_pantry">Pantry</string>
+    <string name="fridge_category_frozen">Frozen</string>
+    <string name="fridge_category_other">Other</string>
     <string name="fridge_sort">Sort</string>
     <string name="fridge_sort_expiration_date">Expiry date</string>
     <string name="fridge_sort_name">Name</string>
@@ -60,7 +66,6 @@
     <string name="fridge_date_format">YYYY-MM-DD</string>
     <string name="fridge_name_required">Enter an item name.</string>
     <string name="fridge_name_too_long">An item name can have at most %1$d characters.</string>
-    <string name="fridge_category_too_long">A category can have at most %1$d characters.</string>
     <string name="text_length_counter">%1$d/%2$d</string>
     <string name="fridge_date_invalid">Enter a valid date in YYYY-MM-DD format.</string>
     <string name="fridge_save_failed">Could not save the item. Please try again.</string>

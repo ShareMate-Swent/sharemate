@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -21,6 +22,7 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -224,7 +226,7 @@ class BarcodeFormFlowTest {
     compose.runOnIdle {
       fridge.updateName("Manual food")
       fridge.updateQuantity("3")
-      fridge.updateCategory("Dairy")
+      fridge.updateCategory(ItemCategory.DAIRY)
     }
   }
 

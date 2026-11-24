@@ -26,6 +26,7 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -121,16 +122,16 @@ class FridgeViewModelTest {
   fun activeViewExcludesHistoryAndPreservesSortingAndCombinedFilters() = runTest {
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    val active = milk.copy(ownerId = "other-member", category = "Dairy")
+    val active = milk.copy(ownerId = "other-member", category = ItemCategory.DAIRY)
     val history =
         listOf(
             active.copy(id = "eaten", status = ItemStatus.EATEN),
             active.copy(id = "discarded", status = ItemStatus.DISCARDED))
-    repository.emitItems(history + bread.copy(category = "Bakery") + active)
+    repository.emitItems(history + bread.copy(category = ItemCategory.PANTRY) + active)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     assertEquals(listOf(bread.id, milk.id), vm.visibleItems.value.map { it.id })
-    vm.setCategoryFilter(" dairy ")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setOwnerFilter("other-member")
     runCurrent()
     assertEquals(listOf(active), vm.visibleItems.value)
@@ -562,7 +563,7 @@ class FridgeViewModelTest {
 
   @Test
   fun editPrefillsAllFieldsAndCancelDiscardsChanges() = runTest {
-    val original = milk.copy(quantity = 3, category = "Dairy", expirationDate = Date(0))
+    val original = milk.copy(quantity = 3, category = ItemCategory.DAIRY, expirationDate = Date(0))
     repository.emitItems(listOf(original))
     val vm = viewModel()
     runCurrent()
@@ -570,7 +571,7 @@ class FridgeViewModelTest {
     assertEquals(milk.id, vm.uiState.value.editingItemId)
     assertEquals("Milk", vm.uiState.value.itemName)
     assertEquals("3", vm.uiState.value.itemQuantity)
-    assertEquals("Dairy", vm.uiState.value.itemCategory)
+    assertEquals(ItemCategory.DAIRY, vm.uiState.value.itemCategory)
     assertEquals("1970-01-01", vm.uiState.value.expirationDateInput)
     vm.updateName("Changed")
     vm.updateQuantity("5")
@@ -621,7 +622,7 @@ class FridgeViewModelTest {
     runCurrent()
     vm.updateName(" Cheese ")
     vm.updateQuantity(" 4 ")
-    vm.updateCategory(" Dairy ")
+    vm.updateCategory(ItemCategory.DAIRY)
     vm.updateExpirationDate("2026-12-31")
     vm.saveItem()
     vm.saveItem()
@@ -632,7 +633,7 @@ class FridgeViewModelTest {
         latest.copy(
             name = "Cheese",
             quantity = 4,
-            category = "Dairy",
+            category = ItemCategory.DAIRY,
             expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 12, 31)))
     assertEquals(listOf(expected, bread), vm.uiState.value.items)
     assertEquals(1, repository.edits.size)
@@ -643,7 +644,7 @@ class FridgeViewModelTest {
 
   @Test
   fun invalidEditInputsNeverSubmitAndOptionalFieldsCanBeCleared() = runTest {
-    repository.emitItems(listOf(milk.copy(category = "Dairy", expirationDate = Date(0))))
+    repository.emitItems(listOf(milk.copy(category = ItemCategory.DAIRY, expirationDate = Date(0))))
     val vm = viewModel()
     runCurrent()
     vm.openEditItemDialog(milk.id)
@@ -662,7 +663,7 @@ class FridgeViewModelTest {
     }
     assertTrue(repository.edits.isEmpty())
     vm.updateQuantity(ItemQuantity.MAX.toString())
-    vm.updateCategory(" ")
+    vm.updateCategory(null)
     vm.saveItem()
     runCurrent()
     assertEquals(milk.copy(quantity = ItemQuantity.MAX), vm.uiState.value.items.single())
@@ -808,10 +809,11 @@ class FridgeViewModelTest {
 
   @Test
   fun editedFieldsImmediatelyReapplyExistingFiltersAndSorting() = runTest {
-    repository.emitItems(listOf(milk.copy(category = "Dairy"), bread.copy(category = "Dairy")))
+    repository.emitItems(
+        listOf(milk.copy(category = ItemCategory.DAIRY), bread.copy(category = ItemCategory.DAIRY)))
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    vm.setCategoryFilter("dairy")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     vm.openEditItemDialog(milk.id)
@@ -820,10 +822,10 @@ class FridgeViewModelTest {
     runCurrent()
     assertEquals(listOf("Apple", "Bread"), vm.visibleItems.value.map { it.name })
     vm.openEditItemDialog(milk.id)
-    vm.updateCategory("Fruit")
+    vm.updateCategory(ItemCategory.FRUITS)
     vm.saveItem()
     runCurrent()
-    assertEquals(listOf(bread.copy(category = "Dairy")), vm.visibleItems.value)
+    assertEquals(listOf(bread.copy(category = ItemCategory.DAIRY)), vm.visibleItems.value)
   }
 
   @Test
@@ -848,14 +850,14 @@ class FridgeViewModelTest {
   @Test
   fun offlineRemovalReappliesFiltersAndSortingWithoutAwaitingConfirmation() = runTest {
     Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-    val apple = milk.copy(id = "apple", name = "Apple", category = "Dairy")
-    val cheese = milk.copy(id = "cheese", name = "Cheese", category = "Dairy")
+    val apple = milk.copy(id = "apple", name = "Apple", category = ItemCategory.DAIRY)
+    val cheese = milk.copy(id = "cheese", name = "Cheese", category = ItemCategory.DAIRY)
     repository.emitItems(listOf(cheese, apple, bread))
     val confirmation = CompletableDeferred<Result<Unit>>()
     repository.deleteConfirmation = confirmation
     val vm = viewModel()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.visibleItems.collect() }
-    vm.setCategoryFilter("Dairy")
+    vm.setCategoryFilter(ItemCategory.DAIRY)
     vm.setSortOrder(FridgeSortOrder.NAME)
     runCurrent()
     vm.requestRemoval(apple.id)
@@ -1809,7 +1811,7 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("  Milk  ")
-    viewModel.updateCategory("  Dairy  ")
+    viewModel.updateCategory(ItemCategory.DAIRY)
     viewModel.updateExpirationDate("  2026-10-12  ")
     viewModel.saveItem()
     runCurrent()
@@ -1820,7 +1822,7 @@ class FridgeViewModelTest {
             ownerId = "test-user",
             householdId = "test-household",
             expirationDate = ExpirationDates.toDate(LocalDate.of(2026, 10, 12)),
-            category = "Dairy")
+            category = ItemCategory.DAIRY)
     assertEquals(listOf(expected), repository.addedItems)
     assertEquals(listOf(expected.copy(id = "item-1")), viewModel.uiState.value.items)
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
@@ -1835,7 +1837,7 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Bread")
-    viewModel.updateCategory(" ")
+    viewModel.updateCategory(null)
     viewModel.updateExpirationDate(" ")
     viewModel.saveItem()
     runCurrent()
@@ -1897,13 +1899,13 @@ class FridgeViewModelTest {
     runCurrent()
     viewModel.openAddItemDialog()
     viewModel.updateName("Milk")
-    viewModel.updateCategory("Dairy")
+    viewModel.updateCategory(ItemCategory.DAIRY)
     viewModel.updateExpirationDate("2026-10-12")
     viewModel.dismissAddItemDialog()
 
     assertFalse(viewModel.uiState.value.isAddItemDialogOpen)
     assertEquals("", viewModel.uiState.value.itemName)
-    assertEquals("", viewModel.uiState.value.itemCategory)
+    assertNull(viewModel.uiState.value.itemCategory)
     assertEquals("", viewModel.uiState.value.expirationDateInput)
     assertTrue(repository.addedItems.isEmpty())
   }
@@ -2114,25 +2116,78 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun categoryFilterIgnoresCaseAndWhitespaceAndCanBeCleared() = runTest {
+  fun itemsWithoutACategoryOnlyShowUnderAllWhileOtherHasItsOwnFilter() = runTest {
     val viewModel = viewModel()
     val collection =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
           viewModel.visibleItems.collect()
         }
-    val milk = item("milk", category = " Dairy ")
-    val apple = item("apple", category = "Fruit")
-    repository.emitItems(listOf(milk, apple))
-    viewModel.setCategoryFilter(" dairy ")
+    val milk = item("milk", category = ItemCategory.DAIRY)
+    val misc = item("misc", category = ItemCategory.OTHER)
+    val plain = item("plain")
+    repository.emitItems(listOf(milk, misc, plain))
+    viewModel.setCategoryFilter(ItemCategory.DAIRY)
     runCurrent()
-
     assertEquals(listOf(milk), viewModel.visibleItems.value)
 
-    viewModel.setCategoryFilter("")
+    viewModel.setCategoryFilter(ItemCategory.OTHER)
+    runCurrent()
+    assertEquals(listOf(misc), viewModel.visibleItems.value)
+
+    viewModel.setCategoryFilter(null)
     runCurrent()
     assertNull(viewModel.selectedCategory.value)
-    assertEquals(listOf(milk, apple), viewModel.visibleItems.value)
+    assertEquals(listOf(milk, misc, plain), viewModel.visibleItems.value)
     collection.cancel()
+  }
+
+  @Test
+  fun addFormDefaultsToNoCategoryAndSavesThePickedOne() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog()
+    assertNull(vm.uiState.value.itemCategory)
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    assertNull(repository.addedItems.single().category)
+
+    vm.openAddItemDialog()
+    assertNull(vm.uiState.value.itemCategory)
+    vm.updateName("Apple")
+    vm.updateCategory(ItemCategory.FRUITS)
+    vm.saveItem()
+    runCurrent()
+    assertEquals(ItemCategory.FRUITS, repository.addedItems.last().category)
+  }
+
+  @Test
+  fun editSavesTheCategoryOnlyWhenTheUserChangesIt() = runTest {
+    repository.emitItems(listOf(milk.copy(category = ItemCategory.OTHER)))
+    val vm = viewModel()
+    runCurrent()
+
+    vm.openEditItemDialog(milk.id)
+    assertEquals(ItemCategory.OTHER, vm.uiState.value.itemCategory)
+    vm.updateName("Oat milk")
+    vm.saveItem()
+    runCurrent()
+    // Untouched, so an older free-text category read as Other is not overwritten.
+    assertFalse(repository.edits.last().second.updatesCategory)
+
+    vm.openEditItemDialog(milk.id)
+    vm.updateCategory(ItemCategory.DAIRY)
+    vm.saveItem()
+    runCurrent()
+    assertTrue(repository.edits.last().second.updatesCategory)
+    assertEquals(ItemCategory.DAIRY, repository.edits.last().second.category)
+
+    vm.openEditItemDialog(milk.id)
+    vm.updateCategory(null)
+    vm.saveItem()
+    runCurrent()
+    assertTrue(repository.edits.last().second.updatesCategory)
+    assertNull(repository.edits.last().second.category)
   }
 
   @Test
@@ -2142,17 +2197,17 @@ class FridgeViewModelTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
           viewModel.visibleItems.collect()
         }
-    val matching = item("matching", category = "Dairy", ownerId = "owner-1")
-    val otherOwner = item("other-owner", category = "Dairy", ownerId = "owner-2")
-    val otherCategory = item("other-category", category = "Fruit", ownerId = "owner-1")
+    val matching = item("matching", category = ItemCategory.DAIRY, ownerId = "owner-1")
+    val otherOwner = item("other-owner", category = ItemCategory.DAIRY, ownerId = "owner-2")
+    val otherCategory = item("other-category", category = ItemCategory.FRUITS, ownerId = "owner-1")
     repository.emitItems(listOf(matching, otherOwner, otherCategory))
-    viewModel.setCategoryFilter("dairy")
+    viewModel.setCategoryFilter(ItemCategory.DAIRY)
     viewModel.setOwnerFilter("owner-1")
     runCurrent()
 
     assertEquals(listOf(matching), viewModel.visibleItems.value)
 
-    val anotherMatch = item("another-match", category = "Dairy", ownerId = "owner-1")
+    val anotherMatch = item("another-match", category = ItemCategory.DAIRY, ownerId = "owner-1")
     repository.emitItems(listOf(matching, otherOwner, otherCategory, anotherMatch))
     runCurrent()
     assertEquals(listOf(matching, anotherMatch), viewModel.visibleItems.value)
@@ -2721,7 +2776,7 @@ private fun item(
     id: String,
     name: String = id,
     expirationDate: Date? = null,
-    category: String? = null,
+    category: ItemCategory? = null,
     ownerId: String = "test-user",
 ) =
     Item(
