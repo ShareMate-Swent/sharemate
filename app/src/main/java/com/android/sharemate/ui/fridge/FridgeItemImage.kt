@@ -35,19 +35,8 @@ import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.isStoredPersonalPhoto
 import com.android.sharemate.resources.C
-import java.io.File
 
 private val ThumbnailSize = 80.dp
-
-internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): ImageRequest =
-    ImageRequest.Builder(context)
-        // Pass paths as files so a Windows drive letter is not interpreted as a URI scheme.
-        .data(File(source).takeIf { it.isAbsolute } ?: source)
-        .size(pixels, pixels)
-        // Wikimedia rejects a generic library User-Agent for thumbnail downloads too.
-        .setHeader(HttpHeaders.USER_AGENT, FoodImageHttp.USER_AGENT)
-        .crossfade(false)
-        .build()
 
 @Composable
 internal fun FridgeItemImage(

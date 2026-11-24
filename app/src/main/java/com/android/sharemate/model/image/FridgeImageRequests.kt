@@ -10,6 +10,7 @@ import coil.request.ImageRequest
 import com.android.sharemate.model.HttpHeaders
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.isStoredPersonalPhoto
+import java.io.File
 import okio.Buffer
 
 internal fun fridgeThumbnailRequest(context: Context, pixels: Int): ImageRequest.Builder =
@@ -33,7 +34,8 @@ internal fun fridgeImageRequest(
     val reference = runCatching { PersonalPhotoReference(source) }.getOrNull() ?: return null
     builder.firebasePhoto(reference, downloadPhoto)
   } else {
-    builder.data(source)
+    // Pass paths as files so a Windows drive letter is not interpreted as a URI scheme.
+    builder.data(File(source).takeIf { it.isAbsolute } ?: source)
   }
   val request = builder.build()
   return session?.withCache(request) ?: request

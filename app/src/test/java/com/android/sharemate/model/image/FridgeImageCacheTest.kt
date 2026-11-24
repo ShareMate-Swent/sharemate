@@ -13,6 +13,9 @@ import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.ImageResult
 import coil.request.SuccessResult
+import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageOrigin
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlin.random.Random
@@ -96,6 +99,16 @@ class FridgeImageCacheTest {
     Dispatchers.resetMain()
     client.connectionPool.evictAll()
     client.dispatcher.executorService.shutdownNow()
+  }
+
+  @Test
+  fun imageRequestsUseFilesForAbsolutePathsAndStringsForWebUrls() {
+    val local = temporary.newFile("milk.png")
+    val item = Item(householdId = "home", image = ItemImage(reference = local.absolutePath))
+    val remoteItem = item.copy(image = ItemImage(ItemImageOrigin.REMOTE_IMAGE, remote))
+
+    assertEquals(local, fridgeImageRequest(context, item, 80, null, null)?.data)
+    assertEquals(remote, fridgeImageRequest(context, remoteItem, 80, null, null)?.data)
   }
 
   @Test
