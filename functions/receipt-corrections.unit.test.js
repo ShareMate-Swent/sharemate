@@ -134,6 +134,24 @@ test("title-only corrections invalidate stale peer edits but identical retries s
   const stale = { ...request, ownerId: "alice", operationId: "peer-edit" };
   await assert.rejects(correctReceipt(db, "bob", stale), { code: "failed-precondition" });
   assert.deepEqual(records, before);
-  await correctReceipt(db, "bob", { ...stale, originalTitle: "New title" });
+  await correctReceipt(db, "bob", { ...stale, originalTitle: "New title", originalRevision: 1 });
   assert.equal(records.get("users/alice/receiptItemLinks/receipt").title, request.title);
+});
+
+
+test("receipt revisions advance once and reject stale revisions even when content matches", async () => {
+  const { db, records, request } = fixture();
+  records.set('users/alice/receiptBackups/receipt', { ownerId: 'alice', householdId: 'home', draft: false });
+  const unchanged = { ...request, title: '', rows: request.originalRows, expense: request.originalExpense, originalRevision: 0 };
+  await correctReceipt(db, 'alice', unchanged);
+  assert.equal(records.get('users/alice/receiptItemLinks/receipt').revision, 1);
+  assert.equal(records.get('users/alice/receiptBackups/receipt').revision, 1);
+  await correctReceipt(db, 'alice', unchanged);
+  assert.equal(records.get('users/alice/receiptBackups/receipt').revision, 1);
+  await assert.rejects(correctReceipt(db, 'alice', { ...unchanged, operationId: 'stale' }), { code: 'failed-precondition' });
+  await correctReceipt(db, 'alice', { ...unchanged, operationId: 'next', originalRevision: 1 });
+  assert.equal(records.get('users/alice/receiptBackups/receipt').revision, 2);
+  for (const originalRevision of [-1, 0.5, Number.MAX_SAFE_INTEGER, '1']) {
+    await assert.rejects(correctReceipt(db, 'alice', { ...unchanged, operationId: 'invalid', originalRevision }), { code: 'invalid-argument' });
+  }
 });
