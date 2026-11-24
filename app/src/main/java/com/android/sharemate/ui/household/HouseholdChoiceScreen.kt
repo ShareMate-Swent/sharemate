@@ -1,9 +1,11 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,17 +13,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Kitchen
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -29,13 +26,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import com.android.sharemate.R
+import com.android.sharemate.ui.components.AppCard
+import com.android.sharemate.ui.components.AppScreenTitle
+import com.android.sharemate.ui.components.AppStepIndicator
 import com.android.sharemate.ui.theme.Dimens
+import com.android.sharemate.ui.theme.ShareMateTheme
 
 /** Test tags used by [HouseholdChoiceScreen]. */
 object HouseholdChoiceTestTags {
@@ -49,52 +49,37 @@ fun HouseholdChoiceScreen(
     onCreateHousehold: () -> Unit,
     onJoinHousehold: () -> Unit,
 ) {
-  Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+  val colors = MaterialTheme.colorScheme
+  val statusColors = ShareMateTheme.statusColors
+  Surface(color = colors.surfaceContainerLow) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(Dimens.spacingL),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier =
+            Modifier.fillMaxSize()
+                .padding(
+                    horizontal = Dimens.screenHorizontalPadding,
+                    vertical = Dimens.screenVerticalPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingM),
     ) {
-      Spacer(Modifier.height(HouseholdLayout.headerTopSpacing))
-      Box(
-          modifier =
-              Modifier.size(HouseholdLayout.logoSize)
-                  .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            imageVector = Icons.Outlined.Kitchen,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(HouseholdLayout.logoIconSize),
-        )
-      }
-      Spacer(Modifier.height(Dimens.spacingM))
-      Text(
-          text = stringResource(R.string.household_choice_title),
-          style = MaterialTheme.typography.headlineMedium,
-          fontWeight = FontWeight.Bold,
-          textAlign = TextAlign.Center,
+      AppStepIndicator(HouseholdLayout.CHOICE_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+      Spacer(Modifier.height(Dimens.spacingS))
+      AppScreenTitle(
+          title = stringResource(R.string.household_choice_title),
+          description = stringResource(R.string.household_choice_description),
       )
-      Spacer(Modifier.height(Dimens.spacingXs))
-      Text(
-          text = stringResource(R.string.household_choice_description),
-          style = MaterialTheme.typography.bodyLarge,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          textAlign = TextAlign.Center,
-          modifier = Modifier.padding(horizontal = Dimens.spacingXl),
-      )
-      Spacer(Modifier.weight(1f))
       ChoiceCard(
           icon = Icons.Outlined.Home,
+          iconBackground = colors.primaryContainer,
+          iconTint = statusColors.fresh.content,
           title = stringResource(R.string.create_a_household),
           description = stringResource(R.string.create_a_household_description),
           emphasized = true,
           onClick = onCreateHousehold,
           modifier = Modifier.testTag(HouseholdChoiceTestTags.CREATE),
       )
-      Spacer(Modifier.height(Dimens.spacingM))
       ChoiceCard(
           icon = Icons.Outlined.Key,
+          iconBackground = statusColors.shared.container,
+          iconTint = statusColors.shared.content,
           title = stringResource(R.string.join_a_household),
           description = stringResource(R.string.join_a_household_description),
           emphasized = false,
@@ -102,19 +87,17 @@ fun HouseholdChoiceScreen(
           modifier = Modifier.testTag(HouseholdChoiceTestTags.JOIN),
       )
       Spacer(Modifier.weight(1f))
-      Text(
-          text = stringResource(R.string.household_privacy_note),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          textAlign = TextAlign.Center,
-      )
+      PrivacyNote()
     }
   }
 }
 
+/** One option of the choice screen; the [emphasized] one is outlined in the primary color. */
 @Composable
 private fun ChoiceCard(
     icon: ImageVector,
+    iconBackground: Color,
+    iconTint: Color,
     title: String,
     description: String,
     emphasized: Boolean,
@@ -125,56 +108,52 @@ private fun ChoiceCard(
   Surface(
       onClick = onClick,
       modifier = modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(HouseholdLayout.cardCornerRadius),
-      color = colors.surfaceContainerLowest,
-      border = BorderStroke(Dimens.borderWidth, colors.primaryContainer),
-      shadowElevation = Dimens.cardElevation,
+      shape = MaterialTheme.shapes.large,
+      color = colors.surface,
+      border = if (emphasized) BorderStroke(Dimens.focusedBorderWidth, colors.primary) else null,
   ) {
-    Row(
-        modifier =
-            Modifier.heightIn(min = HouseholdLayout.choiceCardMinHeight)
-                .padding(Dimens.cardPadding),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier = Modifier.padding(Dimens.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
     ) {
       Box(
           modifier =
               Modifier.size(HouseholdLayout.choiceIconBoxSize)
-                  .background(
-                      if (emphasized) colors.primaryContainer else colors.surfaceVariant,
-                      RoundedCornerShape(HouseholdLayout.choiceIconBoxCornerRadius)),
+                  .background(iconBackground, MaterialTheme.shapes.small),
           contentAlignment = Alignment.Center,
       ) {
-        Icon(imageVector = icon, contentDescription = null, tint = colors.primary)
+        Icon(imageVector = icon, contentDescription = null, tint = iconTint)
       }
-      Spacer(Modifier.width(Dimens.spacingM))
-      Column(modifier = Modifier.weight(1f)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(Dimens.spacingXxs))
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
-        )
-      }
-      Spacer(Modifier.width(Dimens.spacingS))
-      Box(
-          modifier =
-              Modifier.size(HouseholdLayout.choiceArrowBoxSize)
-                  .background(
-                      if (emphasized) colors.primary else colors.surfaceVariant, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            imageVector = Icons.Filled.ChevronRight,
-            contentDescription = null,
-            tint = if (emphasized) colors.onPrimary else colors.primary,
-            modifier = Modifier.size(HouseholdLayout.choiceArrowIconSize),
-        )
-      }
+      Text(text = title, style = MaterialTheme.typography.titleLarge)
+      Text(
+          text = description,
+          style = MaterialTheme.typography.bodyMedium,
+          color = colors.onSurfaceVariant,
+      )
+    }
+  }
+}
+
+/** The reassurance at the bottom of the choice screen: a lock and the privacy sentence. */
+@Composable
+private fun PrivacyNote() {
+  AppCard {
+    Row(
+        modifier = Modifier.padding(vertical = Dimens.spacingS),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Icon(
+          imageVector = Icons.Outlined.Lock,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.size(Dimens.iconSmall),
+      )
+      Text(
+          text = stringResource(R.string.household_privacy_note),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
     }
   }
 }

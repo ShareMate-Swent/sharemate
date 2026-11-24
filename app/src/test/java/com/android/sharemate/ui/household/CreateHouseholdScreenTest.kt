@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -239,6 +240,28 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).assertIsEnabled()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsEnabled()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsEnabled()
+  }
+
+  @Test
+  fun readyViewShowsTheSecondStepAndTheHouseholdNameOnTheCode() {
+    val viewModel = createViewModel()
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+    val activity = composeTestRule.activity
+    composeTestRule
+        .onNodeWithContentDescription(
+            activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.READY_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.household_invite_code_label, "Kitchen"))
+        .assertIsDisplayed()
   }
 
   @Test

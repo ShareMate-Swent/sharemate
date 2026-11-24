@@ -37,4 +37,14 @@ internal object ComponentLayout {
   val navIconSize = 22.dp
   /** Size of the central add button. */
   val navAddSize = 48.dp
+  /** Visible size of the round back button. */
+  val backButtonSize = 44.dp
+  /** Size of the arrow inside the round back button. */
+  val backIconSize = 22.dp
+  /** Elevation of the round back button. */
+  val backButtonElevation = 1.dp
+  /** Height of one segment of a step indicator. */
+  val stepHeight = 4.dp
+  /** Space between the segments of a step indicator. */
+  val stepSpacing = 6.dp
 }

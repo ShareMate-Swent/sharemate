@@ -1,36 +1,35 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.compose.ui.unit.dp
 
 /** Sizes used only by the household screens. Shared sizes live in `Dimens`. */
 internal object HouseholdLayout {
-  val cardCornerRadius = 28.dp
-  val headerTopSpacing = 40.dp
-  val logoSize = 44.dp
-  val logoIconSize = 22.dp
+  /** Number of steps of the onboarding flow shown by the step indicator. */
+  const val ONBOARDING_STEP_COUNT = 3
+
+  /** Onboarding step of the household choice screen. */
+  const val CHOICE_STEP = 1
+
+  /** Onboarding step of the "household ready" view. */
+  const val READY_STEP = 2
 
   // Choice cards on the household choice screen.
-  val choiceCardMinHeight = 156.dp
-  val choiceIconBoxSize = 56.dp
-  val choiceIconBoxCornerRadius = 16.dp
-  val choiceArrowBoxSize = 36.dp
-  val choiceArrowIconSize = 20.dp
+  val choiceIconBoxSize = 52.dp
 
   // Invite code cells on the join screen.
   val codeCellWidth = 48.dp
   val codeCellHeight = 58.dp
-  val codeCellCornerRadius = 12.dp
 
   // "Household ready" view after creating a household.
-  val readyBadgeSize = 96.dp
-  val readyBadgeElevation = 8.dp
-  val readyBadgeIconSize = 48.dp
-  val readyCardVerticalPadding = 20.dp
+  val readyBadgeSize = 88.dp
+  val readyBadgeIconSize = 40.dp
+  val inviteCharWidth = 40.dp
+  val inviteCharHeight = 46.dp
 
   // Rows of the members list.
-  const val memberNameMaxLines = 1
-  val memberAvatarSize = 40.dp
+  val memberAvatarSize = 44.dp
   val memberAvatarIconSize = 24.dp
 }

@@ -81,8 +81,12 @@
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
     <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
-    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="household_privacy_note">Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="copy_invite_code_action">Copy</string>
+    <string name="household_invite_code_label">%1$s · invite code</string>
+    <string name="household_members_title_with_count">Members (%1$d)</string>
+    <string name="step_indicator_description">Step %1$d of %2$d</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
     <string name="notification_channel_chat_name">Household chat</string>

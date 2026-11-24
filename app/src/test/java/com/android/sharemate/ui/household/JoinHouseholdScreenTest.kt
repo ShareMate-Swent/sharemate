@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.width
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
@@ -150,6 +152,23 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.ERROR).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(JoinHouseholdTestTags.ERROR)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.invalid_invite_code))
+  }
+
+  @Test
+  fun otherFailuresShowTheGenericError() {
+    val viewModel = joinViewModel(TestHouseholdRepository(IllegalStateException("offline")))
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(viewModel, onJoined = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABCDEF")
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule
+        .onNodeWithTag(JoinHouseholdTestTags.ERROR)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.household_generic_error))
   }
 
   private fun showFullCodeAndMeasureBoxes(): List<DpRect> {

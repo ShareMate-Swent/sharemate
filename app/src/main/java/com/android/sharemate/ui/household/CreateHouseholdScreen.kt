@@ -4,10 +4,8 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
-import android.content.Intent
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -20,46 +18,38 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.TextLengthCounter
+import com.android.sharemate.ui.components.AppBackButton
+import com.android.sharemate.ui.components.AppPrimaryButton
+import com.android.sharemate.ui.components.AppScreenTitle
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [CreateHouseholdScreen]. */
@@ -83,7 +73,7 @@ fun CreateHouseholdScreen(
     onContinue: () -> Unit,
     onBack: () -> Unit,
 ) {
-  val state = viewModel.state.collectAsState().value
+  val state = viewModel.state.collectAsStateWithLifecycle().value
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
     Column(
         modifier =
@@ -104,7 +94,7 @@ fun CreateHouseholdScreen(
           }
         }
       } else {
-        HouseholdReady(state.inviteCode, state.type, onContinue)
+        HouseholdReady(state.name, state.inviteCode, state.type, onContinue)
       }
     }
   }
@@ -141,220 +131,129 @@ private fun ColumnScope.CreateHouseholdForm(
     viewModel: CreateHouseholdViewModel,
     onBack: () -> Unit,
 ) {
-  HouseholdTopBar(
+  val editable = !state.isLoading && !state.hasCreationOperation
+  AppBackButton(onBack = onBack, testTag = CreateHouseholdTestTags.BACK)
+  Spacer(Modifier.height(Dimens.spacingL))
+  AppScreenTitle(
       title = stringResource(R.string.create_household_title),
-      onBack = onBack,
-      backTestTag = CreateHouseholdTestTags.BACK,
+      description = stringResource(R.string.create_household_description),
   )
+  Spacer(Modifier.height(Dimens.spacingL))
+  HouseholdNameField(state, editable, viewModel::updateName)
   Spacer(Modifier.height(Dimens.spacingM))
-  Text(
-      text = stringResource(R.string.create_household_description),
-      style = MaterialTheme.typography.bodyLarge,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
+  Text(stringResource(R.string.fridge_type), style = MaterialTheme.typography.labelMedium)
+  Spacer(Modifier.height(Dimens.spacingXs))
+  Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+    FridgeTypeOption(FridgeType.SHARED, state.type, editable, viewModel::updateType)
+    FridgeTypeOption(FridgeType.PRIVATE, state.type, editable, viewModel::updateType)
+  }
+  state.error?.let { CreateErrorBanner(state.hasCreationOperation) }
+  Spacer(Modifier.weight(1f))
+  AppPrimaryButton(
+      text = stringResource(R.string.create_household),
+      onClick = viewModel::createHousehold,
+      enabled = state.name.isNotBlank(),
+      loading = state.isLoading,
+      loadingTestTag = CreateHouseholdTestTags.LOADING,
+      modifier = Modifier.testTag(CreateHouseholdTestTags.CREATE),
   )
-  Spacer(Modifier.height(Dimens.spacingM))
+}
+
+/** The household name input, with its label above the field and a length counter below. */
+@Composable
+private fun HouseholdNameField(
+    state: CreateHouseholdUiState,
+    enabled: Boolean,
+    onNameChange: (String) -> Unit,
+) {
+  val colors = MaterialTheme.colorScheme
+  Text(stringResource(R.string.household_name), style = MaterialTheme.typography.labelMedium)
+  Spacer(Modifier.height(Dimens.spacingXs))
   OutlinedTextField(
       value = state.name,
-      onValueChange = viewModel::updateName,
-      label = { Text(stringResource(R.string.household_name)) },
+      onValueChange = onNameChange,
       placeholder = { Text(stringResource(R.string.household_name_placeholder)) },
       supportingText = { TextLengthCounter(state.name, TextLimits.HOUSEHOLD_NAME) },
       modifier = Modifier.fillMaxWidth().testTag(CreateHouseholdTestTags.NAME),
-      enabled = !state.isLoading && !state.hasCreationOperation,
+      enabled = enabled,
       singleLine = true,
+      shape = MaterialTheme.shapes.medium,
+      colors =
+          OutlinedTextFieldDefaults.colors(
+              focusedContainerColor = colors.surface,
+              unfocusedContainerColor = colors.surface,
+              focusedBorderColor = colors.primary,
+              unfocusedBorderColor = colors.outlineVariant,
+          ),
   )
+}
+
+/** The creation error banner, with the hint to go back when a creation request is pending. */
+@Composable
+private fun CreateErrorBanner(hasCreationOperation: Boolean) {
   Spacer(Modifier.height(Dimens.spacingM))
-  Text(stringResource(R.string.fridge_type), style = MaterialTheme.typography.titleSmall)
-  Column(Modifier.selectableGroup()) {
-    FridgeTypeOption(FridgeType.SHARED, state, viewModel::updateType)
-    FridgeTypeOption(FridgeType.PRIVATE, state, viewModel::updateType)
-  }
-  state.error?.let {
+  HouseholdErrorBanner(
+      message = stringResource(R.string.household_generic_error),
+      testTag = CreateHouseholdTestTags.ERROR,
+  )
+  if (hasCreationOperation) {
     Spacer(Modifier.height(Dimens.spacingXs))
     Text(
-        text = stringResource(R.string.household_generic_error),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.testTag(CreateHouseholdTestTags.ERROR),
+        text = stringResource(R.string.create_household_change_request_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    if (state.hasCreationOperation) {
-      Text(
-          text = stringResource(R.string.create_household_change_request_hint),
-          style = MaterialTheme.typography.bodySmall)
-    }
-  }
-  Spacer(Modifier.weight(1f))
-  Button(
-      onClick = viewModel::createHousehold,
-      enabled = state.name.isNotBlank() && !state.isLoading,
-      modifier = Modifier.fillMaxWidth().testTag(CreateHouseholdTestTags.CREATE),
-  ) {
-    if (state.isLoading) {
-      CircularProgressIndicator(
-          modifier = Modifier.size(Dimens.progressSize).testTag(CreateHouseholdTestTags.LOADING),
-          color = MaterialTheme.colorScheme.onPrimary,
-          strokeWidth = Dimens.progressStrokeWidth,
-      )
-    } else {
-      Text(stringResource(R.string.create_household))
-    }
   }
 }
 
+/** A selectable card for one fridge type; the selected one is outlined in the primary color. */
 @Composable
 private fun FridgeTypeOption(
     type: FridgeType,
-    state: CreateHouseholdUiState,
+    selectedType: FridgeType,
+    enabled: Boolean,
     onSelect: (FridgeType) -> Unit,
 ) {
   val isPrivate = type == FridgeType.PRIVATE
-  val selected = state.type == type
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .testTag(
-                  if (isPrivate) CreateHouseholdTestTags.TYPE_PRIVATE
-                  else CreateHouseholdTestTags.TYPE_SHARED)
-              .selectable(
-                  selected = selected,
-                  enabled = !state.isLoading && !state.hasCreationOperation,
-                  role = Role.RadioButton,
-                  onClick = { onSelect(type) },
-              )
-              .padding(vertical = Dimens.spacingXs),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    RadioButton(
-        selected = selected,
-        onClick = null,
-        enabled = !state.isLoading && !state.hasCreationOperation)
-    Spacer(Modifier.width(Dimens.spacingS))
-    Column {
-      Text(
-          stringResource(
-              if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared))
-      Text(
-          stringResource(
-              if (isPrivate) R.string.fridge_type_private_description
-              else R.string.fridge_type_shared_description),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-  }
-}
-
-@Composable
-private fun ColumnScope.HouseholdReady(
-    inviteCode: String,
-    type: FridgeType,
-    onContinue: () -> Unit,
-) {
-  val isPrivate = type == FridgeType.PRIVATE
+  val selected = selectedType == type
   val colors = MaterialTheme.colorScheme
-  val context = LocalContext.current
-  Spacer(Modifier.height(Dimens.spacingXxl))
-  Box(
-      modifier =
-          Modifier.align(Alignment.CenterHorizontally)
-              .size(HouseholdLayout.readyBadgeSize)
-              .shadow(HouseholdLayout.readyBadgeElevation, CircleShape)
-              .background(colors.primary, CircleShape),
-      contentAlignment = Alignment.Center,
+  Surface(
+      shape = MaterialTheme.shapes.medium,
+      color = colors.surface,
+      border = if (selected) BorderStroke(Dimens.focusedBorderWidth, colors.primary) else null,
+      modifier = Modifier.fillMaxWidth(),
   ) {
-    Icon(
-        imageVector = Icons.Filled.Check,
-        contentDescription = null,
-        tint = colors.onPrimary,
-        modifier = Modifier.size(HouseholdLayout.readyBadgeIconSize),
-    )
-  }
-  Spacer(Modifier.height(Dimens.spacingL))
-  Text(
-      text =
-          stringResource(
-              if (isPrivate) R.string.private_fridge_ready_title
-              else R.string.household_ready_title),
-      style = MaterialTheme.typography.headlineMedium,
-      fontWeight = FontWeight.Bold,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth(),
-  )
-  Spacer(Modifier.height(Dimens.spacingS))
-  Text(
-      text =
-          stringResource(
-              if (isPrivate) R.string.private_fridge_ready_description
-              else R.string.household_ready_description),
-      style = MaterialTheme.typography.bodyLarge,
-      color = colors.onSurfaceVariant,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.screenHorizontalPadding),
-  )
-  Spacer(Modifier.height(Dimens.spacingS))
-  Text(
-      text =
-          stringResource(
-              if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared),
-      style = MaterialTheme.typography.labelLarge,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth(),
-  )
-  Spacer(Modifier.weight(1f))
-  if (!isPrivate) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(HouseholdLayout.cardCornerRadius),
-        color = colors.surfaceContainerLowest,
-        border = BorderStroke(Dimens.borderWidth, colors.primaryContainer),
-        shadowElevation = Dimens.cardElevation,
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .testTag(
+                    if (isPrivate) CreateHouseholdTestTags.TYPE_PRIVATE
+                    else CreateHouseholdTestTags.TYPE_SHARED)
+                .selectable(
+                    selected = selected,
+                    enabled = enabled,
+                    role = Role.RadioButton,
+                    onClick = { onSelect(type) },
+                )
+                .padding(Dimens.cardPadding),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingS),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-      Column(
-          modifier =
-              Modifier.padding(
-                  horizontal = Dimens.spacingL,
-                  vertical = HouseholdLayout.readyCardVerticalPadding),
-          horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
+      RadioButton(selected = selected, onClick = null, enabled = enabled)
+      Column {
         Text(
-            text = stringResource(R.string.household_invite_code),
-            style = MaterialTheme.typography.labelLarge,
+            stringResource(
+                if (isPrivate) R.string.fridge_type_private else R.string.fridge_type_shared),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(
+                if (isPrivate) R.string.fridge_type_private_description
+                else R.string.fridge_type_shared_description),
+            style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
         )
-        Spacer(Modifier.height(Dimens.spacingXs))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-              text = inviteCode,
-              style = MaterialTheme.typography.headlineLarge,
-              fontWeight = FontWeight.Bold,
-              color = colors.onPrimaryContainer,
-          )
-          Spacer(Modifier.width(Dimens.spacingXs))
-          CopyInviteCodeButton(
-              inviteCode = inviteCode,
-              modifier = Modifier.testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),
-          )
-        }
-        TextButton(
-            onClick = {
-              val send =
-                  Intent(Intent.ACTION_SEND)
-                      .setType("text/plain")
-                      .putExtra(Intent.EXTRA_TEXT, inviteCode)
-              context.startActivity(Intent.createChooser(send, null))
-            },
-            modifier = Modifier.testTag(CreateHouseholdTestTags.SHARE_INVITE_CODE),
-        ) {
-          Text(stringResource(R.string.share_invite_code))
-        }
       }
     }
-  }
-  Spacer(Modifier.weight(1f))
-  Button(
-      onClick = onContinue,
-      modifier = Modifier.fillMaxWidth().testTag(CreateHouseholdTestTags.CONTINUE),
-  ) {
-    Text(stringResource(R.string.go_to_my_fridge))
   }
 }
