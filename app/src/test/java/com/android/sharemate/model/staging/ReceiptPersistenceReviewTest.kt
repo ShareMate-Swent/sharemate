@@ -63,7 +63,8 @@ class ReceiptPersistenceReviewTest {
   @Test
   fun editArrivingInsideAcknowledgementWaitsAndKeepsItsJournal() = runTest {
     val dispatcher = UnconfinedTestDispatcher(testScheduler)
-    val prefs = spy(context.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE))
+    val real = context.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val prefs = spy(object : android.content.SharedPreferences by real {})
     val wrapped = mock(Context::class.java)
     `when`(wrapped.applicationContext).thenReturn(wrapped)
     `when`(wrapped.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE))
@@ -216,6 +217,146 @@ class ReceiptPersistenceReviewTest {
     restarted.applyCloudDeletions("alice", "home", setOf(original.id))
     assertNull(restarted.recoverInventory("alice", "home", original.id, enqueue))
     assertEquals(listOf(original), enqueued)
+  }
+
+  @Test
+  fun recoverySkipsMissingDraftConfirmedAndCorrectionPendingReceipts() = runTest {
+    val store = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
+    val row = priced(entry().submission)
+    val enqueue: (InventorySubmission) -> com.android.sharemate.model.item.ItemWrite = {
+      error("Must not enqueue")
+    }
+    assertNull(store.recoverInventory("alice", "home", row.id, enqueue))
+    store.save(InventorySubmission(row.id, "alice", "home", row.items, draft = true))
+    assertNull(store.recoverInventory("alice", "home", row.id, enqueue))
+    store.save(row.withProgress(true))
+    assertNull(store.recoverInventory("alice", "home", row.id, enqueue))
+    store.save(row)
+    store.saveCorrection(ReceiptCorrection("pending", row, row, "Pending"))
+    assertNull(store.recoverInventory("alice", "home", row.id, enqueue))
+    assertEquals(row, store.loadById("alice", "home", row.id))
+  }
+
+  @Test
+  fun expenseAcknowledgementCannotReviveMissingRowsOrBypassAnEdit() = runTest {
+    val store = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
+    val row = priced(entry().submission)
+    val expense = row.expense!!
+    store.acknowledgeExpense("alice", "home", row.id, expense)
+    assertNull(store.loadById("alice", "home", row.id))
+    store.save(row)
+    val other =
+        com.android.sharemate.model.finance.SharedExpense(
+            expense.id, expense.householdId, "bob", expense.totalAmountCents, expense.shares)
+    store.acknowledgeExpense("alice", "home", row.id, other)
+    assertEquals(row, store.loadById("alice", "home", row.id))
+    val correction = ReceiptCorrection("pending", row, priced(row, "New name"), "New title")
+    store.saveCorrection(correction)
+    store.acknowledgeExpense("alice", "home", row.id, expense)
+    assertEquals(row, store.loadById("alice", "home", row.id))
+    assertEquals(correction, store.pendingCorrection("alice", "home", row.id))
+    store.deleteReceipt("alice", "home", row.id)
+    store.acknowledgeExpense("alice", "home", row.id, expense)
+    assertNull(store.loadById("alice", "home", row.id))
+  }
+
+  @Test
+  fun sharedCacheProtectsPendingEditsAndRejectsMismatchedMetadata() = runTest {
+    val store =
+        AndroidInventorySubmissionStore(
+            context, StandardTestDispatcher(testScheduler), viewerId = "bob")
+    val original = entry()
+    store.cacheShared("bob", "home", listOf(original))
+    val correction =
+        ReceiptCorrection("pending", original.submission, priced(original.submission), "Edited")
+    store.saveCorrection(correction)
+    store.cacheShared(
+        "bob",
+        "home",
+        listOf(original.copy(details = original.details.copy(title = "Delayed", revision = 2))))
+    assertEquals(original.details, store.details("alice", "home", original.submission.id))
+    assertEquals(correction, store.pendingCorrection("alice", "home", original.submission.id))
+    store.clearCorrection("alice", "home", original.submission.id)
+    for (details in
+        listOf(
+            original.details.copy(id = UUID.randomUUID().toString()),
+            original.details.copy(ownerId = "mallory"),
+            original.details.copy(householdId = "elsewhere"))) {
+      assertTrue(
+          runCatching { store.cacheShared("bob", "home", listOf(original.copy(details = details))) }
+              .isFailure)
+      assertEquals(original.details, store.details("alice", "home", original.submission.id))
+    }
+    for (version in listOf(-1L, Long.MAX_VALUE)) {
+      assertTrue(runCatching { correction.copy(originalRevision = version) }.isFailure)
+    }
+  }
+
+  @Test
+  fun deletionPurgesLegacySlotsWithoutRemovingAnotherActiveReceiptOrHousehold() = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(context, dispatcher)
+    val legacy = AndroidInventorySubmissionStore(context, dispatcher, legacyActive = true)
+    val deleted = entry().submission
+    val active = entry().submission
+    val elsewhere =
+        InventorySubmission(UUID.randomUUID().toString(), "alice", "other", active.items)
+    store.save(deleted)
+    legacy.save(active)
+    store.save(elsewhere)
+    val prefs = context.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    prefs.edit().putString("unscoped", "keep").putString("unfinished:[", "keep").commit()
+    store.deleteReceipt("alice", "home", deleted.id)
+    assertEquals(active, legacy.load("alice", "home"))
+    assertEquals(elsewhere, store.loadById("alice", "other", elsewhere.id))
+    store.deleteReceipt("alice", "home", active.id)
+    assertNull(legacy.load("alice", "home"))
+    assertEquals("keep", prefs.getString("unscoped", null))
+    assertEquals("keep", prefs.getString("unfinished:[", null))
+  }
+
+  @Test
+  fun failedDiskCommitsAreReportedWithoutLosingTheReceiptOrCorrection() = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val real = context.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val prefs = spy(object : android.content.SharedPreferences by real {})
+    val wrapped = mock(Context::class.java)
+    `when`(wrapped.applicationContext).thenReturn(wrapped)
+    `when`(wrapped.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE))
+        .thenReturn(prefs)
+    val store = AndroidInventorySubmissionStore(wrapped, dispatcher)
+    val row = priced(entry().submission)
+    val pending = priced(entry().submission)
+    store.save(row)
+    store.save(pending)
+    val metadata = ReceiptDetails(row.id, "alice", "home", "", 1)
+    store.saveDetails(metadata)
+    val correction = ReceiptCorrection("edit", pending, pending, "Edited")
+    store.saveCorrection(correction)
+    doAnswer { mock(android.content.SharedPreferences.Editor::class.java, RETURNS_SELF) }
+        .`when`(prefs)
+        .edit()
+    val writes =
+        listOf<suspend () -> Unit>(
+            { store.save(row) },
+            { AndroidInventorySubmissionStore(wrapped, dispatcher, legacyActive = true).save(row) },
+            { store.saveDetails(metadata.copy(title = "New")) },
+            { store.saveCorrection(correction.copy(operationId = "new")) },
+            { store.clearCorrection("alice", "home", pending.id) },
+            { store.acknowledgeCorrection(correction) },
+            { store.acknowledgeExpense("alice", "home", row.id, row.expense!!) },
+            { store.deleteReceipt("alice", "home", row.id) },
+            { store.cacheShared("bob", "home", listOf(ReceiptCloudEntry(row, metadata))) },
+            { store.cacheShared("bob", "home", emptyList()) })
+    writes.forEachIndexed { index, write ->
+      val failure = runCatching { write() }.exceptionOrNull()
+      assertTrue(
+          "Write $index must report a disk failure, got $failure", failure is IllegalStateException)
+    }
+    assertEquals(row, store.loadById("alice", "home", row.id))
+    assertEquals(metadata, store.details("alice", "home", row.id))
+    assertEquals(correction, store.pendingCorrection("alice", "home", pending.id))
+    assertFalse(store.isDeleted("alice", "home", row.id))
   }
 
   private fun priced(original: InventorySubmission, name: String = "Milk") =
