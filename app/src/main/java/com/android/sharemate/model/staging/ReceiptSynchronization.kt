@@ -5,7 +5,7 @@ import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.item.*
 import kotlinx.coroutines.flow.first
 
-/** Resumes journaled work without replaying inventory inserts or changing receipt ownership. */
+/** Resumes journaled work using stable inventory identities without changing receipt ownership. */
 internal class ReceiptSynchronization(
     private val store: InventorySubmissionStore,
     private val items: ItemRepository,
@@ -36,21 +36,20 @@ internal class ReceiptSynchronization(
       upload(receipt)
       return true
     }
-    // Firestore's durable batch queue owns inventory delivery; never insert it a second time.
     val status = items.observeSubmission(receipt).first { it != InventorySubmissionStatus.PENDING }
-    // A server-confirmed absence for an already finished receipt is terminal (for example a
-    // removed receipt or a local demo). Never retry it forever or recreate its financial data.
-    if (status == InventorySubmissionStatus.MISSING)
-        return receipt.expenseProgress == ExpenseProgress.CONFIRMED
+    if (status == InventorySubmissionStatus.MISSING) {
+      if (receipt.inventoryConfirmed || receipt.expenseProgress == ExpenseProgress.CONFIRMED)
+          return true
+      val write = store.recoverInventory(owner, home, id, items::addItems) ?: return true
+      when (write) {
+        is ItemWrite.Rejected -> throw write.cause
+        is ItemWrite.Queued -> write.confirmation.await().getOrThrow()
+      }
+    }
     val expense = receipt.expense ?: return true
     if (receipt.expenseProgress != ExpenseProgress.CONFIRMED) {
       expenses.recordExpense(expense)
-      val latest = store.loadById(owner, home, id)
-      if (latest != null &&
-          latest.expense == expense &&
-          store.pendingCorrection(owner, home, id) == null) {
-        store.save(latest.withProgress(true, ExpenseProgress.CONFIRMED))
-      }
+      store.acknowledgeExpense(owner, home, id, expense)
     }
     store.loadById(owner, home, id)?.let { upload(it) }
     return true

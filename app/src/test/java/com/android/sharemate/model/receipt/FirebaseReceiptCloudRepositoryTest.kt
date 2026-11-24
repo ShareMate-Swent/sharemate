@@ -109,7 +109,7 @@ class FirebaseReceiptCloudRepositoryTest {
 
   @Test
   fun uploadWaitsForExpenseAndNeverOverwritesSavedContent() = runTest {
-    val details = ReceiptDetails(id, "owner", "home", "", 5, title = "Groceries")
+    val details = ReceiptDetails(id, "owner", "home", "", 5, title = "Groceries", revision = 3)
     repository.upload(ReceiptCloudEntry(receipt(false), details))
     verifyNoInteractions(tx)
     for ((exists, draft) in listOf(false to null, true to true, true to false, true to null)) {
@@ -123,6 +123,7 @@ class FirebaseReceiptCloudRepositoryTest {
                   eq(ref),
                   argThat<Map<String, Any?>> {
                     it["title"] == "Groceries" &&
+                        it["revision"] == 3L &&
                         it["ownerId"] == "owner" &&
                         it["photoReady"] == false
                   })
@@ -184,6 +185,7 @@ class FirebaseReceiptCloudRepositoryTest {
     val saved = document(receipt(false, "peer"))
     `when`(saved.getLong("scannedAtMillis")).thenReturn(42L)
     `when`(saved.getString("title")).thenReturn("Peer groceries")
+    `when`(saved.getLong("revision")).thenReturn(7L)
     `when`(saved.get("draftParticipants")).thenReturn(listOf("owner", 12))
     emit(0, listOf(saved))
     emit(1, listOf(document(receipt())))
@@ -191,6 +193,8 @@ class FirebaseReceiptCloudRepositoryTest {
     assertEquals(2, events.last().size)
     assertEquals(setOf("owner"), events.last().first().details.draftParticipants)
     assertEquals(42L, events.last().first().details.savedAtMillis)
+    assertEquals(7L, events.last().first().details.revision)
+    assertEquals(0L, events.last().last().details.revision)
     assertNull(events.last().last().details.savedAtMillis)
     job.cancelAndJoin()
     verify(registration, times(2)).remove()

@@ -49,6 +49,7 @@ class FirebaseReceiptCloudRepository(
             "draft" to receipt.draft,
             "submission" to codec.encode(receipt).toString(),
             "title" to details.title,
+            "revision" to details.revision,
             "scannedAtMillis" to details.scannedAtMillis,
             "draftPaidBy" to details.draftPaidBy,
             "draftParticipants" to details.draftParticipants.toList(),
@@ -122,7 +123,8 @@ class FirebaseReceiptCloudRepository(
                     (document.get("draftParticipants") as? List<*>)
                         ?.filterIsInstance<String>()
                         ?.toSet()
-                        .orEmpty()))
+                        .orEmpty(),
+                    document.getLong("revision") ?: 0))
           }
         }
   }

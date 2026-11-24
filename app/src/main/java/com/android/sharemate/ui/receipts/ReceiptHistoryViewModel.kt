@@ -215,15 +215,17 @@ class ReceiptHistoryViewModel(
             store.cacheShared(ownerId, householdId, entries)
             for (entry in entries.filter { it.submission.ownerId == ownerId }) {
               val local = store.loadById(ownerId, householdId, entry.submission.id)
+              val localDetails = store.details(ownerId, householdId, entry.submission.id)
               if (!store.isDeleted(ownerId, householdId, entry.submission.id) &&
+                  entry.details.revision >= (localDetails?.revision ?: 0) &&
                   (local == null ||
                       (!local.draft &&
                           local.expenseProgress == ExpenseProgress.CONFIRMED &&
                           store.pendingCorrection(ownerId, householdId, entry.submission.id) ==
                               null &&
                           (local != entry.submission ||
-                              store.details(ownerId, householdId, entry.submission.id)?.title !=
-                                  entry.details.title)))) {
+                              localDetails?.title != entry.details.title ||
+                              localDetails?.revision != entry.details.revision)))) {
                 store.save(entry.submission)
                 store.saveDetails(entry.details)
               }

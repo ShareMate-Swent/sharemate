@@ -95,6 +95,41 @@ class ReceiptCloudHistoryTest {
     }
   }
 
+  @Test
+  fun ownerHistoryIgnoresOlderRevisionsAndAcceptsNewerOnes() = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    val lifecycle = ViewModelStore()
+    try {
+      val store = AndroidInventorySubmissionStore(RuntimeEnvironment.getApplication(), dispatcher)
+      val cloud = Cloud()
+      val saved = entry("alice", false)
+      store.save(saved.submission)
+      store.saveDetails(saved.details.copy(title = "Latest", revision = 2))
+      val history =
+          ReceiptHistoryViewModel(
+              mock(ItemRepository::class.java),
+              store,
+              mock(ReceiptPhotoStore::class.java),
+              "alice",
+              "home",
+              cloud = cloud)
+      lifecycle.put("history", history)
+      runCurrent()
+      cloud.entries.emit(listOf(saved))
+      runCurrent()
+      assertEquals("Latest", history.receipts.value.single().details?.title)
+      assertEquals(2L, history.receipts.value.single().details?.revision)
+      cloud.entries.emit(
+          listOf(saved.copy(details = saved.details.copy(title = "Latest", revision = 3))))
+      runCurrent()
+      assertEquals(3L, history.receipts.value.single().details?.revision)
+    } finally {
+      lifecycle.clear()
+      Dispatchers.resetMain()
+    }
+  }
+
   private fun entry(owner: String, draft: Boolean): ReceiptCloudEntry {
     val id = UUID.randomUUID().toString()
     val expense = SharedExpense(id, "home", owner, 100, mapOf(owner to 100L))
