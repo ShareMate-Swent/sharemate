@@ -289,7 +289,7 @@ open class MainActivity : ComponentActivity() {
                       Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
                   bottomBar = {
                     NavigationBar {
-                      TopLevelDestination.entries.forEach { destination ->
+                      TopLevelDestination.availableIn(household.type).forEach { destination ->
                         val label = stringResource(destination.labelRes)
                         NavigationBarItem(
                             modifier = Modifier.testTag(destination.testTag),
@@ -405,25 +405,29 @@ open class MainActivity : ComponentActivity() {
                         profileRepository,
                         onBack = { navController.popBackStack() })
                   }
-                  composable(
-                      TopLevelDestination.CHAT.route,
-                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {
-                        val chatViewModel: ChatViewModel =
-                            viewModel(
-                                key = "chat_${session.uid}_${household.id}",
-                                factory =
-                                    viewModelFactory {
-                                      initializer {
-                                        ChatViewModel(
-                                            chatRepository,
-                                            household.id,
-                                            session.uid,
-                                            session.displayName
-                                                ?: getString(R.string.chat_default_sender_name))
-                                      }
-                                    })
-                        ChatScreen(chatViewModel)
-                      }
+                  // A private fridge has no chat: no tab, no route, so a chat deep link opens the
+                  // fridge instead of a screen whose reads and writes the rules refuse.
+                  if (TopLevelDestination.CHAT.isAvailableIn(household.type)) {
+                    composable(
+                        TopLevelDestination.CHAT.route,
+                        deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {
+                          val chatViewModel: ChatViewModel =
+                              viewModel(
+                                  key = "chat_${session.uid}_${household.id}",
+                                  factory =
+                                      viewModelFactory {
+                                        initializer {
+                                          ChatViewModel(
+                                              chatRepository,
+                                              household.id,
+                                              session.uid,
+                                              session.displayName
+                                                  ?: getString(R.string.chat_default_sender_name))
+                                        }
+                                      })
+                          ChatScreen(chatViewModel)
+                        }
+                  }
                   composable(
                       TopLevelDestination.SETTINGS.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.SETTINGS)) {

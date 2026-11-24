@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
@@ -45,6 +46,15 @@ class FridgeWiringTest {
     resolve()
     compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
     compose.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun privateFridgeHasNoChatTab() {
+    resolve(FridgeType.PRIVATE)
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
   }
 
   @Test

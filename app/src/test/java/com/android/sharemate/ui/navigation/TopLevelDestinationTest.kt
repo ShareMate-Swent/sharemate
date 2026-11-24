@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.navigation
 
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -58,5 +59,24 @@ class TopLevelDestinationTest {
     assertTrue(settings.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
     assertTrue(settings.isParentOf(ChildRoutes.NOTIFICATION_SETTINGS))
     assertFalse(TopLevelDestination.FRIDGE.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
+  }
+
+  @Test
+  fun aSharedFridgeOffersEveryTab() {
+    assertEquals(
+        TopLevelDestination.entries.toList(), TopLevelDestination.availableIn(FridgeType.SHARED))
+    TopLevelDestination.entries.forEach { assertTrue(it.isAvailableIn(FridgeType.SHARED)) }
+  }
+
+  @Test
+  fun aPrivateFridgeOffersEveryTabButChatInOrder() {
+    assertEquals(
+        listOf(
+            TopLevelDestination.FRIDGE,
+            TopLevelDestination.RECIPES,
+            TopLevelDestination.RECEIPTS,
+            TopLevelDestination.SETTINGS),
+        TopLevelDestination.availableIn(FridgeType.PRIVATE))
+    assertFalse(TopLevelDestination.CHAT.isAvailableIn(FridgeType.PRIVATE))
   }
 }

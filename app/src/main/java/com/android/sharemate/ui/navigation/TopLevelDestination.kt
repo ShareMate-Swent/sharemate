@@ -4,6 +4,7 @@ package com.android.sharemate.ui.navigation
 
 import androidx.annotation.StringRes
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 
 enum class TopLevelDestination(
     val route: String,
@@ -21,6 +22,15 @@ enum class TopLevelDestination(
 
   /** Whether [route] is a screen opened from this tab, named `<tab route>/<screen>`. */
   fun isParentOf(route: String?): Boolean = route?.startsWith("${this.route}/") == true
+
+  /** Whether this tab is offered in a fridge of [type]. A private fridge has no chat. */
+  fun isAvailableIn(type: FridgeType): Boolean = this != CHAT || type == FridgeType.SHARED
+
+  companion object {
+    /** The bottom-bar tabs, in order, offered in a fridge of [type]. */
+    fun availableIn(type: FridgeType): List<TopLevelDestination> =
+        entries.filter { it.isAvailableIn(type) }
+  }
 }
 
 /** Screens opened from a tab. Each route starts with its tab's route, so the tab stays selected. */
