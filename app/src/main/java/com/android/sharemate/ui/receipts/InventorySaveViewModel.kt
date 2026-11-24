@@ -89,6 +89,7 @@ class InventorySaveViewModel(
   private var expenseJob: Job? = null
   private var expenseRetry = CompletableDeferred<Unit>()
   private var activeCorrection: ReceiptCorrection? = null
+  private var originalTitle = ""
 
   init {
     restore()
@@ -102,7 +103,10 @@ class InventorySaveViewModel(
           try {
             mutableDeferred.value = store.deferred(userId, householdId)
             val restored = store.load(userId, householdId)
+            val restoredTitle =
+                restored?.let { store.details(userId, householdId, it.id)?.title }.orEmpty()
             if (generation != token) return@launch
+            originalTitle = restoredTitle
             val correction = restored?.let { store.pendingCorrection(userId, householdId, it.id) }
             if (correction != null) {
               launchCorrection(correction)
@@ -191,7 +195,11 @@ class InventorySaveViewModel(
         }
     launchCorrection(
         ReceiptCorrection(
-            UUID.randomUUID().toString(), original, replacement, title.trim().take(80)))
+            UUID.randomUUID().toString(),
+            original,
+            replacement,
+            title.trim().take(80),
+            originalTitle))
     return true
   }
 
@@ -218,8 +226,10 @@ class InventorySaveViewModel(
             }
             store.clearCorrection(userId, householdId, confirmed.id)
             activeCorrection = null
-            if (token == generation)
-                mutableState.value = InventorySaveState(InventorySavePhase.CONFIRMED, confirmed)
+            if (token == generation) {
+              originalTitle = correction.title
+              mutableState.value = InventorySaveState(InventorySavePhase.CONFIRMED, confirmed)
+            }
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {

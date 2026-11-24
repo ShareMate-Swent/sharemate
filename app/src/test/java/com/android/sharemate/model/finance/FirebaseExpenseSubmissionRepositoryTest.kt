@@ -62,9 +62,11 @@ class FirebaseExpenseSubmissionRepositoryTest {
             .getConstructor(Any::class.java)
             .newInstance(mapOf("operationId" to "revision"))
     `when`(callable.call(any())).thenReturn(Tasks.forResult(result))
-    repository.correctReceipt(ReceiptCorrection("revision", original, revised, "Groceries"))
+    repository.correctReceipt(
+        ReceiptCorrection("revision", original, revised, "Groceries", originalTitle = "Old title"))
     val sent = org.mockito.ArgumentCaptor.forClass(Map::class.java)
     verify(callable).call(sent.capture())
+    assertEquals("Old title", sent.value["originalTitle"])
     assertEquals(
         mapOf(
             "id" to id,
@@ -149,6 +151,7 @@ class FirebaseExpenseSubmissionRepositoryTest {
             "ownerId" to "author",
             "title" to "Courses",
             "originalExpense" to null,
+            "originalTitle" to "",
             "originalRows" to
                 listOf(
                     mapOf("id" to "row", "name" to "Milk", "quantity" to 2, "priceCents" to "100")),

@@ -114,10 +114,13 @@ class ReceiptJournalRecoveryTest {
   fun selectedStoreKeepsCorrectionAndDetailsUnderTheCreatorIdentity() = runTest {
     val store = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
     val receipt = receipt()
-    val correction = ReceiptCorrection("revision", receipt, receipt, "Title")
+    val correction =
+        ReceiptCorrection("revision", receipt, receipt, "Title", originalTitle = "Previous title")
     store.save(receipt)
     store.saveDetails(entry(receipt).details)
     store.saveCorrection(correction)
+    val restarted = AndroidInventorySubmissionStore(context, StandardTestDispatcher(testScheduler))
+    assertEquals(correction, restarted.pendingCorrection("owner", "home", id))
     for (ownerOverride in listOf(null, "owner")) {
       val selected = ReceiptSubmissionStore(store, id, ownerOverride)
       val viewer = if (ownerOverride == null) "owner" else "peer"
