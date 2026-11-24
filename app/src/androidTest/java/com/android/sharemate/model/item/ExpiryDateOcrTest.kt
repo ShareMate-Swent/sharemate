@@ -8,9 +8,14 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -67,7 +72,21 @@ class ExpiryDateOcrTest {
       file.outputStream().use {
         assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, PNG_QUALITY_IGNORED, it))
       }
-      check(MlKitExpiryDateReader(context).read(Uri.fromFile(file).toString()))
+      val uri = Uri.fromFile(file)
+      try {
+        check(MlKitExpiryDateReader(context).read(uri.toString()))
+      } catch (failure: AssertionError) {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+          val rawText =
+              withTimeout(MlKitExpiryDateReader.RECOGNITION_TIMEOUT_MS) {
+                recognizer.process(InputImage.fromFilePath(context, uri)).await().text
+              }
+          throw AssertionError("Raw OCR text: $rawText", failure)
+        } finally {
+          recognizer.close()
+        }
+      }
       assertTrue("Reading must preserve the caller's image", file.exists())
     } finally {
       bitmap.recycle()

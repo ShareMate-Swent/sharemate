@@ -20,6 +20,9 @@ import kotlinx.coroutines.withTimeout
  * including on failure/cancellation; simultaneous reads do not share a client. Recognition is
  * limited to [RECOGNITION_TIMEOUT_MS]; timeout propagates as coroutine cancellation. Synchronous
  * image decoding cannot be interrupted by the recognition timeout.
+ *
+ * Repairs the observed OCR month token `0CT` to `OCT` only between a day and year. Other digits are
+ * not guessed or changed. All returned dates still require user confirmation.
  */
 class MlKitExpiryDateReader
 internal constructor(
@@ -36,7 +39,8 @@ internal constructor(
       context,
       dispatcher,
       { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) },
-      InputImage::fromFilePath)
+      InputImage::fromFilePath,
+  )
 
   private val appContext = context.applicationContext
 
@@ -48,7 +52,8 @@ internal constructor(
         val recognizer = recognizerFactory()
         try {
           val text = withTimeout(RECOGNITION_TIMEOUT_MS) { recognizer.process(image).await() }
-          ExpiryDateParser.findDates(text.text)
+          val candidateText = misreadOctober.replace(text.text, "\$1OCT")
+          ExpiryDateParser.findDates(candidateText)
         } finally {
           recognizer.close()
         }
@@ -56,5 +61,14 @@ internal constructor(
 
   internal companion object {
     const val RECOGNITION_TIMEOUT_MS = 30_000L
+
+    // Observed ML Kit confusion: the printed letter O is read as zero. Repair only a complete
+    // October abbreviation in a supported named-month date.
+    private val misreadOctober =
+        Regex(
+            "(?<![\\p{L}\\p{N}])([0-9]{1,2}[\\p{Zs}\\t]+)0CT" +
+                "(?=\\.?[\\p{Zs}\\t]+(?:[0-9]{4}|[0-9]{2})(?![\\p{L}\\p{N}]))",
+            RegexOption.IGNORE_CASE,
+        )
   }
 }

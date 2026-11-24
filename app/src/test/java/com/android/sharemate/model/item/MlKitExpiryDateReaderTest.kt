@@ -63,6 +63,79 @@ class MlKitExpiryDateReaderTest {
   }
 
   @Test
+  fun repairsObservedOctoberOcrTokenWithoutChangingThePureParser() = runTest {
+    returnsText(client, "MFD 11/10/26\nEXP 12/10/26\nEXP 13.10.2026\nEXP 14 0CT 2026")
+    val reader =
+        MlKitExpiryDateReader(
+            context,
+            StandardTestDispatcher(testScheduler),
+            { client },
+            { _, _ -> image },
+        )
+
+    assertEquals(
+        listOf(
+            LocalDate.of(2026, 10, 11),
+            date,
+            LocalDate.of(2026, 10, 13),
+            LocalDate.of(2026, 10, 14),
+        ),
+        reader.read(uri),
+    )
+    assertTrue(ExpiryDateParser.findDates("14 0CT 2026").isEmpty())
+    verify(client).close()
+  }
+
+  @Test
+  fun repairsOctoberAtValidDayBoundariesWithSupportedSpacingAndYears() = runTest {
+    returnsText(client, "EXP/1\t0ct.\u00a026\n31 0Ct 2026")
+    val reader =
+        MlKitExpiryDateReader(
+            context,
+            StandardTestDispatcher(testScheduler),
+            { client },
+            { _, _ -> image },
+        )
+
+    assertEquals(listOf(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)), reader.read(uri))
+    verify(client).close()
+  }
+
+  @Test
+  fun octoberRepairDoesNotGuessDigitsOrAcceptInvalidOrEmbeddedDateTokens() = runTest {
+    val inputs =
+        listOf(
+            "0CT 2026",
+            "14 0CT",
+            "A14 0CT 2026",
+            "14 A0CT 2026",
+            "14 0CTX 2026",
+            "0 0CT 2026",
+            "32 0CT 2026",
+            "014 0CT 2026",
+            "14 0CT 0000",
+            "14 0CT 20267",
+            "14 0CT 2O26",
+            "14\n0CT 2026",
+            "14 0CT\n2026",
+            "14 0C7 2026",
+            "1O/1O/26",
+        )
+    val reader =
+        MlKitExpiryDateReader(
+            context,
+            StandardTestDispatcher(testScheduler),
+            { client },
+            { _, _ -> image },
+        )
+    for (text in inputs) {
+      returnsText(client, text)
+      assertEquals(text, emptyList<LocalDate>(), reader.read(uri))
+    }
+    verify(client, times(inputs.size)).close()
+  }
+
+  @Test
   fun readsAllStoryFormatsInTextOrderWithoutChoosingADate() = runTest {
     returnsText(client, "MFD 11/10/26\nEXP/12/10/26\n12.10.2026\n12 OCT 2026\n31/02/26")
     var receivedContext: Context? = null
