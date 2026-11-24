@@ -2,11 +2,13 @@
 package com.android.sharemate.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.R
 import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -80,6 +82,34 @@ class AppBottomBarTest {
       ShareMateTheme { ProfileEntry(photoUrl = "https://example.org/me.jpg", onClick = {}) }
     }
     compose.onNodeWithTag(ProfileEntryTestTags.PHOTO, useUnmergedTree = true).assertExists()
+  }
+
+  @Test
+  fun profileEntryIsAnOvalWithTheSettingsIconBeforeThePhoto() {
+    var opened = 0
+    compose.setContent {
+      ShareMateTheme {
+        ProfileEntry(photoUrl = "https://example.org/me.jpg", onClick = { opened++ })
+      }
+    }
+    val icon =
+        compose
+            .onNodeWithTag(ProfileEntryTestTags.SETTINGS_ICON, useUnmergedTree = true)
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+    val photo =
+        compose
+            .onNodeWithTag(ProfileEntryTestTags.PHOTO, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+    assertTrue("The settings icon must come before the photo", icon.right <= photo.left)
+    val oval = compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB)
+    val bounds = oval.getUnclippedBoundsInRoot()
+    assertTrue(
+        "The entry must be wider than tall",
+        bounds.right - bounds.left > bounds.bottom - bounds.top)
+    // Tapping the settings icon side of the oval, not only the photo, opens Settings.
+    oval.performTouchInput { click(centerLeft + Offset(4f, 0f)) }
+    assertEquals(1, opened)
   }
 
   private companion object {

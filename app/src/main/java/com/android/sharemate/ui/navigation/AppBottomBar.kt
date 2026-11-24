@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -13,6 +16,8 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Kitchen
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,18 +36,26 @@ import com.android.sharemate.ui.components.FloatingNavItem
 import com.android.sharemate.ui.profile.ProfileAvatar
 import com.android.sharemate.ui.theme.Dimens
 
-/** Sizes of the profile photo that opens Settings. */
+/** Sizes of the oval, with the settings icon and the profile photo, that opens Settings. */
 private object ProfileEntryLayout {
-  /** Touch target of the entry. */
-  val touchSize = 48.dp
+  /** Height of the oval, which is also its minimum touch target. */
+  val height = 48.dp
   /** Diameter of the photo. */
   val avatarSize = 40.dp
-  /** Size of the placeholder icon. */
+  /** Size of the placeholder icon and of the settings icon. */
   val iconSize = 22.dp
+  /** Space before the settings icon. */
+  val startPadding = 10.dp
+  /** Space around the photo, so it sits inside the oval. */
+  val endPadding = 4.dp
+  /** Space between the settings icon and the photo. */
+  val gap = 6.dp
 }
 
-/** Test tags inside the profile photo that opens Settings. */
+/** Test tags inside the oval, with the settings icon and the profile photo, that opens Settings. */
 internal object ProfileEntryTestTags {
+  /** The settings icon, always shown before the photo. */
+  const val SETTINGS_ICON = "profile_entry_settings_icon"
   /** The account photo, present when the account has one. */
   const val PHOTO = "profile_entry_photo"
   /** The default icon, shown until a photo is loaded. */
@@ -86,7 +99,8 @@ internal fun AppBottomBar(
 }
 
 /**
- * The user's profile photo, or the default icon without one. Tapping it opens Settings.
+ * An oval with the settings icon and the user's profile photo, or the default icon without one.
+ * Tapping anywhere on the oval opens Settings.
  *
  * @param photoUrl The account photo, if any.
  * @param onClick Opens Settings.
@@ -95,14 +109,24 @@ internal fun AppBottomBar(
 @Composable
 internal fun ProfileEntry(photoUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
   val description = stringResource(R.string.nav_open_settings)
-  Box(
+  Row(
       modifier
-          .size(ProfileEntryLayout.touchSize)
+          .height(ProfileEntryLayout.height)
           .clip(CircleShape)
+          .background(MaterialTheme.colorScheme.surfaceVariant)
           .clickable(role = Role.Button, onClick = onClick)
-          .semantics { contentDescription = description }
-          .testTag(NavigationTestTags.SETTINGS_TAB),
-      contentAlignment = Alignment.Center) {
+          .semantics(mergeDescendants = true) { contentDescription = description }
+          .testTag(NavigationTestTags.SETTINGS_TAB)
+          .padding(start = ProfileEntryLayout.startPadding, end = ProfileEntryLayout.endPadding),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(ProfileEntryLayout.gap)) {
+        Icon(
+            imageVector = Icons.Filled.Settings,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier =
+                Modifier.size(ProfileEntryLayout.iconSize)
+                    .testTag(ProfileEntryTestTags.SETTINGS_ICON))
         ProfileAvatar(
             photoUrl = photoUrl,
             size = ProfileEntryLayout.avatarSize,
