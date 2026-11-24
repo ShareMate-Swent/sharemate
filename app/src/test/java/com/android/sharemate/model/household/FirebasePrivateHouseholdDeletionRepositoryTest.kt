@@ -7,10 +7,12 @@ import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.HttpsCallableReference
 import com.google.firebase.functions.HttpsCallableResult
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
@@ -20,12 +22,14 @@ import org.mockito.Mockito.`when`
 
 class FirebasePrivateHouseholdDeletionRepositoryTest {
   private val functions = mock(FirebaseFunctions::class.java)
+  private val untimedCallable = mock(HttpsCallableReference::class.java)
   private val callable = mock(HttpsCallableReference::class.java)
   private val repository = FirebasePrivateHouseholdDeletionRepository(functions)
   private val payload = mapOf("householdId" to "owner:home")
 
   init {
-    `when`(functions.getHttpsCallable("deletePrivateHousehold")).thenReturn(callable)
+    `when`(functions.getHttpsCallable("deletePrivateHousehold")).thenReturn(untimedCallable)
+    `when`(untimedCallable.withTimeout(330L, TimeUnit.SECONDS)).thenReturn(callable)
   }
 
   @Test
@@ -34,6 +38,7 @@ class FirebasePrivateHouseholdDeletionRepositoryTest {
 
     repository.deletePrivateHousehold("owner:home")
 
+    verify(untimedCallable).withTimeout(330L, TimeUnit.SECONDS)
     verify(callable).call(payload)
   }
 
@@ -104,6 +109,12 @@ class FirebasePrivateHouseholdDeletionRepositoryTest {
     lazyRepository.deletePrivateHousehold("owner:home")
 
     assertEquals(1, created)
+  }
+
+  @Test
+  fun waitsLongerThanTheFunctionCanRun() {
+    // The function stops after 300 seconds; giving up earlier would offer a retry too soon.
+    assertTrue(FirebasePrivateHouseholdDeletionRepository.CALL_TIMEOUT_SECONDS > 300L)
   }
 
   @Test

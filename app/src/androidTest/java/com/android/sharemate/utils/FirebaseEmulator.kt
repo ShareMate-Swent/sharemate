@@ -34,6 +34,9 @@ object FirebaseEmulator {
   private const val FIELDS = "fields"
   private const val STRING_VALUE = "stringValue"
   private const val INTEGER_VALUE = "integerValue"
+  private const val AUTHORIZATION = "Authorization"
+  private const val ADMIN_BEARER = "Bearer owner"
+  private const val HTTP_NOT_FOUND = 404
 
   val firestore: FirebaseFirestore by lazy {
     FirebaseFirestore.getInstance().apply { useEmulator(HOST, FIRESTORE_PORT) }
@@ -45,6 +48,14 @@ object FirebaseEmulator {
 
   private val projectId: String
     get() = checkNotNull(FirebaseApp.getInstance().options.projectId)
+
+  /**
+   * The Storage bucket the Functions emulator uses, which is the project's default bucket. It is
+   * not the one of the app's `google-services` configuration, so files that a callable must delete
+   * are created here.
+   */
+  val functionsBucket: String
+    get() = "$projectId.appspot.com"
 
   /**
    * Signs in as the emulator account named [alias], creating it on first use.
@@ -161,6 +172,74 @@ object FirebaseEmulator {
       connection.disconnect()
     }
   }
+
+  /**
+   * Reads the document at [path] without going through `firestore.rules`.
+   *
+   * @return The document's `fields` in Firestore's typed JSON, empty for a document without fields,
+   *   or null when the document does not exist.
+   */
+  fun documentFields(path: String): JSONObject? {
+    val url =
+        "http://$HOST:$FIRESTORE_PORT/v1/projects/$projectId/databases/(default)/documents/$path"
+    val connection = URL(url).openConnection() as HttpURLConnection
+    return try {
+      connection.setRequestProperty(AUTHORIZATION, ADMIN_BEARER)
+      if (connection.responseCode == HTTP_NOT_FOUND) return null
+      check(connection.responseCode in 200..299) {
+        "Could not read $path: HTTP ${connection.responseCode}"
+      }
+      val body = connection.inputStream.bufferedReader().use { it.readText() }
+      JSONObject(body).optJSONObject(FIELDS) ?: JSONObject()
+    } finally {
+      connection.disconnect()
+    }
+  }
+
+  /** Creates the Storage object [name] in [bucket] without going through `storage.rules`. */
+  fun seedStorageObject(bucket: String, name: String, bytes: ByteArray, contentType: String) {
+    val connection = URL(storageUrl(bucket, "?name=${encode(name)}")).openConnection()
+    (connection as HttpURLConnection).apply {
+      try {
+        requestMethod = "POST"
+        doOutput = true
+        setRequestProperty(AUTHORIZATION, ADMIN_BEARER)
+        setRequestProperty("Content-Type", contentType)
+        outputStream.use { it.write(bytes) }
+        check(responseCode in 200..299) { "Could not seed $name: HTTP $responseCode" }
+      } finally {
+        disconnect()
+      }
+    }
+  }
+
+  /** The names of the Storage objects of [bucket] that start with [prefix]. */
+  fun storageObjectNames(bucket: String, prefix: String): List<String> {
+    val connection = URL(storageUrl(bucket, "?prefix=${encode(prefix)}")).openConnection()
+    (connection as HttpURLConnection).apply {
+      try {
+        setRequestProperty(AUTHORIZATION, ADMIN_BEARER)
+        check(responseCode in 200..299) { "Could not list $prefix: HTTP $responseCode" }
+        val body = inputStream.bufferedReader().use { it.readText() }
+        val items = JSONObject(body).optJSONArray("items") ?: return emptyList()
+        return List(items.length()) { items.getJSONObject(it).getString("name") }
+      } finally {
+        disconnect()
+      }
+    }
+  }
+
+  /** Deletes the Storage objects of [bucket] that start with [prefix]. */
+  fun deleteStorageObjects(bucket: String, prefix: String) {
+    storageObjectNames(bucket, prefix).forEach { name ->
+      delete(storageUrl(bucket, "/${encode(name)}"))
+    }
+  }
+
+  private fun storageUrl(bucket: String, suffix: String) =
+      "http://$HOST:$STORAGE_PORT/v0/b/$bucket/o$suffix"
+
+  private fun encode(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
 
   private fun typedValue(value: Any): JSONObject =
       when (value) {

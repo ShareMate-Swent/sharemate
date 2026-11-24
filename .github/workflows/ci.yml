@@ -62,7 +62,7 @@ jobs:
 
       - name: Run settlement function emulator tests
         run: >-
-          firebase emulators:exec --only auth,firestore,functions
+          firebase emulators:exec --only auth,firestore,storage,functions
           --project demo-sharemate-ci "npm --prefix functions test"
 
       - name: Run instrumented tests

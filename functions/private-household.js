@@ -14,6 +14,11 @@ const ITEM_PHOTOS_PREFIX = "itemPhotos/";
 const INCIDENT_PHOTOS_PREFIX = "incidentPhotos/";
 /** Documents deleted per batch; Firestore accepts at most 500 writes in one batch. */
 const PAGE_SIZE = 200;
+/**
+ * Cleaning passes before giving up. A pass that finds nothing ends the cleaning, so a household
+ * nobody writes to needs two passes at most; more only happen when something keeps writing to it.
+ */
+const MAX_CLEANUP_PASSES = 5;
 
 function parseHouseholdId(request) {
   if (!request || typeof request !== "object" || Array.isArray(request) ||
@@ -34,18 +39,23 @@ function assertDeletableBy(uid, household) {
 }
 
 /**
- * Deletes every document of [collection] that belongs to the household, page by page. [beforeDelete]
- * runs on a page first, so a failure there leaves the documents in place for the next attempt.
+ * Deletes the documents of [collection] that belong to the household, page by page, and returns
+ * how many it deleted. It stops after a page that is not full, so documents added while it runs
+ * cannot keep it busy forever: the next cleaning pass picks them up. [beforeDelete] runs on a page
+ * first, so a failure there leaves the documents in place for the next attempt.
  */
 async function deleteHouseholdDocuments(db, collection, householdId, beforeDelete) {
   const query = db.collection(collection).where(HOUSEHOLD_ID_FIELD, "==", householdId).limit(PAGE_SIZE);
+  let deleted = 0;
   for (;;) {
     const page = await query.get();
-    if (page.empty) return;
+    if (page.empty) return deleted;
     await beforeDelete(page.docs);
     const batch = db.batch();
     page.docs.forEach((doc) => batch.delete(doc.ref));
     await batch.commit();
+    deleted += page.docs.length;
+    if (page.docs.length < PAGE_SIZE) return deleted;
   }
 }
 
@@ -60,14 +70,49 @@ async function deleteSubcollections(db, householdRef) {
 }
 
 /**
- * Removes the household document and unlinks the caller's profile in one transaction. The profile
- * is only touched when it still points at this household. Deleting a missing household is a no-op.
+ * One pass over everything that belongs to the household: items with their photos, receipts,
+ * sub-collections and incident photos. Returns how many items and receipts it found.
  */
-function removeHouseholdAndLink(db, householdRef, userRef, householdId) {
+async function cleanHouseholdOnce(db, bucket, householdRef) {
+  const householdId = householdRef.id;
+  const items = await deleteHouseholdDocuments(db, ITEMS, householdId, (docs) => deleteItemPhotos(bucket, docs));
+  const receipts = await deleteHouseholdDocuments(db, RECEIPTS, householdId, async () => {});
+  await deleteSubcollections(db, householdRef);
+  await bucket.deleteFiles({ prefix: `${INCIDENT_PHOTOS_PREFIX}${householdId}/` });
+  return items + receipts;
+}
+
+/**
+ * Cleans the household until a pass finds nothing, so an item added from another device while an
+ * earlier pass was running is removed too. This makes such a leftover very unlikely; it cannot rule
+ * it out. If the household keeps receiving writes, it gives up and leaves the household in place
+ * so that the caller can try again.
+ */
+async function cleanHousehold(db, bucket, householdRef) {
+  for (let pass = 0; pass < MAX_CLEANUP_PASSES; pass++) {
+    if ((await cleanHouseholdOnce(db, bucket, householdRef)) === 0) return;
+  }
+  throw new HttpsError("aborted", "The household is still being written to. Try again.");
+}
+
+/**
+ * Removes the household document and unlinks the caller's profile in one transaction.
+ *
+ * The household is read again inside the transaction and only deleted when it is the same instance
+ * that was authorized and cleaned ([authorized]: its snapshot, or null when it was missing). One
+ * that appeared or was replaced since is left alone, and so is the profile link that may belong to
+ * it. A household that is gone is not an error. The profile is only unlinked while it still points
+ * at this household.
+ */
+function removeHouseholdAndLink(db, householdRef, userRef, authorized) {
   return db.runTransaction(async (transaction) => {
+    const household = await transaction.get(householdRef);
     const user = await transaction.get(userRef);
-    transaction.delete(householdRef);
-    if (user.exists && user.get(HOUSEHOLD_ID_FIELD) === householdId) {
+    if (household.exists) {
+      if (!isSameInstance(household, authorized)) return;
+      transaction.delete(householdRef);
+    }
+    if (user.exists && user.get(HOUSEHOLD_ID_FIELD) === householdRef.id) {
       transaction.set(userRef, {
         [HOUSEHOLD_ID_FIELD]: FieldValue.delete(),
         [JOIN_CODE_FIELD]: FieldValue.delete(),
@@ -76,12 +121,18 @@ function removeHouseholdAndLink(db, householdRef, userRef, householdId) {
   });
 }
 
+/** True when [current] is the very document [authorized] was read from, not one created since. */
+function isSameInstance(current, authorized) {
+  return authorized !== null && current.createTime.isEqual(authorized.createTime);
+}
+
 /**
  * Deletes the caller's private household with everything in it: its items and their photos, its
- * receipts, its sub-collections and any incident photos. The household document goes last, in the
- * same transaction that unlinks the caller's profile, so a failed attempt leaves the household in
- * place and calling again only redoes what is left. A household that no longer exists counts as
- * already deleted, so a retry after a lost response succeeds.
+ * receipts, its sub-collections and any incident photos. It cleans until a pass finds nothing. The
+ * household document goes last, in the same transaction that unlinks the caller's profile, so a
+ * failed attempt leaves the household in place and calling again only redoes what is left. A
+ * household that no longer exists counts as already deleted, so a retry after a lost response
+ * succeeds.
  *
  * @param db Firestore with admin rights.
  * @param bucket Default Storage bucket with admin rights.
@@ -94,15 +145,14 @@ async function deletePrivateHousehold(db, bucket, uid, request) {
   if (!householdId) throw new HttpsError("invalid-argument", "Invalid household.");
   const householdRef = db.collection(HOUSEHOLDS).doc(householdId);
   const snapshot = await householdRef.get();
+  let authorized = null;
   if (snapshot.exists) {
     assertDeletableBy(uid, snapshot.data());
-    await deleteHouseholdDocuments(db, ITEMS, householdId, (items) => deleteItemPhotos(bucket, items));
-    await deleteHouseholdDocuments(db, RECEIPTS, householdId, async () => {});
-    await deleteSubcollections(db, householdRef);
-    await bucket.deleteFiles({ prefix: `${INCIDENT_PHOTOS_PREFIX}${householdId}/` });
+    authorized = snapshot;
+    await cleanHousehold(db, bucket, householdRef);
   }
-  await removeHouseholdAndLink(db, householdRef, db.collection(USERS).doc(uid), householdId);
+  await removeHouseholdAndLink(db, householdRef, db.collection(USERS).doc(uid), authorized);
   return { [REQUEST_FIELD]: householdId };
 }
 
-module.exports = { deletePrivateHousehold, PAGE_SIZE };
+module.exports = { deletePrivateHousehold, PAGE_SIZE, MAX_CLEANUP_PASSES };

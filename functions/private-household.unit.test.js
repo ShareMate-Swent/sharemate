@@ -2,7 +2,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { FieldValue } = require("firebase-admin/firestore");
-const { deletePrivateHousehold, PAGE_SIZE } = require("./private-household");
+const { deletePrivateHousehold, PAGE_SIZE, MAX_CLEANUP_PASSES } = require("./private-household");
 
 const OWNER = "owner";
 const HOME = "owner:home";
@@ -13,12 +13,22 @@ function fixture() {
   const records = new Map();
   const files = new Set();
   const calls = { deletedPrefixes: [] };
-  const hooks = { failDeleteFiles: null, failCommit: null };
+  // Lets a test act "at the same time": [afterCommit] runs after each batch deletes, and
+  // [beforeTransaction] runs once the cleaning is over, just before the final transaction.
+  const hooks = { failDeleteFiles: null, failCommit: null, afterCommit: null, beforeTransaction: null };
+  // Every document created gets a new version, so a document deleted and created again can be told
+  // apart from the original, like Firestore's createTime.
+  const versions = new Map();
+  let lastVersion = 0;
 
-  const snapshot = (path) => ({
-    id: path.split("/").pop(), exists: records.has(path), data: () => records.get(path),
-    get: (field) => records.get(path)?.[field],
-  });
+  const snapshot = (path) => {
+    const version = versions.get(path);
+    return {
+      id: path.split("/").pop(), exists: records.has(path), data: () => records.get(path),
+      get: (field) => records.get(path)?.[field],
+      createTime: records.has(path) ? { isEqual: (other) => other.version === version, version } : undefined,
+    };
+  };
   const reference = (path) => ({
     path, id: path.split("/").pop(), get: async () => snapshot(path),
     collection: (name) => collection(`${path}/${name}`),
@@ -45,6 +55,7 @@ function fixture() {
         commit: async () => {
           if (hooks.failCommit?.()) throw new Error("commit failed");
           paths.forEach((path) => records.delete(path));
+          hooks.afterCommit?.();
         },
       };
     },
@@ -52,6 +63,7 @@ function fixture() {
       [...records.keys()].filter((key) => key.startsWith(`${target.path}/`)).forEach((key) => records.delete(key));
     },
     runTransaction: async (run) => {
+      hooks.beforeTransaction?.();
       const writes = [];
       await run({
         get: async (ref) => snapshot(ref.path),
@@ -69,10 +81,14 @@ function fixture() {
       [...files].filter((file) => file.startsWith(prefix)).forEach((file) => files.delete(file));
     },
   };
-  const add = (path, data = {}) => records.set(path, data);
+  const add = (path, data = {}) => {
+    records.set(path, data);
+    versions.set(path, ++lastVersion);
+  };
   add(`households/${HOME}`, { type: "PRIVATE", createdBy: OWNER, memberIds: [OWNER] });
   add(`users/${OWNER}`, { householdId: HOME, joinCode: "CODE", expirationPreferences: { soonDays: 3 } });
-  return { db, bucket, records, files, calls, hooks, add };
+  const remove = (path) => records.delete(path);
+  return { db, bucket, records, files, calls, hooks, add, remove };
 }
 
 function run(env, uid = OWNER, request = { householdId: HOME }) {
@@ -237,4 +253,86 @@ test("requires a signed-in caller and a well-formed payload before touching anyt
   }
   assert.equal(env.records.has(`households/${HOME}`), true);
   assert.deepEqual(env.calls.deletedPrefixes, []);
+});
+
+test("an item added while an earlier pass runs is deleted by the next pass, with its photo", async () => {
+  const env = fixture();
+  env.add("items/first", { householdId: HOME });
+  let once = true;
+  env.hooks.afterCommit = () => {
+    if (!once) return;
+    once = false;
+    env.add("items/late", { householdId: HOME });
+    env.files.add("itemPhotos/late/1");
+  };
+
+  await run(env);
+
+  assert.equal(env.records.has("items/late"), false);
+  assert.equal(env.files.has("itemPhotos/late/1"), false);
+  assert.equal(env.records.has(`households/${HOME}`), false);
+});
+
+test("a household that keeps receiving writes is kept, so the call can be repeated", async () => {
+  const env = fixture();
+  env.add("items/first", { householdId: HOME });
+  let count = 0;
+  env.hooks.afterCommit = () => env.add(`items/more${count++}`, { householdId: HOME });
+
+  await assert.rejects(run(env), { code: "aborted" });
+
+  assert.equal(env.records.has(`households/${HOME}`), true);
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, HOME);
+  assert.equal(count, MAX_CLEANUP_PASSES);
+
+  env.hooks.afterCommit = null;
+  await run(env);
+  assert.equal(env.records.has(`households/${HOME}`), false);
+  assert.equal([...env.records.keys()].some((key) => key.startsWith("items/")), false);
+});
+
+test("a household replaced by someone else's before the final step is left alone with the profile link", async () => {
+  const env = fixture();
+  env.hooks.beforeTransaction = () => {
+    env.remove(`households/${HOME}`);
+    env.add(`households/${HOME}`, { type: "PRIVATE", createdBy: "intruder", memberIds: ["intruder"] });
+  };
+
+  assert.deepEqual(await run(env), { householdId: HOME });
+
+  assert.equal(env.records.get(`households/${HOME}`).createdBy, "intruder");
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, HOME);
+});
+
+test("a household created after it was found missing is left alone with the profile link", async () => {
+  const env = fixture();
+  env.remove(`households/${HOME}`);
+  env.hooks.beforeTransaction = () =>
+    env.add(`households/${HOME}`, { type: "PRIVATE", createdBy: "intruder", memberIds: ["intruder"] });
+
+  await run(env);
+
+  assert.equal(env.records.get(`households/${HOME}`).createdBy, "intruder");
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, HOME);
+});
+
+test("only the very instance that was authorized is deleted, not one created again with the same data", async () => {
+  const env = fixture();
+  env.hooks.beforeTransaction = () => {
+    env.remove(`households/${HOME}`);
+    env.add(`households/${HOME}`, { type: "PRIVATE", createdBy: OWNER, memberIds: [OWNER] });
+  };
+
+  await run(env);
+
+  assert.equal(env.records.has(`households/${HOME}`), true);
+});
+
+test("a household deleted by another call before the final step is not an error and the profile is unlinked", async () => {
+  const env = fixture();
+  env.hooks.beforeTransaction = () => env.remove(`households/${HOME}`);
+
+  assert.deepEqual(await run(env), { householdId: HOME });
+
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, FieldValue.delete());
 });

@@ -44,11 +44,18 @@ only for a private household with no other member, so a shared household is neve
 Clients cannot delete a household directly; the Firestore rules deny it.
 
 The household document goes last, so a failed call leaves the household in place and calling again
-only redoes what is left. A household that is already gone counts as deleted. The Android adapter
-sends `{ householdId }` and treats any error as "not deleted", with no offline queue. The function
-and its Storage access need deployment before the app can use it, and its tests run without
-emulators:
+only redoes what is left. The cleaning repeats until a pass finds nothing, so an item added from
+another device meanwhile is removed too; this makes a leftover very unlikely but cannot rule it out,
+and a household that keeps receiving writes is kept and the call fails, to be repeated. The final
+transaction reads the household again and only deletes the instance that was checked. A household
+that is already gone counts as deleted. The Android adapter sends `{ householdId }` and treats any
+error as "not deleted", with no offline queue. The function and its Storage access need deployment
+before the app can use it, and its tests run in two ways: the unit tests need no emulator, and
+`private-household.test.js` calls the function against the Auth, Firestore, Storage and Functions
+emulators.
 
 ```sh
 node --test functions/private-household.unit.test.js
+firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate-ci \
+  "node --test functions/private-household.test.js"
 ```

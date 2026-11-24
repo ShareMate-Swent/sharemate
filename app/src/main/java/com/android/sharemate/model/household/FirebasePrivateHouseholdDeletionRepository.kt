@@ -3,6 +3,7 @@ package com.android.sharemate.model.household
 
 import com.android.sharemate.model.CloudFunctions
 import com.google.firebase.functions.FirebaseFunctions
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -24,6 +25,7 @@ class FirebasePrivateHouseholdDeletionRepository(functionsProvider: () -> Fireba
     val response =
         functions
             .getHttpsCallable(HouseholdFunctions.DELETE_PRIVATE_HOUSEHOLD)
+            .withTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .call(payload)
             .await()
             .data
@@ -33,5 +35,13 @@ class FirebasePrivateHouseholdDeletionRepository(functionsProvider: () -> Fireba
   companion object {
     /** Region hosting the household callables. */
     const val REGION = CloudFunctions.REGION
+
+    /**
+     * How long the app waits for the server. The SDK gives up after 70 seconds by default, but the
+     * function may run for 300 seconds (`DELETE_HOUSEHOLD_TIMEOUT_SECONDS` in
+     * `functions/index.js`). Waiting less would offer "Try again" while the first deletion is still
+     * running. Keep this above the function's timeout.
+     */
+    const val CALL_TIMEOUT_SECONDS = 330L
   }
 }
