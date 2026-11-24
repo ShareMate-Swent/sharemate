@@ -59,6 +59,7 @@ class SettingsScreenTest {
   private var notificationSettingsOpens = 0
   private var photoChanges = 0
   private var photoRetries = 0
+  private var backs = 0
   private var leaveState by mutableStateOf(LeaveHouseholdUiState())
   private val googleState =
       SettingsUiState(
@@ -94,10 +95,23 @@ class SettingsScreenTest {
             onRetryLoadPseudo = { pseudoRetries++ },
             onOpenNotificationSettings = { notificationSettingsOpens++ },
             onSignOut = { signOuts++ },
+            onBack = { backs++ },
             onChangePhoto = { photoChanges++ },
             onRetryPhotoUpload = { photoRetries++ })
       }
     }
+  }
+
+  @Test
+  fun backArrowLeavesSettings() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.BACK)
+        .assertContentDescriptionEquals(text(R.string.settings_back))
+        .performClick()
+
+    assertEquals(1, backs)
   }
 
   @Test
@@ -118,6 +132,7 @@ class SettingsScreenTest {
             onSavePseudo = {},
             onRetryLoadPseudo = {},
             onSignOut = {},
+            onBack = {},
             onChangePhoto = { photoChanges++ })
       }
     }
@@ -361,7 +376,8 @@ class SettingsScreenTest {
             onPseudoChanged = {},
             onSavePseudo = {},
             onRetryLoadPseudo = {},
-            onSignOut = {})
+            onSignOut = {},
+            onBack = {})
       }
     }
 

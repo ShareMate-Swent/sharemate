@@ -14,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
 import org.junit.Rule
@@ -48,7 +49,6 @@ class MainActivityTest : TestCase() {
               NavigationTestTags.RECIPES_TAB to R.string.recipes_title,
               NavigationTestTags.RECEIPTS_TAB to R.string.receipts_title,
               NavigationTestTags.CHAT_TAB to R.string.chat_title,
-              NavigationTestTags.SETTINGS_TAB to R.string.settings_title,
           )
 
       destinations.forEach { (testTag, labelRes) ->
@@ -85,6 +85,16 @@ class MainActivityTest : TestCase() {
               .assertDoesNotExist()
         }
       }
+    }
+    step("Open Settings from the profile photo and come back") {
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
+      composeTestRule
+          .onNodeWithTag(NavigationTestTags.PAGE_CONTENT)
+          .assertTextEquals(composeTestRule.activity.getString(R.string.settings_title))
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(SettingsTestTags.BACK).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
     }
   }
 }

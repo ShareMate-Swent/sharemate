@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.profile
 
 import androidx.lifecycle.ViewModelStore
@@ -202,17 +203,23 @@ class ProfilePhotoViewModelTest {
   }
 
   @Test
-  fun copyFinishingDuringUploadIsDeletedAndThePreviewKept() = runTest {
+  fun saveWaitsForTheNewGalleryPhotoAndNeverUploadsThePreviousOne() = runTest {
     vm.select("content://a", false)
-    files.gate = CompletableDeferred()
-    launch { vm.select("content://late", false) }
-    advanceUntilIdle()
-    repository.next = { CompletableDeferred<Result<String>>().await() }
+    val copying = CompletableDeferred<Unit>()
+    files.gates["content://b"] = copying
+    vm.selectFromGallery("content://b")
+    assertTrue(vm.state.value.isImporting)
     vm.save()
-    files.gate!!.complete(Unit)
     advanceUntilIdle()
     assertEquals(File("copy-a"), vm.state.value.photo)
-    assertEquals(listOf(File("copy-late")), files.deleted)
+    assertTrue(repository.uploads.isEmpty())
+    copying.complete(Unit)
+    advanceUntilIdle()
+    assertFalse(vm.state.value.isImporting)
+    assertEquals(File("copy-b"), vm.state.value.photo)
+    vm.save()
+    advanceUntilIdle()
+    assertEquals(listOf(UID to File("copy-b")), repository.uploads)
   }
 
   @Test

@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
+import com.android.sharemate.model.image.PhotoImportPolicy
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
@@ -48,4 +49,5 @@ fun ProfilePhotoPicker(
 
 /** Returns the camera/gallery ViewModel for the profile photo, retained in the current store. */
 @Composable
-fun profilePhotoCamera(): PhotoPickerViewModel = photoPickerViewModel(PROFILE_PHOTO_CAMERA_KEY)
+fun profilePhotoCamera(): PhotoPickerViewModel =
+    photoPickerViewModel(PROFILE_PHOTO_CAMERA_KEY, importPolicy = PhotoImportPolicy.PERSONAL)

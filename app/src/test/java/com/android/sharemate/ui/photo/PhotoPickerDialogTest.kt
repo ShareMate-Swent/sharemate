@@ -19,8 +19,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.R
+import com.android.sharemate.model.image.PhotoImportRejection
+import com.android.sharemate.model.image.PhotoImportValidationException
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule
@@ -41,11 +44,12 @@ class PhotoPickerDialogTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
-  fun deniedCameraKeepsGalleryAvailableAndPickerCancellationIsSilent() {
+  fun deniedCameraKeepsGalleryAvailableAndRepeatedClicksWaitForCancellation() {
     shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
     val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
     var permissionRequests = 0
     var galleryRequests = 0
+    var cancelGallery: () -> Unit = {}
     val owner =
         object : ActivityResultRegistryOwner {
           override val activityResultRegistry =
@@ -64,7 +68,7 @@ class PhotoPickerDialogTest {
                     }
                     is ActivityResultContracts.PickVisualMedia -> {
                       galleryRequests++
-                      dispatchResult<Uri?>(requestCode, null)
+                      cancelGallery = { dispatchResult<Uri?>(requestCode, null) }
                     }
                     else -> fail("Unexpected external activity")
                   }
@@ -84,12 +88,19 @@ class PhotoPickerDialogTest {
         .assertIsEnabled()
         .performScrollTo()
         .performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performClick()
     compose.runOnIdle {
       assertEquals(1, permissionRequests)
       assertEquals(1, galleryRequests)
+      cancelGallery()
       assertNull(vm.state.value.selection?.uri)
       assertFalse(vm.state.value.failed)
       assertFalse(vm.state.value.busy)
+    }
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).performClick()
+    compose.runOnIdle {
+      assertEquals(2, galleryRequests)
+      cancelGallery()
     }
     compose
         .onNodeWithText(
@@ -214,8 +225,60 @@ class PhotoPickerDialogTest {
     compose.onNodeWithText("Unable to use this photo.", substring = true).assertDoesNotExist()
   }
 
+  @Test
+  fun personalGalleryShowsValidationGuidanceAndUsesGenericMessageForIoErrors() {
+    val store = TestPhotoStore()
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
+    val context = RuntimeEnvironment.getApplication()
+    compose.setContent { MaterialTheme { PhotoPickerDialog(vm, labels) } }
+    compose.runOnIdle { vm.open() }
+
+    val cases =
+        listOf(
+            PhotoImportValidationException(
+                PhotoImportRejection.PERSONAL_REQUIREMENTS, "Unsupported image") to
+                context.getString(R.string.personal_photo_invalid),
+            PhotoImportValidationException(
+                PhotoImportRejection.PIXEL_LIMIT, "Image exceeds pixel limit") to
+                context.getString(R.string.photo_picker_pixel_limit, 50),
+            IOException("Gallery unavailable") to context.getString(R.string.photo_picker_failed))
+    for ((failure, expected) in cases) {
+      compose.runOnIdle {
+        store.importFailure = failure
+        vm.select("content://photos/selected")
+      }
+      compose.onNodeWithText(expected).assertIsDisplayed()
+      for ((_, other) in cases) {
+        if (other != expected) compose.onNodeWithText(other).assertDoesNotExist()
+      }
+      compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun receiptGalleryImportFailureUsesGenericMessage() {
+    val store = TestPhotoStore().apply { importFailure = IOException("Image exceeds size limit") }
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
+    val context = RuntimeEnvironment.getApplication()
+    val receiptLabels =
+        PhotoPickerLabels(
+            R.string.scan_receipt, R.string.receipt_photo_preview, R.string.receipt_photo_choose)
+    val receiptError = context.getString(R.string.receipt_unreadable)
+    compose.setContent { MaterialTheme { PhotoPickerDialog(vm, receiptLabels, receiptError) } }
+    compose.runOnIdle {
+      vm.open()
+      vm.select("content://photos/receipt")
+    }
+
+    compose.onNodeWithText(context.getString(R.string.photo_picker_failed)).assertIsDisplayed()
+    compose.onNodeWithText(context.getString(R.string.personal_photo_invalid)).assertDoesNotExist()
+    compose.onNodeWithText(receiptError).assertDoesNotExist()
+    compose.onNodeWithTag(PhotoPickerTestTags.PREVIEW).assertDoesNotExist()
+  }
+
   private class TestPhotoStore : TemporaryPhotoStore {
     val uri: String
+    var importFailure: IOException? = null
 
     init {
       val file =
@@ -228,7 +291,10 @@ class PhotoPickerDialogTest {
 
     override suspend fun createCapture() = uri
 
-    override suspend fun importImage(uri: String) = this.uri
+    override suspend fun importImage(uri: String): String {
+      importFailure?.let { throw it }
+      return this.uri
+    }
 
     override suspend fun validate(uri: String) = Unit
 

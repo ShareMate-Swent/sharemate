@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,6 +56,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
+import com.android.sharemate.ui.photo.rememberPhotoGalleryLauncher
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags of the profile photo step. */
@@ -114,10 +114,9 @@ fun ProfilePhotoStepScreen(
       rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) openCamera() else camera.open()
       }
-  val gallery =
-      rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { viewModel.selectFromGallery(it.toString()) }
-      }
+  val openGallery =
+      rememberPhotoGalleryLauncher(
+          onResult = { viewModel.selectFromGallery(it.toString()) }, onFailure = camera::open)
   ProfilePhotoStepContent(
       state = state,
       onAddPhoto = camera::open,
@@ -129,13 +128,7 @@ fun ProfilePhotoStepScreen(
             runCatching { cameraPermission.launch(Manifest.permission.CAMERA) }
                 .onFailure { camera.open() }
       },
-      onPickFromGallery = {
-        runCatching {
-              gallery.launch(
-                  PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            }
-            .onFailure { camera.open() }
-      },
+      onPickFromGallery = openGallery,
       onSave = viewModel::save,
       onSkip = viewModel::skip,
   )
@@ -164,7 +157,7 @@ internal fun ProfilePhotoStepContent(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val enabled = !state.isUploading
+  val enabled = !state.isUploading && !state.isImporting
   val addLabel =
       stringResource(
           if (state.photo == null) R.string.profile_photo_add else R.string.profile_photo_change)
@@ -207,7 +200,7 @@ internal fun ProfilePhotoStepContent(
             modifier =
                 Modifier.align(Alignment.CenterHorizontally).padding(vertical = Dimens.spacingL),
         )
-        if (state.isUploading) {
+        if (state.isUploading || state.isImporting) {
           LinearProgressIndicator(
               modifier = Modifier.fillMaxWidth().testTag(ProfilePhotoStepTestTags.PROGRESS))
         }
