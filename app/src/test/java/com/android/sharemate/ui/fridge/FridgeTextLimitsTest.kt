@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -11,6 +12,7 @@ import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
@@ -107,17 +109,6 @@ class FridgeTextLimitsTest {
     vm.openAddItemDialog()
     vm.updateName("🍎".repeat(TextLimits.ITEM_NAME + 10))
     assertEquals("🍎".repeat(TextLimits.ITEM_NAME), vm.uiState.value.itemName)
-    vm.updateCategory("🥛".repeat(TextLimits.ITEM_CATEGORY + 10))
-    assertEquals("🥛".repeat(TextLimits.ITEM_CATEGORY), vm.uiState.value.itemCategory)
-  }
-
-  @Test
-  fun pastedCategoryIsCutToTheLimit() = runTest {
-    vm.openAddItemDialog()
-    vm.updateCategory("c".repeat(TextLimits.ITEM_CATEGORY + 1))
-    assertEquals("c".repeat(TextLimits.ITEM_CATEGORY), vm.uiState.value.itemCategory)
-    vm.updateCategory("c".repeat(TextLimits.ITEM_CATEGORY))
-    assertEquals("c".repeat(TextLimits.ITEM_CATEGORY), vm.uiState.value.itemCategory)
   }
 
   @Test
@@ -164,32 +155,12 @@ class FridgeTextLimitsTest {
   }
 
   @Test
-  fun oldLongCategoryMustBeShortenedBeforeAnEditIsSaved() = runTest {
-    items.emitItems(listOf(legacy(category = "c".repeat(LEGACY_LENGTH))))
-    runCurrent()
-    vm.openEditItemDialog(LEGACY_ID)
-    runCurrent()
-    vm.saveItem()
-    runCurrent()
-    assertEquals(FridgeFormError.CATEGORY_TOO_LONG, vm.uiState.value.formError)
-    assertTrue(items.edits.isEmpty())
-    vm.updateCategory("Dairy")
-    vm.saveItem()
-    runCurrent()
-    assertEquals("Dairy", items.edits.single().second.category)
-  }
-
-  @Test
-  fun validationReportsTheNameBeforeTheCategoryAndAcceptsTheLimits() {
+  fun validationReportsANameOverTheLimitAndAcceptsTheLimit() {
     val name = "a".repeat(TextLimits.ITEM_NAME)
-    val category = "c".repeat(TextLimits.ITEM_CATEGORY)
-    assertNull(validateItemTexts(name, category))
-    assertNull(validateItemTexts("", ""))
-    assertEquals(FridgeFormError.NAME_TOO_LONG, validateItemTexts(name + "a", category))
-    assertEquals(FridgeFormError.CATEGORY_TOO_LONG, validateItemTexts(name, category + "c"))
-    assertEquals(FridgeFormError.NAME_TOO_LONG, validateItemTexts(name + "a", category + "c"))
-    assertNull(
-        validateItemTexts("🍎".repeat(TextLimits.ITEM_NAME), "🥛".repeat(TextLimits.ITEM_CATEGORY)))
+    assertNull(validateItemTexts(name))
+    assertNull(validateItemTexts(""))
+    assertEquals(FridgeFormError.NAME_TOO_LONG, validateItemTexts(name + "a"))
+    assertNull(validateItemTexts("🍎".repeat(TextLimits.ITEM_NAME)))
   }
 
   @Test
@@ -255,7 +226,7 @@ class FridgeTextLimitsTest {
     assertEquals(ItemQuantity.MAX, items.edits.single().second.quantity)
   }
 
-  private fun legacy(name: String = "Old", category: String? = null) =
+  private fun legacy(name: String = "Old", category: ItemCategory? = null) =
       Item(
           id = LEGACY_ID,
           name = name,

@@ -157,7 +157,7 @@ class FakeItemRepository : ItemRepository {
       it.copy(
           name = edit.name.trim(),
           quantity = edit.quantity,
-          category = edit.category,
+          category = if (edit.updatesCategory) edit.category else it.category,
           expirationDate = edit.expirationDate,
           sharing = edit.sharing ?: it.sharing)
     }

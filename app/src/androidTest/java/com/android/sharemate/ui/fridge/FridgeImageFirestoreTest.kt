@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -15,6 +16,7 @@ import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelection
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FirebaseItemRepository
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.toItemOrNull
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
@@ -92,7 +94,7 @@ class FridgeImageFirestoreTest {
     withContext(Dispatchers.Main) {
       vm.openAddItemDialog()
       vm.updateName("  Milk  ")
-      vm.updateCategory("Dairy")
+      vm.updateCategory(ItemCategory.DAIRY)
       vm.updateQuantity("3")
       vm.saveItem()
     }

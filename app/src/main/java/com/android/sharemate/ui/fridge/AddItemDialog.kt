@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.text.TextLimits
@@ -46,7 +48,7 @@ import com.android.sharemate.ui.theme.Dimens
 fun AddItemDialog(
     uiState: FridgeUiState,
     onNameChange: (String) -> Unit,
-    onCategoryChange: (String) -> Unit,
+    onCategoryChange: (ItemCategory?) -> Unit,
     onExpirationDateChange: (String) -> Unit,
     onSave: () -> Unit,
     onDismiss: () -> Unit,
@@ -128,17 +130,11 @@ fun AddItemDialog(
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_quantity_input))
-              OutlinedTextField(
-                  value = uiState.itemCategory,
-                  onValueChange = onCategoryChange,
-                  label = { Text(stringResource(R.string.fridge_item_category_optional)) },
-                  supportingText = {
-                    TextLengthCounter(uiState.itemCategory, TextLimits.ITEM_CATEGORY)
-                  },
-                  isError = uiState.formError == FridgeFormError.CATEGORY_TOO_LONG,
+              CategoryPicker(
+                  selected = uiState.itemCategory,
+                  onSelect = onCategoryChange,
                   enabled = inputEnabled,
-                  singleLine = true,
-                  modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_category_input))
+                  modifier = Modifier.fillMaxWidth())
               OutlinedTextField(
                   value = uiState.expirationDateInput,
                   onValueChange = onExpirationDateChange,
@@ -244,8 +240,6 @@ private fun fridgeFormErrorText(error: FridgeFormError): String =
       FridgeFormError.NAME_REQUIRED -> stringResource(R.string.fridge_name_required)
       FridgeFormError.NAME_TOO_LONG ->
           stringResource(R.string.fridge_name_too_long, TextLimits.ITEM_NAME)
-      FridgeFormError.CATEGORY_TOO_LONG ->
-          stringResource(R.string.fridge_category_too_long, TextLimits.ITEM_CATEGORY)
       FridgeFormError.INVALID_EXPIRATION_DATE -> stringResource(R.string.fridge_date_invalid)
       FridgeFormError.SAVE_FAILED -> stringResource(R.string.fridge_save_failed)
     }
