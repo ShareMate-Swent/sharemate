@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.camera.core.CameraSelector
@@ -37,12 +38,16 @@ class CameraCaptureTest {
   private val future = SettableFuture.create<ProcessCameraProvider>()
   private val visible = mutableStateOf(true)
   private val enabled = mutableStateOf(true)
+  private val lens = mutableStateOf(CameraLens.BACK)
+  private var switches = 0
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private var failures = 0
 
   @After fun tearDown() = scope.cancel()
 
-  private fun show(onCapture: (suspend (String) -> Unit) -> Unit = {}) {
+  private var takePicture: (suspend (String) -> Unit)? = null
+
+  private fun show(onCapture: (suspend (String) -> Unit) -> Unit = { takePicture = it }) {
     compose.setContent {
       MaterialTheme {
         if (visible.value) {
@@ -50,6 +55,8 @@ class CameraCaptureTest {
               enabled.value,
               onCapture,
               { failures++ },
+              lens = lens.value,
+              onSwitchLens = { switches++ },
               providerLoader = { future },
               imageCaptureFactory = { capture })
         }
@@ -113,6 +120,72 @@ class CameraCaptureTest {
     }
     compose.runOnIdle { assertSame(error, results[1].exceptionOrNull()) }
     verify(capture, times(2)).setTargetRotation(anyInt())
+    assertEquals(0, failures)
+  }
+
+  private fun bindings() =
+      mockingDetails(provider).invocations.filter { it.method.name == "bindToLifecycle" }
+
+  private fun unbinds() = mockingDetails(provider).invocations.count { it.method.name == "unbind" }
+
+  /** Takes a photo and returns whether it is saved mirrored, like the front-camera preview. */
+  private fun captureIsMirrored(): Boolean {
+    var options: ImageCapture.OutputFileOptions? = null
+    doAnswer {
+          options = it.getArgument(0)
+          null
+        }
+        .`when`(capture)
+        .takePicture(
+            any(ImageCapture.OutputFileOptions::class.java),
+            any(Executor::class.java),
+            any(ImageCapture.OnImageSavedCallback::class.java))
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performClick()
+    compose.runOnIdle { scope.launch { requireNotNull(takePicture)("file:///private/photo.jpg") } }
+    compose.waitForIdle()
+    return requireNotNull(options).metadata.isReversedHorizontal
+  }
+
+  private fun hasCameras(back: Boolean, front: Boolean) {
+    `when`(provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)).thenReturn(back)
+    `when`(provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)).thenReturn(front)
+  }
+
+  @Test
+  fun switchButtonRebindsTheChosenLensWithTheSameViewPortGroup() {
+    hasCameras(back = true, front = true)
+    show()
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertDoesNotExist()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, switches)
+      lens.value = CameraLens.FRONT
+    }
+    compose.waitForIdle()
+    val (back, front) = bindings()
+    assertSame(CameraSelector.DEFAULT_BACK_CAMERA, back.rawArguments[1])
+    assertSame(CameraSelector.DEFAULT_FRONT_CAMERA, front.rawArguments[1])
+    assertEquals(ViewPort.FIT, (front.rawArguments[2] as UseCaseGroup).viewPort?.scaleType)
+    assertSame(capture, (front.rawArguments[2] as UseCaseGroup).useCases[1])
+    assertEquals(1, unbinds())
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled()
+    assertTrue(captureIsMirrored())
+    compose.runOnIdle { enabled.value = false }
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertIsNotEnabled()
+    assertEquals(0, failures)
+  }
+
+  @Test
+  fun missingFrontCameraHidesTheSwitchAndFallsBackToTheBackCamera() {
+    hasCameras(back = true, front = false)
+    lens.value = CameraLens.FRONT
+    show()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertDoesNotExist()
+    assertSame(CameraSelector.DEFAULT_BACK_CAMERA, bindings().single().rawArguments[1])
+    assertFalse(captureIsMirrored())
     assertEquals(0, failures)
   }
 

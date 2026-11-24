@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.lifecycle.SavedStateHandle
@@ -29,6 +30,15 @@ enum class PhotoSource {
   GALLERY
 }
 
+/** The camera the picker captures with. */
+enum class CameraLens {
+  BACK,
+  FRONT;
+
+  /** The other lens, used by the switch button. */
+  fun other(): CameraLens = if (this == BACK) FRONT else BACK
+}
+
 /** A private image and the source that produced it, valid during confirmation. */
 data class SelectedPhoto(val uri: String, val source: PhotoSource)
 
@@ -41,11 +51,18 @@ data class PhotoPickerState(
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
     val galleryImportRejection: PhotoImportRejection? = null,
+    val lens: CameraLens = CameraLens.BACK,
 )
 
+/**
+ * Holds the picker dialog state, including the chosen camera lens.
+ *
+ * @param defaultLens Lens used until the user switches it, e.g. [CameraLens.FRONT] for selfies.
+ */
 class PhotoPickerViewModel(
     private val store: TemporaryPhotoStore,
     private val savedState: SavedStateHandle,
+    private val defaultLens: CameraLens = CameraLens.BACK,
 ) : ViewModel() {
   private fun restoreSelection(): SelectedPhoto? =
       savedState.get<String>(IMAGE_KEY)?.let { uri ->
@@ -60,7 +77,8 @@ class PhotoPickerViewModel(
           PhotoPickerState(
               selection = restoreSelection(),
               confirmed = savedState[CONFIRMED_KEY] ?: false,
-              visible = savedState[VISIBLE_KEY] ?: false))
+              visible = savedState[VISIBLE_KEY] ?: false,
+              lens = savedState.get<String>(LENS_KEY)?.let(CameraLens::valueOf) ?: defaultLens))
   val state = mutableState.asStateFlow()
   private var operation: Job? = null
 
@@ -85,6 +103,14 @@ class PhotoPickerViewModel(
         mutableState.update {
           it.copy(page = PhotoPage.CAMERA, failed = false, confirmationFailed = false)
         }
+  }
+
+  /** Switches between the back and front camera; the choice survives recreation. */
+  fun switchLens() {
+    if (state.value.busy) return
+    val lens = state.value.lens.other()
+    savedState[LENS_KEY] = lens.name
+    mutableState.update { it.copy(lens = lens) }
   }
 
   fun showSources() {
@@ -159,7 +185,8 @@ class PhotoPickerViewModel(
     savedState[CAMERA_KEY] = null
     savedState[CONFIRMED_KEY] = false
     savedState[VISIBLE_KEY] = false
-    mutableState.value = PhotoPickerState()
+    savedState[LENS_KEY] = null
+    mutableState.value = PhotoPickerState(lens = defaultLens)
     if (uri != null) CoroutineScope(Dispatchers.Main.immediate).launch { store.delete(uri) }
   }
 
@@ -228,5 +255,7 @@ class PhotoPickerViewModel(
     const val CAMERA_KEY = "barcodePhotoFromCamera"
     const val CONFIRMED_KEY = "barcodePhotoConfirmed"
     const val VISIBLE_KEY = "barcodePhotoVisible"
+    /** Saved-state key of the chosen [CameraLens]. */
+    const val LENS_KEY = "photoPickerCameraLens"
   }
 }

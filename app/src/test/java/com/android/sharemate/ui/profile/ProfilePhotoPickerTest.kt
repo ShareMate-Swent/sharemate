@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.model.image.TemporaryPhotoStore
+import com.android.sharemate.ui.photo.CameraLens
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.File
@@ -64,6 +65,13 @@ class ProfilePhotoPickerTest {
       assertNull(camera.state.value.selection?.uri)
       assertFalse(camera.state.value.confirmed)
     }
+  }
+
+  @Test
+  fun profilePhotoCameraStartsOnTheFrontLens() {
+    lateinit var picker: PhotoPickerViewModel
+    compose.setContent { picker = profilePhotoCamera() }
+    compose.runOnIdle { assertEquals(CameraLens.FRONT, picker.state.value.lens) }
   }
 
   @Test
