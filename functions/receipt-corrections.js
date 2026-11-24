@@ -28,10 +28,13 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
 async function correctReceipt(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
   const ownerId = request?.ownerId ?? uid;
-  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId').sort().join() !== "expense,operationId,originalExpense,originalRows,originalTitle,rows,title" ||
+  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId' && k !== 'originalRevision').sort().join() !== "expense,operationId,originalExpense,originalRows,originalTitle,rows,title" ||
       !isId(request.operationId) || request.operationId.length > 128 || typeof request.title !== "string" || [...request.title].length > 80 ||
       typeof request.originalTitle !== "string" || [...request.originalTitle].length > 80)
     throw new HttpsError("invalid-argument", "Invalid correction.");
+  const originalRevision = request.originalRevision ?? 0;
+  if (!Number.isSafeInteger(originalRevision) || originalRevision < 0 || originalRevision >= Number.MAX_SAFE_INTEGER)
+    throw new HttpsError("invalid-argument", "Invalid receipt revision.");
   const expense = parseExpense(request.expense);
   const originalExpense = request.originalExpense === null ? null : parseExpense(request.originalExpense);
   const original = rows(request.originalRows), revised = rows(request.rows);
@@ -83,6 +86,9 @@ async function correctReceipt(db, uid, request) {
         throw new HttpsError('permission-denied', 'Receipt ownership mismatch.');
       if ((storedReceipt?.title ?? backup?.title ?? "") !== request.originalTitle)
         throw new HttpsError("failed-precondition", "Receipt title changed. Refresh and retry.");
+      if (BigInt(storedReceipt?.revision ?? backup?.revision ?? 0) !== BigInt(originalRevision))
+        throw new HttpsError("failed-precondition", "Receipt revision changed. Refresh and retry.");
+      const nextRevision = originalRevision + 1;
       const authorizeItem = item => {
         if (item && item.ownerId !== uid && item.sharing !== "SHARED")
           throw new HttpsError("permission-denied", "Only the owner can modify a personal item.");
@@ -113,14 +119,14 @@ async function correctReceipt(db, uid, request) {
       }
       writes.forEach(write => write());
       tx.set(marker, { id: expense.id, ownerId: ownerId, householdId: expense.householdId, rows: revised });
-      tx.set(linksRef, { links: nextLinks, title: request.title });
+      tx.set(linksRef, { links: nextLinks, title: request.title, revision: nextRevision });
       tx.set(expenseRef, expense);
       tx.set(expenseMarker, { householdId: expense.householdId });
       if (backup) {
         const submission = { id: expense.id, ownerId, householdId: expense.householdId, rows: revised,
           draft: false, expense: { paidBy: expense.paidBy, totalAmountCents: expense.totalAmountCents, shares: expense.shares },
           inventoryConfirmed: true, expenseProgress: 'CONFIRMED' };
-        tx.set(backupRef, { ...backup, title: request.title,
+        tx.set(backupRef, { ...backup, title: request.title, revision: nextRevision,
           submission: JSON.stringify(submission, (_, value) => typeof value === 'bigint' ? Number(value) : value) });
       }
       tx.set(revision, { lastReceiptCorrection: request.operationId });
