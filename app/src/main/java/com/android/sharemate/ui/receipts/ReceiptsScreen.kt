@@ -121,7 +121,8 @@ fun ReceiptsScreen(
                 initializer {
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = false),
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId),
                       AndroidReceiptPhotoStore(context),
                       userId,
                       householdId)
