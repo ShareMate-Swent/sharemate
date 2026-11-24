@@ -46,3 +46,30 @@ Corrections send `originalTitle` alongside the original rows and expense. The se
 all three before applying a new correction. The original title must be retained in the local
 correction journal so retries preserve the same request identity. Older clients that omit it
 must refresh/update rather than overwrite a newer title.
+
+## Private household deletion
+
+`deletePrivateHousehold` in the same region deletes a private household with everything in it: its
+items and their photos, its receipts, the creator's receipt backups and deletion markers for it,
+its sub-collections, incident and receipt photos, and finally the household document together with
+the link on the creator's profile. Only the creator can call it, only for a private household with
+no other member, so a shared household is never deleted this way. Clients cannot delete a household
+directly; the Firestore rules deny it. The request is exactly `{ householdId }`.
+
+The household document goes last, so a failed call leaves the household in place and calling again
+only redoes what is left. The cleaning repeats until a pass finds nothing, so an item added from
+another device meanwhile is removed too; this makes a leftover very unlikely but cannot rule it out,
+and a household that keeps receiving writes is kept and the call fails, to be repeated. The final
+transaction reads the household again and only deletes the instance that was checked. A household
+that is already gone counts as deleted. The function runs for up to 300 seconds, so callers should
+wait longer than that.
+
+The function and its Storage access need deployment. Its tests run in two ways: the unit tests need
+no emulator, and `private-household.test.js` calls the function against the Auth, Firestore, Storage
+and Functions emulators.
+
+```sh
+node --test functions/private-household.unit.test.js
+firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate-ci \
+  "node --test functions/private-household.test.js"
+```
