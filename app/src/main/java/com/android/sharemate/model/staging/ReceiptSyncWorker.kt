@@ -30,7 +30,7 @@ class ReceiptSyncWorker(
       { FirebaseAuth.getInstance().currentUser?.uid },
       { owner, home, id, actor, delete ->
         val store =
-            AndroidInventorySubmissionStore(context.applicationContext, scheduleSync = false)
+            AndroidInventorySubmissionStore(context.applicationContext, scheduleSync = false, viewerId = actor)
         val items = FirebaseItemRepository(FirebaseFirestore.getInstance())
         val expenses =
             FirebaseExpenseSubmissionRepository(FirebaseFunctions.getInstance("europe-west6"))
