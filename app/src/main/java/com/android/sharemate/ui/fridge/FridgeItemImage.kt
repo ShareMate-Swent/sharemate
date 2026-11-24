@@ -36,10 +36,6 @@ import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.isStoredPersonalPhoto
 import com.android.sharemate.resources.C
 import java.io.File
-import java.nio.ByteBuffer
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private val ThumbnailSize = 80.dp
 
