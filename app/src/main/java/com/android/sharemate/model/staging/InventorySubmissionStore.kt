@@ -532,6 +532,7 @@ class AndroidInventorySubmissionStore(
           }
           check(lifecycle.commit(original.householdId, editor))
         }
+        if (scheduleSync) ReceiptSyncWorker.enqueue(applicationContext, correction.replacement)
       }
 
   internal fun decode(value: String, ownerId: String, householdId: String): InventorySubmission {
