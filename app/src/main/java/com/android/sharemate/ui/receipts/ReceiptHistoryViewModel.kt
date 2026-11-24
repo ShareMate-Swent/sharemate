@@ -33,7 +33,7 @@ data class RetainedReceipt(
 /** Owns on-device receipt history for one authenticated account and household. */
 class ReceiptHistoryViewModel(
     private val repository: ItemRepository,
-    store: InventorySubmissionStore,
+    private val store: InventorySubmissionStore,
     private val photos: ReceiptPhotoStore,
     private val ownerId: String,
     private val householdId: String,
@@ -41,7 +41,6 @@ class ReceiptHistoryViewModel(
     private val expenses: com.android.sharemate.model.finance.ExpenseSubmissionRepository? = null,
     private val cloud: com.android.sharemate.model.receipt.ReceiptCloudRepository? = null,
 ) : ViewModel() {
-  private val store = store.forViewer(ownerId)
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
   /** Receipts belonging to this account and household, including pending and failed saves. */
   val receipts = mutableReceipts.asStateFlow()
