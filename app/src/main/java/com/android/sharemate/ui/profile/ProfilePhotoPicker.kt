@@ -50,11 +50,13 @@ fun ProfilePhotoPicker(
 
 /**
  * Returns the camera/gallery ViewModel for the profile photo, retained in the current store. The
- * camera starts on the front lens because a profile photo is usually a selfie.
+ * camera starts on the front lens and saves front photos mirrored, like the preview, because a
+ * profile photo is usually a selfie.
  */
 @Composable
 fun profilePhotoCamera(): PhotoPickerViewModel =
     photoPickerViewModel(
         PROFILE_PHOTO_CAMERA_KEY,
         importPolicy = PhotoImportPolicy.PERSONAL,
-        defaultLens = CameraLens.FRONT)
+        defaultLens = CameraLens.FRONT,
+        mirrorFrontCamera = true)

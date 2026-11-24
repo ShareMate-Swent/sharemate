@@ -114,6 +114,7 @@ fun PhotoPickerDialog(
                           enabled = !state.busy,
                           lens = state.lens,
                           onSwitchLens = viewModel::switchLens,
+                          mirrorFrontCamera = viewModel.mirrorFrontCamera,
                           onCapture = viewModel::capture,
                           onFailure = {
                             viewModel.showSources()

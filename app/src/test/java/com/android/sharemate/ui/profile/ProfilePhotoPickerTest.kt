@@ -68,10 +68,13 @@ class ProfilePhotoPickerTest {
   }
 
   @Test
-  fun profilePhotoCameraStartsOnTheFrontLens() {
+  fun profilePhotoCameraStartsOnTheFrontLensAndMirrorsSelfies() {
     lateinit var picker: PhotoPickerViewModel
     compose.setContent { picker = profilePhotoCamera() }
-    compose.runOnIdle { assertEquals(CameraLens.FRONT, picker.state.value.lens) }
+    compose.runOnIdle {
+      assertEquals(CameraLens.FRONT, picker.state.value.lens)
+      assertTrue(picker.mirrorFrontCamera)
+    }
   }
 
   @Test

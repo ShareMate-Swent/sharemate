@@ -58,11 +58,14 @@ data class PhotoPickerState(
  * Holds the picker dialog state, including the chosen camera lens.
  *
  * @param defaultLens Lens used until the user switches it, e.g. [CameraLens.FRONT] for selfies.
+ * @property mirrorFrontCamera Whether front-camera photos are saved mirrored, like the preview.
+ *   Only for selfies: mirrored text breaks receipt OCR and barcode scanning.
  */
 class PhotoPickerViewModel(
     private val store: TemporaryPhotoStore,
     private val savedState: SavedStateHandle,
     private val defaultLens: CameraLens = CameraLens.BACK,
+    val mirrorFrontCamera: Boolean = false,
 ) : ViewModel() {
   private fun restoreSelection(): SelectedPhoto? =
       savedState.get<String>(IMAGE_KEY)?.let { uri ->

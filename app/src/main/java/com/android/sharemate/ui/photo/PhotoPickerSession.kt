@@ -18,6 +18,7 @@ internal fun photoPickerViewModel(
     key: String,
     importPolicy: PhotoImportPolicy = PhotoImportPolicy.STANDARD,
     defaultLens: CameraLens = CameraLens.BACK,
+    mirrorFrontCamera: Boolean = false,
 ): PhotoPickerViewModel {
   val context = LocalContext.current.applicationContext
   return viewModel(
@@ -28,7 +29,8 @@ internal fun photoPickerViewModel(
               PhotoPickerViewModel(
                   AndroidTemporaryPhotoStore(context, importPolicy),
                   createSavedStateHandle(),
-                  defaultLens)
+                  defaultLens,
+                  mirrorFrontCamera)
             }
           })
 }

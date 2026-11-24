@@ -45,8 +45,12 @@ import kotlin.coroutines.suspendCoroutine
  * Shows the CameraX viewfinder, a capture button and, when the device has both a back and a front
  * camera, a button that switches between them.
  *
+ * If binding a lens fails while the device has the other one, the other lens is used instead of
+ * reporting a failure, so a broken front camera never blocks capture.
+ *
  * @param lens Preferred lens; when the device lacks it, the other lens is used instead.
  * @param onSwitchLens Called when the user asks for the other lens.
+ * @param mirrorFrontCamera Save front-camera photos mirrored, like the preview (selfies only).
  */
 @Composable
 internal fun CameraCapture(
@@ -55,6 +59,7 @@ internal fun CameraCapture(
     onFailure: () -> Unit,
     lens: CameraLens = CameraLens.BACK,
     onSwitchLens: () -> Unit = {},
+    mirrorFrontCamera: Boolean = false,
     providerLoader: (Context) -> ListenableFuture<ProcessCameraProvider> =
         ProcessCameraProvider::getInstance,
     imageCaptureFactory: () -> ImageCapture = { ImageCapture.Builder().build() },
@@ -92,7 +97,10 @@ internal fun CameraCapture(
         executor)
     onDispose { disposed = true }
   }
-  val lenses = remember(provider) { provider?.availableLenses().orEmpty() }
+  // Lenses that failed to bind are skipped until the camera page is opened again.
+  var brokenLenses by remember(provider) { mutableStateOf(emptySet<CameraLens>()) }
+  val lenses =
+      remember(provider, brokenLenses) { provider?.availableLenses().orEmpty() - brokenLenses }
   // Without the preferred lens (e.g. no front camera) use the other one; with none, let CameraX
   // report the failure.
   val boundLens = if (lens in lenses || lenses.isEmpty()) lens else lens.other()
@@ -113,7 +121,7 @@ internal fun CameraCapture(
           cameraProvider.bindToLifecycle(owner, boundLens.selector(), useCases)
           ready = true
         } catch (_: Exception) {
-          failure()
+          if (boundLens.other() in lenses) brokenLenses = brokenLenses + boundLens else failure()
         }
       }
     }
@@ -148,7 +156,8 @@ internal fun CameraCapture(
                           .setMetadata(
                               // PreviewView mirrors the front camera; save what the user saw.
                               ImageCapture.Metadata().apply {
-                                isReversedHorizontal = boundLens == CameraLens.FRONT
+                                isReversedHorizontal =
+                                    mirrorFrontCamera && boundLens == CameraLens.FRONT
                               })
                           .build(),
                       executor,
