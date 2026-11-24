@@ -220,11 +220,7 @@ class InventorySaveViewModel(
             store.saveCorrection(correction)
             checkNotNull(expenses).correctReceipt(correction)
             val confirmed = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
-            store.save(confirmed)
-            store.details(userId, householdId, confirmed.id)?.let {
-              store.saveDetails(it.copy(title = correction.title))
-            }
-            store.clearCorrection(userId, householdId, confirmed.id)
+            store.acknowledgeCorrection(correction)
             activeCorrection = null
             if (token == generation) {
               originalTitle = correction.title
