@@ -80,6 +80,7 @@ class FirebaseReceiptCloudRepositoryTest {
   @Before
   fun setUp() {
     `when`(db.collection(anyString())).thenReturn(collection)
+    `when`(db.collectionGroup("receiptBackups")).thenReturn(query)
     `when`(collection.document(anyString())).thenReturn(ref)
     `when`(ref.collection(anyString())).thenReturn(collection)
     `when`(collection.whereEqualTo(anyString(), any())).thenReturn(query)
@@ -117,6 +118,9 @@ class FirebaseReceiptCloudRepositoryTest {
                   })
       else verify(tx, never()).set(eq(ref), any())
     }
+    verify(db, atLeastOnce()).collection("users")
+    verify(ref, atLeastOnce()).collection("receiptBackups")
+    verify(collection, atLeastOnce()).document("owner")
     val upload = mock(UploadTask::class.java)
     `when`(upload.isComplete).thenReturn(true)
     `when`(upload.result).thenReturn(mock(UploadTask.TaskSnapshot::class.java))

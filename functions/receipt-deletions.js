@@ -16,7 +16,7 @@ async function deleteReceipt(db, uid, request, deletePhoto = async () => {}) {
   const expenseMarker = user.collection('expenseSubmissions').doc(request.id);
   const expense = home.collection('expenses').doc(request.id);
   const tombstone = user.collection('receiptDeletions').doc(request.id);
-  const backupRef = db.collection('receiptBackups').doc(request.id);
+  const backupRef = user.collection('receiptBackups').doc(request.id);
   await db.runTransaction(async tx => {
     const prior = (await tx.get(tombstone)).data();
     if (prior) {

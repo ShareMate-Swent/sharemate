@@ -46,6 +46,7 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
             "operationId" to correction.operationId,
             "ownerId" to correction.original.ownerId,
             "originalRows" to rows(correction.original),
+            "originalTitle" to correction.originalTitle,
             "rows" to rows(correction.replacement),
             "originalExpense" to correction.original.expense?.let(::expense),
             "expense" to expense(checkNotNull(correction.replacement.expense)),
