@@ -34,7 +34,8 @@ internal fun ExpiryScan(
     enabled: Boolean,
     onDateConfirmed: (String) -> Unit,
     scan: ExpiryScanViewModel = expiryScanViewModel(),
-    picker: PhotoPickerViewModel = photoPickerViewModel("fridge-expiry-photo"),
+    picker: PhotoPickerViewModel =
+        photoPickerViewModel("fridge-expiry-photo", restoreAfterProcessDeath = false),
 ) {
   val photo by picker.state.collectAsStateWithLifecycle()
   val candidates by scan.candidates.collectAsStateWithLifecycle()
