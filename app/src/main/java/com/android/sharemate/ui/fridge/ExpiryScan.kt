@@ -25,6 +25,7 @@ import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
 import com.android.sharemate.ui.photo.OnPhotoPickerCancelled
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
+import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.photo.photoPickerViewModel
 
@@ -33,8 +34,8 @@ internal fun ExpiryScan(
     enabled: Boolean,
     onDateConfirmed: (String) -> Unit,
     scan: ExpiryScanViewModel = expiryScanViewModel(),
+    picker: PhotoPickerViewModel = photoPickerViewModel("fridge-expiry-photo"),
 ) {
-  val picker = photoPickerViewModel("fridge-expiry-photo")
   val photo by picker.state.collectAsStateWithLifecycle()
   val candidates by scan.candidates.collectAsStateWithLifecycle()
   val activity = LocalContext.current.findActivity()

@@ -45,6 +45,7 @@ class ExpiryScanViewModelTest {
     picker.capture { assertEquals(uri, it) }
     advanceUntilIdle()
     val restored = PhotoPickerViewModel(store, saved)
+    advanceUntilIdle()
     var attempts = 0
     val scan = ExpiryScanViewModel {
       assertEquals(uri, it)
