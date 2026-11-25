@@ -133,6 +133,11 @@
     <string name="settings_back">Back</string>
     <string name="nav_open_settings">Open settings</string>
     <string name="nav_add_item">Add an item</string>
+    <string name="add_item_sheet_description">How do you want to add it to the fridge?</string>
+    <string name="add_item_barcode">Scan a barcode</string>
+    <string name="add_item_barcode_description">Fill in the details from its barcode</string>
+    <string name="add_item_manual">Enter it manually</string>
+    <string name="add_item_manual_description">Type the name, quantity and expiry</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>

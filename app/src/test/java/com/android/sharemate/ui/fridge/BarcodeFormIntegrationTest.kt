@@ -16,6 +16,7 @@ import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -81,6 +82,21 @@ class BarcodeFormIntegrationTest {
   fun tearDown() {
     owner.clear()
     Dispatchers.resetMain()
+  }
+
+  @Test
+  fun readingAPhotoKeepsABarcodeFormOpenWhenThePhotoIsCancelledLater() = runTest {
+    vm.dismissAddItemDialog()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    assertTrue(vm.uiState.value.closeOnBarcodeCancel)
+    lookup = { ProductLookupResult.NotFound }
+    try {
+      vm.confirmBarcodeImage("file:///private/photo.png")
+      fail("The product is not in the catalog")
+    } catch (_: BarcodeLookupException) {}
+    // The lookup failed: the form stays, to type the item in instead.
+    assertFalse(vm.uiState.value.closeOnBarcodeCancel)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
   }
 
   @Test
