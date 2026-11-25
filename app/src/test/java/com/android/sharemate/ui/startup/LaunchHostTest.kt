@@ -30,6 +30,51 @@ class LaunchHostTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
   @Test
+  fun brandColorsFollowThemeChanges() {
+    val dark = mutableStateOf(false)
+    var name = androidx.compose.ui.graphics.Color.Unspecified
+    var label = androidx.compose.ui.graphics.Color.Unspecified
+    var expectedName = androidx.compose.ui.graphics.Color.Unspecified
+    var expectedLabel = androidx.compose.ui.graphics.Color.Unspecified
+    compose.setContent {
+      com.android.sharemate.ui.theme.ShareMateTheme(darkTheme = dark.value) {
+        name = LaunchLayout.nameDark
+        label = LaunchLayout.progressLabel
+        expectedName = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+        expectedLabel = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+      }
+    }
+    compose.runOnIdle {
+      assertEquals(com.android.sharemate.ui.theme.ShareMateBrandColors.darkName, name)
+      dark.value = true
+    }
+    compose.runOnIdle {
+      assertEquals(expectedName, name)
+      assertEquals(expectedLabel, label)
+    }
+  }
+
+  @Test
+  @Config(sdk = [31], qualifiers = "night")
+  fun nativeSplashUsesDarkBackgroundAndLightSystemIcons() {
+    val attributes =
+        compose.activity.obtainStyledAttributes(
+            R.style.Theme_ShareMate_Launch,
+            intArrayOf(
+                android.R.attr.windowSplashScreenBackground,
+                android.R.attr.windowLightStatusBar,
+                android.R.attr.windowLightNavigationBar))
+    try {
+      assertEquals(
+          compose.activity.getColor(R.color.launch_dark_background), attributes.getColor(0, 0))
+      org.junit.Assert.assertFalse(attributes.getBoolean(1, true))
+      org.junit.Assert.assertFalse(attributes.getBoolean(2, true))
+    } finally {
+      attributes.recycle()
+    }
+  }
+
+  @Test
   fun slowLoadNeverDismissesUntilTheDestinationIsReady() {
     val ready = mutableStateOf(false)
     var mounts = 0
