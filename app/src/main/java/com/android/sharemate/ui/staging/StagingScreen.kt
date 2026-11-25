@@ -272,8 +272,10 @@ private fun StagedItemCard(
     enabled: Boolean,
 ) {
   Card(
-      onClick = onClick,
-      enabled = enabled,
+      // Keep the card content fully opaque when editing is unavailable. Material's disabled
+      // Card applies disabled alpha to every child, which makes receipt names and prices
+      // unreadable.
+      onClick = { if (enabled) onClick() },
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
@@ -306,8 +308,8 @@ private fun StagedItemCard(
               else MaterialTheme.colorScheme.onSurface,
       )
       IconButton(
-          onClick = onDelete,
-          enabled = enabled,
+          // The action remains a no-op when editing is unavailable, while the icon stays visible.
+          onClick = { if (enabled) onDelete() },
           modifier = Modifier.testTag(StagingTestTags.delete(item.id)),
       ) {
         Icon(
