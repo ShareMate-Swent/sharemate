@@ -19,8 +19,8 @@ internal val LocalStatusColors = staticCompositionLocalOf { LightStatusColors }
 /**
  * The app's theme: the design system's colors, Plus Jakarta Sans typography and rounded shapes,
  * plus the [StatusColors] read through [ShareMateTheme.statusColors]. It follows the phone's dark
- * mode unless [darkTheme] says otherwise, and paints the status bar with the background color and
- * icons that contrast with it.
+ * mode unless [darkTheme] says otherwise, and paints the status and navigation bars with the
+ * background color and icons that contrast with it.
  */
 @Composable
 fun ShareMateTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
@@ -30,9 +30,15 @@ fun ShareMateTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composa
   if (!view.isInEditMode) {
     SideEffect {
       val window = (view.context as? Activity)?.window ?: return@SideEffect
+      // The launch theme leaves the navigation bar white, so both bars are painted here.
       @Suppress("DEPRECATION")
       window.statusBarColor = colorScheme.background.toArgb()
-      WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+      @Suppress("DEPRECATION")
+      window.navigationBarColor = colorScheme.background.toArgb()
+      WindowCompat.getInsetsController(window, view).apply {
+        isAppearanceLightStatusBars = !darkTheme
+        isAppearanceLightNavigationBars = !darkTheme
+      }
     }
   }
   CompositionLocalProvider(LocalStatusColors provides statusColors) {
