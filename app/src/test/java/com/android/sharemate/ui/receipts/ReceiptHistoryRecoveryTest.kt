@@ -68,18 +68,10 @@ class ReceiptHistoryRecoveryTest {
 
   private fun TestScope.model(
       store: InventorySubmissionStore,
-      cloud: ReceiptCloudRepository = EmptyReceiptCloud,
       expenses: ExpenseSubmissionRepository = mock(ExpenseSubmissionRepository::class.java)
   ): ReceiptHistoryViewModel =
       ReceiptHistoryViewModel(
-              items,
-              store,
-              photos,
-              "owner",
-              "home",
-              now = { 7 },
-              cloud = cloud,
-              expenses = expenses)
+              items, store, photos, "owner", "home", now = { 7 }, expenses = expenses)
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)
             runCurrent()
@@ -133,48 +125,6 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runHistoryTest {
-    val store = store()
-    val updates = MutableSharedFlow<List<ReceiptCloudEntry>>()
-    val cloud =
-        object : ReceiptCloudRepository {
-          override fun observe(ownerId: String, householdId: String) = updates
-        }
-    val history = model(store, cloud)
-    val remote =
-        ReceiptCloudEntry(
-            receipt(name = "Updated"),
-            ReceiptDetails(id, "owner", "home", "", 1, title = "New title"))
-    for (local in listOf(receipt(draft = true), receipt(confirmed = false), receipt())) {
-      store.save(local)
-      history.refresh()
-      updates.emit(listOf(remote))
-      runCurrent()
-      assertEquals(
-          if (local.expenseProgress == ExpenseProgress.CONFIRMED) remote.submission else local,
-          store.load("owner", "home"))
-    }
-    updates.emit(listOf(remote))
-    runCurrent()
-    updates.emit(
-        listOf(remote.copy(details = remote.details.copy(title = "Changed title", revision = 1))))
-    runCurrent()
-    assertEquals("Changed title", history.receipts.value.single().details?.title)
-    store.saveCorrection(ReceiptCorrection("revision", remote.submission, receipt(), "Pending"))
-    history.refresh()
-    assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
-    updates.emit(listOf(remote))
-    runCurrent()
-    assertEquals("Changed title", store.details("owner", "home", id)?.title)
-    store.clearCorrection("owner", "home", id)
-    store.deleteReceipt("owner", "home", id)
-    updates.emit(listOf(remote))
-    runCurrent()
-    assertTrue(history.receipts.value.isEmpty())
-    verifyNoInteractions(items)
-  }
-
-  @Test
   fun titleFallbacksAndFailuresKeepTheCurrentReviewRecoverable() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
@@ -213,58 +163,21 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun cancellationsPropagateWhileResumeAndCloudFailuresBecomeVisible() = runHistoryTest {
+  fun cancellationsPropagateDuringDeletion() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
     val cancelled = CancellationException("Stopped")
     val store =
         object : InventorySubmissionStore by disk {
-          override suspend fun resumeSync(ownerId: String, householdId: String) {
-            throw IOException("Offline")
-          }
-
           override suspend fun deleteDraft(ownerId: String, householdId: String, id: String) {
             throw cancelled
           }
         }
     val history = model(store)
-    assertTrue(history.syncError.value)
     history.refresh()
     assertFalse(history.error.value)
-    assertTrue(history.syncError.value)
     assertTrue(runCatching { history.discardDraft(id) }.exceptionOrNull() is CancellationException)
     `when`(photos.delete(id)).thenThrow(cancelled)
     assertTrue(runCatching { history.deleteReceipt(id) }.exceptionOrNull() is CancellationException)
-    for (deletions in listOf(false, true)) {
-      val disconnected = CompletableDeferred<Unit>()
-      val cloud =
-          object : ReceiptCloudRepository {
-            override fun observe(
-                ownerId: String,
-                householdId: String
-            ): Flow<List<ReceiptCloudEntry>> =
-                if (deletions) emptyFlow()
-                else
-                    flow {
-                      disconnected.await()
-                      throw IOException("Disconnected")
-                    }
-
-            override fun observeDeleted(ownerId: String, householdId: String): Flow<Set<String>> =
-                if (deletions)
-                    flow {
-                      disconnected.await()
-                      throw IOException("Disconnected")
-                    }
-                else emptyFlow()
-          }
-      val observing = model(disk, cloud)
-      disconnected.complete(Unit)
-      runCurrent()
-      assertTrue(observing.syncError.value)
-      observing.refresh()
-      assertFalse(observing.error.value)
-      assertTrue(observing.syncError.value)
-    }
   }
 }

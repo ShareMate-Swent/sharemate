@@ -105,7 +105,6 @@ class ReceiptScanRecreationTest {
                                 "owner",
                                 "home",
                                 expenses = mock(ExpenseSubmissionRepository::class.java),
-                                cloud = EmptyReceiptCloud,
                                 now = { 0L })
                           }
                         })

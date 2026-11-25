@@ -76,8 +76,7 @@ class ReceiptHistoryFlowTest {
             userId = owner,
             householdId = household,
             sharedHousehold = true,
-            expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud)
+            expenseRepository = UnusedReceiptExpenses)
       }
     }
 
@@ -128,8 +127,7 @@ class ReceiptHistoryFlowTest {
             userId = owner,
             householdId = household,
             sharedHousehold = true,
-            expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud)
+            expenseRepository = UnusedReceiptExpenses)
       }
     }
 
@@ -160,8 +158,7 @@ class ReceiptHistoryFlowTest {
             sharedHousehold = true,
             showBalances = true,
             onOpenBalances = { balancesOpened[0] = true },
-            expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud)
+            expenseRepository = UnusedReceiptExpenses)
       }
     }
     compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
@@ -187,7 +184,6 @@ class ReceiptHistoryFlowTest {
             householdId = household,
             sharedHousehold = true,
             expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud,
             scanReceiptRequested = requested.value,
             onScanReceiptRequestHandled = {
               handled++
@@ -234,7 +230,6 @@ class ReceiptHistoryFlowTest {
             householdId = household,
             sharedHousehold = true,
             expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud,
             scanReceiptRequested = requested.value,
             onScanReceiptRequestHandled = { requested.value = false },
             onScanReceiptCancelled = {
@@ -282,8 +277,7 @@ class ReceiptHistoryFlowTest {
             owner,
             household,
             sharedHousehold = true,
-            expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud)
+            expenseRepository = UnusedReceiptExpenses)
       }
     }
     val review = compose.activity.getString(R.string.receipt_review_items)
@@ -328,8 +322,7 @@ class ReceiptHistoryFlowTest {
             owner,
             household,
             sharedHousehold = true,
-            expenseRepository = UnusedReceiptExpenses,
-            receiptCloudRepository = UnusedReceiptCloud)
+            expenseRepository = UnusedReceiptExpenses)
       }
     }
     val view = compose.activity.getString(R.string.receipt_view_receipt)

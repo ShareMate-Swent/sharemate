@@ -7,7 +7,6 @@ import com.android.sharemate.model.item.*
 import com.android.sharemate.model.staging.*
 import com.google.firebase.firestore.*
 import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import kotlinx.coroutines.*
@@ -147,9 +146,7 @@ class FirebaseReceiptCloudRepository(
                         break
                       } catch (cancelled: CancellationException) {
                         throw cancelled
-                      } catch (failure: Exception) {
-                        val classified = receiptCloudFailure(failure)
-                        if (classified is ReceiptCloudPermanentException) throw classified
+                      } catch (_: Exception) {
                         // Retry without requiring a new Firestore event, while observation is
                         // active.
                       } finally {
@@ -205,7 +202,7 @@ class FirebaseReceiptCloudRepository(
   private fun watch(query: Query): Flow<List<DocumentSnapshot>> = callbackFlow {
     val registration =
         query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-          if (error != null) close(receiptCloudFailure(error))
+          if (error != null) close(error)
           else if (snapshot != null &&
               !snapshot.metadata.isFromCache &&
               !snapshot.metadata.hasPendingWrites())
@@ -213,30 +210,4 @@ class FirebaseReceiptCloudRepository(
         }
     awaitClose { registration.remove() }
   }
-}
-
-/** Keeps Firebase error types inside the model layer. */
-internal fun receiptCloudFailure(failure: Exception): Exception {
-  val permanent =
-      when (failure) {
-        is FirebaseFirestoreException ->
-            failure.code in
-                setOf(
-                    FirebaseFirestoreException.Code.PERMISSION_DENIED,
-                    FirebaseFirestoreException.Code.UNAUTHENTICATED,
-                    FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-                    FirebaseFirestoreException.Code.FAILED_PRECONDITION,
-                    FirebaseFirestoreException.Code.NOT_FOUND,
-                    FirebaseFirestoreException.Code.UNIMPLEMENTED)
-        is StorageException ->
-            failure.errorCode in
-                setOf(
-                    StorageException.ERROR_NOT_AUTHORIZED,
-                    StorageException.ERROR_NOT_AUTHENTICATED,
-                    StorageException.ERROR_OBJECT_NOT_FOUND,
-                    StorageException.ERROR_BUCKET_NOT_FOUND,
-                    StorageException.ERROR_PROJECT_NOT_FOUND)
-        else -> false
-      }
-  return if (permanent) ReceiptCloudPermanentException(failure) else failure
 }

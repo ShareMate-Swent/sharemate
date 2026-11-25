@@ -8,9 +8,6 @@ import kotlinx.coroutines.flow.Flow
 /** Complete receipt backup; drafts are private and confirmed purchases are household-visible. */
 data class ReceiptCloudEntry(val submission: InventorySubmission, val details: ReceiptDetails)
 
-/** Requires an access or configuration change; retrying the same observation cannot recover. */
-class ReceiptCloudPermanentException(cause: Exception) : Exception(cause)
-
 /** Authenticated cloud access independent of UI and Firebase implementation types. */
 interface ReceiptCloudRepository {
   /** Explicit server deletion markers; absence from a query is never proof of deletion. */

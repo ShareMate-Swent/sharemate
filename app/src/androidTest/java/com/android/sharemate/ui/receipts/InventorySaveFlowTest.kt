@@ -163,8 +163,7 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = repository,
-            receiptCloudRepository = UnusedReceiptCloud)
+            profileRepository = repository)
       }
     }
     compose
@@ -240,8 +239,7 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = profiles,
-            receiptCloudRepository = UnusedReceiptCloud)
+            profileRepository = profiles)
       }
     }
     compose
@@ -365,8 +363,7 @@ class InventorySaveFlowTest {
             "member-retry-home",
             true,
             expenseRepository = expenses,
-            profileRepository = profiles,
-            receiptCloudRepository = UnusedReceiptCloud)
+            profileRepository = profiles)
       }
     }
     compose
@@ -404,8 +401,7 @@ class InventorySaveFlowTest {
             "services-home",
             shared.value,
             expenseRepository = expenses,
-            profileRepository = profiles.takeIf { profilesAvailable.value },
-            receiptCloudRepository = UnusedReceiptCloud)
+            profileRepository = profiles.takeIf { profilesAvailable.value })
       }
     }
     val app = compose.activity

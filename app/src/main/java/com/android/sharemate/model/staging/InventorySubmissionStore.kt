@@ -21,9 +21,6 @@ import org.json.JSONObject
  * Private durable receipt handoff. Persist before enqueueing; retain prices after inventory save.
  */
 interface InventorySubmissionStore {
-  /** Binds shared receipt reads and edits to this viewer without changing creator identities. */
-  fun forViewer(viewerId: String): InventorySubmissionStore = this
-
   /** Re-enqueues retained work after an interrupted process, without replacing running jobs. */
   suspend fun resumeSync(ownerId: String, householdId: String) {}
   /**
@@ -147,10 +144,6 @@ class AndroidInventorySubmissionStore(
   private val applicationContext = context.applicationContext
   private val preferences
     get() = applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-
-  override fun forViewer(viewerId: String): InventorySubmissionStore =
-      AndroidInventorySubmissionStore(
-          applicationContext, dispatcher, legacyActive, scheduleSync, viewerId)
 
   override suspend fun resumeSync(ownerId: String, householdId: String) {
     if (!scheduleSync || legacyActive) return

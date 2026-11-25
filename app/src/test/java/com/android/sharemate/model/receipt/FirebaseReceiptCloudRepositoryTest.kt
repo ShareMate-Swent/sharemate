@@ -318,9 +318,7 @@ class FirebaseReceiptCloudRepositoryTest {
         val failure = async { runCatching { repository.observeDeleted("owner", "home").first() } }
         runCurrent()
         callbacks.last().onEvent(null, error)
-        val reported = failure.await().exceptionOrNull()
-        assertTrue(reported is ReceiptCloudPermanentException)
-        assertSame(error, reported?.cause)
+        assertSame(error, failure.await().exceptionOrNull())
         verify(registration, times(2)).remove()
       }
 }
