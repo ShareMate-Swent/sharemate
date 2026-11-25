@@ -7,10 +7,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -91,7 +91,9 @@ fun LaunchHost(content: @Composable () -> Unit) {
                   destinationBounds = state.welcomeBrandBounds,
                   modifier =
                       Modifier.fillMaxSize()
-                          .background(Color.White.copy(alpha = 1f - transition.value)))
+                          .background(
+                              MaterialTheme.colorScheme.surface.copy(
+                                  alpha = 1f - transition.value)))
             }
           }
         }

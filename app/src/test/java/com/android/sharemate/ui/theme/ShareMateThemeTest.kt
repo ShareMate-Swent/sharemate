@@ -113,6 +113,39 @@ class ShareMateThemeTest {
     assertFalse(lightStatusBarIcons())
   }
 
+  private fun lightNavigationBarIcons(): Boolean {
+    val window = compose.activity.window
+    return WindowCompat.getInsetsController(window, window.decorView)
+        .isAppearanceLightNavigationBars
+  }
+
+  @Suppress("DEPRECATION")
+  private fun navigationBarColor(): Int = compose.activity.window.navigationBarColor
+
+  @Test
+  fun lightNavigationBarUsesTheBackgroundWithDarkIcons() {
+    captureTheme()
+
+    assertEquals(LightPalette.background.toArgb(), navigationBarColor())
+    assertTrue(lightNavigationBarIcons())
+  }
+
+  @Test
+  @Config(qualifiers = "night")
+  fun darkNavigationBarUsesTheBackgroundWithLightIcons() {
+    compose.activity.window.apply {
+      // Start from the launch theme's white bar, the state the bug left on screen.
+      @Suppress("DEPRECATION")
+      navigationBarColor = android.graphics.Color.WHITE
+      WindowCompat.getInsetsController(this, decorView).isAppearanceLightNavigationBars = true
+    }
+
+    captureTheme()
+
+    assertEquals(DarkPalette.background.toArgb(), navigationBarColor())
+    assertFalse(lightNavigationBarIcons())
+  }
+
   @Test
   fun everyTextStyleUsesPlusJakartaSans() {
     val styles =

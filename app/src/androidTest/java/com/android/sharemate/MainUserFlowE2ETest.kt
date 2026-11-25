@@ -249,6 +249,10 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput(inviteCode)
     compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    compose.waitUntil(15_000) {
+      compose.onAllNodesWithTag(JoinHouseholdTestTags.CONTINUE).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).performClick()
 
     compose.waitUntil(15_000) {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()

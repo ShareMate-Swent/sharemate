@@ -157,6 +157,7 @@ fun ShareMateBrand(
 
 @Composable
 private fun HandwrittenName(progress: Float, modifier: Modifier) {
+  val nameColor = LaunchLayout.nameDark
   val measures = remember {
     strokes.map { data ->
       PathMeasure().apply { setPath(PathParser().parsePathString(data).toPath(), false) }
@@ -173,7 +174,7 @@ private fun HandwrittenName(progress: Float, modifier: Modifier) {
           measure.getSegment(0f, minOf(remaining, measure.length), path, true)
           drawPath(
               path,
-              if (index < 5) LaunchLayout.nameDark else LaunchLayout.nameMint,
+              if (index < 5) nameColor else LaunchLayout.nameMint,
               style = Stroke(width = 3.4f, cap = StrokeCap.Round))
         }
         remaining -= measure.length

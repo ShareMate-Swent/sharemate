@@ -275,7 +275,8 @@ class InventorySaveViewModelTest {
     // The staging form cuts typed names, so only a row from an older draft can be too long.
     val tooLong =
         rows.mapIndexed { i, row ->
-          if (i == 0) row.copy(name = "a".repeat(TextLimits.ITEM_NAME + 1)) else row
+          if (i == 0) row.copy(name = "a".repeat(TextLimits.ITEM_NAME + 1))
+          else row.copy(priceCents = 100)
         }
     val staging = com.android.sharemate.ui.staging.StagingViewModel(tooLong)
     val corrected = checkNotNull(staging.confirmedItems())

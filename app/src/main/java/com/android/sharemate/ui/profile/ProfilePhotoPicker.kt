@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.image.PhotoImportPolicy
+import com.android.sharemate.ui.photo.CameraLens
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
@@ -47,7 +48,15 @@ fun ProfilePhotoPicker(
       onImageConfirmed = { onPhotoConfirmed(it.uri, it.source == PhotoSource.CAMERA) })
 }
 
-/** Returns the camera/gallery ViewModel for the profile photo, retained in the current store. */
+/**
+ * Returns the camera/gallery ViewModel for the profile photo, retained in the current store. The
+ * camera starts on the front lens and saves front photos mirrored, like the preview, because a
+ * profile photo is usually a selfie.
+ */
 @Composable
 fun profilePhotoCamera(): PhotoPickerViewModel =
-    photoPickerViewModel(PROFILE_PHOTO_CAMERA_KEY, importPolicy = PhotoImportPolicy.PERSONAL)
+    photoPickerViewModel(
+        PROFILE_PHOTO_CAMERA_KEY,
+        importPolicy = PhotoImportPolicy.PERSONAL,
+        defaultLens = CameraLens.FRONT,
+        mirrorFrontCamera = true)

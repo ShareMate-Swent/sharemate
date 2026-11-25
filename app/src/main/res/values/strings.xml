@@ -81,8 +81,12 @@
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
     <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
-    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="household_privacy_note">Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="copy_invite_code_action">Copy</string>
+    <string name="household_invite_code_label">%1$s · invite code</string>
+    <string name="household_members_title_with_count">Members (%1$d)</string>
+    <string name="step_indicator_description">Step %1$d of %2$d</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
     <string name="notification_channel_chat_name">Household chat</string>
@@ -113,6 +117,8 @@
     <string name="create_household">Create household</string>
     <string name="create_household_change_request_hint">Go back to change the name or fridge type.</string>
     <string name="household_ready_title">Your household is ready!</string>
+    <string name="household_joined_title">You\'re in!</string>
+    <string name="household_joined_description">You joined the household and can now use its shared fridge.</string>
     <string name="household_ready_description">Share this code with your roommates so they can join.</string>
     <string name="household_invite_code">Household invite code</string>
     <string name="copy_invite_code">Copy invite code</string>
@@ -127,6 +133,13 @@
     <string name="settings_back">Back</string>
     <string name="nav_open_settings">Open settings</string>
     <string name="nav_add_item">Add an item</string>
+    <string name="add_item_sheet_description">How do you want to add it to the fridge?</string>
+    <string name="add_item_barcode">Scan a barcode</string>
+    <string name="add_item_barcode_description">Fill in the details from its barcode</string>
+    <string name="add_item_manual">Enter it manually</string>
+    <string name="add_item_manual_description">Type the name, quantity and expiry</string>
+    <string name="add_item_receipt">Scan a receipt</string>
+    <string name="add_item_receipt_description">Add everything you bought at once</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
@@ -204,7 +217,8 @@
     <string name="staging_delete_item">Delete %1$s</string>
     <string name="staging_price_label">Line total</string>
     <string name="staging_currency">CHF</string>
-    <string name="staging_price_hint">Leave empty if unknown, e.g. 3.50</string>
+    <string name="staging_price_hint">Required, e.g. 3.50</string>
+    <string name="staging_missing_prices">Not all items have a price. Correct them to continue.</string>
     <string name="staging_price_invalid">Enter a price like 3.50.</string>
     <string name="fridge_image_description">Photo of %1$s</string>
     <string name="fridge_image_placeholder">Generic food image</string>
@@ -245,9 +259,16 @@
     <string name="chat_input_placeholder">Message</string>
     <string name="chat_send">Send</string>
     <string name="chat_default_sender_name">Member</string>
-    <string name="chat_activity_eaten">Ate %1$s</string>
-    <string name="chat_activity_thrown">Threw away %1$s</string>
-    <string name="chat_activity_image_description">Image of %1$s</string>
+    <string name="chat_activity_eaten">%1$s ate %2$s</string>
+    <string name="chat_activity_thrown">%1$s threw away %2$s</string>
+    <string name="chat_today">Today</string>
+    <string name="chat_yesterday">Yesterday</string>
+    <string name="chat_header_subtitle">%1$s · %2$s</string>
+    <plurals name="chat_member_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <string name="chat_avatar_description">Photo of %1$s</string>
     <string name="chat_sender_identity">%1$s · Member %2$d</string>
     <string name="fridge_personal">Personal</string>
     <string name="fridge_item_owner">Owner: %1$s</string>

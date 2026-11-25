@@ -43,7 +43,6 @@ import com.android.sharemate.ui.startup.LocalLaunchState
 import com.android.sharemate.ui.startup.LocalLaunchVisible
 import com.android.sharemate.ui.startup.ShareMateBrand
 import com.android.sharemate.ui.theme.Dimens
-import com.android.sharemate.ui.theme.LightColorScheme
 import com.android.sharemate.ui.theme.ShareMateBrandColors
 
 /**
@@ -65,8 +64,8 @@ fun AuthWelcomeScreen(
     isLoading: Boolean = false,
     error: AuthUiError? = null,
 ) {
-  MaterialTheme(colorScheme = LightColorScheme) {
-    Surface(modifier.fillMaxSize(), color = Color.White) {
+  MaterialTheme(colorScheme = MaterialTheme.colorScheme) {
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
       BoxWithConstraints(contentAlignment = Alignment.TopCenter) {
         Column(
             modifier =

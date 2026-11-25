@@ -7,6 +7,8 @@ package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
+import coil.ImageLoader
+import coil.request.ImageRequest
 import com.android.sharemate.model.barcode.BarcodeScanResult
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.chat.ChatRepository
@@ -24,10 +26,12 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_MAX_ATTEMPTS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_RETRY_DELAY_MS
 import com.android.sharemate.model.image.FoodImageTimeouts.IMAGE_LOOKUP_TIMEOUT_MS
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.FakeItemRepository
+import com.android.sharemate.model.item.FridgeAccessDeniedException
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
@@ -50,6 +54,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -59,7 +64,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -149,6 +156,24 @@ class FridgeViewModelTest {
     runCurrent()
     assertEquals(listOf(active), vm.visibleItems.value)
     assertEquals(4, vm.uiState.value.items.size)
+  }
+
+  @Test
+  fun displayStateKeepsVisibleItemsInSyncAfterPartialRemoval() = runTest {
+    val viewModel = viewModel()
+    val states = mutableListOf<FridgeScreenState>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.screenState.collect { states += it }
+    }
+    repository.emitItems(listOf(milk, bread))
+    runCurrent()
+    assertEquals(listOf(milk, bread), states.last().visibleItems)
+
+    repository.emitItems(listOf(bread))
+    runCurrent()
+
+    assertEquals(listOf(bread), states.last().visibleItems)
+    assertTrue(states.all { it.visibleItems == it.uiState.items })
   }
 
   @Test
@@ -1914,6 +1939,78 @@ class FridgeViewModelTest {
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
   }
 
+  @Test
+  fun formOpenedForABarcodeAsksForThePhotoOnceAndClosesWithIt() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    with(vm.uiState.value) {
+      assertTrue(isAddItemDialogOpen)
+      assertEquals(AddItemMethod.BARCODE, addButtonMethod)
+      assertTrue(scanBarcodeOnOpen)
+      assertTrue(closeOnBarcodeCancel)
+    }
+
+    vm.barcodeScanOpened()
+    assertFalse(vm.uiState.value.scanBarcodeOnOpen)
+    assertTrue(vm.uiState.value.closeOnBarcodeCancel)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+  }
+
+  @Test
+  fun manualOptionOpensTheFormWithoutThePhoto() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.MANUAL)
+    with(vm.uiState.value) {
+      assertTrue(isAddItemDialogOpen)
+      assertEquals(AddItemMethod.MANUAL, addButtonMethod)
+      assertFalse(scanBarcodeOnOpen)
+      assertFalse(closeOnBarcodeCancel)
+    }
+  }
+
+  @Test
+  fun dismissingClearsHowTheAddButtonOpenedTheFormWithoutReportingASave() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    vm.dismissAddItemDialog()
+    with(vm.uiState.value) {
+      assertFalse(isAddItemDialogOpen)
+      assertNull(addButtonMethod)
+      assertFalse(scanBarcodeOnOpen)
+      assertFalse(closeOnBarcodeCancel)
+      assertFalse(addButtonItemSaved)
+    }
+  }
+
+  @Test
+  fun savingAnAddButtonFormKeepsTheSaveUntilItIsHandled() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.MANUAL)
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    with(vm.uiState.value) {
+      assertFalse(isAddItemDialogOpen)
+      assertNull(addButtonMethod)
+      // Kept for a host that may be recreated meanwhile.
+      assertTrue(addButtonItemSaved)
+    }
+    vm.addButtonSaveHandled()
+    assertFalse(vm.uiState.value.addButtonItemSaved)
+
+    // The fridge's own form does not ask to open the fridge.
+    vm.openAddItemDialog()
+    vm.updateName("Bread")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf("Milk", "Bread"), repository.addedItems.map { it.name })
+    assertFalse(vm.uiState.value.addButtonItemSaved)
+  }
+
   private fun TestScope.loaded(vararg items: Item): FridgeViewModel {
     repository.emitItems(items.toList())
     return viewModel().also { runCurrent() }
@@ -1933,9 +2030,11 @@ class FridgeViewModelTest {
       preferences: ExpirationPreferencesRepository = FakeExpirationPreferencesRepository(),
       senderName: String = "Ann",
       pendingStore: PendingFridgeActivityStore = pendingActivityStore,
+      items: ItemRepository = repository,
+      photoCache: FridgeImageCacheSession? = null,
   ): FridgeViewModel =
       FridgeViewModel(
-              repository,
+              items,
               "test-user",
               householdId,
               imageSelector,
@@ -1950,6 +2049,7 @@ class FridgeViewModelTest {
               chatRepository = chatRepository,
               activitySenderName = senderName,
               pendingActivityStore = pendingStore,
+              photoCache = photoCache,
           )
           .also { viewModelStore.put("fridge", it) }
 
@@ -2553,6 +2653,45 @@ class FridgeViewModelTest {
 
     assertTrue(viewModel.uiState.value.loadFailed)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun permissionDenialClearsDisplayedItemsAndRevokesPhotoAccess() = runTest {
+    val denyAccess = CompletableDeferred<Unit>()
+    val items =
+        object : ItemRepository by repository {
+          override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
+              flow {
+                emit(listOf(milk))
+                denyAccess.await()
+                throw FridgeAccessDeniedException()
+              }
+        }
+    val cache =
+        object : FridgeImageCacheSession {
+          override val isActive = MutableStateFlow(true)
+
+          override val imageLoader: ImageLoader
+            get() = error("Unexpected image loader")
+
+          override fun withCache(request: ImageRequest): ImageRequest = error("Unexpected request")
+
+          override suspend fun revoke() {
+            isActive.value = false
+          }
+        }
+    val viewModel = viewModel(items = items, photoCache = cache)
+    runCurrent()
+    assertEquals(listOf(milk), viewModel.screenState.value.visibleItems)
+
+    denyAccess.complete(Unit)
+    runCurrent()
+
+    val screenState = viewModel.screenState.value
+    assertTrue(screenState.uiState.loadFailed)
+    assertTrue(screenState.uiState.items.isEmpty())
+    assertTrue(screenState.visibleItems.isEmpty())
+    assertFalse(cache.isActive.value)
   }
 
   @Test
