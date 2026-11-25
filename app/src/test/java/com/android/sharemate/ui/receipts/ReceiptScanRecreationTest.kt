@@ -1,4 +1,4 @@
-// Co-authored-by: Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
@@ -102,7 +103,9 @@ class ReceiptScanRecreationTest {
                                     context, Dispatchers.Main.immediate),
                                 AndroidReceiptPhotoStore(context, Dispatchers.Main.immediate),
                                 "owner",
-                                "home")
+                                "home",
+                                expenses = mock(ExpenseSubmissionRepository::class.java),
+                                cloud = EmptyReceiptCloud)
                           }
                         })
             ReceiptHistoryFlow(
