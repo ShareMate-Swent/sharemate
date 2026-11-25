@@ -27,6 +27,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
+          cache: gradle
           java-version: |
             17
             21
