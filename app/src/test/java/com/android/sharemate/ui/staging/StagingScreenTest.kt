@@ -161,6 +161,16 @@ class StagingScreenTest {
   }
 
   @Test
+  fun missingScannedPriceShowsErrorAndBlocksContinue() {
+    setScreen(StagingViewModel(listOf(milk, bread)))
+
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+
+    composeTestRule.onNodeWithTag("staging_missing_prices").assertIsDisplayed()
+    assertNull(confirmed)
+  }
+
+  @Test
   fun listFollowsTheViewModel() {
     val viewModel = StagingViewModel(listOf(milk, bread))
     setScreen(viewModel)

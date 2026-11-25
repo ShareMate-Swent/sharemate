@@ -8,6 +8,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -125,10 +126,14 @@ class ReceiptToFridgeE2ETest {
           compose.onNodeWithTag(StagingTestTags.delete("1")).performClick()
           compose.onNodeWithTag(StagingTestTags.ADD).performClick()
           compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Coffee")
-          compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+          compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsNotEnabled()
+          compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("4.60")
+          compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsEnabled().performClick()
+          compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertDoesNotExist()
         },
         verifySavedRows = { rows ->
           assertEquals(listOf("Oat milk" to 2, "Coffee" to 1), rows.map { it.name to it.quantity })
+          assertEquals(listOf(480L, 460L), rows.map { it.priceCents })
         })
   }
 
@@ -193,7 +198,7 @@ class ReceiptToFridgeE2ETest {
       compose.waitUntil(TIMEOUT) { save.state.value.submission?.draft == true }
       verifyDraft(checkNotNull(save.state.value.submission).items)
       editReview()
-      compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+      compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
       compose.waitUntil(TIMEOUT) { save.state.value.phase == InventorySavePhase.CONFIRMED }
       compose.onNodeWithText(context.getString(R.string.inventory_save_success)).assertIsDisplayed()
       compose.onNodeWithText(context.getString(R.string.staging_title)).performClick()
