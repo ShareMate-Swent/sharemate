@@ -25,6 +25,163 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun sharedCacheSurvivesRestartAndNeverIncludesOtherUsersDrafts() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val saved =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "alice",
+            "home",
+            listOf(StagedItem("milk", "Milk", 1, 100)))
+    val draft =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "alice", "home", emptyList(), draft = true)
+    fun entry(receipt: InventorySubmission) =
+        com.android.sharemate.model.receipt.ReceiptCloudEntry(
+            receipt,
+            ReceiptDetails(
+                receipt.id, receipt.ownerId, receipt.householdId, "photo", 1, title = "Courses"))
+    store.cacheShared("bob", "home", listOf(entry(saved), entry(draft)))
+    val restored = AndroidInventorySubmissionStore(app, dispatcher, viewerId = "bob")
+    assertEquals(listOf(saved), restored.sharedReceipts("bob", "home"))
+    assertEquals("Courses", restored.details("alice", "home", saved.id)?.title)
+    assertTrue(restored.sharedReceipts("outsider", "home").isEmpty())
+    assertTrue(restored.sharedReceipts("bob", "other-home").isEmpty())
+    assertNull(restored.loadById("alice", "home", draft.id))
+    restored.cacheShared("bob", "home", emptyList())
+    assertTrue(restored.sharedReceipts("bob", "home").isEmpty())
+  }
+
+  @Test
+  fun serverDeletionRemovesPreviouslySyncedReceiptWithoutRemovingUnpublishedDraft() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val synced =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "alice", "home", emptyList(), draft = true)
+    val local =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(), "alice", "home", emptyList(), draft = true)
+    store.save(synced)
+    store.save(local)
+    store.applyCloudDeletions("alice", "home", emptySet())
+    assertEquals(synced, store.loadById("alice", "home", synced.id))
+    store.applyCloudDeletions("alice", "home", setOf(synced.id))
+    assertNull(store.loadById("alice", "home", synced.id))
+    assertEquals(local, store.loadById("alice", "home", local.id))
+    assertTrue(store.isDeleted("alice", "home", synced.id))
+    try {
+      store.save(synced)
+      fail("Stale snapshot must not resurrect deleted receipt")
+    } catch (_: IllegalStateException) {}
+  }
+
+  @Test
+  fun deletingSavedReceiptRemovesMetadataAndPreservesOtherReceipts() = runTest {
+    val store =
+        AndroidInventorySubmissionStore(
+            RuntimeEnvironment.getApplication(), StandardTestDispatcher(testScheduler))
+    val rows = listOf(StagedItem("a", "Milk", 1, 100))
+    store.save(
+        InventorySubmission("00000000-0000-0000-0000-000000000001", "delete-owner", "home", rows))
+    store.saveDetails(
+        ReceiptDetails("00000000-0000-0000-0000-000000000001", "delete-owner", "home", "photo", 1))
+    store.save(
+        InventorySubmission(
+            "00000000-0000-0000-0000-000000000002", "delete-owner", "home", rows, draft = true))
+    store.deleteReceipt("delete-owner", "home", "00000000-0000-0000-0000-000000000001")
+    assertNull(store.loadById("delete-owner", "home", "00000000-0000-0000-0000-000000000001"))
+    assertNull(store.details("delete-owner", "home", "00000000-0000-0000-0000-000000000001"))
+    assertEquals(
+        listOf("00000000-0000-0000-0000-000000000002"),
+        store.list("delete-owner", "home").map { it.id })
+    store.deleteReceipt("delete-owner", "home", "00000000-0000-0000-0000-000000000001")
+  }
+
+  @Test
+  fun correctionJournalSurvivesRestartAndIsScopedToReceiptAndAccount() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Milk", 1, 100))
+    val original = InventorySubmission(id, "owner", "home", rows)
+    val replacement =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            expense =
+                com.android.sharemate.model.finance.SharedExpense(
+                    id, "home", "owner", 100, mapOf("owner" to 100L)))
+    val correction =
+        ReceiptCorrection(java.util.UUID.randomUUID().toString(), original, replacement, "Courses")
+    store.saveCorrection(correction)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(correction, restored.pendingCorrection("owner", "home", id))
+    assertNull(restored.pendingCorrection("other", "home", id))
+    assertNull(restored.pendingCorrection("owner", "other", id))
+    restored.clearCorrection("owner", "home", id)
+    assertNull(store.pendingCorrection("owner", "home", id))
+  }
+
+  @Test
+  fun receiptTitleSurvivesStoreRecreationAndOldMetadataHasNoTitle() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    store.save(
+        InventorySubmission(
+            id, "owner", "home", listOf(StagedItem("a", "Milk", 1, 100)), draft = true))
+    val details =
+        ReceiptDetails(
+            id,
+            "owner",
+            "home",
+            "photo",
+            42L,
+            title = "Courses Migros",
+            draftPaidBy = "bob",
+            draftParticipants = setOf("owner", "bob"))
+    store.saveDetails(details)
+    assertEquals(
+        details, AndroidInventorySubmissionStore(app, dispatcher).details("owner", "home", id))
+    val preferences = app.getSharedPreferences("inventory-submissions", Context.MODE_PRIVATE)
+    val key = "details:${JSONArray(listOf("owner", "home"))}:$id"
+    val legacy = JSONObject(checkNotNull(preferences.getString(key, null)))
+    legacy.remove("title")
+    preferences.edit().putString(key, legacy.toString()).commit()
+    assertEquals(
+        "", AndroidInventorySubmissionStore(app, dispatcher).details("owner", "home", id)?.title)
+  }
+
+  @Test
+  fun delayedDraftCannotReplacePurchaseRecordedByAnotherMember() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("row", "Milk", 1, 100))
+    val expense =
+        com.android.sharemate.model.finance.SharedExpense(
+            id, "home", "bob", 100, mapOf("alice" to 100L))
+    val queued = InventorySubmission(id, "alice", "home", rows, expense = expense)
+    store.save(queued)
+    val staleEditor = AndroidInventorySubmissionStore(app, dispatcher)
+    assertTrue(
+        runCatching {
+              staleEditor.save(InventorySubmission(id, "alice", "home", rows, draft = true))
+            }
+            .isFailure)
+    assertEquals(queued, store.loadById("alice", "home", id))
+  }
+
+  @Test
   fun purchaseStoreRestoresLegacyPendingReceiptAndPreservesItsIdentity() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)
@@ -440,7 +597,12 @@ class InventorySubmissionStoreTest {
     restored.save(changed)
     assertEquals(changed, first.load("owner", "home"))
     val draft =
-        InventorySubmission(saved.id, saved.ownerId, saved.householdId, saved.items, draft = true)
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            saved.ownerId,
+            saved.householdId,
+            saved.items,
+            draft = true)
     restored.save(draft)
     assertEquals(draft, AndroidInventorySubmissionStore(app, dispatcher).load("owner", "home"))
   }

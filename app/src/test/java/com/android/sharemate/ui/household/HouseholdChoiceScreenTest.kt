@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -41,5 +42,23 @@ class HouseholdChoiceScreenTest {
     composeTestRule.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     assertEquals(1, creates)
     assertEquals(1, joins)
+  }
+
+  @Test
+  fun showsTheFirstOnboardingStepAndThePrivacyNote() {
+    composeTestRule.setContent {
+      MaterialTheme { HouseholdChoiceScreen(onCreateHousehold = {}, onJoinHousehold = {}) }
+    }
+    val activity = composeTestRule.activity
+    composeTestRule
+        .onNodeWithContentDescription(
+            activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.CHOICE_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.household_privacy_note))
+        .assertIsDisplayed()
   }
 }

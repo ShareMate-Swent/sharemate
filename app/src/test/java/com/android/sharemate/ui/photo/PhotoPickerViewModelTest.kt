@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.lifecycle.SavedStateHandle
@@ -362,6 +363,39 @@ class PhotoPickerViewModelTest {
     assertEquals(listOf("file:///private/first"), store.deleted)
     assertFalse(vm.state.value.confirmed)
     assertFalse(vm.state.value.failed)
+  }
+
+  @Test
+  fun switchedLensSurvivesRecreationIsBlockedWhileBusyAndResetsToTheDefault() = runTest {
+    assertEquals(CameraLens.BACK, vm.state.value.lens)
+    vm.switchLens()
+    assertEquals(CameraLens.FRONT, vm.state.value.lens)
+    assertEquals(CameraLens.FRONT, PhotoPickerViewModel(store, saved).state.value.lens)
+
+    val capturing = CompletableDeferred<Unit>()
+    vm.capture { capturing.await() }
+    runCurrent()
+    vm.switchLens()
+    assertEquals(CameraLens.FRONT, vm.state.value.lens)
+    capturing.complete(Unit)
+    advanceUntilIdle()
+
+    vm.switchLens()
+    assertEquals(CameraLens.BACK, vm.state.value.lens)
+    vm.switchLens()
+    vm.reset()
+    assertEquals(CameraLens.BACK, vm.state.value.lens)
+    assertNull(saved.get<String>(PhotoPickerViewModel.LENS_KEY))
+  }
+
+  @Test
+  fun defaultLensIsUsedUntilTheUserSwitches() = runTest {
+    val selfie = PhotoPickerViewModel(store, SavedStateHandle(), CameraLens.FRONT)
+    assertEquals(CameraLens.FRONT, selfie.state.value.lens)
+    selfie.switchLens()
+    assertEquals(CameraLens.BACK, selfie.state.value.lens)
+    selfie.reset()
+    assertEquals(CameraLens.FRONT, selfie.state.value.lens)
   }
 
   private class PhotoStore : TemporaryPhotoStore {

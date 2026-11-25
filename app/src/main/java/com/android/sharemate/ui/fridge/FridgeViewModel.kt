@@ -45,6 +45,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -633,7 +634,13 @@ class FridgeViewModel(
     ownerFilterState.value = ownerId.normalizedFilter()
   }
 
-  fun openAddItemDialog() {
+  /**
+   * Opens the add-item form, unless another form or action is in progress.
+   *
+   * @param fromAddButton The option of the add button of the bottom bar that opens the form, or
+   *   null for the fridge's own button. [AddItemMethod.BARCODE] opens the barcode photo right away.
+   */
+  fun openAddItemDialog(fromAddButton: AddItemMethod? = null) {
     if (uiState.value.isSaving ||
         uiState.value.isAddItemDialogOpen ||
         uiState.value.pendingRemovalItem != null ||
@@ -645,6 +652,9 @@ class FridgeViewModel(
       it.resetItemFields()
           .copy(
               isAddItemDialogOpen = true,
+              addButtonMethod = fromAddButton,
+              scanBarcodeOnOpen = fromAddButton == AddItemMethod.BARCODE,
+              closeOnBarcodeCancel = fromAddButton == AddItemMethod.BARCODE,
               canChangeSharing = supportsSharing,
               editingItemId = null,
               isScanningBarcode = false,
@@ -653,6 +663,11 @@ class FridgeViewModel(
               barcodeLookupError = null,
               formError = null)
     }
+  }
+
+  /** Called by the add-item form once it opened the barcode photo asked by [openAddItemDialog]. */
+  fun barcodeScanOpened() {
+    mutableUiState.update { it.copy(scanBarcodeOnOpen = false) }
   }
 
   fun dismissAddItemDialog() {
@@ -671,6 +686,11 @@ class FridgeViewModel(
               barcodeLookupError = null,
               formError = null)
     }
+  }
+
+  /** Called once the app opened the fridge for [FridgeUiState.addButtonItemSaved]. */
+  fun addButtonSaveHandled() {
+    mutableUiState.update { it.copy(addButtonItemSaved = false) }
   }
 
   /**
@@ -714,6 +734,7 @@ class FridgeViewModel(
     barcodeScanJob = operation
     mutableUiState.update {
       it.copy(
+          closeOnBarcodeCancel = false,
           isScanningBarcode = true,
           barcodeLookupError = null,
           barcodeScanFailed = false,
@@ -965,6 +986,8 @@ class FridgeViewModel(
                 .copy(
                     isSaving = false,
                     isAddItemDialogOpen = false,
+                    // Kept here, as the form may close while its host is being recreated.
+                    addButtonItemSaved = it.addButtonMethod != null,
                     barcodeValue = null,
                     barcodeScanFailed = false,
                     formError = null)

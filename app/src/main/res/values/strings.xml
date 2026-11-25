@@ -81,8 +81,12 @@
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
     <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
-    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="household_privacy_note">Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="copy_invite_code_action">Copy</string>
+    <string name="household_invite_code_label">%1$s · invite code</string>
+    <string name="household_members_title_with_count">Members (%1$d)</string>
+    <string name="step_indicator_description">Step %1$d of %2$d</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
     <string name="notification_channel_chat_name">Household chat</string>
@@ -113,6 +117,8 @@
     <string name="create_household">Create household</string>
     <string name="create_household_change_request_hint">Go back to change the name or fridge type.</string>
     <string name="household_ready_title">Your household is ready!</string>
+    <string name="household_joined_title">You\'re in!</string>
+    <string name="household_joined_description">You joined the household and can now use its shared fridge.</string>
     <string name="household_ready_description">Share this code with your roommates so they can join.</string>
     <string name="household_invite_code">Household invite code</string>
     <string name="copy_invite_code">Copy invite code</string>
@@ -127,6 +133,13 @@
     <string name="settings_back">Back</string>
     <string name="nav_open_settings">Open settings</string>
     <string name="nav_add_item">Add an item</string>
+    <string name="add_item_sheet_description">How do you want to add it to the fridge?</string>
+    <string name="add_item_barcode">Scan a barcode</string>
+    <string name="add_item_barcode_description">Fill in the details from its barcode</string>
+    <string name="add_item_manual">Enter it manually</string>
+    <string name="add_item_manual_description">Type the name, quantity and expiry</string>
+    <string name="add_item_receipt">Scan a receipt</string>
+    <string name="add_item_receipt_description">Add everything you bought at once</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
