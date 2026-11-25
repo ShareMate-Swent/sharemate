@@ -771,6 +771,9 @@ class InventorySaveFlowTest {
 
     override fun observeSubmission(submission: InventorySubmission) = status
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
     override suspend fun addItem(item: Item): String? = error("Unexpected single-item save")

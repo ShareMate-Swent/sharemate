@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import android.Manifest
@@ -10,7 +11,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
@@ -35,6 +35,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
+import com.android.sharemate.model.image.MAX_INPUT_PHOTO_PIXELS
+import com.android.sharemate.model.image.PhotoImportRejection
 import com.android.sharemate.ui.theme.Dimens
 
 data class PhotoPickerLabels(
@@ -62,10 +64,9 @@ fun PhotoPickerDialog(
         denied = !granted
         if (granted) viewModel.showCamera()
       }
-  val gallery =
-      rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {
-        viewModel.select(it?.toString())
-      }
+  val openGallery =
+      rememberPhotoGalleryLauncher(
+          onResult = { viewModel.select(it.toString()) }, onFailure = viewModel::reportFailure)
   DisposableEffect(lifecycle, waitingForSettings) {
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_RESUME && waitingForSettings) {
@@ -95,13 +96,25 @@ fun PhotoPickerDialog(
                         Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
                 if (state.failed)
                     Text(
-                        confirmationError.takeIf { state.confirmationFailed }
-                            ?: stringResource(R.string.photo_picker_failed),
+                        when {
+                          state.confirmationFailed && confirmationError != null -> confirmationError
+                          state.galleryImportRejection ==
+                              PhotoImportRejection.PERSONAL_REQUIREMENTS ->
+                              stringResource(R.string.personal_photo_invalid)
+                          state.galleryImportRejection == PhotoImportRejection.PIXEL_LIMIT ->
+                              stringResource(
+                                  R.string.photo_picker_pixel_limit,
+                                  MAX_INPUT_PHOTO_PIXELS / 1_000_000)
+                          else -> stringResource(R.string.photo_picker_failed)
+                        },
                         color = MaterialTheme.colorScheme.error)
                 when (state.page) {
                   PhotoPage.CAMERA ->
                       CameraCapture(
                           enabled = !state.busy,
+                          lens = state.lens,
+                          onSwitchLens = viewModel::switchLens,
+                          mirrorFrontCamera = viewModel.mirrorFrontCamera,
                           onCapture = viewModel::capture,
                           onFailure = {
                             viewModel.showSources()
@@ -171,15 +184,7 @@ fun PhotoPickerDialog(
                           Text(stringResource(R.string.photo_picker_camera))
                         }
                 OutlinedButton(
-                    onClick = {
-                      try {
-                        gallery.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly))
-                      } catch (_: Exception) {
-                        viewModel.reportFailure()
-                      }
-                    },
+                    onClick = openGallery,
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
                       Text(stringResource(R.string.photo_picker_gallery))
@@ -215,6 +220,8 @@ object PhotoPickerTestTags {
   const val CAMERA = "barcode_photo_camera"
   const val GALLERY = "barcode_photo_gallery"
   const val CAPTURE = "barcode_photo_capture"
+  /** Switches between the back and front camera; shown only when the device has both. */
+  const val SWITCH_CAMERA = "photo_picker_switch_camera"
   const val CANCEL = "barcode_photo_cancel"
 }
 

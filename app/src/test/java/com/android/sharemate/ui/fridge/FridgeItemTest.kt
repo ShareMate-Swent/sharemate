@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.content.ActivityNotFoundException
@@ -34,6 +35,7 @@ import coil.size.Size
 import com.android.sharemate.R
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
@@ -193,7 +195,7 @@ class FridgeItemTest {
         .assertHeightIsEqualTo(120.dp)
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertDoesNotExist()
-    compose.runOnIdle { item.value = item.value.copy(category = "Dairy") }
+    compose.runOnIdle { item.value = item.value.copy(category = ItemCategory.DAIRY) }
     compose.waitForIdle()
     assertEquals(1, pending.size)
   }

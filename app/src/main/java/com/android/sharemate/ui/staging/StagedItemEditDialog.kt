@@ -20,6 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.android.sharemate.R
 import com.android.sharemate.model.item.ItemQuantity
+import com.android.sharemate.model.staging.PriceInput
+import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.theme.Dimens
@@ -99,9 +101,12 @@ fun StagedItemEditDialog(
         }
       },
       confirmButton = {
-        TextButton(onClick = onSave, modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
-          Text(stringResource(R.string.fridge_save))
-        }
+        TextButton(
+            onClick = onSave,
+            enabled = Prices.parse(draft.price) is PriceInput.Valid,
+            modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
+              Text(stringResource(R.string.fridge_save))
+            }
       },
       dismissButton = {
         TextButton(onClick = onCancel, modifier = Modifier.testTag(StagedItemEditTestTags.CANCEL)) {

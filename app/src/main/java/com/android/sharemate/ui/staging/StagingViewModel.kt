@@ -42,7 +42,10 @@ data class StagingUiState(
 
   /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
-    get() = items.isNotEmpty() && draft == null
+    get() = items.isNotEmpty() && draft == null && items.all { it.priceCents != null }
+
+  val hasMissingPrices: Boolean
+    get() = items.any { it.priceCents == null }
 }
 
 /**
@@ -186,7 +189,7 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
           when {
             name.isEmpty() -> StagedItemError.NAME_REQUIRED
             quantity == null -> StagedItemError.INVALID_QUANTITY
-            price == PriceInput.Invalid -> StagedItemError.INVALID_PRICE
+            price !is PriceInput.Valid -> StagedItemError.INVALID_PRICE
             else -> null
           }
       if (error != null) return@update state.copy(draft = draft.copy(error = error))

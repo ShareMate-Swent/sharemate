@@ -37,7 +37,7 @@ class MainActivityAuthTest {
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
     compose.onNodeWithTag(AuthTestTags.SUBMIT).assertDoesNotExist()
     verify(firebase.auth).signInWithEmailAndPassword("student@example.org", "secret")
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithText(compose.activity.getString(R.string.auth_sign_out)).performClick()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
     compose.onNodeWithTag(AuthTestTags.WELCOME).assertIsDisplayed()

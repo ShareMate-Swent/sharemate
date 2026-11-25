@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -30,6 +31,7 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -146,17 +148,17 @@ class FridgeScreenTest {
   fun categoryChipsFilterItemsAndCanBeCleared() {
     showScreen()
     compose
-        .onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits"))
+        .onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS))
         .performScrollTo()
         .assertIsDisplayed()
         .performClick()
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS)).assertIsSelected()
     item("banana").assertIsDisplayed()
     item("apple").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
 
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsNotSelected()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS)).assertIsNotSelected()
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
     assertItemOrder("carrot", "banana", "apple")
   }
@@ -170,7 +172,10 @@ class FridgeScreenTest {
     item("carrot").assertDoesNotExist()
     item("apple").assertDoesNotExist()
 
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Vegetables")).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.VEGETABLES))
+        .performScrollTo()
+        .performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
@@ -262,6 +267,9 @@ class FridgeScreenTest {
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
 
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
 
@@ -313,20 +321,20 @@ class FridgeScreenTest {
               name = "Banana",
               ownerId = "alice",
               householdId = "household",
-              category = "Fruits",
+              category = ItemCategory.FRUITS,
               expirationDate = Date(2_000)),
           Item(
               id = "carrot",
               name = "Carrot",
               ownerId = "bob",
               householdId = "household",
-              category = "Vegetables",
+              category = ItemCategory.VEGETABLES,
               expirationDate = Date(1_000)),
           Item(
               id = "apple",
               name = "Apple",
               ownerId = "bob",
               householdId = "household",
-              category = "Fruits"),
+              category = ItemCategory.FRUITS),
       )
 }

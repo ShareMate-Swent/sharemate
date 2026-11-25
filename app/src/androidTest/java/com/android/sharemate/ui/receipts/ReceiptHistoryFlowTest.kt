@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,6 +34,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -168,6 +171,95 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun receiptOptionOfTheAddButtonOpensTheReceiptPhotoOnceAndReportsItsCancel() {
+    var handled = 0
+    var cancelled = 0
+    // Like the app, the request comes once the screen shows, and ends once it is handled.
+    val requested = mutableStateOf(false)
+    // Created once: new ids on each recomposition would reset the screen and its photo.
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = {
+              handled++
+              requested.value = false
+            },
+            onScanReceiptCancelled = {
+              cancelled++
+              // Opened on Receipts itself: the app stays on it.
+              false
+            })
+      }
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).assertIsDisplayed()
+    compose.runOnIdle { requested.value = true }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(1, handled)
+      assertEquals(1, cancelled)
+    }
+    // The receipts screen's own scan button is not the add button: no way back to report.
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancelled) }
+  }
+
+  @Test
+  fun receiptOptionOfTheAddButtonOpensThePhotoOnAReceiptsDetails() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val store = AndroidInventorySubmissionStore(compose.activity)
+    runBlocking {
+      store.save(
+          InventorySubmission(UUID.randomUUID().toString(), owner, household, rows, draft = true))
+    }
+    var cancelled = 0
+    val requested = mutableStateOf(false)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = { requested.value = false },
+            onScanReceiptCancelled = {
+              cancelled++
+              false
+            })
+      }
+    }
+    val review = compose.activity.getString(R.string.receipt_review_items)
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithText(review).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText(review).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+
+    // The add button asks for a scan while the receipt's details are open.
+    compose.runOnIdle { requested.value = true }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    // Opened on Receipts itself: the details are still open.
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, cancelled) }
+  }
+
+  @Test
   fun confirmingDraftReturnsToHistoryAndPersistsReviewedRows() {
     val owner = UUID.randomUUID().toString()
     val household = UUID.randomUUID().toString()
@@ -267,6 +359,9 @@ class ReceiptHistoryFlowTest {
   }
 
   private object UnusedItems : ItemRepository {
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = emptyFlow()
 
     override suspend fun addItem(item: Item): String? = error("No inventory write expected")
