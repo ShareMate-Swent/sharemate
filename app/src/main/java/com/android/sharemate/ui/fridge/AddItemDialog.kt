@@ -174,6 +174,7 @@ fun AddItemDialog(
                   enabled = inputEnabled,
                   singleLine = true,
                   modifier = Modifier.fillMaxWidth().testTag(C.Tag.fridge_expiration_input))
+              ExpiryScan(enabled = inputEnabled, onDateConfirmed = onExpirationDateChange)
               if (uiState.fridgeType == FridgeType.SHARED && uiState.editingItemId == null) {
                 // The whole row is the toggle, so assistive technologies announce the label with
                 // it.
