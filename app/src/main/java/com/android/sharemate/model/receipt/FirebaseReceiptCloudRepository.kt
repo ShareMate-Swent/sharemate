@@ -9,15 +9,22 @@ import com.google.firebase.firestore.*
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
 import java.io.File
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
 
-/** Stores photos through authenticated Storage requests, never public download-token URLs. */
+/**
+ * Stores photos through authenticated Storage requests, never public download-token URLs.
+ *
+ * @param dispatcher Runs snapshot decoding and receipt photo file I/O off the collector thread.
+ */
 class FirebaseReceiptCloudRepository(
     private val context: Context,
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ReceiptCloudRepository {
   private val codec = AndroidInventorySubmissionStore(context, scheduleSync = false)
 
@@ -121,6 +128,7 @@ class FirebaseReceiptCloudRepository(
                     document.getLong("revision") ?: 0))
           }
         }
+        .flowOn(dispatcher)
   }
 
   private fun watch(query: Query): Flow<List<DocumentSnapshot>> = callbackFlow {

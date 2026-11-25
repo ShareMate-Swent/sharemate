@@ -93,7 +93,7 @@ class StagingScreenTest {
   }
 
   @Test
-  fun anotherPayerShowsExplanationAndDisablesFinancialConfirmation() {
+  fun anotherHouseholdMemberCanPayIndependentlyOfParticipants() {
     val vm =
         StagingViewModel(
             listOf(milk), PurchaseReview.forUser("a", mapOf("a" to "Alex", "b" to "Blair")))
@@ -105,16 +105,12 @@ class StagingScreenTest {
       }
     }
     composeTestRule.onNodeWithTag("staging_payer_b").performScrollTo().performClick()
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    composeTestRule
-        .onNodeWithTag("staging_purchase_error")
-        .assertTextEquals(context.getString(R.string.purchase_payer_must_submit))
     composeTestRule
         .onNodeWithTag("staging_confirm_purchase")
         .performScrollTo()
-        .assertIsNotEnabled()
+        .assertIsEnabled()
         .performClick()
-    assertNull(purchase)
+    assertEquals("b", purchase?.paidBy)
     composeTestRule.onNodeWithTag("staging_payer_a").performScrollTo().performClick()
     composeTestRule
         .onNodeWithTag("staging_confirm_purchase")

@@ -27,7 +27,7 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseReceiptCloudRepositoryTest {
   @Test
-  fun rejectsForeignDraftsAndIdentityMismatchesAndCleansCancelledDownloads() = runTest {
+  fun rejectsForeignDraftsAndIdentityMismatchesAndCleansCancelledDownloads() = runIoTest {
     val invalid = document(receipt())
     `when`(invalid.id).thenReturn(UUID.randomUUID().toString())
     for (doc in listOf(document(receipt(owner = "peer")), invalid)) {
@@ -65,7 +65,12 @@ class FirebaseReceiptCloudRepositoryTest {
   private val registration = mock(ListenerRegistration::class.java)
   private val callbacks = mutableListOf<EventListener<QuerySnapshot>>()
   private val codec = AndroidInventorySubmissionStore(context, scheduleSync = false)
-  private val repository = FirebaseReceiptCloudRepository(context, db, storage)
+
+  private fun runIoTest(testBody: suspend TestScope.() -> Unit) =
+      runTest(dispatcher, testBody = testBody)
+
+  private val dispatcher = StandardTestDispatcher()
+  private val repository = FirebaseReceiptCloudRepository(context, db, storage, dispatcher)
   private val id = UUID.randomUUID().toString()
 
   private fun receipt(draft: Boolean = true, owner: String = "owner") =
@@ -98,7 +103,7 @@ class FirebaseReceiptCloudRepositoryTest {
   }
 
   @Test
-  fun uploadWaitsForExpenseAndNeverOverwritesSavedContent() = runTest {
+  fun uploadWaitsForExpenseAndNeverOverwritesSavedContent() = runIoTest {
     val details = ReceiptDetails(id, "owner", "home", "", 5, title = "Groceries", revision = 3)
     repository.upload(ReceiptCloudEntry(receipt(false), details))
     verifyNoInteractions(tx)
@@ -135,6 +140,37 @@ class FirebaseReceiptCloudRepositoryTest {
     verify(ref).update("photoReady", true)
   }
 
+  @Test
+  fun decodingAndPhotoCacheWorkUseTheInjectedDispatcher() = runIoTest {
+    var onIoDispatcher = false
+    val io =
+        object : CoroutineDispatcher() {
+          override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) {
+            dispatcher.dispatch(context) {
+              onIoDispatcher = true
+              try {
+                block.run()
+              } finally {
+                onIoDispatcher = false
+              }
+            }
+          }
+        }
+    val doc = document(receipt())
+    val encoded = codec.encode(receipt()).toString()
+    `when`(doc.getString("submission")).thenAnswer {
+      assertTrue("Receipt decoding must use the injected IO dispatcher", onIoDispatcher)
+      encoded
+    }
+    val source = FirebaseReceiptCloudRepository(context, db, storage, io)
+    val result = async { source.observe("owner", "home").first() }
+    runCurrent()
+    emit(1, emptyList())
+    emit(0, listOf(doc))
+    assertEquals(id, result.await().single().submission.id)
+    verify(registration, times(2)).remove()
+  }
+
   private fun document(receipt: InventorySubmission, ready: Boolean = false): DocumentSnapshot =
       mock(DocumentSnapshot::class.java).also {
         `when`(it.id).thenReturn(receipt.id)
@@ -159,7 +195,7 @@ class FirebaseReceiptCloudRepositoryTest {
   }
 
   @Test
-  fun observationsIgnoreUnconfirmedSnapshotsAndRemoveListenersOnCancellation() = runTest {
+  fun observationsIgnoreUnconfirmedSnapshotsAndRemoveListenersOnCancellation() = runIoTest {
     val events = mutableListOf<List<ReceiptCloudEntry>>()
     val job =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -191,7 +227,7 @@ class FirebaseReceiptCloudRepositoryTest {
   }
 
   @Test
-  fun photosAreCachedOnlyAfterACompleteDownloadAndFailuresCanRetry() = runTest {
+  fun photosAreCachedOnlyAfterACompleteDownloadAndFailuresCanRetry() = runIoTest {
     val photo = File(context.filesDir, "receipts/$id.jpg")
     val download = mock(FileDownloadTask::class.java)
     `when`(download.isComplete).thenReturn(true)
@@ -231,7 +267,7 @@ class FirebaseReceiptCloudRepositoryTest {
   }
 
   @Test
-  fun deletionsAndListenerErrorsPropagateWithoutLeakingSubscriptions() = runTest {
+  fun deletionsAndListenerErrorsPropagateWithoutLeakingSubscriptions() = runIoTest {
     val result = async { repository.observeDeleted("owner", "home").first() }
     runCurrent()
     emit(0, listOf(document(receipt())))

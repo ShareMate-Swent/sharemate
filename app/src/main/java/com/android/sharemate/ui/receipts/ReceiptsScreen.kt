@@ -49,6 +49,7 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
+import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -82,6 +83,8 @@ import kotlinx.coroutines.launch
  * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
+ * @param expenseRepository Authenticated purchase correction and deletion boundary.
+ * @param receiptCloudRepository Household receipt updates and explicit deletion markers.
  * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
  */
 @Composable
@@ -92,10 +95,11 @@ fun ReceiptsScreen(
     sharedHousehold: Boolean,
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
-    expenseRepository: ExpenseSubmissionRepository? = null,
+    expenseRepository: ExpenseSubmissionRepository,
     profileRepository: UserProfileRepository? = null,
     barcodeScanner: BarcodeScanner? = null,
     productCatalogRepository: ProductCatalogRepository? = null,
+    receiptCloudRepository: ReceiptCloudRepository,
 ) {
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
@@ -121,29 +125,30 @@ fun ReceiptsScreen(
                 initializer {
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = false),
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId),
                       AndroidReceiptPhotoStore(context),
                       userId,
-                      householdId)
+                      householdId,
+                      expenses = expenseRepository,
+                      cloud = receiptCloudRepository)
                 }
               })
-  val purchaseSave: InventorySaveViewModel? =
-      if (expenseRepository != null) {
-        viewModel(
-            key = "inventory-save_${userId}_$householdId",
-            factory =
-                viewModelFactory {
-                  initializer {
-                    InventorySaveViewModel(
-                        itemRepository,
-                        AndroidInventorySubmissionStore(context, legacyActive = true),
-                        userId,
-                        householdId,
-                        sharedHousehold,
-                        expenseRepository)
-                  }
-                })
-      } else null
+  val purchaseSave: InventorySaveViewModel =
+      viewModel(
+          key = "inventory-save_${userId}_$householdId",
+          factory =
+              viewModelFactory {
+                initializer {
+                  InventorySaveViewModel(
+                      itemRepository,
+                      AndroidInventorySubmissionStore(context, legacyActive = true),
+                      userId,
+                      householdId,
+                      sharedHousehold,
+                      expenseRepository)
+                }
+              })
   val memberModel: HouseholdMembersViewModel? =
       if (sharedHousehold && profileRepository != null) {
         viewModel(
@@ -158,7 +163,7 @@ fun ReceiptsScreen(
       memberState?.members?.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }.orEmpty()
   var purchaseMode by rememberSaveable(userId, householdId) { mutableStateOf(false) }
   key(userId, householdId) {
-    if (purchaseMode && purchaseSave != null) {
+    if (purchaseMode) {
       Column {
         Button(onClick = { purchaseMode = false }) { Text(stringResource(R.string.receipts_title)) }
         if (memberState?.isLoading == true) Text(stringResource(R.string.purchase_members_loading))
@@ -194,10 +199,7 @@ fun ReceiptsScreen(
           sharedHousehold,
           showBalances,
           onOpenBalances,
-          onPurchase =
-              if (purchaseSave != null) {
-                { purchaseMode = true }
-              } else null)
+          onPurchase = { purchaseMode = true })
     }
   }
 }

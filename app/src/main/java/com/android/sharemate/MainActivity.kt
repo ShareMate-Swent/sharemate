@@ -74,6 +74,8 @@ import com.android.sharemate.model.profile.FirebaseProfilePhotoRepository
 import com.android.sharemate.model.profile.FirestoreUserProfileRepository
 import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.receipt.FirebaseReceiptCloudRepository
+import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -204,6 +206,10 @@ open class MainActivity : ComponentActivity() {
   private val profilePhotoBucket by lazy {
     FirebaseApp.getApps(this).firstOrNull()?.options?.storageBucket
   }
+
+  /** Creates authenticated receipt observation at the app composition root. */
+  protected open fun createReceiptCloudRepository(): ReceiptCloudRepository =
+      FirebaseReceiptCloudRepository(applicationContext)
 
   protected open fun createBarcodeScanner(): BarcodeScanner =
       MlKitBarcodeScanner(applicationContext)
@@ -378,6 +384,7 @@ open class MainActivity : ComponentActivity() {
                               showBalances = household.canViewBalances(session.uid),
                               onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
                               expenseRepository = expenseRepository,
+                              receiptCloudRepository = remember { createReceiptCloudRepository() },
                               profileRepository = profileRepository,
                               barcodeScanner = remember { createBarcodeScanner() },
                               productCatalogRepository =

@@ -72,7 +72,9 @@ class ReceiptHistoryFlowTest {
             itemRepository = UnusedItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
 
@@ -122,7 +124,9 @@ class ReceiptHistoryFlowTest {
             itemRepository = pendingItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
 
@@ -152,7 +156,9 @@ class ReceiptHistoryFlowTest {
             householdId = household,
             sharedHousehold = true,
             showBalances = true,
-            onOpenBalances = { balancesOpened[0] = true })
+            onOpenBalances = { balancesOpened[0] = true },
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
@@ -178,7 +184,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     val review = compose.activity.getString(R.string.receipt_review_items)
     compose.waitUntil(5_000) {
@@ -216,7 +230,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     val view = compose.activity.getString(R.string.receipt_view_receipt)
     compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }
