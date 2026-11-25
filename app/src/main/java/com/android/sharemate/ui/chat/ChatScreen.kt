@@ -187,7 +187,9 @@ private fun ResizeWindowForKeyboard() {
   DisposableEffect(window) {
     val previous = window.attributes.softInputMode
     window.setSoftInputMode(withAdjustResize(previous))
-    onDispose { window.setSoftInputMode(previous) }
+    // Restore through the attributes: setSoftInputMode(0) leaves the attribute unchanged, so an
+    // activity that started unspecified would keep adjustResize on its other screens.
+    onDispose { window.attributes = window.attributes.apply { softInputMode = previous } }
   }
 }
 

@@ -366,6 +366,28 @@ class ChatScreenTest {
   }
 
   @Test
+  fun chatRestoresAnUnspecifiedSoftInputModeOnExit() {
+    val window = composeTestRule.activity.window
+    // An activity without android:windowSoftInputMode starts at 0 (unspecified). Setting 0
+    // through Window.setSoftInputMode does not write the attribute, so it needs its own path.
+    composeTestRule.runOnUiThread {
+      window.attributes = window.attributes.apply { softInputMode = 0 }
+    }
+    var shown by mutableStateOf(true)
+    composeTestRule.setContent {
+      if (shown) ChatContent(ChatUiState(isLoading = false), "me", {}, {})
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(
+        LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+        window.attributes.softInputMode and LayoutParams.SOFT_INPUT_MASK_ADJUST)
+
+    shown = false
+    composeTestRule.waitForIdle()
+    assertEquals(0, window.attributes.softInputMode)
+  }
+
+  @Test
   fun messagesThatFitStayAtTheTopWhenTheChatShrinks() {
     var height by mutableStateOf(600.dp)
     composeTestRule.setContent {
