@@ -107,6 +107,7 @@ import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.ProfileEntry
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.navigation.leaveSettings
+import com.android.sharemate.ui.navigation.rememberFridgeEntry
 import com.android.sharemate.ui.navigation.selectTab
 import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
@@ -290,13 +291,7 @@ open class MainActivity : ComponentActivity() {
               }
               // The fridge is the start screen, so it stays below every tab and its form can open
               // over any of them.
-              val fridgeEntry =
-                  remember(currentRoute) {
-                    runCatching {
-                          navController.getBackStackEntry(TopLevelDestination.FRIDGE.route)
-                        }
-                        .getOrNull()
-                  }
+              val fridgeEntry = navController.rememberFridgeEntry()
               if (fridgeEntry != null) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides fridgeEntry) {
                   AddItemHost(

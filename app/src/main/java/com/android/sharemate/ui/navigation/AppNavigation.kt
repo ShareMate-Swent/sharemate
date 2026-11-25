@@ -1,8 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.currentBackStackEntryAsState
 
 /**
  * Opens [destination] from the bottom bar. Tapping the tab of the open screen, such as Receipts
@@ -33,5 +38,20 @@ internal fun NavController.leaveSettings() {
     popBackStack()
   } else {
     navigate(TopLevelDestination.FRIDGE.route) { popUpTo(graph.id) { inclusive = true } }
+  }
+}
+
+/**
+ * The fridge's back stack entry, which owns the fridge's ViewModel, or null when the fridge is not
+ * in the back stack.
+ *
+ * It is looked up again whenever the open entry changes, not only its route: a fridge notification
+ * opened on the fridge replaces its entry under the same route, and the old one is destroyed.
+ */
+@Composable
+internal fun NavController.rememberFridgeEntry(): NavBackStackEntry? {
+  val current by currentBackStackEntryAsState()
+  return remember(current) {
+    runCatching { getBackStackEntry(TopLevelDestination.FRIDGE.route) }.getOrNull()
   }
 }
