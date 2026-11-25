@@ -110,6 +110,7 @@ import com.android.sharemate.ui.navigation.ScreenTransitions
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.navigation.cancelAddItem
 import com.android.sharemate.ui.navigation.leaveSettings
+import com.android.sharemate.ui.navigation.openDeepLink
 import com.android.sharemate.ui.navigation.rememberFridgeEntry
 import com.android.sharemate.ui.navigation.selectTab
 import com.android.sharemate.ui.navigation.startAddItem
@@ -263,7 +264,7 @@ open class MainActivity : ComponentActivity() {
               val deepLinkIntent = pendingDeepLinkIntent
               LaunchedEffect(navController, deepLinkIntent) {
                 deepLinkIntent?.let {
-                  navController.handleDeepLink(it)
+                  navController.openDeepLink(it, household.type)
                   if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
                 }
               }
