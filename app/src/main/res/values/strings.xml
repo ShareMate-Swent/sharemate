@@ -26,9 +26,15 @@
     <string name="fridge_card_expired">Expired: %1$s</string>
     <string name="fridge_card_expiring_soon">Expires soon: %1$s</string>
     <string name="fridge_category_all">All</string>
+    <string name="fridge_category_none">No category</string>
     <string name="fridge_category_fruits">Fruits</string>
     <string name="fridge_category_vegetables">Vegetables</string>
-    <string name="fridge_category_canned_goods">Canned goods</string>
+    <string name="fridge_category_dairy">Dairy</string>
+    <string name="fridge_category_meat_fish">Meat &amp; fish</string>
+    <string name="fridge_category_drinks">Drinks</string>
+    <string name="fridge_category_pantry">Pantry</string>
+    <string name="fridge_category_frozen">Frozen</string>
+    <string name="fridge_category_other">Other</string>
     <string name="fridge_sort">Sort</string>
     <string name="fridge_sort_expiration_date">Expiry date</string>
     <string name="fridge_sort_name">Name</string>
@@ -60,7 +66,6 @@
     <string name="fridge_date_format">YYYY-MM-DD</string>
     <string name="fridge_name_required">Enter an item name.</string>
     <string name="fridge_name_too_long">An item name can have at most %1$d characters.</string>
-    <string name="fridge_category_too_long">A category can have at most %1$d characters.</string>
     <string name="text_length_counter">%1$d/%2$d</string>
     <string name="fridge_date_invalid">Enter a valid date in YYYY-MM-DD format.</string>
     <string name="fridge_save_failed">Could not save the item. Please try again.</string>
@@ -76,8 +81,12 @@
     <string name="household_choice_description">Create a new household or join your roommates with an invite code.</string>
     <string name="create_a_household_description">Start a private fridge or share one with your roommates.</string>
     <string name="join_a_household_description">Enter the 6-character code shared by a roommate.</string>
-    <string name="household_privacy_note">• Your household stays private to invited members</string>
+    <string name="household_privacy_note">Your household stays private to invited members</string>
     <string name="share_invite_code">Share</string>
+    <string name="copy_invite_code_action">Copy</string>
+    <string name="household_invite_code_label">%1$s · invite code</string>
+    <string name="household_members_title_with_count">Members (%1$d)</string>
+    <string name="step_indicator_description">Step %1$d of %2$d</string>
     <string name="notification_channel_expiration_name">Food expiration</string>
     <string name="notification_channel_expiration_description">Reminders about food that has expired or is about to expire</string>
     <string name="notification_channel_chat_name">Household chat</string>
@@ -108,6 +117,8 @@
     <string name="create_household">Create household</string>
     <string name="create_household_change_request_hint">Go back to change the name or fridge type.</string>
     <string name="household_ready_title">Your household is ready!</string>
+    <string name="household_joined_title">You\'re in!</string>
+    <string name="household_joined_description">You joined the household and can now use its shared fridge.</string>
     <string name="household_ready_description">Share this code with your roommates so they can join.</string>
     <string name="household_invite_code">Household invite code</string>
     <string name="copy_invite_code">Copy invite code</string>
@@ -119,6 +130,9 @@
     <string name="household_generic_error">Something went wrong. Please try again.</string>
     <string name="household_retry">Try again</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_back">Back</string>
+    <string name="nav_open_settings">Open settings</string>
+    <string name="nav_add_item">Add an item</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>
@@ -256,6 +270,8 @@
     <string name="profile_photo_preview">Selected profile photo</string>
     <string name="profile_photo_add">Add a photo</string>
     <string name="profile_photo_change">Change photo</string>
+    <string name="profile_photo_take">Take a photo</string>
+    <string name="profile_photo_from_gallery">From gallery</string>
     <string name="profile_photo_save">Save</string>
     <string name="profile_photo_retry">Retry</string>
     <string name="profile_photo_skip">Skip</string>

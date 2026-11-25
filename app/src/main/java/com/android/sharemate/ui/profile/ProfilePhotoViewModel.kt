@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +9,7 @@ import com.android.sharemate.model.profile.ProfilePhotoRepository
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -29,6 +31,7 @@ enum class ProfilePhotoError {
  * State of the profile photo step.
  *
  * @property photo Private copy of the picked photo, shown as a preview and uploaded on save.
+ * @property isImporting True while the latest selection is being copied.
  * @property isUploading True while the photo is being uploaded.
  * @property error The last failure, cleared by the next action.
  * @property done True once the photo was saved or the step was skipped.
@@ -38,6 +41,7 @@ data class ProfilePhotoUiState(
     val isUploading: Boolean = false,
     val error: ProfilePhotoError? = null,
     val done: Boolean = false,
+    val isImporting: Boolean = false,
 )
 
 /**
@@ -62,32 +66,51 @@ class ProfilePhotoViewModel(
 
   private var upload: Job? = null
   private var cleared = false
+  // Counts the selections started; only the latest one may change the preview or show an error.
+  private var latestSelection = 0
 
   /**
    * Copies the image at [uri] and shows it as the preview, replacing the previous one. On failure
    * the previous photo is kept and [ProfilePhotoError.INVALID_PHOTO] is shown. Ignored while
-   * uploading or once done.
+   * uploading or once done. When selections overlap, only the latest one counts: an older copy that
+   * finishes last is deleted, and its failure is not shown.
    *
    * @param fromCamera True for a camera capture, which is downscaled and encoded as JPEG.
    */
   suspend fun select(uri: String, fromCamera: Boolean) {
     if (!acceptsActions()) return
-    val copy =
-        try {
-          files.copy(uri, fromCamera)
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (_: Exception) {
-          mutableState.update { it.copy(error = ProfilePhotoError.INVALID_PHOTO) }
-          return
-        }
-    if (cleared || !acceptsActions()) {
-      withContext(NonCancellable) { files.delete(copy) }
-      return
+    val selection = ++latestSelection
+    mutableState.update { it.copy(isImporting = true, error = null) }
+    try {
+      val copy =
+          try {
+            files.copy(uri, fromCamera)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            if (selection == latestSelection && acceptsActions()) {
+              mutableState.update { it.copy(error = ProfilePhotoError.INVALID_PHOTO) }
+            }
+            return
+          }
+      if (cleared || !acceptsActions() || selection != latestSelection) {
+        withContext(NonCancellable) { files.delete(copy) }
+        return
+      }
+      val previous = state.value.photo
+      mutableState.update { it.copy(photo = copy, error = null) }
+      previous?.let { withContext(NonCancellable) { files.delete(it) } }
+    } finally {
+      if (selection == latestSelection) mutableState.update { it.copy(isImporting = false) }
     }
-    val previous = state.value.photo
-    mutableState.update { it.copy(photo = copy, error = null) }
-    previous?.let { withContext(NonCancellable) { files.delete(it) } }
+  }
+
+  /**
+   * Copies an image picked straight from the gallery and shows it, like [select]. The copy runs in
+   * the ViewModel's scope, so it is not lost if the screen is recreated while it runs.
+   */
+  fun selectFromGallery(uri: String) {
+    viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) { select(uri, fromCamera = false) }
   }
 
   /**
@@ -97,7 +120,7 @@ class ProfilePhotoViewModel(
    */
   fun save() {
     val photo = state.value.photo
-    if (photo == null || !acceptsActions()) return
+    if (photo == null || state.value.isImporting || !acceptsActions()) return
     mutableState.update { it.copy(isUploading = true, error = null) }
     upload =
         viewModelScope.launch {
@@ -135,7 +158,7 @@ class ProfilePhotoViewModel(
   private fun finish() {
     val photo = state.value.photo
     val pending = upload
-    mutableState.update { it.copy(photo = null, error = null, done = true) }
+    mutableState.update { it.copy(photo = null, error = null, done = true, isImporting = false) }
     // Let a cancelled upload stop reading the file before it is deleted.
     photo?.let {
       viewModelScope.launch(NonCancellable) {

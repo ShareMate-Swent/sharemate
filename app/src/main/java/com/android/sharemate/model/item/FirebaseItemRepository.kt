@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -12,6 +13,7 @@ import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -31,22 +33,57 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        // The security rules only accept a query whose every result the caller may read, so it
-        // must name both the household and either the shared items or the caller's own items.
-        observe(
-            items.where(
-                Filter.and(
-                    Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
-                    Filter.or(
-                        Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
-                        Filter.equalTo(ItemFields.OWNER_ID, userId)))))
+        observe(fridgeQuery(householdId, userId))
       }
+
+  override fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
+      if (householdId.isBlank() || userId.isBlank()) {
+        flowOf(FridgeSyncSnapshot(emptyList(), emptySet()))
+      } else {
+        callbackFlow {
+              val registration =
+                  fridgeQuery(householdId, userId).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
+                    if (error != null) {
+                      close(error)
+                      return@addSnapshotListener
+                    }
+                    // Status and confirmation come from the same snapshot, so a rejected write can
+                    // never be seen as confirmed with the locally applied status.
+                    val (pending, confirmed) =
+                        snapshot?.documents.orEmpty().partition { it.metadata.hasPendingWrites() }
+                    trySend(
+                        FridgeSyncSnapshot(
+                            confirmedItems = confirmed.mapNotNull { it.toItemOrNull() },
+                            pendingWriteIds = pending.map { it.id }.toSet()))
+                  }
+              awaitClose { registration.remove() }
+            }
+            .distinctUntilChanged()
+      }
+
+  override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> {
+    if (householdId.isBlank() || userId.isBlank()) return emptyList()
+    return fridgeQuery(householdId, userId).get(Source.SERVER).await().documents.mapNotNull {
+      it.toItemOrNull()
+    }
+  }
+
+  // Rules require both the household and the shared-or-owned visibility constraint.
+  private fun fridgeQuery(householdId: String, userId: String): Query =
+      items.where(
+          Filter.and(
+              Filter.equalTo(ItemFields.HOUSEHOLD_ID, householdId),
+              Filter.or(
+                  Filter.equalTo(ItemFields.SHARING, ItemSharing.SHARED.name),
+                  Filter.equalTo(ItemFields.OWNER_ID, userId))))
 
   override suspend fun addItem(item: Item): String? {
     if (item.name.isBlank() || item.ownerId.isBlank() || item.quantity !in ItemQuantity.RANGE) {
       return null
     }
-    if (!item.hasValidTexts()) return null
+    if (!itemNameFits(item.name)) return null
     return try {
       val document = items.document()
       val savedItem = item.copy(id = document.id, name = item.name.trim())
@@ -170,15 +207,15 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
           IllegalArgumentException(
               "A name and a quantity from 1 to ${ItemQuantity.MAX} are required"))
     }
-    if (!itemTextsFit(edit.name, edit.category)) {
-      return ItemWrite.Rejected(IllegalArgumentException("Name or category is too long"))
+    if (!itemNameFits(edit.name)) {
+      return ItemWrite.Rejected(IllegalArgumentException("Name is too long"))
     }
     val fields =
         mutableMapOf<String, Any?>(
             ItemFields.NAME to edit.name.trim(),
             ItemFields.QUANTITY to edit.quantity,
-            ItemFields.CATEGORY to edit.category,
             ItemFields.EXPIRATION_DATE to edit.expirationDate)
+    if (edit.updatesCategory) fields[ItemFields.CATEGORY] = edit.category?.name
     edit.sharing?.let {
       fields[ItemFields.SHARING] = it.name
       fields[ItemFields.LEGACY_SHARED] = FieldValue.delete()
@@ -280,7 +317,8 @@ internal fun DocumentSnapshot.toItemOrNull(): Item? =
               ownerId = ownerId,
               householdId = householdId,
               expirationDate = getTimestamp(ItemFields.EXPIRATION_DATE)?.toDate(),
-              category = getString(ItemFields.CATEGORY)?.takeIf { it.isNotBlank() },
+              // Older items may hold free text; it is read as its category, never rewritten here.
+              category = ItemCategory.fromStored(get(ItemFields.CATEGORY) as? String),
               image = getItemImageOrNull(),
               quantity = quantity,
               status = status,
@@ -315,14 +353,8 @@ private fun DocumentSnapshot.getItemImageOrNull(): ItemImage? {
 private fun Map<*, *>.optionalImageString(key: String): String? =
     (this[key] as? String)?.takeIf { it.isNotBlank() }
 
-private fun Item.hasValidTexts(): Boolean = itemTextsFit(name, category)
-
-/**
- * The trimmed [name] and [category] are within [TextLimits], as `firestore.rules` also requires.
- */
-private fun itemTextsFit(name: String, category: String?): Boolean =
-    !name.trim().exceeds(TextLimits.ITEM_NAME) &&
-        category?.trim()?.exceeds(TextLimits.ITEM_CATEGORY) != true
+/** The trimmed [name] is within [TextLimits.ITEM_NAME], as `firestore.rules` also requires. */
+private fun itemNameFits(name: String): Boolean = !name.trim().exceeds(TextLimits.ITEM_NAME)
 
 /** Fields of an item document in Firestore. */
 internal object ItemFields {

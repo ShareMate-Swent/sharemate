@@ -20,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.ReportLaunch
 import kotlinx.coroutines.launch
 
 /** Test tag for the progress indicator shown while an authenticated operation is finishing. */
@@ -35,6 +38,13 @@ fun AuthGate(
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val session = state.session
+  ReportLaunch(
+      LaunchStage.AUTH,
+      when {
+        state.isRestoringSession || (session != null && state.isLoading) -> LaunchStatus.WAITING
+        session == null || state.pendingProfileUpdate != null -> LaunchStatus.READY
+        else -> LaunchStatus.CONTINUE
+      })
   when {
     state.isRestoringSession -> AuthProgress(AuthTestTags.RESTORING, modifier)
     session != null && state.isLoading -> AuthProgress(AUTH_GATE_LOADING_TEST_TAG, modifier)

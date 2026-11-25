@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -33,7 +34,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.SampleApp">
+            android:theme="@style/Theme.ShareMate.Launch">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

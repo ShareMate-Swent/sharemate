@@ -14,17 +14,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Kitchen
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,8 +24,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
@@ -43,7 +31,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -53,6 +40,7 @@ import com.android.sharemate.model.auth.FirebaseAuthRepository
 import com.android.sharemate.model.auth.FirestorePseudoRepository
 import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.barcode.MlKitBarcodeScanner
+import com.android.sharemate.model.chat.AndroidPendingFridgeActivityStore
 import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.FirebaseChatRepository
 import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
@@ -104,9 +92,13 @@ import com.android.sharemate.ui.household.AuthHouseholdGate
 import com.android.sharemate.ui.household.HouseholdMembersScreen
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
+import com.android.sharemate.ui.navigation.AppBottomBar
 import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.ChildRoutes
+import com.android.sharemate.ui.navigation.ProfileEntry
 import com.android.sharemate.ui.navigation.TopLevelDestination
+import com.android.sharemate.ui.navigation.leaveSettings
+import com.android.sharemate.ui.navigation.selectTab
 import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
@@ -117,7 +109,11 @@ import com.android.sharemate.ui.settings.SettingsScreen
 import com.android.sharemate.ui.settings.SettingsViewModel
 import com.android.sharemate.ui.settings.openSystemNotificationSettings
 import com.android.sharemate.ui.settings.rememberSystemNotificationsAllowed
-import com.android.sharemate.ui.theme.ShareMateTheme
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.LocalLaunchVisible
+import com.android.sharemate.ui.startup.ReportLaunch
+import com.android.sharemate.ui.startup.ShareMateLaunch
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -153,6 +149,7 @@ open class MainActivity : ComponentActivity() {
     FirebaseChatRepository(
         FirebaseFirestore.getInstance(), FirebaseIncidentPhotoRepository.create())
   }
+  private val pendingActivityStore by lazy { AndroidPendingFridgeActivityStore(applicationContext) }
 
   private val googleSignIn by lazy { CredentialManagerGoogleSignIn(applicationContext) }
   private val itemRepository: ItemRepository by lazy {
@@ -235,7 +232,7 @@ open class MainActivity : ComponentActivity() {
     NotificationChannelRegistrar.from(applicationContext).registerAll()
     NotificationScheduler.schedule(applicationContext)
     setContent {
-      ShareMateTheme {
+      ShareMateLaunch {
         AuthHouseholdGate(
             authViewModel,
             authRepository,
@@ -256,8 +253,9 @@ open class MainActivity : ComponentActivity() {
                   if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
                 }
               }
-              LaunchedEffect(Unit) {
-                if (NotificationPermission.shouldRequest(this@MainActivity)) {
+              val launchVisible = LocalLaunchVisible.current
+              LaunchedEffect(launchVisible) {
+                if (!launchVisible && NotificationPermission.shouldRequest(this@MainActivity)) {
                   notificationPermissionLauncher.launch(NotificationPermission.PERMISSION)
                 }
               }
@@ -274,45 +272,15 @@ open class MainActivity : ComponentActivity() {
               }
               val currentRoute =
                   navController.currentBackStackEntryAsState().value?.destination?.route
+              if (currentRoute != null && currentRoute != TopLevelDestination.FRIDGE.route) {
+                ReportLaunch(LaunchStage.DESTINATION, LaunchStatus.READY)
+              }
               Scaffold(
                   modifier =
                       Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
                   bottomBar = {
-                    NavigationBar {
-                      TopLevelDestination.entries.forEach { destination ->
-                        val label = stringResource(destination.labelRes)
-                        NavigationBarItem(
-                            modifier = Modifier.testTag(destination.testTag),
-                            selected = destination.isSelected(currentRoute),
-                            onClick = {
-                              if (destination.isParentOf(currentRoute)) {
-                                // Tapping the tab of the open screen goes back to the tab itself.
-                                navController.popBackStack(destination.route, inclusive = false)
-                              } else {
-                                navController.navigate(destination.route) {
-                                  popUpTo(navController.graph.findStartDestination().id) {
-                                    // Retain the fridge ViewModel and its image jobs across tabs.
-                                    saveState = true
-                                  }
-                                  launchSingleTop = true
-                                  restoreState = true
-                                }
-                              }
-                            },
-                            icon = {
-                              val icon =
-                                  when (destination) {
-                                    TopLevelDestination.FRIDGE -> Icons.Filled.Kitchen
-                                    TopLevelDestination.RECIPES -> Icons.Filled.MenuBook
-                                    TopLevelDestination.RECEIPTS -> Icons.Filled.ReceiptLong
-                                    TopLevelDestination.CHAT -> Icons.Filled.Chat
-                                    TopLevelDestination.SETTINGS -> Icons.Filled.Settings
-                                  }
-                              Icon(icon, label)
-                            },
-                            label = { Text(label) },
-                        )
-                      }
+                    if (TopLevelDestination.showsBottomBar(currentRoute)) {
+                      AppBottomBar(currentRoute = currentRoute, onSelect = navController::selectTab)
                     }
                   },
               ) { innerPadding ->
@@ -348,6 +316,7 @@ open class MainActivity : ComponentActivity() {
                                             memberNameRepository = memberNameRepository,
                                             currentUserDisplayName = session.displayName,
                                             chatRepository = chatRepository,
+                                            pendingActivityStore = pendingActivityStore,
                                             activitySenderName =
                                                 session.displayName
                                                     ?: session.email
@@ -355,7 +324,17 @@ open class MainActivity : ComponentActivity() {
                                       }
                                     })
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          FridgeScreen(viewModel = fridgeViewModel)
+                          FridgeScreen(
+                              viewModel = fridgeViewModel,
+                              headerTrailing = {
+                                ProfileEntry(
+                                    photoUrl = session.photoUrl,
+                                    onClick = {
+                                      navController.navigate(TopLevelDestination.SETTINGS.route) {
+                                        launchSingleTop = true
+                                      }
+                                    })
+                              })
                         }
                       }
                   composable(
@@ -471,7 +450,8 @@ open class MainActivity : ComponentActivity() {
                               navController.navigate(ChildRoutes.NOTIFICATION_SETTINGS)
                             },
                             onChangePhoto = photoCamera::open,
-                            onRetryPhotoUpload = settingsViewModel::retryPhotoUpload)
+                            onRetryPhotoUpload = settingsViewModel::retryPhotoUpload,
+                            onBack = navController::leaveSettings)
                         ProfilePhotoPicker(
                             onPhotoConfirmed = settingsViewModel::changePhoto,
                             camera = photoCamera,

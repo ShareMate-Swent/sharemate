@@ -7,6 +7,42 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /users/{userId}/receiptDeletions/{receiptId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+    }
+    // Collection-group reads keep saved history shared; writes are bound to the creator path.
+    match /{path=**}/receiptBackups/{receiptId} {
+      allow read: if signedIn() && isCurrentMember(resource.data.householdId)
+          && (resource.data.ownerId == request.auth.uid || resource.data.draft == false);
+    }
+    match /users/{receiptOwner}/receiptBackups/{receiptId} {
+      function currentRevision() {
+        let path = /databases/$(database)/documents/users/$(receiptOwner)/receiptItemLinks/$(receiptId);
+        return exists(path) ? get(path).data.get('revision', 0) : 0;
+      }
+      // A transaction must be able to observe absence before creating its first backup.
+      allow get: if signedIn() && request.auth.uid == receiptOwner
+          && !exists(/databases/$(database)/documents/users/$(receiptOwner)/receiptBackups/$(receiptId));
+      allow read: if signedIn() && isCurrentMember(resource.data.householdId)
+          && (resource.data.ownerId == request.auth.uid || resource.data.draft == false);
+      allow create, update: if signedIn() && request.auth.uid == receiptOwner
+          && request.resource.data.ownerId == request.auth.uid
+          && isCurrentMember(request.resource.data.householdId)
+          && request.resource.data.keys().hasOnly(['ownerId', 'householdId', 'draft', 'submission', 'title', 'scannedAtMillis', 'draftPaidBy', 'draftParticipants', 'photoPath', 'photoReady', 'revision'])
+          && (request.resource.data.get('revision', 0) is int)
+          && request.resource.data.get('revision', 0) ==
+              (request.resource.data.draft == true ? 0 : currentRevision())
+          && request.resource.data.draft is bool
+          && request.resource.data.submission is string
+          && request.resource.data.submission.size() < 250000
+          && request.resource.data.title is string && request.resource.data.title.size() <= 80
+          && (resource == null || (resource.data.ownerId == request.auth.uid
+              && resource.data.householdId == request.resource.data.householdId
+              && (resource.data.draft == true ||
+                  request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoReady']))))
+          && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/receiptDeletions/$(receiptId))
+          && (request.resource.data.draft == true || exists(/databases/$(database)/documents/users/$(request.auth.uid)/expenseSubmissions/$(receiptId)));
+    }
     function signedIn() {
       return request.auth != null;
     }
@@ -111,7 +147,8 @@ service cloud.firestore {
       }
 
       allow get, list: if signedIn() && request.auth.uid == userId;
-      allow create: if signedIn() && request.auth.uid == userId && validSubmission();
+      allow create: if signedIn() && request.auth.uid == userId && validSubmission()
+          && !exists(/databases/$(database)/documents/users/$(userId)/receiptDeletions/$(submissionId));
       allow update, delete: if false;
     }
 
@@ -325,10 +362,7 @@ service cloud.firestore {
 
       function isValidNewMessage() {
         let message = request.resource.data;
-        return message.keys().hasOnly([
-              'id', 'senderId', 'senderName', 'text', 'timestamp',
-              'type', 'itemName', 'itemImageUrl', 'incidentPhotoPath'
-            ])
+        return hasOnlyChatMessageKeys(message)
             && message.keys().hasAll(['id', 'senderId', 'senderName', 'text', 'timestamp'])
             && message.id == messageId
             && message.senderId == request.auth.uid
@@ -337,6 +371,13 @@ service cloud.firestore {
             && message.timestamp == request.time
             && (isValidTextMessage(message) || isValidActivityMessage(message)
                 || isValidIncidentMessage(message));
+      }
+
+      function hasOnlyChatMessageKeys(message) {
+        return message.keys().hasOnly([
+              'id', 'senderId', 'senderName', 'text', 'timestamp',
+              'type', 'itemName', 'itemImageUrl', 'incidentPhotoPath'
+            ]);
       }
 
       function chatSenderName() {
@@ -380,6 +421,24 @@ service cloud.firestore {
             && hasNoIncidentPhoto(message);
       }
 
+      function isIdenticalActivityReplay() {
+        let previous = resource.data;
+        let replay = request.resource.data;
+        return previous.senderId == request.auth.uid
+            && previous.get('type', null) in ['EATEN', 'THROWN']
+            && replay.get('type', null) in ['EATEN', 'THROWN']
+            && hasOnlyChatMessageKeys(replay)
+            && replay.timestamp == request.time
+            && replay.id == previous.id
+            && replay.senderId == previous.senderId
+            && replay.senderName == previous.senderName
+            && replay.text == previous.text
+            && replay.type == previous.type
+            && replay.itemName == previous.itemName
+            && replay.get('itemImageUrl', null) == previous.get('itemImageUrl', null)
+            && hasNoIncidentPhoto(replay);
+      }
+
       // The description is the text; the photo must be one the sender uploaded for this household
       // (same path as IncidentPhotoReference and storage.rules).
       function isValidIncidentMessage(message) {
@@ -395,7 +454,8 @@ service cloud.firestore {
 
       allow read: if signedIn() && canUseChat();
       allow create: if signedIn() && canUseChat() && isValidNewMessage();
-      allow update, delete: if false;
+      allow update: if signedIn() && canUseChat() && isIdenticalActivityReplay();
+      allow delete: if false;
     }
 
     function isHouseholdMember(householdId) {
@@ -483,14 +543,17 @@ service cloud.firestore {
           && (isOwner(item) || item.get('sharing', null) == sharedItemSharing());
     }
 
-    // Keep the limits in sync with TextLimits.ITEM_NAME, TextLimits.ITEM_CATEGORY and
-    // ItemQuantity.MAX. The regex counts Unicode code points; size() counts UTF-16 code units.
+    // Keep the limits in sync with TextLimits.ITEM_NAME and ItemQuantity.MAX. The regex counts
+    // Unicode code points; size() counts UTF-16 code units.
     function hasValidItemName(name) {
       return name is string && name.matches('(?s).{1,80}');
     }
 
+    // A category is null (no category) or one of the ItemCategory names; keep them in sync.
     function hasValidItemCategory(category) {
-      return category == null || (category is string && category.matches('(?s).{0,40}'));
+      return category == null
+          || category in ['FRUITS', 'VEGETABLES', 'DAIRY', 'MEAT_FISH', 'DRINKS', 'PANTRY',
+              'FROZEN', 'OTHER'];
     }
 
     function hasValidItemQuantity(quantity) {

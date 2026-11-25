@@ -15,6 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
+import java.security.MessageDigest
 import java.util.concurrent.Executor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -31,6 +32,25 @@ class FirebaseChatRepository(
     private val firestore: FirebaseFirestore,
     private val incidentPhotos: IncidentPhotoRepository,
 ) : ChatRepository {
+
+  /** Sends an activity with no image or explicit idempotency key. */
+  suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+  ): String? = sendActivity(householdId, senderId, senderName, type, itemName, null, null)
+
+  /** Sends an activity with an image and no explicit idempotency key. */
+  suspend fun sendActivity(
+      householdId: String,
+      senderId: String,
+      senderName: String,
+      type: MessageType,
+      itemName: String,
+      itemImageUrl: String?,
+  ): String? = sendActivity(householdId, senderId, senderName, type, itemName, itemImageUrl, null)
 
   private fun messages(householdId: String) =
       firestore
@@ -71,7 +91,8 @@ class FirebaseChatRepository(
       senderName: String,
       type: MessageType,
       itemName: String,
-      itemImageUrl: String?
+      itemImageUrl: String?,
+      activityId: String?,
   ): String? {
     if (householdId.isBlank() ||
         senderId.isBlank() ||
@@ -86,7 +107,36 @@ class FirebaseChatRepository(
             MessageFields.TEXT to "",
             MessageFields.TYPE to type.name,
             MessageFields.ITEM_NAME to itemName.trim(),
-            MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() }))
+            MessageFields.ITEM_IMAGE_URL to itemImageUrl?.takeIf { it.isNotBlank() }),
+        documentId =
+            stableActivityId(
+                householdId,
+                senderId,
+                type,
+                itemName.trim(),
+                itemImageUrl?.takeIf { it.isNotBlank() },
+                activityId),
+        skipExisting = activityId?.isNotBlank() == true)
+  }
+
+  private fun stableActivityId(
+      householdId: String,
+      senderId: String,
+      type: MessageType,
+      itemName: String,
+      itemImageUrl: String?,
+      activityId: String?,
+  ): String {
+    val source =
+        if (activityId.isNullOrBlank()) {
+          listOf(householdId, senderId, type.name, itemName, itemImageUrl.orEmpty())
+              .joinToString(SEPARATOR)
+        } else {
+          listOf(householdId, senderId, activityId.trim()).joinToString(SEPARATOR)
+        }
+    val digest =
+        MessageDigest.getInstance(HASH_ALGORITHM).digest(source.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { byte -> "%02x".format(byte) }
   }
 
   override suspend fun sendIncident(
@@ -122,16 +172,32 @@ class FirebaseChatRepository(
       householdId: String,
       senderId: String,
       senderName: String,
-      fields: Map<String, Any?>
-  ): String? =
+      fields: Map<String, Any?>,
+      documentId: String? = null,
+      skipExisting: Boolean = false,
+  ): String? {
+    return try {
+      val document =
+          documentId?.let { messages(householdId).document(it) } ?: messages(householdId).document()
+      if (skipExisting && documentExists(document)) return document.id
+      writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
+      document.id
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (transient: TransientActivityException) {
+      throw transient
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  /** Rethrows transient failures so callers can retry instead of treating them as rejections. */
+  private suspend fun documentExists(document: DocumentReference): Boolean =
       try {
-        val document = messages(householdId).document()
-        writeMessage(document, messageData(document.id, senderId, senderName) + fields, senderId)
-        document.id
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        null
+        document.get().await().exists()
+      } catch (error: FirebaseFirestoreException) {
+        if (error.code in TRANSIENT_CODES) throw TransientActivityException(error)
+        throw error
       }
 
   private suspend fun messageData(
@@ -187,6 +253,12 @@ class FirebaseChatRepository(
 
   private companion object {
     const val TAG = "FirebaseChatRepository"
+    const val HASH_ALGORITHM = "SHA-256"
+    const val SEPARATOR = "|"
+    val TRANSIENT_CODES =
+        setOf(
+            FirebaseFirestoreException.Code.UNAVAILABLE,
+            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
     val ACTIVITY_TYPES = setOf(MessageType.EATEN, MessageType.THROWN)
   }
 }

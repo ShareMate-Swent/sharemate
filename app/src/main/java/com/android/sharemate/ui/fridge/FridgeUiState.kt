@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ownerDisplayName
 
@@ -23,7 +25,10 @@ data class FridgeUiState(
     val pendingStatusIds: Set<String> = emptySet(),
     val statusError: FridgeStatusError? = null,
     val itemName: String = "",
-    val itemCategory: String = "",
+    /** Category picked in the form; null is "No category", the default. */
+    val itemCategory: ItemCategory? = null,
+    /** Category of the item when its edit form opened, to save the category only if it changed. */
+    val originalItemCategory: ItemCategory? = null,
     /** Sharing chosen for the item being created; items are private unless shared explicitly. */
     val itemSharing: ItemSharing = ItemSharing.PERSONAL,
     val expirationDateInput: String = "",
@@ -51,7 +56,8 @@ internal fun FridgeUiState.resetItemFields(): FridgeUiState =
     copy(
         itemQuantity = DEFAULT_ITEM_QUANTITY,
         itemName = "",
-        itemCategory = "",
+        itemCategory = null,
+        originalItemCategory = null,
         itemSharing = ItemSharing.PERSONAL,
         originalItemSharing = null,
         canChangeSharing = false,
@@ -88,7 +94,6 @@ class BarcodeLookupException(val error: BarcodeLookupError) : Exception()
 enum class FridgeFormError {
   NAME_REQUIRED,
   NAME_TOO_LONG,
-  CATEGORY_TOO_LONG,
   INVALID_QUANTITY,
   INVALID_EXPIRATION_DATE,
   SAVE_FAILED,

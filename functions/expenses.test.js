@@ -63,7 +63,6 @@ test("authorizes caller, payer and every participant using the selected househol
   });
   const attempts = [
     [purchase("denied"), null, "UNAUTHENTICATED"],
-    [purchase("denied", { paidBy: payer.localId }), author, "PERMISSION_DENIED"],
     [purchase("denied"), outsider, "PERMISSION_DENIED"],
     [purchase("denied", { paidBy: outsider.localId }), author, "PERMISSION_DENIED"],
     [purchase("denied", { shares: { [outsider.localId]: "1000" } }), author, "PERMISSION_DENIED"],
@@ -107,7 +106,7 @@ test("concurrent identical retries commit exactly one expense and preserve the l
     .get("lastExpenseId"), "retry");
   const reordered = purchase("retry", { shares: { [payer.localId]: "500", [author.localId]: "500" } });
   assert.deepEqual((await call(reordered)).result, reordered);
-  assert.equal((await call(payload, payer)).error?.status, "PERMISSION_DENIED");
+  assert.equal((await call(payload, payer)).error?.status, "ALREADY_EXISTS");
   for (const changes of [
     { totalAmountCents: "1001", shares: { [author.localId]: "501", [payer.localId]: "500" } },
     { shares: { [author.localId]: "1000" } },
@@ -121,6 +120,14 @@ test("binds the submitter operation to one household, even with valid membership
   assert.equal((await other.collection("expenses").get()).size, 0);
   const payload = purchase("second-operation", { householdId: other.id });
   assert.deepEqual((await call(payload)).result, payload);
+});
+
+test("a member may record a different current payer with idempotent retries", async () => {
+  const payload = purchase("other-payer", { paidBy: payer.localId });
+  assert.deepEqual((await call(payload)).result, payload);
+  assert.deepEqual((await call(payload)).result, payload);
+  assert.equal((await expenses.doc(payload.id).get()).get("paidBy"), payer.localId);
+  assert.equal((await call(payload, payer)).error?.status, "ALREADY_EXISTS");
 });
 
 test("preserves bounded exact cents, accepts zero shares and lets payer consume no share", async () => {

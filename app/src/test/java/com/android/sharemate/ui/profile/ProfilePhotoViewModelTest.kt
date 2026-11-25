@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.profile
 
 import androidx.lifecycle.ViewModelStore
@@ -56,6 +57,42 @@ class ProfilePhotoViewModelTest {
     assertEquals(File("copy-b"), vm.state.value.photo)
     assertEquals(listOf(File("copy-a")), files.deleted)
     assertEquals(listOf("content://a" to false, "file://b" to true), files.copies)
+  }
+
+  @Test
+  fun galleryPickIsCopiedAsAGalleryImageAndShown() = runTest {
+    vm.selectFromGallery("content://gallery")
+    dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(File("copy-gallery"), vm.state.value.photo)
+    assertEquals(listOf("content://gallery" to false), files.copies)
+  }
+
+  @Test
+  fun olderGalleryImportFinishingLastIsDeletedAndTheLatestKept() = runTest {
+    val slow = CompletableDeferred<Unit>()
+    files.gates["content://a"] = slow
+    vm.selectFromGallery("content://a")
+    vm.selectFromGallery("content://b")
+    advanceUntilIdle()
+    assertEquals(File("copy-b"), vm.state.value.photo)
+    slow.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(File("copy-b"), vm.state.value.photo)
+    assertEquals(listOf(File("copy-a")), files.deleted)
+  }
+
+  @Test
+  fun olderImportFailingLastShowsNoError() = runTest {
+    val slow = CompletableDeferred<Unit>()
+    files.gates["content://a"] = slow
+    vm.selectFromGallery("content://a")
+    vm.selectFromGallery("content://b")
+    advanceUntilIdle()
+    files.failure = IllegalArgumentException("too large")
+    slow.complete(Unit)
+    advanceUntilIdle()
+    assertNull(vm.state.value.error)
+    assertEquals(File("copy-b"), vm.state.value.photo)
   }
 
   @Test
@@ -166,17 +203,23 @@ class ProfilePhotoViewModelTest {
   }
 
   @Test
-  fun copyFinishingDuringUploadIsDeletedAndThePreviewKept() = runTest {
+  fun saveWaitsForTheNewGalleryPhotoAndNeverUploadsThePreviousOne() = runTest {
     vm.select("content://a", false)
-    files.gate = CompletableDeferred()
-    launch { vm.select("content://late", false) }
-    advanceUntilIdle()
-    repository.next = { CompletableDeferred<Result<String>>().await() }
+    val copying = CompletableDeferred<Unit>()
+    files.gates["content://b"] = copying
+    vm.selectFromGallery("content://b")
+    assertTrue(vm.state.value.isImporting)
     vm.save()
-    files.gate!!.complete(Unit)
     advanceUntilIdle()
     assertEquals(File("copy-a"), vm.state.value.photo)
-    assertEquals(listOf(File("copy-late")), files.deleted)
+    assertTrue(repository.uploads.isEmpty())
+    copying.complete(Unit)
+    advanceUntilIdle()
+    assertFalse(vm.state.value.isImporting)
+    assertEquals(File("copy-b"), vm.state.value.photo)
+    vm.save()
+    advanceUntilIdle()
+    assertEquals(listOf(UID to File("copy-b")), repository.uploads)
   }
 
   @Test
@@ -208,16 +251,21 @@ class ProfilePhotoViewModelTest {
     assertEquals(listOf(File("copy-a")), files.deleted)
   }
 
-  /** Copies `scheme://name` to `copy-name`; deletions are recorded, never performed. */
+  /**
+   * Copies `scheme://name` to `copy-name`; deletions are recorded, never performed. A copy waits
+   * for [gate] and for its own entry in [gates], if any.
+   */
   private class FakeFiles(private val events: MutableList<String>) : PersonalPhotoFiles {
     val copies = mutableListOf<Pair<String, Boolean>>()
     val deleted = mutableListOf<File>()
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
+    val gates = mutableMapOf<String, CompletableDeferred<Unit>>()
 
     override suspend fun copy(uri: String, fromCamera: Boolean): File {
       copies += uri to fromCamera
       gate?.await()
+      gates[uri]?.await()
       failure?.let { throw it }
       return File("copy-" + uri.substringAfter("://"))
     }

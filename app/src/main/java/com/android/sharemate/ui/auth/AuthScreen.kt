@@ -44,6 +44,7 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Tags shared by the authentication screens and their tests. */
 object AuthTestTags {
+  const val BRAND_HEADER = "auth_brand_header"
   const val BACK = "auth_back"
   const val EMAIL = "auth_email"
   const val PASSWORD = "auth_password"
