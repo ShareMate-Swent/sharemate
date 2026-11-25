@@ -27,7 +27,11 @@ class AppBottomBarTest {
   private fun showBar(route: String?) =
       compose.setContent {
         ShareMateTheme {
-          AppBottomBar(currentRoute = route, onSelect = { selected += it }, onAdd = { added++ })
+          AppBottomBar(
+              currentRoute = route,
+              tabs = TopLevelDestination.bottomBar,
+              onSelect = { selected += it },
+              onAdd = { added++ })
         }
       }
 
@@ -52,9 +56,9 @@ class AppBottomBarTest {
       ShareMateTheme {
         AppBottomBar(
             currentRoute = TopLevelDestination.FRIDGE.route,
+            tabs = TopLevelDestination.bottomBarFor(FridgeType.PRIVATE),
             onSelect = { selected += it },
-            onAdd = { added++ },
-            tabs = TopLevelDestination.bottomBarFor(FridgeType.PRIVATE))
+            onAdd = { added++ })
       }
     }
     val order =

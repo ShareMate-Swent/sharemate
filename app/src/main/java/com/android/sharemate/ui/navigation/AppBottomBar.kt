@@ -68,18 +68,19 @@ internal object ProfileEntryTestTags {
  * item ([AddItemSheet]).
  *
  * @param currentRoute The open screen, which decides the selected tab.
+ * @param tabs The tabs to show, in order: [TopLevelDestination.bottomBarFor] the household's fridge
+ *   type, so a private fridge has no chat tab.
  * @param onSelect Called with the tab the user tapped.
  * @param onAdd Called when the user taps the add button.
  * @param modifier Applied to the bar.
- * @param tabs The tabs to show, in order; a private fridge has no chat tab.
  */
 @Composable
 internal fun AppBottomBar(
     currentRoute: String?,
+    tabs: List<TopLevelDestination>,
     onSelect: (TopLevelDestination) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
-    tabs: List<TopLevelDestination> = TopLevelDestination.bottomBar,
 ) {
   val items =
       tabs.map { destination ->
