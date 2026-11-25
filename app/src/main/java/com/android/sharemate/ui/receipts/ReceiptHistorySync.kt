@@ -74,42 +74,59 @@ class ReceiptHistorySync(
           }
         }
         for (entry in entries.filter { it.submission.ownerId == ownerId }) {
-          val id = entry.submission.id
-          launch {
-            var saved = false
-            try {
-              retry(id) { recovered ->
-                try {
-                  if (!store.isDeleted(ownerId, householdId, id) &&
-                      store.pendingCorrection(ownerId, householdId, id) == null &&
-                      (saved ||
-                          mergePolicy.shouldApplyRemote(
-                              store.loadById(ownerId, householdId, id),
-                              store.details(ownerId, householdId, id),
-                              entry,
-                              store.isDeleted(ownerId, householdId, id),
-                              false))) {
-                    if (!saved) {
-                      store.save(entry.submission)
-                      saved = true
-                    }
-                    store.saveDetails(entry.details)
-                    onChanged()
-                  }
-                } catch (cancelled: CancellationException) {
-                  throw cancelled
-                } catch (failure: Exception) {
-                  // A concurrent local deletion wins over this now-obsolete snapshot.
-                  if (!store.isDeleted(ownerId, householdId, id)) throw failure
-                }
-                recovered()
-              }
-            } finally {
-              setFailed(id, false)
-            }
-          }
+          launch { mergeEntry(entry, onChanged) }
         }
       }
+
+  private suspend fun mergeEntry(entry: ReceiptCloudEntry, onChanged: suspend () -> Unit) {
+    val id = entry.submission.id
+    var saved = false
+    try {
+      retry(id) { recovered ->
+        if (mergeEntryAttempt(entry, saved) { saved = true }) onChanged()
+        recovered()
+      }
+    } finally {
+      setFailed(id, false)
+    }
+  }
+
+  private suspend fun mergeEntryAttempt(
+      entry: ReceiptCloudEntry,
+      saved: Boolean,
+      onSaved: () -> Unit,
+  ): Boolean =
+      try {
+        if (!shouldMergeEntry(entry, saved)) false
+        else {
+          if (!saved) {
+            store.save(entry.submission)
+            onSaved()
+          }
+          store.saveDetails(entry.details)
+          true
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        // Recheck only after a failed write: a concurrent local deletion wins.
+        if (!store.isDeleted(ownerId, householdId, entry.submission.id)) throw failure
+        false
+      }
+
+  private suspend fun shouldMergeEntry(entry: ReceiptCloudEntry, saved: Boolean): Boolean {
+    val id = entry.submission.id
+    val deleted = store.isDeleted(ownerId, householdId, id)
+    val correctionPending = store.pendingCorrection(ownerId, householdId, id) != null
+    if (deleted || correctionPending) return false
+    if (saved) return true
+    return mergePolicy.shouldApplyRemote(
+        store.loadById(ownerId, householdId, id),
+        store.details(ownerId, householdId, id),
+        entry,
+        deleted,
+        correctionPending)
+  }
 
   private suspend fun retry(operation: Any, action: suspend (() -> Unit) -> Unit) {
     var backoff = RECEIPT_INITIAL_RETRY_MILLIS

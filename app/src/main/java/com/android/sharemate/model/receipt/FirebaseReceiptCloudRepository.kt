@@ -7,7 +7,6 @@ import com.android.sharemate.model.item.*
 import com.android.sharemate.model.staging.*
 import com.google.firebase.firestore.*
 import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageException
 import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import kotlinx.coroutines.*
@@ -211,28 +210,16 @@ class FirebaseReceiptCloudRepository(
   }
 }
 
-/** Keeps Firebase error types inside the model layer. */
-internal fun receiptCloudFailure(failure: Exception): Exception {
+/** Classifies Firestore listener failures without exposing Firebase types to the UI. */
+internal fun receiptCloudFailure(failure: FirebaseFirestoreException): Exception {
   val permanent =
-      when (failure) {
-        is FirebaseFirestoreException ->
-            failure.code in
-                setOf(
-                    FirebaseFirestoreException.Code.PERMISSION_DENIED,
-                    FirebaseFirestoreException.Code.UNAUTHENTICATED,
-                    FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-                    FirebaseFirestoreException.Code.FAILED_PRECONDITION,
-                    FirebaseFirestoreException.Code.NOT_FOUND,
-                    FirebaseFirestoreException.Code.UNIMPLEMENTED)
-        is StorageException ->
-            failure.errorCode in
-                setOf(
-                    StorageException.ERROR_NOT_AUTHORIZED,
-                    StorageException.ERROR_NOT_AUTHENTICATED,
-                    StorageException.ERROR_OBJECT_NOT_FOUND,
-                    StorageException.ERROR_BUCKET_NOT_FOUND,
-                    StorageException.ERROR_PROJECT_NOT_FOUND)
-        else -> false
-      }
+      failure.code in
+          setOf(
+              FirebaseFirestoreException.Code.PERMISSION_DENIED,
+              FirebaseFirestoreException.Code.UNAUTHENTICATED,
+              FirebaseFirestoreException.Code.INVALID_ARGUMENT,
+              FirebaseFirestoreException.Code.FAILED_PRECONDITION,
+              FirebaseFirestoreException.Code.NOT_FOUND,
+              FirebaseFirestoreException.Code.UNIMPLEMENTED)
   return if (permanent) ReceiptCloudPermanentException(failure) else failure
 }
