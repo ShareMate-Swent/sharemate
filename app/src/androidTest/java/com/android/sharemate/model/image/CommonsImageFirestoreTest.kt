@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.image
 
 import androidx.lifecycle.ViewModelStore
@@ -16,11 +17,11 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.toItemOrNull
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.ui.fridge.FridgeViewModel
-import com.android.sharemate.ui.fridge.fridgeImageRequest
 import com.android.sharemate.ui.fridge.testMemberNameRepository
 import com.android.sharemate.ui.fridge.testProductCatalogRepository
 import com.android.sharemate.ui.fridge.testPseudoRepository
@@ -89,7 +90,8 @@ class CommonsImageFirestoreTest {
     try {
       val decoded =
           withTimeout(20_000) {
-            loader.execute(fridgeImageRequest(context, saved.image!!.reference, 80))
+            loader.execute(
+                fridgeThumbnailRequest(context, 80).data(saved.image!!.reference).build())
           }
       assertTrue(
           "Thumbnail decode failed: ${(decoded as? ErrorResult)?.throwable}",
@@ -142,7 +144,7 @@ class CommonsImageFirestoreTest {
         vm.openAddItemDialog()
         vm.updateName("tacos")
         vm.updateQuantity("3")
-        vm.updateCategory("Prepared food")
+        vm.updateCategory(ItemCategory.OTHER)
         vm.saveItem()
       }
       val state =
@@ -175,7 +177,7 @@ class CommonsImageFirestoreTest {
       assertTrue(image.reference.startsWith("https://"))
       assertNotNull(image.licenseUrl)
       assertEquals(3, saved.quantity)
-      assertEquals("Prepared food", saved.category)
+      assertEquals(ItemCategory.OTHER, saved.category)
       assertEquals(userId, saved.ownerId)
       assertEquals(placeholder.copy(image = saved.image), saved)
       assertFalse(enriched.isAddItemDialogOpen)

@@ -7,7 +7,7 @@
     <string name="purchase_rounding">Any remainder cents go to participants in user ID order.</string>
     <string name="purchase_confirm">Confirm purchase</string>
     <string name="purchase_save_inventory_only">Save inventory only</string>
-    <string name="purchase_payer_must_submit">You must be a current household member to save this purchase.</string>
+    <string name="purchase_submitter_not_member">You must be a current household member to save this purchase.</string>
     <string name="purchase_missing_price">Add a price to every row to confirm the purchase. You can still save inventory only.</string>
     <string name="purchase_overflow">The purchase total is too large. Correct the row prices.</string>
     <string name="purchase_positive_total">The purchase total must be greater than zero.</string>

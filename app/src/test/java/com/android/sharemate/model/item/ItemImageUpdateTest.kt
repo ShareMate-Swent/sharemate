@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -195,7 +196,7 @@ class ItemImageUpdateTest {
             "owner",
             "home",
             Date(1234),
-            "Dairy",
+            ItemCategory.DAIRY,
             quantity = 4,
             status = ItemStatus.EATEN)
     val other = Item("other", "Milk", "owner", "home")

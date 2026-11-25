@@ -2,6 +2,7 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -22,6 +23,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.image.FoodImageSearchResult
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.auth.AUTH_PSEUDO_TEST_TAG
 import com.android.sharemate.ui.auth.AuthTestTags
@@ -110,7 +112,8 @@ class MainUserFlowE2ETest {
 
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(itemName)
     compose.onNodeWithTag(C.Tag.fridge_quantity_input).performTextReplacement("2")
-    compose.onNodeWithTag(C.Tag.fridge_category_input).performTextInput("Dairy")
+    compose.onNodeWithTag(C.Tag.fridge_category_input).performClick()
+    compose.onNodeWithTag(C.Tag.fridgeCategoryOption(ItemCategory.DAIRY)).performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_expiration_input)
         .performTextReplacement(LocalDate.now().plusDays(7).toString())
@@ -148,7 +151,7 @@ class MainUserFlowE2ETest {
         .assertIsDisplayed()
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
 
     waitUntil("signed-out welcome screen", 10_000) {
@@ -215,7 +218,7 @@ class MainUserFlowE2ETest {
     compose.onNodeWithText(privateItemName).assertIsDisplayed()
     compose.onNodeWithText(itemName).assertIsDisplayed()
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SIGN_OUT).performScrollTo().performClick()
     waitUntil("signed-out welcome screen", 10_000) {
       compose.onAllNodesWithTag(AuthTestTags.WELCOME).fetchSemanticsNodes().isNotEmpty()
@@ -246,6 +249,10 @@ class MainUserFlowE2ETest {
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput(inviteCode)
     compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    compose.waitUntil(15_000) {
+      compose.onAllNodesWithTag(JoinHouseholdTestTags.CONTINUE).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).performClick()
 
     compose.waitUntil(15_000) {
       compose.onAllNodesWithText(itemName).fetchSemanticsNodes().isNotEmpty()

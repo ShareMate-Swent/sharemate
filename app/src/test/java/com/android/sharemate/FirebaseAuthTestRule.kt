@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import android.content.Context
@@ -104,7 +105,7 @@ class FirebaseAuthTestRule(
             `when`(document.getString("name")).thenReturn(item.name)
             `when`(document.getString("ownerId")).thenReturn(item.ownerId)
             `when`(document.getString("householdId")).thenReturn(item.householdId)
-            `when`(document.getString("category")).thenReturn(item.category)
+            `when`(document.get("category")).thenReturn(item.category?.name)
             `when`(document.get("quantity")).thenReturn(item.quantity.toLong())
             `when`(document.get("status")).thenReturn(item.status.name)
             `when`(document.get("sharing")).thenReturn(item.sharing.name)

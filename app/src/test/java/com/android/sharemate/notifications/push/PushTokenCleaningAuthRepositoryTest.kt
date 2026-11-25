@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.notifications.push
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -59,20 +60,20 @@ class PushTokenCleaningAuthRepositoryTest {
   private fun registrar() =
       PushTokenRegistrar({ signedInUser }, tokens, "device-1", operations) { "token" }
 
-  private fun TestScope.repository() =
+  private fun TestScope.repository(beforeSignOut: suspend (String) -> Unit = {}) =
       PushTokenCleaningAuthRepository(
           delegate = delegate,
           currentUser = { signedInUser },
           registrar = registrar(),
           scope = this,
-          cleanupTimeoutMillis = TIMEOUT)
+          cleanupTimeoutMillis = TIMEOUT,
+          beforeSignOut = beforeSignOut)
 
   @Test
-  fun removesTheTokenBeforeSigningOut() = runTest {
-    repository().signOut()
+  fun purgesPhotosAndRemovesTheTokenBeforeSigningOut() = runTest {
+    repository { events += "purge:$it" }.signOut()
     runCurrent()
-
-    assertEquals(listOf("delete", "signOut"), events)
+    assertEquals(listOf("purge:alice", "delete", "signOut"), events)
   }
 
   @Test

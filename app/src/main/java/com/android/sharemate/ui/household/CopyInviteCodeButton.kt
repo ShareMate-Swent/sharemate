@@ -9,6 +9,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -20,7 +21,7 @@ fun CopyInviteCodeButton(inviteCode: String, modifier: Modifier = Modifier) {
   val clipboard = LocalClipboardManager.current
   val colors = MaterialTheme.colorScheme
   IconButton(
-      onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
+      onClick = { copyInviteCode(clipboard, inviteCode) },
       modifier = modifier,
       colors =
           IconButtonDefaults.iconButtonColors(
@@ -31,4 +32,9 @@ fun CopyInviteCodeButton(inviteCode: String, modifier: Modifier = Modifier) {
         contentDescription = stringResource(R.string.copy_invite_code),
     )
   }
+}
+
+/** Puts [inviteCode] on the clipboard. Every place that copies the invite code goes through it. */
+internal fun copyInviteCode(clipboard: ClipboardManager, inviteCode: String) {
+  clipboard.setText(AnnotatedString(inviteCode))
 }

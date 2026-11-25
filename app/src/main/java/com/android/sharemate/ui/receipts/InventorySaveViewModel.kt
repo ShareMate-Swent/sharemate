@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.finance.ExpenseRejectedException
@@ -11,6 +12,7 @@ import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.receipt.normalizeReceiptTitle
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptCorrection
 import com.android.sharemate.model.staging.StagedItem
@@ -198,7 +200,7 @@ class InventorySaveViewModel(
             UUID.randomUUID().toString(),
             original,
             replacement,
-            title.trim().take(80),
+            normalizeReceiptTitle(title),
             originalTitle))
     return true
   }
@@ -232,7 +234,8 @@ class InventorySaveViewModel(
             }
           } catch (cancelled: CancellationException) {
             throw cancelled
-          } catch (_: Exception) {
+          } catch (failure: Exception) {
+            logCorrectionFailure("Receipt correction failed", failure)
             if (token == generation)
                 mutableState.value =
                     InventorySaveState(
@@ -375,7 +378,8 @@ class InventorySaveViewModel(
               (pending ?: activeCorrection)?.let(::launchCorrection)
             } catch (cancelled: CancellationException) {
               throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+              logCorrectionFailure("Unable to read pending receipt correction", failure)
               mutableState.value = current.copy(phase = InventorySavePhase.FAILED)
             }
           }
@@ -509,4 +513,9 @@ class InventorySaveViewModel(
           }
         }
   }
+}
+
+/** Exception messages may contain receipt data; retain only the failure type for diagnostics. */
+private fun logCorrectionFailure(message: String, failure: Exception) {
+  Log.w("InventorySave", "$message (${failure.javaClass.simpleName})")
 }

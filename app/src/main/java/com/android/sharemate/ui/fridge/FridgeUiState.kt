@@ -1,12 +1,15 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.user.ownerDisplayName
+import com.android.sharemate.ui.navigation.AddItemMethod
 
 private const val DEFAULT_ITEM_QUANTITY = "1"
 
@@ -23,10 +26,28 @@ data class FridgeUiState(
     val pendingStatusIds: Set<String> = emptySet(),
     val statusError: FridgeStatusError? = null,
     val itemName: String = "",
-    val itemCategory: String = "",
+    /** Category picked in the form; null is "No category", the default. */
+    val itemCategory: ItemCategory? = null,
+    /** Category of the item when its edit form opened, to save the category only if it changed. */
+    val originalItemCategory: ItemCategory? = null,
     /** Sharing chosen for the item being created; items are private unless shared explicitly. */
     val itemSharing: ItemSharing = ItemSharing.PERSONAL,
     val expirationDateInput: String = "",
+    /** How the add button of the bottom bar opened this form; null when opened from the fridge. */
+    val addButtonMethod: AddItemMethod? = null,
+    /** Whether the add-item form must open the barcode photo as soon as it shows. */
+    val scanBarcodeOnOpen: Boolean = false,
+    /**
+     * Whether cancelling the barcode photo also closes the form: the add button opened it only to
+     * scan a barcode, and no photo was read yet. After a failed lookup the form stays, to type the
+     * item in instead.
+     */
+    val closeOnBarcodeCancel: Boolean = false,
+    /**
+     * Whether an item from a form that the add button opened was saved, until the app opens the
+     * fridge to show it ([FridgeViewModel.addButtonSaveHandled]).
+     */
+    val addButtonItemSaved: Boolean = false,
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,
     val barcodeScanFailed: Boolean = false,
@@ -51,11 +72,15 @@ internal fun FridgeUiState.resetItemFields(): FridgeUiState =
     copy(
         itemQuantity = DEFAULT_ITEM_QUANTITY,
         itemName = "",
-        itemCategory = "",
+        itemCategory = null,
+        originalItemCategory = null,
         itemSharing = ItemSharing.PERSONAL,
         originalItemSharing = null,
         canChangeSharing = false,
-        expirationDateInput = "")
+        expirationDateInput = "",
+        addButtonMethod = null,
+        scanBarcodeOnOpen = false,
+        closeOnBarcodeCancel = false)
 
 /**
  * Presentation data; sharing is independent of household association and ownership.
@@ -88,7 +113,6 @@ class BarcodeLookupException(val error: BarcodeLookupError) : Exception()
 enum class FridgeFormError {
   NAME_REQUIRED,
   NAME_TOO_LONG,
-  CATEGORY_TOO_LONG,
   INVALID_QUANTITY,
   INVALID_EXPIRATION_DATE,
   SAVE_FAILED,

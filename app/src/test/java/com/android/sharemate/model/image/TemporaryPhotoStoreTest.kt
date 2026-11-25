@@ -9,6 +9,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.Base64
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -19,6 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowBitmapFactory
@@ -116,10 +119,74 @@ class TemporaryPhotoStoreTest {
         try {
           store.importImage(source.toString())
           fail("Oversized image must not be accepted")
-        } catch (_: IOException) {}
+        } catch (failure: IOException) {
+          assertFalse(failure is PhotoImportValidationException)
+        }
       }
       assertTrue(directory.listFiles().orEmpty().isEmpty())
     }
+  }
+
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun personalGalleryRejectsOversizedUnsupportedAndTruncatedImagesBeforePreview() = runTest {
+    val personalStore = AndroidTemporaryPhotoStore(context, PhotoImportPolicy.PERSONAL)
+    val limit = PersonalPhotoRepository.MAX_BYTES.toLong()
+    val random = Random(0)
+    val pixels = IntArray(32 * 32) { random.nextInt() }
+    val png = png(Bitmap.createBitmap(pixels, 32, 32, Bitmap.Config.ARGB_8888))
+    val truncatedPng = png.copyOf(png.size / 2)
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(truncatedPng, 0, truncatedPng.size, bounds)
+    assertEquals(PhotoMimeTypes.PNG, bounds.outMimeType)
+    assertTrue(bounds.outWidth > 0 && bounds.outHeight > 0)
+    val gif =
+        Base64.getDecoder().decode("R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==")
+    val sources =
+        mapOf(
+            "valid" to PaddedImage(png, limit),
+            "too-large" to PaddedImage(png, limit + 1),
+            "truncated" to truncatedPng.inputStream(),
+            "gif" to gif.inputStream())
+    for ((name, stream) in sources) {
+      val uri = Uri.parse("content://photos/personal/$name")
+      shadowOf(context.contentResolver).registerInputStream(uri, stream)
+      if (name == "valid") {
+        val copy = personalStore.importImage(uri.toString())
+        assertEquals(limit, File(Uri.parse(copy).path!!).length())
+        personalStore.delete(copy)
+      } else {
+        val failure = runCatching { personalStore.importImage(uri.toString()) }.exceptionOrNull()
+        assertEquals(
+            "Expected import to reject $name before preview",
+            PhotoImportRejection.PERSONAL_REQUIREMENTS,
+            (failure as? PhotoImportValidationException)?.rejection)
+      }
+      assertTrue(directory.listFiles().orEmpty().isEmpty())
+    }
+    val receipt = Uri.parse("content://photos/receipt/gif")
+    shadowOf(context.contentResolver).registerInputStream(receipt, gif.inputStream())
+    val receiptCopy = store.importImage(receipt.toString())
+    assertArrayEquals(gif, File(Uri.parse(receiptCopy).path!!).readBytes())
+    store.delete(receiptCopy)
+  }
+
+  @Test
+  fun personalGalleryKeepsProviderReadErrorsGeneric() = runTest {
+    val source = Uri.parse("content://photos/personal/unavailable")
+    val readError = IOException("Gallery unavailable")
+    shadowOf(context.contentResolver)
+        .registerInputStream(
+            source,
+            object : InputStream() {
+              override fun read(): Int = throw readError
+            })
+    val personalStore = AndroidTemporaryPhotoStore(context, PhotoImportPolicy.PERSONAL)
+    val failure = runCatching { personalStore.importImage(source.toString()) }.exceptionOrNull()
+    // Coroutine stack-trace recovery can copy the exception when returning from Dispatchers.IO.
+    assertEquals(IOException::class.java, failure?.javaClass)
+    assertEquals(readError.message, failure?.message)
+    assertTrue(directory.listFiles().orEmpty().isEmpty())
   }
 
   @Test
@@ -158,7 +225,15 @@ class TemporaryPhotoStoreTest {
           fail("Oversized decoder dimensions must be rejected even for a small file")
         } catch (failure: IOException) {
           assertEquals("Image exceeds pixel limit", failure.message)
+          assertFalse(failure is PhotoImportValidationException)
         }
+        val personalStore = AndroidTemporaryPhotoStore(context, PhotoImportPolicy.PERSONAL)
+        shadowOf(context.contentResolver).registerInputStream(selected, compressed.inputStream())
+        val rejection =
+            runCatching { personalStore.importImage(selected.toString()) }.exceptionOrNull()
+        assertEquals(
+            PhotoImportRejection.PIXEL_LIMIT,
+            (rejection as? PhotoImportValidationException)?.rejection)
       }
       assertTrue(
           "No rejected or deleted copies should remain", directory.listFiles().orEmpty().isEmpty())
@@ -185,8 +260,7 @@ class TemporaryPhotoStoreTest {
     }
   }
 
-  private fun png(): ByteArray {
-    val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+  private fun png(image: Bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)): ByteArray {
     return ByteArrayOutputStream().use {
       image.compress(Bitmap.CompressFormat.PNG, 100, it)
       image.recycle()

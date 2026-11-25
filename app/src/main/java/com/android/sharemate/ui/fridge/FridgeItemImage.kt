@@ -1,11 +1,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
-import android.content.Context
-import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,14 +12,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -30,36 +23,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
 import com.android.sharemate.R
-import com.android.sharemate.model.HttpHeaders
-import com.android.sharemate.model.image.FoodImageHttp
 import com.android.sharemate.model.image.FoodImageLicenseIds
-import com.android.sharemate.model.image.PersonalPhotoReference
+import com.android.sharemate.model.image.fridgeImageRequest
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
+import com.android.sharemate.model.item.isStoredPersonalPhoto
 import com.android.sharemate.resources.C
-import java.io.File
-import java.nio.ByteBuffer
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private val ThumbnailSize = 80.dp
-
-internal fun fridgeImageRequest(context: Context, source: String, pixels: Int): ImageRequest =
-    ImageRequest.Builder(context)
-        // Pass paths as files so a Windows drive letter is not interpreted as a URI scheme.
-        .data(File(source).takeIf { it.isAbsolute } ?: source)
-        .size(pixels, pixels)
-        // Wikimedia rejects a generic library User-Agent for thumbnail downloads too.
-        .setHeader(HttpHeaders.USER_AGENT, FoodImageHttp.USER_AGENT)
-        .crossfade(false)
-        .build()
 
 @Composable
 internal fun FridgeItemImage(
@@ -68,101 +45,46 @@ internal fun FridgeItemImage(
     modifier: Modifier = Modifier,
     personalPhotos: PersonalPhotoController? = null,
 ) {
-  val thumbnailModifier = modifier.size(ThumbnailSize)
-  val source = item.image?.reference?.takeIf { it.isNotBlank() }
-  if (item.image?.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-      source != null &&
-      PersonalPhotoReference.hasStoragePrefix(source)) {
-    // Scope decoded private pixels to this item and fridge session.
-    key(item.id, source, personalPhotos) {
-      BoxWithConstraints(thumbnailModifier, contentAlignment = Alignment.Center) {
-        val pixels = this.constraints.maxWidth
-        StoredPersonalPhoto(item.name, source, pixels, personalPhotos)
-      }
-    }
-    return
-  }
-
+  val cache = personalPhotos?.imageCache
+  val accessRevoked = cache?.isActive?.collectAsStateWithLifecycle()?.value == false
+  val showProgress = item.image?.isStoredPersonalPhoto() == false
   val context = LocalContext.current
-  BoxWithConstraints(thumbnailModifier, contentAlignment = Alignment.Center) {
-    val pixels = this.constraints.maxWidth
-    // Recreate the painter so a reused card cannot display its previous image while loading.
-    key(item.id, item.image?.origin, source) {
-      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (source == null) {
-          FoodPlaceholder()
-        } else {
-          val request =
-              remember(context, source, pixels) { fridgeImageRequest(context, source, pixels) }
-          val painter =
-              rememberAsyncImagePainter(
-                  model = request, imageLoader = imageLoader, contentScale = ContentScale.Crop)
-          when (painter.state) {
-            is AsyncImagePainter.State.Success ->
-                Image(
-                    painter = painter,
-                    contentDescription =
-                        stringResource(R.string.fridge_image_description, item.name),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
-            is AsyncImagePainter.State.Error -> FoodPlaceholder()
-            is AsyncImagePainter.State.Loading,
-            AsyncImagePainter.State.Empty ->
-                CircularProgressIndicator(
-                    modifier =
-                        Modifier.size(FridgeLayout.imageProgressSize)
-                            .testTag(C.Tag.fridge_image_loading))
+  BoxWithConstraints(modifier.size(ThumbnailSize), contentAlignment = Alignment.Center) {
+    val pixels = constraints.maxWidth.coerceAtLeast(1)
+    key(item.id, item.image?.origin, item.image?.reference, personalPhotos) {
+      val request =
+          remember(context, pixels) {
+            fridgeImageRequest(context, item, pixels, cache, personalPhotos?.let { it::download })
           }
+      if (request == null || accessRevoked) {
+        FoodPlaceholder()
+      } else {
+        val painter =
+            rememberAsyncImagePainter(
+                model = request,
+                imageLoader = cache?.imageLoader ?: imageLoader,
+                contentScale = ContentScale.Crop)
+        when (painter.state) {
+          is AsyncImagePainter.State.Success ->
+              Image(
+                  painter = painter,
+                  contentDescription = stringResource(R.string.fridge_image_description, item.name),
+                  contentScale = ContentScale.Crop,
+                  modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
+          is AsyncImagePainter.State.Error -> FoodPlaceholder()
+          AsyncImagePainter.State.Empty,
+          is AsyncImagePainter.State.Loading ->
+              if (showProgress)
+                  CircularProgressIndicator(
+                      modifier =
+                          Modifier.size(FridgeLayout.imageProgressSize)
+                              .testTag(C.Tag.fridge_image_loading))
+              else FoodPlaceholder()
         }
       }
     }
   }
 }
-
-@Composable
-private fun StoredPersonalPhoto(
-    name: String,
-    source: String,
-    pixels: Int,
-    photos: PersonalPhotoController?,
-) {
-  val bitmap by
-      produceState<ImageBitmap?>(null, source, pixels, photos) {
-        value = null
-        value =
-            try {
-              val bytes = photos?.load(source) ?: return@produceState
-              withContext(Dispatchers.Default) { decodePersonalThumbnail(bytes, pixels) }
-            } catch (cancelled: CancellationException) {
-              throw cancelled
-            } catch (_: Exception) {
-              null
-            }
-      }
-  val image = bitmap
-  if (image == null) FoodPlaceholder()
-  else
-      Image(
-          bitmap = image,
-          contentDescription = stringResource(R.string.fridge_image_description, name),
-          contentScale = ContentScale.Crop,
-          modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_image))
-}
-
-internal fun decodePersonalThumbnail(bytes: ByteArray, pixels: Int): ImageBitmap =
-    ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _
-          ->
-          decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-          val width = info.size.width
-          val height = info.size.height
-          val longest = maxOf(width, height)
-          val target = pixels.coerceIn(1, longest)
-          if (target < longest)
-              decoder.setTargetSize(
-                  (width.toLong() * target / longest).toInt().coerceAtLeast(1),
-                  (height.toLong() * target / longest).toInt().coerceAtLeast(1))
-        }
-        .asImageBitmap()
 
 @Composable
 private fun FoodPlaceholder() {

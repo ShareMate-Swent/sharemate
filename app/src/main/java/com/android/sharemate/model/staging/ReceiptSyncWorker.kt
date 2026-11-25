@@ -3,8 +3,10 @@ package com.android.sharemate.model.staging
 
 import android.content.Context
 import androidx.work.*
+import com.android.sharemate.model.finance.FinanceCallablePolicy
 import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.receipt.RECEIPT_SYNC_TAG
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
@@ -34,7 +36,8 @@ class ReceiptSyncWorker(
                 context.applicationContext, scheduleSync = false, viewerId = actor)
         val items = FirebaseItemRepository(FirebaseFirestore.getInstance())
         val expenses =
-            FirebaseExpenseSubmissionRepository(FirebaseFunctions.getInstance("europe-west6"))
+            FirebaseExpenseSubmissionRepository(
+                FirebaseFunctions.getInstance(FinanceCallablePolicy.REGION))
         ReceiptSynchronization(store, items, expenses) {
               upload(context.applicationContext, store, it)
             }
@@ -46,7 +49,8 @@ class ReceiptSyncWorker(
     val home = inputData.getString("home") ?: return Result.failure()
     val id = inputData.getString("id") ?: return Result.failure()
     val actor = inputData.getString("actor") ?: owner
-    if (currentUserId() != actor) return Result.retry()
+    // The next sign-in resumes journaled work; do not wake jobs for an inactive account.
+    if (currentUserId() != actor) return Result.success()
     return try {
       withTimeout(60_000) {
         val completed = synchronize(owner, home, id, actor, inputData.getBoolean("delete", false))
@@ -57,7 +61,7 @@ class ReceiptSyncWorker(
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (failure: Exception) {
-      android.util.Log.w("ReceiptSync", "Receipt synchronization will retry", failure)
+      android.util.Log.w(RECEIPT_SYNC_TAG, "Receipt synchronization will retry", failure)
       Result.retry()
     }
   }

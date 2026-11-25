@@ -22,16 +22,16 @@ class HouseholdMembersNavigationTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   private fun openMembers() {
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.SHOW_MEMBERS).performScrollTo().performClick()
     compose.onNodeWithTag(HouseholdMembersTestTags.SCREEN).assertIsDisplayed()
   }
 
   @Test
-  fun theMemberCountOpensTheListUnderTheSettingsTabAndBackReturnsToSettings() {
+  fun theMemberCountOpensTheListWithoutTheBarAndBackReturnsToSettings() {
     openMembers()
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
 
     compose.onNodeWithTag(HouseholdMembersTestTags.BACK).performClick()
 
@@ -40,24 +40,13 @@ class HouseholdMembersNavigationTest {
   }
 
   @Test
-  fun tappingTheSettingsTabOnTheListReturnsToSettings() {
+  fun backFromTheListThenSettingsReturnsToTheFridgeWithTheBar() {
     openMembers()
 
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(HouseholdMembersTestTags.BACK).performClick()
+    compose.onNodeWithTag(SettingsTestTags.BACK).performClick()
 
-    compose.onNodeWithTag(HouseholdMembersTestTags.SCREEN).assertDoesNotExist()
-    compose.onNodeWithTag(SettingsTestTags.SHOW_MEMBERS).assertExists()
-  }
-
-  @Test
-  fun anotherTabLeavesTheListAndSettingsReopensIt() {
-    openMembers()
-
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
-    compose.onNodeWithTag(HouseholdMembersTestTags.SCREEN).assertDoesNotExist()
-
-    // Like the other tabs, Settings comes back where the user left it.
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(HouseholdMembersTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(SettingsTestTags.SHOW_MEMBERS).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsDisplayed().assertIsSelected()
   }
 }

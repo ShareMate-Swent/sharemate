@@ -25,10 +25,17 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.core.app.ActivityOptionsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.image.FridgeImageCache
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
@@ -36,17 +43,26 @@ import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
+import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -79,7 +95,9 @@ class FridgePersonalPhotoUiTest {
   private var loadPhoto: suspend (PersonalPhotoReference) -> Result<ByteArray> = {
     error("Unexpected download: $it")
   }
-  private val photos =
+  private val photos = photoController()
+
+  private fun photoController(cache: FridgeImageCacheSession? = null) =
       PersonalPhotoController(
           FakeItemRepository(),
           object : PersonalPhotoRepository {
@@ -102,7 +120,8 @@ class FridgePersonalPhotoUiTest {
               file.delete()
             }
           },
-          scope)
+          scope,
+          cache)
 
   @After
   fun tearDown() {
@@ -289,7 +308,7 @@ class FridgePersonalPhotoUiTest {
 
   @Test
   fun changingTheStoredPhotoCancelsTheOldLoadAndDenialClearsTheImage() {
-    val requests = mutableListOf<PersonalPhotoReference>()
+    val requests = ConcurrentLinkedQueue<PersonalPhotoReference>()
     val cancelled = CompletableDeferred<Unit>()
     val unavailable = CompletableDeferred<Result<ByteArray>>()
     val bytes = png(512, 256)
@@ -326,8 +345,9 @@ class FridgePersonalPhotoUiTest {
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
     val image = compose.onNodeWithTag(C.Tag.fridge_image)
     placeholder.assertIsDisplayed()
+    compose.waitUntil(5_000) { requests.size == 1 }
     compose.runOnIdle {
-      assertEquals(listOf(first), requests)
+      assertEquals(listOf(first), requests.toList())
       item.value =
           Item(
               id = "yogurt",
@@ -341,8 +361,8 @@ class FridgePersonalPhotoUiTest {
     }
     compose.onNodeWithContentDescription("Photo of Yogurt").assertIsDisplayed()
     placeholder.assertDoesNotExist()
+    compose.waitUntil(5_000) { cancelled.isCompleted }
     compose.runOnIdle {
-      assertTrue(cancelled.isCompleted)
       item.value =
           Item(
               id = "bread",
@@ -352,15 +372,178 @@ class FridgePersonalPhotoUiTest {
     }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
+    compose.waitUntil(5_000) { requests.size == 3 }
     compose.runOnIdle { unavailable.complete(Result.failure(IOException("Access denied"))) }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
     compose.runOnIdle {
-      assertEquals(listOf(first, second, denied), requests)
+      assertEquals(listOf(first, second, denied), requests.toList())
       session.value = null
     }
     placeholder.assertIsDisplayed()
-    compose.runOnIdle { assertEquals(listOf(first, second, denied), requests) }
+    compose.runOnIdle { assertEquals(listOf(first, second, denied), requests.toList()) }
+  }
+
+  @Test
+  fun viewedPhotoSurvivesReopeningOfflineAndDisappearsWhenAccessIsRevoked() {
+    val online = MutableStateFlow(true)
+    val downloads = AtomicInteger()
+    val bytes = png(24, 16)
+    loadPhoto = { reference ->
+      if (reference == first) downloads.incrementAndGet()
+      if (online.value) Result.success(bytes) else Result.failure(IOException("Offline"))
+    }
+    val disk = FridgeImageCache.diskCache(temporary.root)
+    fun cache() = FridgeImageCache(testApplication, disk, "bucket", { it == "user" })
+
+    val original =
+        Item(
+            id = "milk",
+            name = "Milk",
+            householdId = "home",
+            image = ItemImage(reference = first.path))
+    val item = mutableStateOf(original)
+    val initial = cache().session("user", "home")
+    val controller = mutableStateOf<PersonalPhotoController?>(photoController(initial))
+    val lifecycleOwner =
+        object : LifecycleOwner {
+          override val lifecycle =
+              LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.STARTED }
+        }
+    compose.setContent {
+      MaterialTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+          FridgeScreen(
+              uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
+              personalPhotos = controller.value,
+              expiryStatuses = emptyMap())
+        }
+      }
+    }
+    val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
+    val image = compose.onNodeWithTag(C.Tag.fridge_image)
+    fun awaitPhoto() {
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithTag(C.Tag.fridge_image).fetchSemanticsNodes().size == 1
+      }
+      image.assertIsDisplayed()
+    }
+
+    awaitPhoto()
+    compose.runOnIdle { controller.value = null }
+    placeholder.assertIsDisplayed()
+    online.value = false
+    val reopened = cache().session("user", "home")
+    compose.runOnIdle { controller.value = photoController(reopened) }
+    awaitPhoto()
+    assertEquals(1, downloads.get())
+
+    compose.runOnIdle {
+      item.value =
+          original.copy(
+              image = ItemImage(reference = "itemPhotos/milk/00000000-0000-0000-0000-000000000002"))
+    }
+    placeholder.assertIsDisplayed()
+    image.assertDoesNotExist()
+    compose.runOnIdle { item.value = original }
+    awaitPhoto()
+    assertEquals(1, downloads.get())
+
+    compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.CREATED }
+    runBlocking { reopened.revoke() }
+    image.assertIsDisplayed()
+    compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.STARTED }
+    placeholder.assertIsDisplayed()
+    image.assertDoesNotExist()
+  }
+
+  @Test
+  fun webPhotosSurviveOfflineReopeningAndScrollAndMissingPhotosLoadOnNextDisplay() {
+    val online = MutableStateFlow(true)
+    val downloaded = ConcurrentLinkedQueue<String>()
+    val bytes = png(24, 16)
+    val url = "https://images.example.org/openverse/milk.png"
+    val client =
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+              if (!online.value) throw IOException("Offline")
+              downloaded += chain.request().url.toString()
+              Response.Builder()
+                  .request(chain.request())
+                  .protocol(Protocol.HTTP_1_1)
+                  .code(200)
+                  .message("OK")
+                  .header("Cache-Control", "no-cache")
+                  .body(bytes.toResponseBody())
+                  .build()
+            }
+            .build()
+    val disk = FridgeImageCache.diskCache(temporary.root)
+    fun newSession() =
+        FridgeImageCache(testApplication, disk, "bucket", { true }, callFactory = client)
+            .session("user", "home")
+
+    val milk =
+        Item(
+            id = "milk",
+            name = "Milk",
+            householdId = "home",
+            image = ItemImage(origin = ItemImageOrigin.REMOTE_IMAGE, reference = url))
+    val bread =
+        milk.copy(id = "bread", name = "Bread", image = milk.image?.copy(reference = "$url?bread"))
+    val items = mutableStateOf(listOf(milk))
+    val initial = newSession()
+    val reopened = newSession()
+    val controller = mutableStateOf(photoController(initial))
+    try {
+      compose.setContent {
+        MaterialTheme {
+          FridgeScreen(
+              uiState = FridgeUiState(items = items.value, fridgeType = FridgeType.SHARED),
+              personalPhotos = controller.value,
+              expiryStatuses = emptyMap())
+        }
+      }
+      fun awaitImage(count: Int) {
+        compose.waitUntil(5_000) {
+          compose.onAllNodesWithTag(C.Tag.fridge_image).fetchSemanticsNodes().size == count
+        }
+      }
+      awaitImage(1)
+
+      compose.runOnIdle {
+        online.value = false
+        controller.value = photoController(reopened)
+        items.value = listOf(milk, bread)
+      }
+      awaitImage(1)
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithTag(C.Tag.fridge_image_placeholder).fetchSemanticsNodes().size == 1
+      }
+      compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
+      assertEquals(listOf(url), downloaded.toList())
+
+      val filler = List(30) { Item(id = "filler-$it", name = "Filler $it", householdId = "home") }
+      compose.runOnIdle { items.value = listOf(milk, bread) + filler }
+      val grid = compose.onNodeWithTag(C.Tag.fridge_item_list)
+      grid.performScrollToIndex(items.value.lastIndex)
+      compose.onNodeWithContentDescription("Photo of Milk").assertDoesNotExist()
+      grid.performScrollToIndex(0)
+      awaitImage(1)
+      compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
+      assertEquals(listOf(url), downloaded.toList())
+
+      grid.performScrollToIndex(items.value.lastIndex)
+      compose.runOnIdle { online.value = true }
+      grid.performScrollToIndex(0)
+      awaitImage(2)
+      compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
+      compose.onNodeWithContentDescription("Photo of Bread").assertIsDisplayed()
+      assertEquals(listOf(url, "$url?bread"), downloaded.toList())
+    } finally {
+      initial.imageLoader.shutdown()
+      reopened.imageLoader.shutdown()
+    }
   }
 
   @Test

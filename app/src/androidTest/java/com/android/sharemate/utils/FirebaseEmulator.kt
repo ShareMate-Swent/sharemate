@@ -172,13 +172,21 @@ object FirebaseEmulator {
       }
 
   private fun delete(url: String) {
+    retryEmulatorConflict { deleteOnce(url) }
+  }
+
+  private fun deleteOnce(url: String): Int {
     val connection = URL(url).openConnection() as HttpURLConnection
     try {
       connection.requestMethod = "DELETE"
+      connection.connectTimeout = 10_000
+      connection.readTimeout = 10_000
       connection.setRequestProperty("Authorization", "Bearer owner")
-      check(connection.responseCode in 200..299) {
-        "Could not clear emulator data at $url: HTTP ${connection.responseCode}"
+      val status = connection.responseCode
+      check(status in 200..299 || status == 409) {
+        "Could not clear emulator data at $url: HTTP $status"
       }
+      return status
     } finally {
       connection.disconnect()
     }
@@ -193,4 +201,16 @@ object FirebaseEmulator {
       /** Firestore client authenticated as [uid]. */
       val firestore: FirebaseFirestore,
   )
+}
+
+/** A reset can conflict with an emulator transaction; never hide a persistent failure. */
+internal fun retryEmulatorConflict(
+    pause: (Long) -> Unit = Thread::sleep,
+    request: () -> Int,
+) {
+  repeat(4) { attempt ->
+    if (request() != 409) return
+    check(attempt < 3) { "Could not clear emulator data: HTTP 409 after 4 attempts" }
+    pause(250L shl attempt)
+  }
 }
