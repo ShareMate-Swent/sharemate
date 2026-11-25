@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.compose.foundation.background
@@ -11,23 +12,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,10 +28,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
+import com.android.sharemate.ui.components.AppBackButton
+import com.android.sharemate.ui.components.AppPrimaryButton
+import com.android.sharemate.ui.components.AppScreenTitle
+import com.android.sharemate.ui.components.AppStepIndicator
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [JoinHouseholdScreen]. */
@@ -55,20 +51,24 @@ object JoinHouseholdTestTags {
   const val JOIN = "join_household_button"
   const val LOADING = "join_household_loading"
   const val ERROR = "join_household_error"
+  const val CONTINUE = "join_household_continue"
+
+  /** The test tags of the six code boxes, in display order. */
+  val CODE_BOXES = listOf(CODE_BOX_1, CODE_BOX_2, CODE_BOX_3, CODE_BOX_4, CODE_BOX_5, CODE_BOX_6)
 }
 
-/** Screen for joining a household with its invite code. */
+/**
+ * Screen for joining a household with its invite code. Once joined, it shows the last onboarding
+ * step; [onJoined] is called when the user goes on to the fridge.
+ */
 @Composable
 fun JoinHouseholdScreen(
     viewModel: JoinHouseholdViewModel,
     onJoined: () -> Unit,
     onBack: () -> Unit,
 ) {
-  val state = viewModel.state.collectAsState().value
-  val inviteCodeDescription = stringResource(R.string.household_invite_code)
-  LaunchedEffect(state.joined) { if (state.joined) onJoined() }
-  val colors = MaterialTheme.colorScheme
-  Surface(color = colors.surfaceContainerLow) {
+  val state = viewModel.state.collectAsStateWithLifecycle().value
+  Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
     Column(
         modifier =
             Modifier.fillMaxSize()
@@ -76,121 +76,124 @@ fun JoinHouseholdScreen(
                     horizontal = Dimens.screenHorizontalPadding,
                     vertical = Dimens.screenVerticalPadding),
     ) {
-      HouseholdTopBar(
-          title = stringResource(R.string.join_household_title),
-          onBack = onBack,
-          backTestTag = JoinHouseholdTestTags.BACK,
+      if (state.joined) {
+        ScrollingColumn { HouseholdJoined(onContinue = onJoined) }
+      } else {
+        JoinForm(state, viewModel, onBack)
+      }
+    }
+  }
+}
+
+/** The step before joining: the invite code boxes, the error banner and the join button. */
+@Composable
+private fun JoinForm(
+    state: JoinHouseholdUiState,
+    viewModel: JoinHouseholdViewModel,
+    onBack: () -> Unit,
+) {
+  ScrollingColumn(verticalArrangement = Arrangement.spacedBy(Dimens.spacingL)) {
+    AppStepIndicator(HouseholdLayout.FORM_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+    AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
+    AppScreenTitle(
+        title = stringResource(R.string.join_household_title),
+        description = stringResource(R.string.join_household_description),
+    )
+    InviteCodeField(state, viewModel::updateInviteCode)
+    state.error?.let { error ->
+      HouseholdErrorBanner(
+          message =
+              stringResource(
+                  when (error) {
+                    JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
+                    else -> R.string.household_generic_error
+                  }),
+          testTag = JoinHouseholdTestTags.ERROR,
       )
-      Spacer(Modifier.height(Dimens.spacingM))
-      Text(
-          text = stringResource(R.string.join_household_description),
-          style = MaterialTheme.typography.bodyLarge,
-          color = colors.onSurfaceVariant,
-      )
-      Spacer(Modifier.weight(1f))
-      BasicTextField(
-          value = state.inviteCode,
-          onValueChange = viewModel::updateInviteCode,
-          modifier =
-              Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.CODE_INPUT).semantics {
-                contentDescription = inviteCodeDescription
-              },
-          enabled = !state.isLoading,
-          singleLine = true,
-          cursorBrush = SolidColor(Color.Transparent),
-          keyboardOptions =
-              KeyboardOptions(
-                  capitalization = KeyboardCapitalization.Characters,
-                  keyboardType = KeyboardType.Ascii,
-              ),
-          decorationBox = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
-            ) {
-              repeat(JoinHouseholdViewModel.MAX_CODE_LENGTH) { index ->
-                val isNext = index == state.inviteCode.length
-                Box(
-                    modifier =
-                        Modifier.weight(1f, fill = false)
-                            .size(
-                                width = HouseholdLayout.codeCellWidth,
-                                height = HouseholdLayout.codeCellHeight)
-                            .testTag(
-                                when (index) {
-                                  0 -> JoinHouseholdTestTags.CODE_BOX_1
-                                  1 -> JoinHouseholdTestTags.CODE_BOX_2
-                                  2 -> JoinHouseholdTestTags.CODE_BOX_3
-                                  3 -> JoinHouseholdTestTags.CODE_BOX_4
-                                  4 -> JoinHouseholdTestTags.CODE_BOX_5
-                                  else -> JoinHouseholdTestTags.CODE_BOX_6
-                                })
-                            .background(
-                                colors.surfaceContainerLowest,
-                                RoundedCornerShape(HouseholdLayout.codeCellCornerRadius))
-                            .border(
-                                width =
-                                    if (isNext) Dimens.focusedBorderWidth else Dimens.borderWidth,
-                                color = if (isNext) colors.primary else colors.outlineVariant,
-                                shape = RoundedCornerShape(HouseholdLayout.codeCellCornerRadius)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                  Text(
-                      text = state.inviteCode.getOrNull(index)?.toString() ?: "",
-                      style = MaterialTheme.typography.titleLarge,
-                      fontWeight = FontWeight.Bold,
-                      color = colors.onSurface,
-                  )
-                }
-              }
-            }
+    }
+    Spacer(Modifier.weight(1f))
+    AppPrimaryButton(
+        text = stringResource(R.string.join_household),
+        onClick = viewModel::joinHousehold,
+        enabled = state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH,
+        loading = state.isLoading,
+        loadingTestTag = JoinHouseholdTestTags.LOADING,
+        modifier = Modifier.testTag(JoinHouseholdTestTags.JOIN),
+    )
+  }
+}
+
+/** The invisible text field that receives the typed code, drawn as one box per character. */
+@Composable
+private fun InviteCodeField(state: JoinHouseholdUiState, onCodeChange: (String) -> Unit) {
+  val inviteCodeDescription = stringResource(R.string.household_invite_code)
+  BasicTextField(
+      value = state.inviteCode,
+      onValueChange = onCodeChange,
+      modifier =
+          Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.CODE_INPUT).semantics {
+            contentDescription = inviteCodeDescription
           },
-      )
-      state.error?.let { error ->
-        Spacer(Modifier.height(Dimens.spacingS))
+      enabled = !state.isLoading,
+      singleLine = true,
+      cursorBrush = SolidColor(Color.Transparent),
+      keyboardOptions =
+          KeyboardOptions(
+              capitalization = KeyboardCapitalization.Characters,
+              keyboardType = KeyboardType.Ascii,
+          ),
+      decorationBox = {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement =
                 Arrangement.spacedBy(Dimens.spacingXs, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-          Icon(
-              imageVector = Icons.Filled.Error,
-              contentDescription = null,
-              tint = colors.error,
-              modifier = Modifier.size(Dimens.iconSmall),
-          )
-          Text(
-              text =
-                  stringResource(
-                      when (error) {
-                        JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
-                        else -> R.string.household_generic_error
-                      }),
-              style = MaterialTheme.typography.labelLarge,
-              color = colors.error,
-              modifier = Modifier.testTag(JoinHouseholdTestTags.ERROR),
-          )
+          repeat(JoinHouseholdViewModel.MAX_CODE_LENGTH) { index ->
+            CodeCell(
+                character = state.inviteCode.getOrNull(index)?.toString().orEmpty(),
+                isNext = index == state.inviteCode.length,
+                hasError = state.error != null,
+                testTag = JoinHouseholdTestTags.CODE_BOXES[index],
+                modifier = Modifier.weight(1f, fill = false),
+            )
+          }
         }
+      },
+  )
+}
+
+/** One invite code box: red after a failed join, highlighted where the next character goes. */
+@Composable
+private fun CodeCell(
+    character: String,
+    isNext: Boolean,
+    hasError: Boolean,
+    testTag: String,
+    modifier: Modifier = Modifier,
+) {
+  val colors = MaterialTheme.colorScheme
+  val borderColor =
+      when {
+        hasError -> colors.error
+        isNext -> colors.primary
+        else -> colors.outlineVariant
       }
-      Spacer(Modifier.weight(1f))
-      Button(
-          onClick = viewModel::joinHousehold,
-          enabled =
-              state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH && !state.isLoading,
-          modifier = Modifier.fillMaxWidth().testTag(JoinHouseholdTestTags.JOIN),
-      ) {
-        if (state.isLoading) {
-          CircularProgressIndicator(
-              modifier = Modifier.size(Dimens.progressSize).testTag(JoinHouseholdTestTags.LOADING),
-              color = colors.onPrimary,
-              strokeWidth = Dimens.progressStrokeWidth,
-          )
-        } else {
-          Text(stringResource(R.string.join_household))
-        }
-      }
-    }
+  Box(
+      modifier =
+          modifier
+              .size(width = HouseholdLayout.codeCellWidth, height = HouseholdLayout.codeCellHeight)
+              .testTag(testTag)
+              .background(colors.surface, MaterialTheme.shapes.small)
+              .border(
+                  width = if (isNext || hasError) Dimens.focusedBorderWidth else Dimens.borderWidth,
+                  color = borderColor,
+                  shape = MaterialTheme.shapes.small),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        text = character,
+        style = MaterialTheme.typography.titleLarge,
+        color = colors.onSurface,
+    )
   }
 }
