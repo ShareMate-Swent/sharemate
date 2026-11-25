@@ -335,7 +335,8 @@ class MlKitExpiryDateReaderTest {
     runCurrent()
     val failure = read.await().exceptionOrNull()
     assertFailure(IOException("Text recognition was cancelled"), failure)
-    assertTrue(failure?.cause is CancellationException)
+    // Coroutine stack-trace recovery can wrap the original IOException in another IOException.
+    assertTrue(generateSequence(failure) { it.cause }.any { it is CancellationException })
     verify(client).close()
     assertEquals(listOf(date), reader.read(uri))
     verify(next).close()
