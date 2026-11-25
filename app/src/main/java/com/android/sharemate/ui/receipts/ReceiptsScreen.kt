@@ -358,13 +358,6 @@ internal fun ReceiptHistoryFlow(
               }
             }
           }
-      PhotoPickerDialog(
-          photo,
-          labels = receiptPhotoLabels,
-          confirmationError = stringResource(R.string.receipt_unreadable),
-          onImageConfirmed = { selection ->
-            scan.read(selection.uri) { items -> history.retainScan(selection.uri, items) }
-          })
     }
     composable("receipt/{id}") { entry ->
       val id = entry.arguments?.getString("id")
@@ -436,6 +429,14 @@ internal fun ReceiptHistoryFlow(
       }
     }
   }
+  // Outside the destinations, so the add button can open it on a receipt's details too.
+  PhotoPickerDialog(
+      photo,
+      labels = receiptPhotoLabels,
+      confirmationError = stringResource(R.string.receipt_unreadable),
+      onImageConfirmed = { selection ->
+        scan.read(selection.uri) { items -> history.retainScan(selection.uri, items) }
+      })
   expandedPhotoUri?.let { uri ->
     Dialog(
         onDismissRequest = { expandedPhotoUri = null },

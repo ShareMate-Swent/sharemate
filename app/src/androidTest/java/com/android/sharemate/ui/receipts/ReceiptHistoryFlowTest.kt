@@ -207,6 +207,49 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun receiptOptionOfTheAddButtonOpensThePhotoOnAReceiptsDetails() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val store = AndroidInventorySubmissionStore(compose.activity)
+    runBlocking {
+      store.save(
+          InventorySubmission(UUID.randomUUID().toString(), owner, household, rows, draft = true))
+    }
+    var cancelled = 0
+    val requested = mutableStateOf(false)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = { requested.value = false },
+            onScanReceiptCancelled = {
+              cancelled++
+              false
+            })
+      }
+    }
+    val review = compose.activity.getString(R.string.receipt_review_items)
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithText(review).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText(review).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+
+    // The add button asks for a scan while the receipt's details are open.
+    compose.runOnIdle { requested.value = true }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    // Opened on Receipts itself: the details are still open.
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, cancelled) }
+  }
+
+  @Test
   fun confirmingDraftReturnsToHistoryAndPersistsReviewedRows() {
     val owner = UUID.randomUUID().toString()
     val household = UUID.randomUUID().toString()
