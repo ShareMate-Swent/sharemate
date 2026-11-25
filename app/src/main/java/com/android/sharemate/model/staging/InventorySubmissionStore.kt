@@ -31,6 +31,9 @@ interface InventorySubmissionStore {
   suspend fun isDeleted(ownerId: String, householdId: String, id: String): Boolean = false
   /** Retains the tombstone but stops replaying a server-acknowledged deletion. */
   suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {}
+  /** Whether remote deletion already succeeded, even if local photo cleanup is still pending. */
+  suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String): Boolean =
+      false
   /** Cached household receipts visible to this viewer, excluding their own history. */
   suspend fun sharedReceipts(viewerId: String, householdId: String): List<InventorySubmission> =
       emptyList()
@@ -184,6 +187,11 @@ class AndroidInventorySubmissionStore(
                   .putBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", true)
                   .commit())
         }
+      }
+
+  override suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        preferences.getBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", false)
       }
 
   override suspend fun isDeleted(ownerId: String, householdId: String, id: String) =

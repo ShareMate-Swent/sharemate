@@ -85,6 +85,7 @@ import kotlinx.coroutines.launch
  * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
+ * @param expenseRepository Authenticated purchase correction and deletion boundary.
  * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
  * @param scanReceiptRequested Whether the add button of the bottom bar asked for a receipt scan,
  *   which this screen then starts like its own scan button.
@@ -101,7 +102,7 @@ fun ReceiptsScreen(
     sharedHousehold: Boolean,
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
-    expenseRepository: ExpenseSubmissionRepository? = null,
+    expenseRepository: ExpenseSubmissionRepository,
     profileRepository: UserProfileRepository? = null,
     barcodeScanner: BarcodeScanner? = null,
     productCatalogRepository: ProductCatalogRepository? = null,
@@ -136,26 +137,26 @@ fun ReceiptsScreen(
                       AndroidInventorySubmissionStore(context, legacyActive = false),
                       AndroidReceiptPhotoStore(context),
                       userId,
-                      householdId)
+                      householdId,
+                      expenses = expenseRepository,
+                      now = System::currentTimeMillis)
                 }
               })
-  val purchaseSave: InventorySaveViewModel? =
-      if (expenseRepository != null) {
-        viewModel(
-            key = "inventory-save_${userId}_$householdId",
-            factory =
-                viewModelFactory {
-                  initializer {
-                    InventorySaveViewModel(
-                        itemRepository,
-                        AndroidInventorySubmissionStore(context, legacyActive = true),
-                        userId,
-                        householdId,
-                        sharedHousehold,
-                        expenseRepository)
-                  }
-                })
-      } else null
+  val purchaseSave: InventorySaveViewModel =
+      viewModel(
+          key = "inventory-save_${userId}_$householdId",
+          factory =
+              viewModelFactory {
+                initializer {
+                  InventorySaveViewModel(
+                      itemRepository,
+                      AndroidInventorySubmissionStore(context, legacyActive = true),
+                      userId,
+                      householdId,
+                      sharedHousehold,
+                      expenseRepository)
+                }
+              })
   val memberModel: HouseholdMembersViewModel? =
       if (sharedHousehold && profileRepository != null) {
         viewModel(
@@ -204,7 +205,7 @@ fun ReceiptsScreen(
   }
   key(userId, householdId) {
     Box(Modifier.alpha(if (hiddenUnderAddButtonScan) 0f else 1f)) {
-      if (purchaseMode && purchaseSave != null) {
+      if (purchaseMode) {
         Column {
           Button(onClick = { purchaseMode = false }) {
             Text(stringResource(R.string.receipts_title))
@@ -245,10 +246,7 @@ fun ReceiptsScreen(
             sharedHousehold,
             showBalances,
             onOpenBalances,
-            onPurchase =
-                if (purchaseSave != null) {
-                  { purchaseMode = true }
-                } else null)
+            onPurchase = { purchaseMode = true })
       }
     }
   }

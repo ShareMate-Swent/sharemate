@@ -86,7 +86,7 @@ internal fun PurchaseReviewContent(
             PurchaseReviewError.TOTAL_OVERFLOW -> R.string.purchase_overflow
             PurchaseReviewError.NONPOSITIVE_TOTAL -> R.string.purchase_positive_total
             PurchaseReviewError.INVALID_PAYER -> R.string.purchase_invalid_payer
-            PurchaseReviewError.PAYER_MUST_SUBMIT -> R.string.purchase_payer_must_submit
+            PurchaseReviewError.SUBMITTER_NOT_MEMBER -> R.string.purchase_submitter_not_member
             PurchaseReviewError.NO_PARTICIPANTS -> R.string.purchase_no_participants
             PurchaseReviewError.INVALID_PARTICIPANTS -> R.string.purchase_invalid_participants
           }
