@@ -58,7 +58,7 @@ fun HouseholdChoiceScreen(
                     vertical = Dimens.screenVerticalPadding),
         verticalArrangement = Arrangement.spacedBy(Dimens.spacingM),
     ) {
-      AppStepIndicator(HouseholdLayout.CHOICE_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+      AppStepIndicator(HouseholdLayout.SETUP_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
       Spacer(Modifier.height(Dimens.spacingS))
       AppScreenTitle(
           title = stringResource(R.string.household_choice_title),

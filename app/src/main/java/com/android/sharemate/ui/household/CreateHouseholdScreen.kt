@@ -50,6 +50,7 @@ import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.components.AppBackButton
 import com.android.sharemate.ui.components.AppPrimaryButton
 import com.android.sharemate.ui.components.AppScreenTitle
+import com.android.sharemate.ui.components.AppStepIndicator
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [CreateHouseholdScreen]. */
@@ -140,6 +141,8 @@ private fun ColumnScope.CreateHouseholdForm(
     onBack: () -> Unit,
 ) {
   val editable = !state.isLoading && !state.hasCreationOperation
+  AppStepIndicator(HouseholdLayout.SETUP_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+  Spacer(Modifier.height(Dimens.spacingL))
   AppBackButton(onBack = onBack, testTag = CreateHouseholdTestTags.BACK)
   Spacer(Modifier.height(Dimens.spacingL))
   AppScreenTitle(

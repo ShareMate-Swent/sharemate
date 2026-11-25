@@ -14,6 +14,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -93,6 +94,20 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.LOADING).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).assertIsNotEnabled()
     gate.complete(Unit)
+  }
+
+  @Test
+  fun showsTheSetupStep() {
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {}) }
+    }
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.SETUP_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
   }
 
   @Test

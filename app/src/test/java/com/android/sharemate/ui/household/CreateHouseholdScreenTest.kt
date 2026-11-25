@@ -271,6 +271,27 @@ class CreateHouseholdScreenTest {
   }
 
   @Test
+  fun formShowsTheSetupStep() {
+    val viewModel = createViewModel()
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
+    }
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.SETUP_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun theReadyViewIsTheLastOnboardingStepSoNoStepIsPromisedThatNeverComes() {
+    assertEquals(HouseholdLayout.ONBOARDING_STEP_COUNT, HouseholdLayout.READY_STEP)
+    assertEquals(HouseholdLayout.READY_STEP - 1, HouseholdLayout.SETUP_STEP)
+  }
+
+  @Test
   fun readyViewScrollsSoGoToMyFridgeStaysReachableOnASmallScreen() {
     val viewModel = createViewModel()
     var continueCount = 0

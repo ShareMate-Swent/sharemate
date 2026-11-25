@@ -36,6 +36,7 @@ import com.android.sharemate.R
 import com.android.sharemate.ui.components.AppBackButton
 import com.android.sharemate.ui.components.AppPrimaryButton
 import com.android.sharemate.ui.components.AppScreenTitle
+import com.android.sharemate.ui.components.AppStepIndicator
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [JoinHouseholdScreen]. */
@@ -74,6 +75,7 @@ fun JoinHouseholdScreen(
                     vertical = Dimens.screenVerticalPadding),
         verticalArrangement = Arrangement.spacedBy(Dimens.spacingL),
     ) {
+      AppStepIndicator(HouseholdLayout.SETUP_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
       AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
       AppScreenTitle(
           title = stringResource(R.string.join_household_title),
