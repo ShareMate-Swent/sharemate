@@ -71,7 +71,16 @@ class ReceiptHistoryViewModelTest {
       store: InventorySubmissionStore,
       photos: ReceiptPhotoStore,
       expenses: ExpenseSubmissionRepository = mock(ExpenseSubmissionRepository::class.java),
-  ) = ReceiptHistoryViewModel(repository, store, photos, "owner", "home", expenses, { 0L })
+  ) =
+      ReceiptHistoryViewModel(
+          repository,
+          store,
+          photos,
+          "owner",
+          "home",
+          expenses,
+          ReceiptHistorySync(store, EmptyReceiptCloud, "owner", "home"),
+          { 0L })
 
   private val owners = mutableListOf<ViewModelStore>()
 
@@ -237,7 +246,7 @@ class ReceiptHistoryViewModelTest {
                 "home",
                 now = { 100L },
                 expenses = mock(ExpenseSubmissionRepository::class.java),
-            )
+                synchronization = ReceiptHistorySync(store, EmptyReceiptCloud, "owner", "home"))
             .also { owners += ViewModelStore().also { owner -> owner.put("history", it) } }
 
     val first = model()
@@ -306,7 +315,7 @@ class ReceiptHistoryViewModelTest {
                 "home",
                 now = { 100L },
                 expenses = mock(ExpenseSubmissionRepository::class.java),
-            )
+                synchronization = ReceiptHistorySync(store, EmptyReceiptCloud, "owner", "home"))
             .also { owners += ViewModelStore().also { owner -> owner.put("history", it) } }
 
     val first = model()

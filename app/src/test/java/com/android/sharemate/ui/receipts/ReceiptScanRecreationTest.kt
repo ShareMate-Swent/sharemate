@@ -97,14 +97,18 @@ class ReceiptScanRecreationTest {
                     factory =
                         viewModelFactory {
                           initializer {
+                            val historyStore =
+                                AndroidInventorySubmissionStore(context, Dispatchers.Main.immediate)
                             ReceiptHistoryViewModel(
                                 itemRepository,
-                                AndroidInventorySubmissionStore(
-                                    context, Dispatchers.Main.immediate),
+                                historyStore,
                                 AndroidReceiptPhotoStore(context, Dispatchers.Main.immediate),
                                 "owner",
                                 "home",
                                 expenses = mock(ExpenseSubmissionRepository::class.java),
+                                synchronization =
+                                    ReceiptHistorySync(
+                                        historyStore, EmptyReceiptCloud, "owner", "home"),
                                 now = { 0L })
                           }
                         })

@@ -39,6 +39,7 @@ class ReceiptHistoryViewModel(
     private val ownerId: String,
     private val householdId: String,
     private val expenses: ExpenseSubmissionRepository,
+    private val synchronization: ReceiptHistorySync,
     private val now: () -> Long,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
@@ -50,6 +51,8 @@ class ReceiptHistoryViewModel(
   private val mutableError = MutableStateFlow(false)
   /** True when local history could not be read or edited; successful operations clear it. */
   val error = mutableError.asStateFlow()
+  /** Cloud/recovery failure; permanent failures remain visible until this screen is recreated. */
+  val syncError = synchronization.error
   private val mutableScanToReview = MutableStateFlow<String?>(null)
   /** Newly scanned receipt whose review has yet to be opened. */
   val scanToReview = mutableScanToReview.asStateFlow()
@@ -193,13 +196,15 @@ class ReceiptHistoryViewModel(
 
   init {
     viewModelScope.launch { refresh() }
+    synchronization.start(viewModelScope, ::refresh)
   }
 
   /** Loads local receipts and resumes server acknowledgement observations after process restart. */
   suspend fun refresh() {
     try {
       val entries =
-          store.list(ownerId, householdId).map { submission ->
+          (store.list(ownerId, householdId) + store.sharedReceipts(ownerId, householdId)).map {
+              submission ->
             val details = store.details(submission.ownerId, householdId, submission.id)
             val prior = receipts.value.firstOrNull { it.submission.id == submission.id }
             RetainedReceipt(
