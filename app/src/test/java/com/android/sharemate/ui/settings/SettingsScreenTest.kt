@@ -87,6 +87,8 @@ class SettingsScreenTest {
     }
   }
 
+  private fun text(id: Int) = composeTestRule.activity.getString(id)
+
   @Test
   fun editProfileOpensThePageWhereThePseudoAndThePhotoAreChanged() {
     showSettings()
