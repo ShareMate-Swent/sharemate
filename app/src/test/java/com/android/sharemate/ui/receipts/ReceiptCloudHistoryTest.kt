@@ -38,7 +38,8 @@ class ReceiptCloudHistoryTest {
               "bob",
               "home",
               cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java))
+              expenses = mock(ExpenseSubmissionRepository::class.java),
+              now = { 0L })
       lifecycle.put("first", history)
       runCurrent()
       val saved = entry("alice", false)
@@ -55,7 +56,8 @@ class ReceiptCloudHistoryTest {
               "bob",
               "home",
               expenses = mock(ExpenseSubmissionRepository::class.java),
-              cloud = EmptyReceiptCloud)
+              cloud = EmptyReceiptCloud,
+              now = { 0L })
       lifecycle.put("offline", restarted)
       runCurrent()
       assertEquals(saved.details, restarted.receipts.value.single().details)
@@ -81,7 +83,8 @@ class ReceiptCloudHistoryTest {
               "alice",
               "home",
               cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java))
+              expenses = mock(ExpenseSubmissionRepository::class.java),
+              now = { 0L })
       lifecycle.put("history", history)
       runCurrent()
       val draft = entry("alice", true)
@@ -119,7 +122,8 @@ class ReceiptCloudHistoryTest {
               "alice",
               "home",
               cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java))
+              expenses = mock(ExpenseSubmissionRepository::class.java),
+              now = { 0L })
       lifecycle.put("history", history)
       runCurrent()
       cloud.entries.emit(listOf(saved))

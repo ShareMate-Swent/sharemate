@@ -143,7 +143,8 @@ fun ReceiptsScreen(
                       userId,
                       householdId,
                       expenses = expenseRepository,
-                      cloud = receiptCloudRepository)
+                      cloud = receiptCloudRepository,
+                      now = System::currentTimeMillis)
                 }
               })
   val purchaseSave: InventorySaveViewModel =
@@ -275,6 +276,7 @@ internal fun ReceiptHistoryFlow(
   DiscardPhotoOnDispose(photo)
   val receipts by history.receipts.collectAsStateWithLifecycle()
   val editFailed by history.error.collectAsStateWithLifecycle()
+  val syncFailed by history.syncError.collectAsStateWithLifecycle()
   val scan: ReceiptScanViewModel =
       viewModel(
           factory =
@@ -313,6 +315,7 @@ internal fun ReceiptHistoryFlow(
                     Text(stringResource(R.string.receipt_scan_purchase))
                   }
                 }
+                if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
                 if (editFailed) {
                   Text(stringResource(R.string.receipt_edit_failed))
                   Button(onClick = history::reload) {
@@ -421,6 +424,7 @@ internal fun ReceiptHistoryFlow(
                             .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
               }
               Text(stringResource(receipt.phase.labelResource()))
+              if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
               if (editFailed) Text(stringResource(R.string.receipt_edit_failed))
               if (receipt.phase == InventorySavePhase.FAILED) {
                 Button(onClick = { history.retry(receipt.submission.id) }) {

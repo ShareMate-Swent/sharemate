@@ -58,7 +58,8 @@ class ReceiptHistoryRecoveryTest {
 
   private fun TestScope.model(
       store: InventorySubmissionStore,
-      cloud: ReceiptCloudRepository = EmptyReceiptCloud
+      cloud: ReceiptCloudRepository = EmptyReceiptCloud,
+      expenses: ExpenseSubmissionRepository = mock(ExpenseSubmissionRepository::class.java)
   ): ReceiptHistoryViewModel =
       ReceiptHistoryViewModel(
               items,
@@ -68,11 +69,58 @@ class ReceiptHistoryRecoveryTest {
               "home",
               now = { 7 },
               cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java))
+              expenses = expenses)
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)
             runCurrent()
           }
+
+  @Test
+  fun acknowledgedRemoteDeletionSurvivesPhotoAndStoreFailureAndRestart() = runTest {
+    val disk = store()
+    disk.save(receipt())
+    val expenses = mock(ExpenseSubmissionRepository::class.java)
+    val failingStore =
+        object : InventorySubmissionStore by disk {
+          override suspend fun deleteReceipt(ownerId: String, householdId: String, id: String) {
+            throw IOException("Disk full")
+          }
+        }
+    val history = model(failingStore, expenses = expenses)
+    `when`(photos.delete(id)).thenThrow(IOException("Photo busy"))
+    assertFalse(history.deleteReceipt(id))
+    assertTrue(history.error.value)
+    assertTrue(disk.isDeletionAcknowledged("owner", "home", id))
+    assertNotNull(disk.loadById("owner", "home", id))
+    reset(photos)
+    assertFalse(history.deleteReceipt(id))
+    assertTrue(history.error.value)
+    lifecycle.clear()
+    val restarted = model(store(), expenses = expenses)
+    assertTrue(restarted.deleteReceipt(id))
+    assertFalse(restarted.error.value)
+    assertTrue(restarted.receipts.value.isEmpty())
+    assertTrue(disk.isDeleted("owner", "home", id))
+    verify(expenses, times(1)).deleteReceipt("home", id)
+  }
+
+  @Test
+  fun refusedDeletionDoesNotReportIoFailureOrTouchTheServer() = runTest {
+    val disk = store()
+    val expenses = mock(ExpenseSubmissionRepository::class.java)
+    disk.save(receipt(confirmed = false))
+    val history = model(disk, expenses = expenses)
+    assertFalse(history.deleteReceipt(id))
+    assertFalse(history.error.value)
+    disk.save(receipt())
+    disk.saveCorrection(ReceiptCorrection("pending", receipt(), receipt(), "Edited"))
+    history.refresh()
+    assertFalse(history.deleteReceipt(id))
+    assertFalse(history.error.value)
+    assertFalse(history.deleteReceipt("absent"))
+    assertFalse(disk.isDeletionAcknowledged("owner", "home", id))
+    verifyNoInteractions(expenses, photos)
+  }
 
   @Test
   fun viewerHistoryLoadsSharedMetadataWithoutChangingCreatorsJournal() = runTest {
@@ -186,7 +234,10 @@ class ReceiptHistoryRecoveryTest {
           }
         }
     val history = model(store)
-    assertTrue(history.error.value)
+    assertTrue(history.syncError.value)
+    history.refresh()
+    assertFalse(history.error.value)
+    assertTrue(history.syncError.value)
     assertTrue(runCatching { history.discardDraft(id) }.exceptionOrNull() is CancellationException)
     `when`(photos.delete(id)).thenThrow(cancelled)
     assertTrue(runCatching { history.deleteReceipt(id) }.exceptionOrNull() is CancellationException)
@@ -216,7 +267,10 @@ class ReceiptHistoryRecoveryTest {
       val observing = model(disk, cloud)
       disconnected.complete(Unit)
       runCurrent()
-      assertTrue(observing.error.value)
+      assertTrue(observing.syncError.value)
+      observing.refresh()
+      assertFalse(observing.error.value)
+      assertTrue(observing.syncError.value)
     }
   }
 }
