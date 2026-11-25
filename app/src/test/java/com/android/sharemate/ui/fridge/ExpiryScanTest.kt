@@ -49,10 +49,7 @@ class ExpiryScanTest {
     compose.setContent {
       MaterialTheme {
         ExpiryScan(
-            enabled = true,
-            onDateConfirmed = { confirmed.add(it) },
-            scan = scan,
-            picker = picker)
+            enabled = true, onDateConfirmed = { confirmed.add(it) }, scan = scan, picker = picker)
       }
     }
 
