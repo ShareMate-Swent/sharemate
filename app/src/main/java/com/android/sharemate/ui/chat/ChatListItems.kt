@@ -13,10 +13,16 @@ internal sealed interface ChatListItem {
   val key: String
 }
 
-/** Separator shown before the first message of [day]. */
-internal data class DaySeparator(val day: LocalDate) : ChatListItem {
+/**
+ * Separator shown before the first message of [day].
+ *
+ * The same day can appear twice: Firestore sorts pending server timestamps after confirmed
+ * messages, even when their local estimate is earlier. The key therefore comes from the first
+ * message of the group ([firstMessageId]), which is unique, rather than from [day].
+ */
+internal data class DaySeparator(val day: LocalDate, val firstMessageId: String) : ChatListItem {
   override val key: String
-    get() = "day:$day"
+    get() = "day:$firstMessageId"
 }
 
 /**
@@ -70,7 +76,9 @@ internal fun buildChatItems(
   }
   val items = mutableListOf<ChatListItem>()
   messages.forEachIndexed { index, message ->
-    if (index == 0 || days[index] != days[index - 1]) items += DaySeparator(days[index])
+    if (index == 0 || days[index] != days[index - 1]) {
+      items += DaySeparator(days[index], message.id)
+    }
     val own = message.isSentBy(currentUserId)
     // Activities carry the name in their text and never show an avatar.
     val grouped = !own && message.isBubble

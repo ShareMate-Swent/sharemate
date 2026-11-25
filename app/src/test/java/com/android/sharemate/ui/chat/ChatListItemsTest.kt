@@ -40,8 +40,7 @@ class ChatListItemsTest {
     val items =
         build(text("1", "a", at(yesterday)), text("2", "a", at(yesterday, 13)), text("3", "a"))
     assertEquals(
-        listOf("day:$yesterday", "message:1", "message:2", "day:$today", "message:3"),
-        items.map { it.key })
+        listOf("day:1", "message:1", "message:2", "day:3", "message:3"), items.map { it.key })
     assertEquals(listOf(yesterday, today), items.filterIsInstance<DaySeparator>().map { it.day })
   }
 
@@ -51,14 +50,29 @@ class ChatListItemsTest {
     val lateEvening = Date.from(today.minusDays(1).atTime(23, 30).atZone(zone).toInstant())
     val items =
         buildChatItems(listOf(text("1", "a", lateEvening)), "me", today, ZoneOffset.ofHours(1))
-    assertEquals(DaySeparator(today), items.first())
+    assertEquals(DaySeparator(today, "1"), items.first())
   }
 
   @Test
   fun pendingMessageWithoutTimestampBelongsToToday() {
     val items = build(text("1", "a", at(today.minusDays(3))), text("2", "me", null))
-    assertEquals(DaySeparator(today), items[2])
+    assertEquals(DaySeparator(today, "2"), items[2])
     assertEquals(4, items.size)
+  }
+
+  @Test
+  fun dayThatReappearsGetsANewSeparatorWithAUniqueKey() {
+    // Firestore sorts a pending message after confirmed ones, even when its estimated
+    // timestamp is earlier, so yesterday can come back after today.
+    val yesterday = today.minusDays(1)
+    val items =
+        build(
+            text("1", "a", at(yesterday)),
+            text("2", "a", at(today)),
+            text("3", "me", at(yesterday, 23)))
+    val separators = items.filterIsInstance<DaySeparator>()
+    assertEquals(listOf(yesterday, today, yesterday), separators.map { it.day })
+    assertEquals(items.size, items.map { it.key }.toSet().size)
   }
 
   @Test

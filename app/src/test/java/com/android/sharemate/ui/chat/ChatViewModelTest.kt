@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -290,6 +291,28 @@ class ChatViewModelTest {
     assertEquals(null, vm.state.value.error)
     assertFalse(vm.state.value.isLoading)
     assertEquals(listOf("hi"), vm.state.value.messages.map { it.text })
+  }
+
+  @Test
+  fun profileFailureAfterALoadClearsThePhotos() {
+    val fail = MutableStateFlow(false)
+    val failing =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String): Flow<List<UserProfile>> = flow {
+            emit(listOf(UserProfile("u2", photoUrl = GOOGLE_PHOTO)))
+            fail.first { it }
+            throw IllegalStateException("member profile unreadable")
+          }
+        }
+    val vm = ChatViewModel(repository, "h1", "u1", "Alex", failing, BUCKET)
+    assertEquals(mapOf("u2" to GOOGLE_PHOTO), vm.state.value.memberPhotos)
+
+    // For example a member left and a remaining member's profile could not be read.
+    fail.value = true
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+    assertEquals(null, vm.state.value.error)
   }
 
   @Test

@@ -101,7 +101,9 @@ class ChatViewModel(
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
-        // Photos are decorative: avatars fall back to initials and the chat stays usable.
+        // The photos may be stale (a member may have left), so drop them: avatars fall back to
+        // initials and the chat stays usable.
+        mutableState.update { it.copy(memberPhotos = emptyMap()) }
       }
     }
   }

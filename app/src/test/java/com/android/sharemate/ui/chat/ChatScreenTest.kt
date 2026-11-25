@@ -3,6 +3,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
+import android.content.Intent
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,6 +34,7 @@ import com.android.sharemate.ui.theme.Dimens
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Date
@@ -45,6 +48,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -506,6 +510,48 @@ class ChatScreenTest {
   }
 
   @Test
+  fun todayBecomesYesterdayAtMidnightWhileTheChatIsOpen() {
+    val zone = ZoneId.of("Europe/Zurich")
+    var now = ZonedDateTime.of(2026, 11, 24, 23, 59, 0, 0, zone)
+    val sent = Date.from(now.minusHours(1).toInstant())
+    composeTestRule.setContent {
+      ChatContent(
+          ChatUiState(
+              isLoading = false, messages = listOf(Message("1", "other", "Sam", "Hi", sent))),
+          "me",
+          onDraftChange = {},
+          onSend = {},
+          clock = { now })
+    }
+    composeTestRule.onNodeWithText("Today").assertExists()
+
+    now = now.plusMinutes(2)
+    composeTestRule.activity.sendBroadcast(Intent(Intent.ACTION_TIME_TICK))
+    shadowOf(Looper.getMainLooper()).idle()
+
+    composeTestRule.onNodeWithText("Yesterday").assertExists()
+    composeTestRule.onNodeWithText("Today").assertDoesNotExist()
+  }
+
+  @Test
+  fun dayThatReappearsAfterAPendingMessageDoesNotCrash() {
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    fun at(day: LocalDate, hour: Int) = Date.from(day.atTime(hour, 0).atZone(zone).toInstant())
+    show(
+        ChatUiState(
+            isLoading = false,
+            messages =
+                listOf(
+                    Message("1", "other", "Sam", "Old", at(today.minusDays(1), 12)),
+                    Message("2", "other", "Sam", "New", at(today, 12)),
+                    // Pending: sorted last, estimated before midnight.
+                    Message("3", "me", "Me", "Late", at(today.minusDays(1), 23)))))
+    composeTestRule.onAllNodesWithTag(ChatTestTags.DAY_SEPARATOR).assertCountEquals(3)
+    composeTestRule.onNodeWithText("Late").assertIsDisplayed()
+  }
+
+  @Test
   fun eatenAndThrownUseTheirOwnIcons() {
     show(
         ChatUiState(
@@ -523,7 +569,9 @@ class ChatScreenTest {
   @Test
   fun screenPassesHouseholdToHeader() {
     val viewModel = ChatViewModel(EmptyChatRepository, "h", "me", "Alex")
-    composeTestRule.setContent { ChatScreen(viewModel, "Casa Rosa", 3) }
+    composeTestRule.setContent {
+      ChatScreen(viewModel, householdName = "Casa Rosa", memberCount = 3)
+    }
     composeTestRule.onNodeWithTag(ChatTestTags.SUBTITLE).assertTextEquals("Casa Rosa · 3 members")
   }
 

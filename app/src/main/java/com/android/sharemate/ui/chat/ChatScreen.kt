@@ -30,8 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.ui.theme.Dimens
-import java.time.LocalDate
-import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.Locale
 
 /** Semantic test tags for the chat screen and its messages. */
@@ -86,16 +85,16 @@ object ChatTestTags {
  * Displays the household chat and forwards user actions to [viewModel].
  *
  * @param viewModel Provides the chat state and actions.
+ * @param modifier Modifier applied to the screen.
  * @param householdName Name of the household, shown under the title.
  * @param memberCount Number of household members, shown under the title when positive.
- * @param modifier Modifier applied to the screen.
  */
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
     householdName: String = "",
     memberCount: Int = 0,
-    modifier: Modifier = Modifier,
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   ChatContent(
@@ -103,9 +102,9 @@ fun ChatScreen(
       currentUserId = viewModel.userId,
       onDraftChange = viewModel::onDraftChange,
       onSend = viewModel::send,
+      modifier = modifier,
       householdName = householdName,
-      memberCount = memberCount,
-      modifier = modifier)
+      memberCount = memberCount)
 }
 
 /**
@@ -115,9 +114,10 @@ fun ChatScreen(
  * @param currentUserId UID used to identify messages sent by the current user.
  * @param onDraftChange Called when the composer text changes.
  * @param onSend Called when the user requests to send a message.
+ * @param modifier Modifier applied to the screen.
  * @param householdName Name of the household, shown under the title.
  * @param memberCount Number of household members, shown under the title when positive.
- * @param modifier Modifier applied to the screen.
+ * @param clock Current local date and time zone; read again when the date or the zone changes.
  */
 @Composable
 fun ChatContent(
@@ -125,9 +125,10 @@ fun ChatContent(
     currentUserId: String,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
     householdName: String = "",
     memberCount: Int = 0,
-    modifier: Modifier = Modifier,
+    clock: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
   val defaultName = stringResource(R.string.chat_default_sender_name)
   val resources = LocalContext.current.resources
@@ -162,7 +163,8 @@ fun ChatContent(
                 currentUserId = currentUserId,
                 memberPhotos = state.memberPhotos,
                 defaultName = defaultName,
-                disambiguators = disambiguators)
+                disambiguators = disambiguators,
+                clock = clock)
       }
     }
     state.error?.let {
@@ -191,10 +193,10 @@ private fun MessageList(
     memberPhotos: Map<String, String>,
     defaultName: String,
     disambiguators: Map<String, Int>,
+    clock: () -> ZonedDateTime,
 ) {
   val listState = rememberLazyListState()
-  val zone = ZoneId.systemDefault()
-  val today = LocalDate.now(zone)
+  val (today, zone) = rememberChatDay(clock)
   val items =
       remember(messages, currentUserId, today, zone) {
         buildChatItems(messages, currentUserId, today, zone)
