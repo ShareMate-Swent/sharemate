@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -40,10 +41,18 @@ import com.android.sharemate.resources.C
 import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.barcode.BarcodeFormTestTags
 import com.android.sharemate.ui.barcode.BarcodePhotoPicker
+import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
+import com.android.sharemate.ui.photo.OnPhotoPickerCancelled
 import com.android.sharemate.ui.photo.photoPickerViewModel
 import com.android.sharemate.ui.theme.Dimens
 
+/**
+ * The form to add an item, or to edit one when [FridgeUiState.editingItemId] is set.
+ *
+ * @param onBarcodeScanOpened Called once the form opened the barcode photo asked by
+ *   [FridgeUiState.scanBarcodeOnOpen].
+ */
 @Composable
 fun AddItemDialog(
     uiState: FridgeUiState,
@@ -56,8 +65,22 @@ fun AddItemDialog(
     onSharingChange: (ItemSharing) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
+    onBarcodeScanOpened: () -> Unit = {},
 ) {
   val photoViewModel = photoPickerViewModel("add-item-barcode-photo")
+  LaunchedEffect(uiState.scanBarcodeOnOpen) {
+    if (uiState.scanBarcodeOnOpen) {
+      photoViewModel.open()
+      onBarcodeScanOpened()
+    }
+  }
+  OnPhotoPickerCancelled(photoViewModel) {
+    // Opened only to scan a barcode: leaving the photo leaves the form too.
+    if (uiState.closeOnBarcodeCancel) {
+      photoViewModel.reset()
+      onDismiss()
+    }
+  }
   val photo by photoViewModel.state.collectAsState()
   val lookupError =
       uiState.barcodeLookupError?.let {
@@ -73,6 +96,13 @@ fun AddItemDialog(
   val personalDraft = personalPhotos?.draft?.collectAsState()?.value
   val inputEnabled = !uiState.isSaving && !uiState.isScanningBarcode && !photo.busy
   DiscardPhotoOnDispose(photoViewModel)
+  BarcodePhotoPicker(
+      photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
+  // Opened only to scan a barcode: the camera shows alone until a photo is read, so the form does
+  // not flash before it, open over it after a failed lookup, or show while it closes.
+  if (uiState.addButtonMethod == AddItemMethod.BARCODE &&
+      (uiState.scanBarcodeOnOpen || uiState.closeOnBarcodeCancel || photo.visible))
+      return
   AlertDialog(
       modifier = Modifier.testTag(C.Tag.fridge_add_dialog),
       onDismissRequest = {
@@ -227,8 +257,6 @@ fun AddItemDialog(
               Text(stringResource(R.string.fridge_cancel))
             }
       })
-  BarcodePhotoPicker(
-      photoViewModel, confirmationError = lookupError, onImageConfirmed = onBarcodeImageConfirmed)
 }
 
 /** The message of [error], including the limit for the errors that name one. */

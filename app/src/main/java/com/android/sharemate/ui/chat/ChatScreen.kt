@@ -9,26 +9,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -39,26 +27,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
-import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.theme.Dimens
-import java.text.DateFormat
+import java.time.ZonedDateTime
 import java.util.Locale
 
 /** Semantic test tags for the chat screen and its messages. */
 object ChatTestTags {
   /** Tag for the chat screen container. */
   const val SCREEN = "chat_screen"
+
+  /** Tag for the household name and member count under the title. */
+  const val SUBTITLE = "chat_subtitle"
+
+  /** Tag for the row of member avatars in the header. */
+  const val HEADER_AVATARS = "chat_header_avatars"
 
   /** Tag for the scrollable message list. */
   const val LIST = "chat_list"
@@ -86,6 +77,15 @@ object ChatTestTags {
 
   /** Tag for fridge activity badges. */
   const val ACTIVITY = "chat_activity"
+
+  /** Tag for the label before the first message of a day. */
+  const val DAY_SEPARATOR = "chat_day_separator"
+
+  /** Tag for a member's profile photo in an avatar. */
+  const val AVATAR_PHOTO = "chat_avatar_photo"
+
+  /** Tag for a member's initials in an avatar. */
+  const val AVATAR_INITIALS = "chat_avatar_initials"
 }
 
 /**
@@ -93,16 +93,25 @@ object ChatTestTags {
  *
  * @param viewModel Provides the chat state and actions.
  * @param modifier Modifier applied to the screen.
+ * @param householdName Name of the household, shown under the title.
+ * @param memberCount Number of household members, shown under the title when positive.
  */
 @Composable
-fun ChatScreen(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    modifier: Modifier = Modifier,
+    householdName: String = "",
+    memberCount: Int = 0,
+) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   ChatContent(
       state = state,
       currentUserId = viewModel.userId,
       onDraftChange = viewModel::onDraftChange,
       onSend = viewModel::send,
-      modifier = modifier)
+      modifier = modifier,
+      householdName = householdName,
+      memberCount = memberCount)
 }
 
 /**
@@ -113,6 +122,9 @@ fun ChatScreen(viewModel: ChatViewModel, modifier: Modifier = Modifier) {
  * @param onDraftChange Called when the composer text changes.
  * @param onSend Called when the user requests to send a message.
  * @param modifier Modifier applied to the screen.
+ * @param householdName Name of the household, shown under the title.
+ * @param memberCount Number of household members, shown under the title when positive.
+ * @param clock Current local date and time zone; read again when the date or the zone changes.
  */
 @Composable
 fun ChatContent(
@@ -121,26 +133,46 @@ fun ChatContent(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    householdName: String = "",
+    memberCount: Int = 0,
+    clock: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
   ResizeWindowForKeyboard()
+  val defaultName = stringResource(R.string.chat_default_sender_name)
+  val resources = LocalContext.current.resources
+  val configuration = LocalConfiguration.current
+  val disambiguators =
+      remember(state.messages, defaultName, configuration) {
+        senderDisambiguators(state.messages, defaultName) { name, number ->
+          resources.getString(R.string.chat_sender_identity, name, number)
+        }
+      }
+  val participants =
+      remember(state.messages, currentUserId) { headerParticipants(state.messages, currentUserId) }
   Column(modifier.fillMaxSize().testTag(ChatTestTags.SCREEN)) {
-    Text(
-        text = stringResource(R.string.chat_title),
-        modifier = Modifier.padding(Dimens.spacingM),
-        style = MaterialTheme.typography.headlineMedium,
-        color = MaterialTheme.colorScheme.primary,
-    )
+    ChatHeader(
+        householdName = householdName,
+        memberCount = memberCount,
+        participants = participants,
+        memberPhotos = state.memberPhotos,
+    ) {
+      displaySenderName(it.senderName, defaultName)
+    }
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when {
         state.isLoading ->
             CircularProgressIndicator(
                 Modifier.align(Alignment.Center).testTag(ChatTestTags.LOADING))
         state.messages.isEmpty() && state.error == ChatError.LOAD_FAILED -> Unit
-        state.messages.isEmpty() ->
-            Text(
-                stringResource(R.string.chat_empty),
-                Modifier.align(Alignment.Center).testTag(ChatTestTags.EMPTY))
-        else -> MessageList(state.messages, currentUserId)
+        state.messages.isEmpty() -> EmptyChat(Modifier.align(Alignment.Center))
+        else ->
+            MessageList(
+                messages = state.messages,
+                currentUserId = currentUserId,
+                memberPhotos = state.memberPhotos,
+                defaultName = defaultName,
+                disambiguators = disambiguators,
+                clock = clock)
       }
     }
     state.error?.let {
@@ -154,25 +186,11 @@ fun ChatContent(
           color = MaterialTheme.colorScheme.error,
           style = MaterialTheme.typography.bodySmall)
     }
-    Row(
-        Modifier.fillMaxWidth().padding(Dimens.spacingXs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
-          OutlinedTextField(
-              value = state.draft,
-              onValueChange = onDraftChange,
-              modifier = Modifier.weight(1f).testTag(ChatTestTags.INPUT),
-              placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
-              maxLines = ChatLayout.composerMaxLines)
-          IconButton(
-              onClick = onSend,
-              enabled = state.canSend,
-              modifier = Modifier.testTag(ChatTestTags.SEND)) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(R.string.chat_send))
-              }
-        }
+    ChatComposer(
+        draft = state.draft,
+        canSend = state.canSend,
+        onDraftChange = onDraftChange,
+        onSend = onSend)
   }
 }
 
@@ -199,24 +217,27 @@ internal fun withAdjustResize(softInputMode: Int): Int =
 
 /** Shows [messages], which is never empty: [ChatContent] shows the empty state instead. */
 @Composable
-private fun MessageList(messages: List<Message>, currentUserId: String) {
+private fun MessageList(
+    messages: List<Message>,
+    currentUserId: String,
+    memberPhotos: Map<String, String>,
+    defaultName: String,
+    disambiguators: Map<String, Int>,
+    clock: () -> ZonedDateTime,
+) {
   val listState = rememberLazyListState()
-  val defaultName = stringResource(R.string.chat_default_sender_name)
-  val resources = LocalContext.current.resources
-  val configuration = LocalConfiguration.current
-  val disambiguators =
-      remember(messages, defaultName, configuration) {
-        senderDisambiguators(messages, defaultName) { name, number ->
-          resources.getString(R.string.chat_sender_identity, name, number)
-        }
+  val (today, zone) = rememberChatDay(clock)
+  val items =
+      remember(messages, currentUserId, today, zone) {
+        buildChatItems(messages, currentUserId, today, zone)
       }
-  // Re-pin to the latest message when the viewport resizes (e.g. keyboard opens or closes).
+  // Re-pin to the latest item when the viewport resizes (e.g. keyboard opens or closes).
   // The list clamps the scroll, so messages that fit above the keyboard stay where they are.
   // The height comes from onSizeChanged rather than layoutInfo, which changes after every
   // layout and would recompose forever if read here.
   var viewportHeight by remember { mutableIntStateOf(0) }
-  LaunchedEffect(messages.last().id, messages.size, viewportHeight) {
-    listState.scrollToItem(messages.lastIndex)
+  LaunchedEffect(messages.last().id, items.size, viewportHeight) {
+    listState.scrollToItem(items.lastIndex)
   }
   LazyColumn(
       modifier =
@@ -226,120 +247,22 @@ private fun MessageList(messages: List<Message>, currentUserId: String) {
       state = listState,
       contentPadding = PaddingValues(horizontal = Dimens.spacingS),
       verticalArrangement = Arrangement.spacedBy(ChatLayout.messageSpacing)) {
-        items(messages, key = { it.id }) { message ->
-          MessageBubble(
-              message,
-              own = message.isSentBy(currentUserId),
-              senderName = displaySenderName(message.senderName, defaultName),
-              disambiguator = disambiguators[message.senderId])
-        }
-      }
-}
-
-@Composable
-private fun MessageBubble(
-    message: Message,
-    own: Boolean,
-    senderName: String,
-    disambiguator: Int?
-): Unit =
-    when (message.type) {
-      // Incidents show their description until the photo card of US-7 is built.
-      MessageType.TEXT,
-      MessageType.INCIDENT -> TextMessageBubble(message, own, senderName, disambiguator)
-      MessageType.EATEN,
-      MessageType.THROWN -> ActivityBadge(message, senderName, disambiguator)
-    }
-
-@Composable
-private fun TextMessageBubble(
-    message: Message,
-    own: Boolean,
-    senderName: String,
-    disambiguator: Int?
-) {
-  Box(
-      Modifier.fillMaxWidth(),
-      contentAlignment = if (own) Alignment.CenterEnd else Alignment.CenterStart) {
-        Surface(
-            modifier =
-                Modifier.widthIn(max = ChatLayout.bubbleMaxWidth)
-                    .testTag(if (own) ChatTestTags.OWN_MESSAGE else ChatTestTags.OTHER_MESSAGE),
-            shape = RoundedCornerShape(ChatLayout.bubbleCornerRadius),
-            color =
-                if (own) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant) {
-              Column(Modifier.padding(horizontal = Dimens.spacingS, vertical = Dimens.spacingXs)) {
-                if (!own) {
-                  Text(
-                      chatSenderLabel(senderName, disambiguator),
-                      style = MaterialTheme.typography.labelMedium,
-                      color = MaterialTheme.colorScheme.primary)
-                }
-                Text(message.text)
-                message.timestamp?.let {
-                  Text(
-                      DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(it),
-                      style = MaterialTheme.typography.labelSmall,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+        items(items, key = { it.key }) { item ->
+          when (item) {
+            is DaySeparator -> DaySeparatorLabel(item.day, today)
+            is MessageItem -> {
+              val message = item.message
+              val name = displaySenderName(message.senderName, defaultName)
+              val label = chatSenderLabel(name, disambiguators[message.senderId])
+              if (message.isBubble) {
+                MessageRow(item, label, name, memberPhotos[message.senderId])
+              } else {
+                ActivityChip(message, item.own, label)
               }
             }
-      }
-}
-
-@Composable
-private fun ActivityBadge(message: Message, senderName: String, disambiguator: Int?) {
-  val isEaten = message.type == MessageType.EATEN
-  val actionText =
-      if (isEaten) stringResource(R.string.chat_activity_eaten, message.itemName)
-      else stringResource(R.string.chat_activity_thrown, message.itemName)
-  val containerColor =
-      if (isEaten) MaterialTheme.colorScheme.tertiaryContainer
-      else MaterialTheme.colorScheme.errorContainer
-  val contentColor =
-      if (isEaten) MaterialTheme.colorScheme.onTertiaryContainer
-      else MaterialTheme.colorScheme.onErrorContainer
-  val actionIcon = if (isEaten) Icons.Filled.Restaurant else Icons.Filled.DeleteOutline
-
-  Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-    Surface(
-        modifier = Modifier.widthIn(max = ChatLayout.bubbleMaxWidth).testTag(ChatTestTags.ACTIVITY),
-        shape = RoundedCornerShape(Dimens.spacingM),
-        color = containerColor,
-        contentColor = contentColor) {
-          Row(
-              modifier = Modifier.fillMaxWidth().padding(Dimens.spacingS),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs)) {
-                Icon(
-                    imageVector = actionIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(Dimens.activityBadgeIconSize))
-                Column(Modifier.weight(1f)) {
-                  Text(
-                      chatSenderLabel(senderName, disambiguator),
-                      style = MaterialTheme.typography.labelMedium)
-                  Text(actionText, style = MaterialTheme.typography.bodyMedium)
-                  message.timestamp?.let {
-                    Text(
-                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                            .format(it),
-                        style = MaterialTheme.typography.labelSmall)
-                  }
-                }
-                message.itemImageUrl?.let { imageUrl ->
-                  AsyncImage(
-                      model = imageUrl,
-                      contentDescription =
-                          stringResource(
-                              R.string.chat_activity_image_description, message.itemName),
-                      contentScale = ContentScale.Crop,
-                      modifier = Modifier.size(Dimens.activityBadgeImageSize))
-                }
-              }
+          }
         }
-  }
+      }
 }
 
 @Composable

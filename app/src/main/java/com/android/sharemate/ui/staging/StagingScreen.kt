@@ -32,7 +32,10 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -131,6 +134,8 @@ fun StagingContent(
     statusContent: @Composable () -> Unit = {},
     onAddItem: (() -> Unit)? = null,
 ) {
+  var showMissingPrices by remember { mutableStateOf(false) }
+  if (!state.hasMissingPrices) showMissingPrices = false
   Column(
       modifier =
           Modifier.fillMaxSize()
@@ -200,9 +205,16 @@ fun StagingContent(
           }
         }
         Spacer(Modifier.height(Dimens.spacingM))
+        if (showMissingPrices) {
+          Text(
+              stringResource(R.string.staging_missing_prices),
+              color = MaterialTheme.colorScheme.error,
+              modifier = Modifier.testTag("staging_missing_prices"),
+          )
+        }
         Button(
-            onClick = onConfirm,
-            enabled = state.canConfirm && actionsEnabled,
+            onClick = { if (state.hasMissingPrices) showMissingPrices = true else onConfirm() },
+            enabled = state.items.isNotEmpty() && state.draft == null && actionsEnabled,
             modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
         ) {
           Text(
@@ -272,8 +284,10 @@ private fun StagedItemCard(
     enabled: Boolean,
 ) {
   Card(
-      onClick = onClick,
-      enabled = enabled,
+      // Keep the card content fully opaque when editing is unavailable. Material's disabled
+      // Card applies disabled alpha to every child, which makes receipt names and prices
+      // unreadable.
+      onClick = { if (enabled) onClick() },
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
@@ -306,8 +320,8 @@ private fun StagedItemCard(
               else MaterialTheme.colorScheme.onSurface,
       )
       IconButton(
-          onClick = onDelete,
-          enabled = enabled,
+          // The action remains a no-op when editing is unavailable, while the icon stays visible.
+          onClick = { if (enabled) onDelete() },
           modifier = Modifier.testTag(StagingTestTags.delete(item.id)),
       ) {
         Icon(
