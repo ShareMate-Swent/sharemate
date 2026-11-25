@@ -133,22 +133,6 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun viewerHistoryLoadsSharedMetadataWithoutChangingCreatorsJournal() = runHistoryTest {
-    val disk = store()
-    val peer = InventorySubmission(id, "alice", "home", rows)
-    val details = ReceiptDetails(id, "alice", "home", "", 1, title = "Shared groceries")
-    val cloud =
-        object : ReceiptCloudRepository {
-          override fun observe(ownerId: String, householdId: String) =
-              flowOf(listOf(ReceiptCloudEntry(peer, details)))
-        }
-    val history = model(disk.forViewer("owner"), cloud)
-    assertEquals(peer, history.receipts.value.single().submission)
-    assertEquals(details, history.receipts.value.single().details)
-    assertTrue(disk.list("alice", "home").isEmpty())
-  }
-
-  @Test
   fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runHistoryTest {
     val store = store()
     val updates = MutableSharedFlow<List<ReceiptCloudEntry>>()

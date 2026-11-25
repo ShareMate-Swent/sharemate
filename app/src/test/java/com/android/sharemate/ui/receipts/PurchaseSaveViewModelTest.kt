@@ -103,18 +103,7 @@ class PurchaseSaveViewModelTest {
 
   @Test
   fun correctionRetriesSamePayloadAfterRestartWithoutAnotherInventoryInsert() = runTest {
-    val original =
-        InventorySubmission(
-            "12345678-1234-1234-1234-123456789abc",
-            "alice",
-            "home",
-            rows,
-            expense =
-                SharedExpense(
-                    "12345678-1234-1234-1234-123456789abc", "home", "alice", 1000, purchase.shares),
-            inventoryConfirmed = true,
-            expenseProgress = ExpenseProgress.CONFIRMED)
-    store.saved = original
+    store.saved = savedOriginal()
     val vm = model()
     expenses.correctionFailure = IOException("response lost")
     val edited =

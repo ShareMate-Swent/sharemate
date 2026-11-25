@@ -22,123 +22,91 @@ import org.robolectric.RuntimeEnvironment
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ReceiptCloudHistoryTest {
   @Test
-  fun sharedSavedIsCachedForOfflineRestartAndOtherMembersDraftsStayHidden() = runTest {
-    val dispatcher = StandardTestDispatcher(testScheduler)
-    Dispatchers.setMain(dispatcher)
-    val lifecycle = ViewModelStore()
+  fun sharedSavedIsCachedForOfflineRestartAndOtherMembersDraftsStayHidden() = cloudTest {
+    val disk = diskStore()
+    val store = disk.forViewer("bob")
+    val cloud = Cloud()
+    val history = model(store, "bob", cloud)
+    val saved = entry("alice", false)
+    cloud.entries.emit(listOf(saved, entry("alice", true)))
+    runCurrent()
+    assertEquals(listOf(saved.submission), history.receipts.value.map { it.submission })
+    assertEquals(InventorySavePhase.CONFIRMED, history.receipts.value.single().phase)
+    lifecycle.clear()
+    val restarted = model(diskStore().forViewer("bob"), "bob", EmptyReceiptCloud)
+    assertEquals(saved.details, restarted.receipts.value.single().details)
+    assertTrue(disk.list("alice", "home").isEmpty())
+  }
+
+  @Test
+  fun transientEmptyCloudQueryNeverDeletesDraftButExplicitTombstoneDoes() = cloudTest {
+    val store = diskStore()
+    val cloud = Cloud()
+    val history = model(store, "alice", cloud)
+    val draft = entry("alice", true)
+    cloud.entries.emit(listOf(draft))
+    runCurrent()
+    assertEquals(draft.submission, history.receipts.value.single().submission)
+    cloud.entries.emit(emptyList())
+    runCurrent()
+    assertEquals(draft.submission, history.receipts.value.single().submission)
+    cloud.deletions.emit(setOf(draft.submission.id))
+    runCurrent()
+    assertTrue(history.receipts.value.isEmpty())
+  }
+
+  @Test
+  fun ownerHistoryIgnoresOlderRevisionsAndAcceptsNewerOnes() = cloudTest {
+    val store = diskStore()
+    val cloud = Cloud()
+    val saved = entry("alice", false)
+    store.save(saved.submission)
+    store.saveDetails(saved.details.copy(title = "Latest", revision = 2))
+    val history = model(store, "alice", cloud)
+    cloud.entries.emit(listOf(saved))
+    runCurrent()
+    assertEquals("Latest", history.receipts.value.single().details?.title)
+    assertEquals(2L, history.receipts.value.single().details?.revision)
+    cloud.entries.emit(
+        listOf(saved.copy(details = saved.details.copy(title = "Latest", revision = 3))))
+    runCurrent()
+    assertEquals(3L, history.receipts.value.single().details?.revision)
+  }
+
+  private val lifecycle = ViewModelStore()
+
+  private fun cloudTest(block: suspend TestScope.() -> Unit) = runTest {
+    Dispatchers.setMain(StandardTestDispatcher(testScheduler))
     try {
-      val app = RuntimeEnvironment.getApplication()
-      val store = AndroidInventorySubmissionStore(app, dispatcher).forViewer("bob")
-      val cloud = Cloud()
-      val history =
-          ReceiptHistoryViewModel(
-              mock(ItemRepository::class.java),
-              store,
-              mock(ReceiptPhotoStore::class.java),
-              "bob",
-              "home",
-              cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java),
-              now = { 0L })
-      lifecycle.put("first", history)
-      runCurrent()
-      val saved = entry("alice", false)
-      cloud.entries.emit(listOf(saved, entry("alice", true)))
-      runCurrent()
-      assertEquals(listOf(saved.submission), history.receipts.value.map { it.submission })
-      assertEquals(InventorySavePhase.CONFIRMED, history.receipts.value.single().phase)
-      lifecycle.clear()
-      val restarted =
-          ReceiptHistoryViewModel(
-              mock(ItemRepository::class.java),
-              AndroidInventorySubmissionStore(app, dispatcher).forViewer("bob"),
-              mock(ReceiptPhotoStore::class.java),
-              "bob",
-              "home",
-              expenses = mock(ExpenseSubmissionRepository::class.java),
-              cloud = EmptyReceiptCloud,
-              now = { 0L })
-      lifecycle.put("offline", restarted)
-      runCurrent()
-      assertEquals(saved.details, restarted.receipts.value.single().details)
+      block()
     } finally {
       lifecycle.clear()
       Dispatchers.resetMain()
     }
   }
 
-  @Test
-  fun transientEmptyCloudQueryNeverDeletesDraftButExplicitTombstoneDoes() = runTest {
-    val dispatcher = StandardTestDispatcher(testScheduler)
-    Dispatchers.setMain(dispatcher)
-    val lifecycle = ViewModelStore()
-    try {
-      val store = AndroidInventorySubmissionStore(RuntimeEnvironment.getApplication(), dispatcher)
-      val cloud = Cloud()
-      val history =
-          ReceiptHistoryViewModel(
-              mock(ItemRepository::class.java),
-              store,
-              mock(ReceiptPhotoStore::class.java),
-              "alice",
-              "home",
-              cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java),
-              now = { 0L })
-      lifecycle.put("history", history)
-      runCurrent()
-      val draft = entry("alice", true)
-      cloud.entries.emit(listOf(draft))
-      runCurrent()
-      assertEquals(draft.submission, history.receipts.value.single().submission)
-      cloud.entries.emit(emptyList())
-      runCurrent()
-      assertEquals(draft.submission, history.receipts.value.single().submission)
-      cloud.deletions.emit(setOf(draft.submission.id))
-      runCurrent()
-      assertTrue(history.receipts.value.isEmpty())
-    } finally {
-      lifecycle.clear()
-      Dispatchers.resetMain()
-    }
-  }
+  private fun TestScope.diskStore() =
+      AndroidInventorySubmissionStore(
+          RuntimeEnvironment.getApplication(), StandardTestDispatcher(testScheduler))
 
-  @Test
-  fun ownerHistoryIgnoresOlderRevisionsAndAcceptsNewerOnes() = runTest {
-    val dispatcher = StandardTestDispatcher(testScheduler)
-    Dispatchers.setMain(dispatcher)
-    val lifecycle = ViewModelStore()
-    try {
-      val store = AndroidInventorySubmissionStore(RuntimeEnvironment.getApplication(), dispatcher)
-      val cloud = Cloud()
-      val saved = entry("alice", false)
-      store.save(saved.submission)
-      store.saveDetails(saved.details.copy(title = "Latest", revision = 2))
-      val history =
-          ReceiptHistoryViewModel(
+  private fun TestScope.model(
+      store: InventorySubmissionStore,
+      owner: String,
+      cloud: ReceiptCloudRepository
+  ) =
+      ReceiptHistoryViewModel(
               mock(ItemRepository::class.java),
               store,
               mock(ReceiptPhotoStore::class.java),
-              "alice",
+              owner,
               "home",
-              cloud = cloud,
-              expenses = mock(ExpenseSubmissionRepository::class.java),
-              now = { 0L })
-      lifecycle.put("history", history)
-      runCurrent()
-      cloud.entries.emit(listOf(saved))
-      runCurrent()
-      assertEquals("Latest", history.receipts.value.single().details?.title)
-      assertEquals(2L, history.receipts.value.single().details?.revision)
-      cloud.entries.emit(
-          listOf(saved.copy(details = saved.details.copy(title = "Latest", revision = 3))))
-      runCurrent()
-      assertEquals(3L, history.receipts.value.single().details?.revision)
-    } finally {
-      lifecycle.clear()
-      Dispatchers.resetMain()
-    }
-  }
+              mock(ExpenseSubmissionRepository::class.java),
+              cloud,
+              { 0L })
+          .also {
+            lifecycle.put(UUID.randomUUID().toString(), it)
+            runCurrent()
+          }
 
   private fun entry(owner: String, draft: Boolean): ReceiptCloudEntry {
     val id = UUID.randomUUID().toString()

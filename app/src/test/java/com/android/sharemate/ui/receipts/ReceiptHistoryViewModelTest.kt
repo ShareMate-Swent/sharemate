@@ -53,16 +53,7 @@ class ReceiptHistoryViewModelTest {
     store.saveDetails(
         ReceiptDetails(
             "00000000-0000-0000-0000-000000000003", "owner", "home", "photo", 1, savedAtMillis = 2))
-    val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = expenses,
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(mock(ItemRepository::class.java), store, photos, expenses = expenses)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     assertFalse(history.deleteReceipt("00000000-0000-0000-0000-000000000003"))
@@ -75,6 +66,15 @@ class ReceiptHistoryViewModelTest {
     verify(photos).delete("00000000-0000-0000-0000-000000000003")
   }
 
+  private fun historyModel(
+      repository: ItemRepository,
+      store: InventorySubmissionStore,
+      photos: ReceiptPhotoStore,
+      expenses: ExpenseSubmissionRepository = mock(ExpenseSubmissionRepository::class.java),
+  ) =
+      ReceiptHistoryViewModel(
+          repository, store, photos, "owner", "home", expenses, EmptyReceiptCloud, { 0L })
+
   private val owners = mutableListOf<ViewModelStore>()
 
   @Test
@@ -83,16 +83,7 @@ class ReceiptHistoryViewModelTest {
     val photos = mock(ReceiptPhotoStore::class.java)
     `when`(photos.retain(anyK(), anyK())).thenReturn("retained-photo")
     val repository = mock(ItemRepository::class.java)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val id = history.retainScan("source-photo", emptyList())
@@ -119,16 +110,7 @@ class ReceiptHistoryViewModelTest {
     store.save(InventorySubmission(draftId, "owner", "home", rows, draft = true))
     store.save(InventorySubmission(savedId, "owner", "home", rows))
     store.saveDetails(ReceiptDetails(savedId, "owner", "home", "saved-photo", 1L, 2L))
-    val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(mock(ItemRepository::class.java), store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     assertFalse(history.discardDraft(savedId))
@@ -153,16 +135,7 @@ class ReceiptHistoryViewModelTest {
     store.save(submission)
     store.saveDetails(ReceiptDetails(id, "owner", "home", "photo", 100L, 200L))
     val repository = mock(ItemRepository::class.java)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            mock(ReceiptPhotoStore::class.java),
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, mock(ReceiptPhotoStore::class.java))
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     assertTrue(history.rename(id, "  Courses Migros  "))
@@ -183,15 +156,7 @@ class ReceiptHistoryViewModelTest {
     store.save(InventorySubmission(id, "owner", "home", rows, draft = true))
     store.saveDetails(ReceiptDetails(id, "owner", "home", "photo", 100L))
     val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            mock(ReceiptPhotoStore::class.java),
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+        historyModel(mock(ItemRepository::class.java), store, mock(ReceiptPhotoStore::class.java))
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     assertTrue(history.editDraft(id, rows, "  Courses Migros  "))
@@ -229,16 +194,7 @@ class ReceiptHistoryViewModelTest {
             expenseProgress = com.android.sharemate.model.item.ExpenseProgress.UNKNOWN)
     store.save(pending)
     val repository = mock(ItemRepository::class.java)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            mock(ReceiptPhotoStore::class.java),
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, mock(ReceiptPhotoStore::class.java))
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     assertEquals(InventorySavePhase.PENDING, history.receipts.value.single().phase)
@@ -408,16 +364,7 @@ class ReceiptHistoryViewModelTest {
       else ItemWrite.Queued(CompletableDeferred())
     }
     `when`(repository.observeSubmission(anyK())).thenReturn(statuses)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val id = history.addDraft("photo", listOf(StagedItem("row", "Milk", 2, 450)))
@@ -447,16 +394,7 @@ class ReceiptHistoryViewModelTest {
             deleted += receiptId
           }
         }
-    val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(mock(ItemRepository::class.java), store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
 
@@ -481,16 +419,7 @@ class ReceiptHistoryViewModelTest {
     val repository = mock(ItemRepository::class.java)
     `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(CompletableDeferred()))
     `when`(repository.observeSubmission(anyK())).thenReturn(statuses)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
@@ -518,16 +447,7 @@ class ReceiptHistoryViewModelTest {
           override suspend fun delete(receiptId: String) = Unit
         }
     val repository = mock(ItemRepository::class.java)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val original = listOf(StagedItem("a", "Apple", 1, 100))
@@ -553,16 +473,7 @@ class ReceiptHistoryViewModelTest {
 
           override suspend fun delete(receiptId: String) = Unit
         }
-    val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(mock(ItemRepository::class.java), store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     history.addDraft("photo", listOf(StagedItem("a", "Apple", 1, 100)))
@@ -587,16 +498,7 @@ class ReceiptHistoryViewModelTest {
     val repository = mock(ItemRepository::class.java)
     `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(CompletableDeferred()))
     `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
@@ -636,16 +538,7 @@ class ReceiptHistoryViewModelTest {
     }
     val statuses = MutableSharedFlow<InventorySubmissionStatus>()
     `when`(repository.observeSubmission(anyK())).thenReturn(statuses)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
@@ -681,16 +574,7 @@ class ReceiptHistoryViewModelTest {
     `when`(repository.addItems(anyK()))
         .thenReturn(ItemWrite.Queued(first), ItemWrite.Queued(second))
     `when`(repository.observeSubmission(anyK())).thenReturn(MutableSharedFlow())
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
@@ -730,16 +614,7 @@ class ReceiptHistoryViewModelTest {
     val confirmation = CompletableDeferred<Result<Unit>>()
     `when`(repository.addItems(anyK())).thenReturn(ItemWrite.Queued(confirmation))
     `when`(repository.observeSubmission(anyK())).thenReturn(status)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     status.emit(InventorySubmissionStatus.PENDING)
@@ -759,16 +634,7 @@ class ReceiptHistoryViewModelTest {
   fun cancelledRefreshAndEditPreserveDraftWithoutReportingStorageError() = runTest {
     val store = MemoryStore()
     val repository = mock(ItemRepository::class.java)
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            mock(ReceiptPhotoStore::class.java),
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, mock(ReceiptPhotoStore::class.java))
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     val rows = listOf(StagedItem("a", "Apple", 1, 100))
@@ -799,16 +665,7 @@ class ReceiptHistoryViewModelTest {
         .thenReturn(ItemWrite.Rejected(IllegalStateException("already acknowledged")))
     `when`(repository.observeSubmission(anyK()))
         .thenReturn(kotlinx.coroutines.flow.flowOf(InventorySubmissionStatus.CONFIRMED))
-    val history =
-        ReceiptHistoryViewModel(
-            repository,
-            store,
-            mock(ReceiptPhotoStore::class.java),
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(repository, store, mock(ReceiptPhotoStore::class.java))
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     history.refresh()
@@ -834,16 +691,7 @@ class ReceiptHistoryViewModelTest {
     store.save(InventorySubmission(id, "owner", "home", rows, draft = true))
     val photos = mock(ReceiptPhotoStore::class.java)
     `when`(photos.retain(anyK(), anyK())).thenThrow(IllegalStateException("disk full"))
-    val history =
-        ReceiptHistoryViewModel(
-            mock(ItemRepository::class.java),
-            store,
-            photos,
-            "owner",
-            "home",
-            expenses = mock(ExpenseSubmissionRepository::class.java),
-            cloud = EmptyReceiptCloud,
-            now = { 0L })
+    val history = historyModel(mock(ItemRepository::class.java), store, photos)
     owners += ViewModelStore().also { it.put("history", history) }
     runCurrent()
     try {
