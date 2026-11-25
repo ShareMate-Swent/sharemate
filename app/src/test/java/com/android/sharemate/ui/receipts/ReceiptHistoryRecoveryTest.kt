@@ -52,6 +52,16 @@ class ReceiptHistoryRecoveryTest {
     Dispatchers.resetMain()
   }
 
+  // Stop retries before runTest drains virtual time; @After runs too late for that.
+  private fun runHistoryTest(block: suspend TestScope.() -> Unit) = runTest {
+    try {
+      block()
+    } finally {
+      lifecycle.clear()
+      runCurrent()
+    }
+  }
+
   private fun TestScope.store() =
       AndroidInventorySubmissionStore(
           RuntimeEnvironment.getApplication(), StandardTestDispatcher(testScheduler))
@@ -76,7 +86,7 @@ class ReceiptHistoryRecoveryTest {
           }
 
   @Test
-  fun acknowledgedRemoteDeletionSurvivesPhotoAndStoreFailureAndRestart() = runTest {
+  fun acknowledgedRemoteDeletionSurvivesPhotoAndStoreFailureAndRestart() = runHistoryTest {
     val disk = store()
     disk.save(receipt())
     val expenses = mock(ExpenseSubmissionRepository::class.java)
@@ -87,7 +97,7 @@ class ReceiptHistoryRecoveryTest {
           }
         }
     val history = model(failingStore, expenses = expenses)
-    `when`(photos.delete(id)).thenThrow(IOException("Photo busy"))
+    `when`(photos.delete(id)).thenThrow(IllegalStateException("Photo busy"))
     assertFalse(history.deleteReceipt(id))
     assertTrue(history.error.value)
     assertTrue(disk.isDeletionAcknowledged("owner", "home", id))
@@ -105,7 +115,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun refusedDeletionDoesNotReportIoFailureOrTouchTheServer() = runTest {
+  fun refusedDeletionDoesNotReportIoFailureOrTouchTheServer() = runHistoryTest {
     val disk = store()
     val expenses = mock(ExpenseSubmissionRepository::class.java)
     disk.save(receipt(confirmed = false))
@@ -123,7 +133,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun viewerHistoryLoadsSharedMetadataWithoutChangingCreatorsJournal() = runTest {
+  fun viewerHistoryLoadsSharedMetadataWithoutChangingCreatorsJournal() = runHistoryTest {
     val disk = store()
     val peer = InventorySubmission(id, "alice", "home", rows)
     val details = ReceiptDetails(id, "alice", "home", "", 1, title = "Shared groceries")
@@ -139,7 +149,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runTest {
+  fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runHistoryTest {
     val store = store()
     val updates = MutableSharedFlow<List<ReceiptCloudEntry>>()
     val cloud =
@@ -181,7 +191,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun titleFallbacksAndFailuresKeepTheCurrentReviewRecoverable() = runTest {
+  fun titleFallbacksAndFailuresKeepTheCurrentReviewRecoverable() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
     var failure: Exception? = null
@@ -219,7 +229,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun cancellationsPropagateWhileResumeAndCloudFailuresBecomeVisible() = runTest {
+  fun cancellationsPropagateWhileResumeAndCloudFailuresBecomeVisible() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
     val cancelled = CancellationException("Stopped")
