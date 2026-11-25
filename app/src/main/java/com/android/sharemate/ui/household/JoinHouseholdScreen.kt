@@ -92,10 +92,7 @@ private fun JoinForm(
     viewModel: JoinHouseholdViewModel,
     onBack: () -> Unit,
 ) {
-  Column(
-      modifier = Modifier.fillMaxSize(),
-      verticalArrangement = Arrangement.spacedBy(Dimens.spacingL),
-  ) {
+  ScrollingColumn(verticalArrangement = Arrangement.spacedBy(Dimens.spacingL)) {
     AppStepIndicator(HouseholdLayout.FORM_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
     AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
     AppScreenTitle(

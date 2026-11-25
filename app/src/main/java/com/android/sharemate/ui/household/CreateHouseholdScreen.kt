@@ -97,13 +97,20 @@ fun CreateHouseholdScreen(
 /**
  * A column that fills the screen and scrolls when its content is taller, for example on a small
  * phone or with a large system font, so the last action can always be reached.
+ *
+ * @param verticalArrangement How the children are placed vertically, such as with a fixed gap.
+ * @param content The column's content.
  */
 @Composable
-internal fun ScrollingColumn(content: @Composable ColumnScope.() -> Unit) {
+internal fun ScrollingColumn(
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    content: @Composable ColumnScope.() -> Unit,
+) {
   BoxWithConstraints(Modifier.fillMaxSize()) {
     Column(
         modifier =
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+        verticalArrangement = verticalArrangement,
         content = content,
     )
   }

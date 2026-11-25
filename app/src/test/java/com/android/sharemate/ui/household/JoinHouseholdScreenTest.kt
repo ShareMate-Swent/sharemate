@@ -164,14 +164,14 @@ class JoinHouseholdScreenTest {
 
   @Test
   @Config(qualifiers = "w320dp-h240dp")
-  fun joinedViewScrollsSoGoToMyFridgeStaysReachableOnASmallScreen() {
+  fun joinFormAndJoinedViewScrollSoTheirButtonsStayReachableOnASmallScreen() {
     val viewModel = joinViewModel()
     var joined = 0
     composeTestRule.setContent {
       MaterialTheme { JoinHouseholdScreen(viewModel, onJoined = { joined++ }, onBack = {}) }
     }
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABC234")
-    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performScrollTo().performClick()
     composeTestRule.waitForIdle()
     composeTestRule
         .onNodeWithTag(JoinHouseholdTestTags.CONTINUE)
