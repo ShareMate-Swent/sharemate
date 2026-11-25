@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.receipt.*
@@ -36,7 +37,8 @@ class ReceiptCloudHistoryTest {
               mock(ReceiptPhotoStore::class.java),
               "bob",
               "home",
-              cloud = cloud)
+              cloud = cloud,
+              expenses = mock(ExpenseSubmissionRepository::class.java))
       lifecycle.put("first", history)
       runCurrent()
       val saved = entry("alice", false)
@@ -51,7 +53,9 @@ class ReceiptCloudHistoryTest {
               AndroidInventorySubmissionStore(app, dispatcher).forViewer("bob"),
               mock(ReceiptPhotoStore::class.java),
               "bob",
-              "home")
+              "home",
+              expenses = mock(ExpenseSubmissionRepository::class.java),
+              cloud = EmptyReceiptCloud)
       lifecycle.put("offline", restarted)
       runCurrent()
       assertEquals(saved.details, restarted.receipts.value.single().details)
@@ -76,7 +80,8 @@ class ReceiptCloudHistoryTest {
               mock(ReceiptPhotoStore::class.java),
               "alice",
               "home",
-              cloud = cloud)
+              cloud = cloud,
+              expenses = mock(ExpenseSubmissionRepository::class.java))
       lifecycle.put("history", history)
       runCurrent()
       val draft = entry("alice", true)
@@ -113,7 +118,8 @@ class ReceiptCloudHistoryTest {
               mock(ReceiptPhotoStore::class.java),
               "alice",
               "home",
-              cloud = cloud)
+              cloud = cloud,
+              expenses = mock(ExpenseSubmissionRepository::class.java))
       lifecycle.put("history", history)
       runCurrent()
       cloud.entries.emit(listOf(saved))

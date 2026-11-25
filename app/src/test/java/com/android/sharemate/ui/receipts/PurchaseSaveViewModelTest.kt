@@ -57,6 +57,7 @@ class PurchaseSaveViewModelTest {
     vm.retry()
     runCurrent()
     assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
+    assertTrue(vm.state.value.correctionPending)
     store.correctionReadFailure = CancellationException("Stopped")
     vm.retry()
     runCurrent()

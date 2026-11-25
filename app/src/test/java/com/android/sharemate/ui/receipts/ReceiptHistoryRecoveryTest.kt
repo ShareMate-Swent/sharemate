@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.receipt.*
@@ -57,9 +58,17 @@ class ReceiptHistoryRecoveryTest {
 
   private fun TestScope.model(
       store: InventorySubmissionStore,
-      cloud: ReceiptCloudRepository? = null
+      cloud: ReceiptCloudRepository = EmptyReceiptCloud
   ): ReceiptHistoryViewModel =
-      ReceiptHistoryViewModel(items, store, photos, "owner", "home", now = { 7 }, cloud = cloud)
+      ReceiptHistoryViewModel(
+              items,
+              store,
+              photos,
+              "owner",
+              "home",
+              now = { 7 },
+              cloud = cloud,
+              expenses = mock(ExpenseSubmissionRepository::class.java))
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)
             runCurrent()
@@ -105,7 +114,8 @@ class ReceiptHistoryRecoveryTest {
     }
     updates.emit(listOf(remote))
     runCurrent()
-    updates.emit(listOf(remote.copy(details = remote.details.copy(title = "Changed title"))))
+    updates.emit(
+        listOf(remote.copy(details = remote.details.copy(title = "Changed title", revision = 1))))
     runCurrent()
     assertEquals("Changed title", history.receipts.value.single().details?.title)
     store.saveCorrection(ReceiptCorrection("revision", remote.submission, receipt(), "Pending"))

@@ -81,6 +81,7 @@ class PurchaseReviewTest {
       vm.selectPayer("a")
       vm.toggleParticipant("b")
       assertNull(vm.confirmedPurchase())
+      assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
       assertNotNull(vm.confirmedItems())
     }
   }
@@ -174,7 +175,7 @@ class PurchaseReviewTest {
     assertNull(vm.state.value.purchase?.paidBy)
     assertNull(vm.confirmedPurchase())
     vm.selectPayer("b")
-    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
   }
 
   @Test
