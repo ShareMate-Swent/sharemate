@@ -11,5 +11,5 @@
     <string name="receipt_review_items">Review items</string>
     <string name="receipt_view_receipt">View receipt</string>
     <string name="receipt_edit_failed">Could not save receipt changes. Try again.</string>
-    <string name="receipt_sync_failed">Receipt updates are unavailable. Retrying automatically.</string>
+    <string name="receipt_sync_failed">Receipt updates are unavailable.</string>
 </resources>

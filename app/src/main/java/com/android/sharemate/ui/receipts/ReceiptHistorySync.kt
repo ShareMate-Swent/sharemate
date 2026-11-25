@@ -3,6 +3,7 @@ package com.android.sharemate.ui.receipts
 
 import android.util.Log
 import com.android.sharemate.model.receipt.ReceiptCloudEntry
+import com.android.sharemate.model.receipt.ReceiptCloudPermanentException
 import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import kotlinx.coroutines.CancellationException
@@ -88,7 +89,8 @@ class ReceiptHistorySync(
       } catch (failure: Exception) {
         setFailed(operation, true)
         // Do not log exception messages or payloads, which can contain receipt/account data.
-        Log.w("ReceiptSync", "$operation failed (${failure.javaClass.simpleName}); retrying")
+        Log.w("ReceiptSync", "$operation failed (${failure.javaClass.simpleName})")
+        if (failure is ReceiptCloudPermanentException) return
       }
       delay(backoff)
       backoff = (backoff * 2).coerceAtMost(MAX_RETRY_MILLIS)

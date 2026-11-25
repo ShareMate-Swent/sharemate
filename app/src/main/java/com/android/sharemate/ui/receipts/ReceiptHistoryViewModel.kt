@@ -54,7 +54,7 @@ class ReceiptHistoryViewModel(
   private val mutableError = MutableStateFlow(false)
   /** True when local history could not be read or edited; successful operations clear it. */
   val error = mutableError.asStateFlow()
-  /** Cloud/recovery failure, cleared only by that operation succeeding after an automatic retry. */
+  /** Cloud/recovery failure; permanent failures remain visible until this screen is recreated. */
   val syncError = synchronization.error
   private val mutableScanToReview = MutableStateFlow<String?>(null)
   /** Newly scanned receipt whose review has yet to be opened. */

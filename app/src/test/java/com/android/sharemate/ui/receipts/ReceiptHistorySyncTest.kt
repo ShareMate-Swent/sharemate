@@ -3,6 +3,7 @@ package com.android.sharemate.ui.receipts
 
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.receipt.ReceiptCloudEntry
+import com.android.sharemate.model.receipt.ReceiptCloudPermanentException
 import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import java.io.IOException
@@ -21,6 +22,34 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiptHistorySyncTest {
+  @Test
+  fun permanentFailuresStopBothObserversAndKeepTheErrorVisible() = runTest {
+    var attempts = 0
+    val cloud =
+        object : ReceiptCloudRepository {
+          override fun observe(
+              ownerId: String,
+              householdId: String
+          ): Flow<List<ReceiptCloudEntry>> {
+            attempts++
+            throw ReceiptCloudPermanentException(IllegalStateException("Access revoked"))
+          }
+
+          override fun observeDeleted(ownerId: String, householdId: String): Flow<Set<String>> {
+            attempts++
+            throw ReceiptCloudPermanentException(IllegalStateException("Access revoked"))
+          }
+        }
+    val sync = ReceiptHistorySync(store, cloud, "owner", "home")
+    val job = sync.start(backgroundScope) {}
+    runCurrent()
+    advanceTimeBy(300_000)
+    runCurrent()
+    assertEquals(2, attempts)
+    assertTrue(job.isCompleted)
+    assertTrue(sync.error.value)
+  }
+
   private val store =
       object : InventorySubmissionStore {
         override suspend fun load(ownerId: String, householdId: String) = null
