@@ -78,6 +78,18 @@ jobs:
           disable-animations: true
           script: adb reverse tcp:9099 tcp:9099 && firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate-ci "./gradlew connectedDebugAndroidTest --no-daemon --stacktrace --init-script .github/firebase-emulator.init.gradle"
 
+      - name: Preserve test and emulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-diagnostics
+          path: |
+            app/build/reports/tests/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            *debug.log
+          retention-days: 7
+
       - name: Generate coverage and debug lint reports
         run: ./gradlew :app:jacocoTestReport :app:lintDebug --no-daemon --stacktrace
 
