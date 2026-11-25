@@ -148,7 +148,7 @@ private fun InviteCodeCard(name: String, inviteCode: String) {
         InviteActionButton(
             icon = Icons.Outlined.ContentCopy,
             label = stringResource(R.string.copy_invite_code_action),
-            onClick = { clipboard.setText(AnnotatedString(inviteCode)) },
+            onClick = { copyInviteCode(clipboard, inviteCode) },
             modifier = Modifier.weight(1f).testTag(CreateHouseholdTestTags.COPY_INVITE_CODE),
         )
         InviteActionButton(

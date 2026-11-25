@@ -26,7 +26,6 @@ internal object HouseholdLayout {
   // "Household ready" view after creating a household.
   val readyBadgeSize = 88.dp
   val readyBadgeIconSize = 40.dp
-  val inviteCharWidth = 40.dp
   val inviteCharHeight = 46.dp
 
   // Rows of the members list.

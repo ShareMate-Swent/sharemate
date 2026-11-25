@@ -271,6 +271,32 @@ class CreateHouseholdScreenTest {
   }
 
   @Test
+  fun readyViewScrollsSoGoToMyFridgeStaysReachableOnASmallScreen() {
+    val viewModel = createViewModel()
+    var continueCount = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        Box(Modifier.height(240.dp)) {
+          CreateHouseholdScreen(viewModel, onContinue = { continueCount++ }, onBack = {})
+        }
+      }
+    }
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.NAME)
+        .performScrollTo()
+        .performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.CONTINUE)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    assertEquals(1, continueCount)
+  }
+
+  @Test
   fun shareOpensChooserWithInviteCode() {
     composeTestRule.setContent {
       MaterialTheme { CreateHouseholdScreen(createViewModel(), onContinue = {}, onBack = {}) }

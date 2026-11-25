@@ -82,21 +82,29 @@ fun CreateHouseholdScreen(
                     horizontal = Dimens.screenHorizontalPadding,
                     vertical = Dimens.screenVerticalPadding),
     ) {
-      if (state.inviteCode == null) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-          Column(
-              modifier =
-                  Modifier.fillMaxWidth()
-                      .verticalScroll(rememberScrollState())
-                      .heightIn(min = maxHeight),
-          ) {
-            CreateHouseholdForm(state, viewModel, onBack)
-          }
+      ScrollingColumn {
+        if (state.inviteCode == null) {
+          CreateHouseholdForm(state, viewModel, onBack)
+        } else {
+          HouseholdReady(state.name, state.inviteCode, state.type, onContinue)
         }
-      } else {
-        HouseholdReady(state.name, state.inviteCode, state.type, onContinue)
       }
     }
+  }
+}
+
+/**
+ * A column that fills the screen and scrolls when its content is taller, for example on a small
+ * phone or with a large system font, so the last action can always be reached.
+ */
+@Composable
+private fun ScrollingColumn(content: @Composable ColumnScope.() -> Unit) {
+  BoxWithConstraints(Modifier.fillMaxSize()) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
+        content = content,
+    )
   }
 }
 

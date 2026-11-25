@@ -18,9 +18,10 @@ import com.android.sharemate.R
 
 /**
  * A row of segments showing progress through a short flow, such as onboarding. The first
- * [currentStep] segments use the primary color, the others the outline color.
+ * [currentStep] segments use the primary color, the others the `outlineVariant` color.
  *
- * @param currentStep The step the user is on, from 1. Values outside `0..stepCount` are clamped.
+ * @param currentStep The step the user is on, from 1; 0 means no step is reached yet. Values
+ *   outside `0..stepCount` are clamped.
  * @param stepCount The number of steps in the flow.
  * @param modifier Applied to the indicator.
  */

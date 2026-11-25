@@ -16,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import com.android.sharemate.ui.theme.Dimens
 
 /**
@@ -31,7 +34,8 @@ internal fun HouseholdErrorBanner(message: String, testTag: String, modifier: Mo
   Surface(
       shape = MaterialTheme.shapes.medium,
       color = colors.errorContainer,
-      modifier = modifier.fillMaxWidth(),
+      // Polite live region: TalkBack reads the banner out when it appears after a failure.
+      modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
   ) {
     Row(
         modifier = Modifier.padding(Dimens.spacingM),
