@@ -29,6 +29,8 @@ interface InventorySubmissionStore {
   suspend fun applyCloudDeletions(ownerId: String, householdId: String, ids: Set<String>) {}
   /** Locally discarded identities must not be restored by a delayed cloud snapshot. */
   suspend fun isDeleted(ownerId: String, householdId: String, id: String): Boolean = false
+  /** Retains the tombstone but stops replaying a server-acknowledged deletion. */
+  suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {}
   /** Cached household receipts visible to this viewer, excluding their own history. */
   suspend fun sharedReceipts(viewerId: String, householdId: String): List<InventorySubmission> =
       emptyList()
@@ -151,6 +153,9 @@ class AndroidInventorySubmissionStore(
       val prefix = "deleted:${key(ownerId, householdId)}:"
       for (entry in
           preferences.all.filterKeys { it.startsWith(prefix) }.filterValues { it == true }) {
+        if (preferences.getBoolean(
+            "deleteAcked:${key(ownerId, householdId)}:${entry.key.removePrefix(prefix)}", false))
+            continue
         val receipt =
             InventorySubmission(
                 entry.key.removePrefix(prefix), ownerId, householdId, emptyList(), draft = true)
@@ -163,11 +168,23 @@ class AndroidInventorySubmissionStore(
     val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher)
     for (id in ids) {
       cache.deleteReceipt(ownerId, householdId, id)
+      cache.acknowledgeDeletion(ownerId, householdId, id)
       com.android.sharemate.model.receipt
           .AndroidReceiptPhotoStore(applicationContext, dispatcher)
           .delete(id)
     }
   }
+
+  override suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          check(
+              preferences
+                  .edit()
+                  .putBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", true)
+                  .commit())
+        }
+      }
 
   override suspend fun isDeleted(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
