@@ -78,7 +78,7 @@ class ReceiptHistoryRecoveryTest {
               "owner",
               "home",
               now = { 7 },
-              cloud = cloud,
+              synchronization = ReceiptHistorySync(store, cloud, "owner", "home"),
               expenses = expenses)
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)

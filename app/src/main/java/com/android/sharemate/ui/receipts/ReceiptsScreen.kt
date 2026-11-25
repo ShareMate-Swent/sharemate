@@ -135,15 +135,18 @@ fun ReceiptsScreen(
           factory =
               viewModelFactory {
                 initializer {
+                  val store =
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId)
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = false)
-                          .forViewer(userId),
+                      store,
                       AndroidReceiptPhotoStore(context),
                       userId,
                       householdId,
                       expenses = expenseRepository,
-                      cloud = receiptCloudRepository,
+                      synchronization =
+                          ReceiptHistorySync(store, receiptCloudRepository, userId, householdId),
                       now = System::currentTimeMillis)
                 }
               })
@@ -315,7 +318,10 @@ internal fun ReceiptHistoryFlow(
                     Text(stringResource(R.string.receipt_scan_purchase))
                   }
                 }
-                if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
+                if (syncFailed)
+                    Text(
+                        stringResource(R.string.receipt_sync_failed),
+                        Modifier.testTag(ReceiptHistoryTestTags.SYNC_ERROR))
                 if (editFailed) {
                   Text(stringResource(R.string.receipt_edit_failed))
                   Button(onClick = history::reload) {
@@ -424,7 +430,6 @@ internal fun ReceiptHistoryFlow(
                             .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
               }
               Text(stringResource(receipt.phase.labelResource()))
-              if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
               if (editFailed) Text(stringResource(R.string.receipt_edit_failed))
               if (receipt.phase == InventorySavePhase.FAILED) {
                 Button(onClick = { history.retry(receipt.submission.id) }) {
@@ -478,6 +483,8 @@ private fun InventorySavePhase.labelResource(): Int =
 
 /** Stable semantics for opening a retained receipt photo. */
 object ReceiptHistoryTestTags {
+  /** Household synchronization failure, displayed once above the receipt list. */
+  const val SYNC_ERROR = "receipt_sync_error"
   const val PHOTO_PREVIEW = "receipt_photo_preview"
   const val PHOTO_EXPANDED = "receipt_photo_expanded"
 }

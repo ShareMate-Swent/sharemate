@@ -101,7 +101,7 @@ class ReceiptCloudHistoryTest {
               owner,
               "home",
               mock(ExpenseSubmissionRepository::class.java),
-              cloud,
+              ReceiptHistorySync(store, cloud, owner, "home"),
               { 0L })
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)

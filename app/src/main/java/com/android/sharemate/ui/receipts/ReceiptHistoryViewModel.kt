@@ -8,7 +8,6 @@ import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemWrite
-import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoStore
 import com.android.sharemate.model.receipt.normalizeReceiptTitle
 import com.android.sharemate.model.staging.InventorySubmissionStore
@@ -40,10 +39,8 @@ class ReceiptHistoryViewModel(
     private val ownerId: String,
     private val householdId: String,
     private val expenses: ExpenseSubmissionRepository,
-    cloud: ReceiptCloudRepository,
+    private val synchronization: ReceiptHistorySync,
     private val now: () -> Long,
-    private val synchronization: ReceiptHistorySync =
-        ReceiptHistorySync(store, cloud, ownerId, householdId),
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
   /** Receipts belonging to this account and household, including pending and failed saves. */

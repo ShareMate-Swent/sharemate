@@ -54,5 +54,6 @@ class ReceiptRemoteMergePolicyTest {
             null, null, entry.copy(details = details.copy(revision = -1)), false, false))
     assertTrue(policy.shouldApplyRemote(null, null, entry, false, false))
     assertTrue(policy.shouldApplyRemote(saved, null, entry, false, false))
+    assertFalse(policy.shouldApplyRemote(saved, null, entry.copy(submission = draft), false, false))
   }
 }

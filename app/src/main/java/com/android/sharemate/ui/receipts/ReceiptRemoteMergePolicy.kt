@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import com.android.sharemate.model.item.ExpenseProgress
@@ -20,6 +21,7 @@ class ReceiptRemoteMergePolicy {
   ): Boolean {
     if (locallyDeleted || correctionPending || entry.details.revision < 0) return false
     if (local == null) return true
+    if (entry.submission.draft && !local.draft) return false
     if (local.draft || local.expenseProgress != ExpenseProgress.CONFIRMED) return false
     return localDetails == null || entry.details.revision > localDetails.revision
   }

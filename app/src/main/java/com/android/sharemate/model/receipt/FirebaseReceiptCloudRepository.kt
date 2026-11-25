@@ -98,7 +98,7 @@ class FirebaseReceiptCloudRepository(
                   } catch (cancelled: CancellationException) {
                     throw cancelled
                   } catch (_: Exception) {
-                    android.util.Log.w("ReceiptSync", "Skipping invalid receipt backup")
+                    android.util.Log.w(RECEIPT_SYNC_TAG, "Skipping invalid receipt backup")
                     null
                   }
                 }
@@ -109,7 +109,7 @@ class FirebaseReceiptCloudRepository(
             decoded.forEachIndexed { index, (entry, ready) ->
               if (ready && entry.details.photoUri.isEmpty())
                   launch {
-                    var retryMillis = INITIAL_PHOTO_RETRY_MILLIS
+                    var retryMillis = RECEIPT_INITIAL_RETRY_MILLIS
                     while (true) {
                       var pending: File? = null
                       try {
@@ -148,15 +148,16 @@ class FirebaseReceiptCloudRepository(
                       } catch (cancelled: CancellationException) {
                         throw cancelled
                       } catch (failure: Exception) {
-                        val classified = receiptCloudFailure(failure)
-                        if (classified is ReceiptCloudPermanentException) throw classified
+                        android.util.Log.w(
+                            RECEIPT_SYNC_TAG,
+                            "Photo download failed (${failure.javaClass.simpleName})")
                         // Retry without requiring a new Firestore event, while observation is
                         // active.
                       } finally {
                         pending?.delete()
                       }
                       delay(retryMillis)
-                      retryMillis = (retryMillis * 2).coerceAtMost(MAX_PHOTO_RETRY_MILLIS)
+                      retryMillis = nextReceiptRetry(retryMillis, RECEIPT_PHOTO_MAX_RETRY_MILLIS)
                     }
                   }
             }
@@ -195,11 +196,6 @@ class FirebaseReceiptCloudRepository(
                 ?.toSet()
                 .orEmpty(),
             document.getLong(ReceiptCloudPaths.REVISION) ?: 0))
-  }
-
-  private companion object {
-    const val INITIAL_PHOTO_RETRY_MILLIS = 1_000L
-    const val MAX_PHOTO_RETRY_MILLIS = 300_000L
   }
 
   private fun watch(query: Query): Flow<List<DocumentSnapshot>> = callbackFlow {
