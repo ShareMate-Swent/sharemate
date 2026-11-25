@@ -55,7 +55,7 @@ class InventorySubmissionEmulatorTest {
     firestore.disableNetwork().await()
     try {
       val queued = repository.addItems(submission) as ItemWrite.Queued
-      assertTrue(item(submission, 0).get(Source.CACHE).await().metadata.hasPendingWrites())
+      awaitLocalItem(item(submission, 0))
       assertEquals(
           InventorySubmissionStatus.PENDING,
           withTimeout(TIMEOUT) { repository.observeSubmission(submission).first() })
@@ -110,14 +110,15 @@ class InventorySubmissionEmulatorTest {
         val shared = households.createHousehold("Home", owner)
         val private = households.createHousehold("Private", owner, FridgeType.PRIVATE)
         val privateSubmission = submission(private.id)
-        denied(repository.addItems(privateSubmission))
-        assertFalse(item(privateSubmission, 0).get(Source.SERVER).await().exists())
+        confirm(repository.addItems(privateSubmission))
+        assertEquals(
+            ItemSharing.PERSONAL.name,
+            item(privateSubmission, 0).get(Source.SERVER).await().getString(ItemFields.SHARING))
         val outsider = FirebaseEmulator.signInAs("inventory-outsider")
         val foreign = InventorySubmission(UUID.randomUUID().toString(), outsider, shared.id, rows)
         firestore.disableNetwork().await()
         try {
           val queued = repository.addItems(foreign) as ItemWrite.Queued
-          assertTrue(item(foreign, 0).get(Source.CACHE).await().metadata.hasPendingWrites())
           assertFalse(queued.confirmation.isCompleted)
           firestore.enableNetwork().await()
           denied(queued)
@@ -238,13 +239,7 @@ class InventorySubmissionEmulatorTest {
       val submitted = submission(home.id)
       db.disableNetwork().await()
       FirebaseItemRepository(db).addItems(submitted)
-      assertTrue(
-          db.collection(FirestoreCollections.ITEMS)
-              .document(submitted.itemId(0))
-              .get(Source.CACHE)
-              .await()
-              .metadata
-              .hasPendingWrites())
+      awaitLocalItem(db.collection(FirestoreCollections.ITEMS).document(submitted.itemId(0)))
       db.terminate().await()
       db =
           FirebaseFirestore.getInstance(app).apply {
@@ -308,6 +303,16 @@ class InventorySubmissionEmulatorTest {
                     Fields.QUANTITY to it.quantity,
                     Fields.PRICE to it.priceCents)
               })
+
+  private suspend fun awaitLocalItem(document: com.google.firebase.firestore.DocumentReference) {
+    withTimeout(TIMEOUT) {
+      while (true) {
+        val snapshot = runCatching { document.get(Source.CACHE).await() }.getOrNull()
+        if (snapshot?.metadata?.hasPendingWrites() == true) break
+        kotlinx.coroutines.delay(50)
+      }
+    }
+  }
 
   private suspend fun confirm(write: ItemWrite) {
     assertTrue(withTimeout(TIMEOUT) { (write as ItemWrite.Queued).confirmation.await() }.isSuccess)

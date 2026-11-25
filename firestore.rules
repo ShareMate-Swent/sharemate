@@ -142,7 +142,8 @@ service cloud.firestore {
             && submissionId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
             && data.id == submissionId && data.ownerId == userId
             && data.householdId is string
-            && household.type == sharedFridgeType() && request.auth.uid in household.memberIds
+            && household.type in [privateFridgeType(), sharedFridgeType()]
+            && request.auth.uid in household.memberIds
             && data.rows is list && data.rows.size() > 0 && data.rows.size() <= maxRows;
       }
 

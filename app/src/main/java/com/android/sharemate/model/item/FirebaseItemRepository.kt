@@ -3,6 +3,8 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
+import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.model.household.HouseholdFields
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.model.text.exceeds
 import com.google.android.gms.tasks.Task
@@ -62,21 +64,37 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
   override fun addItems(submission: InventorySubmission): ItemWrite =
       submit(submission.id) {
         require(!submission.draft) { "A retained draft must be validated before submission" }
-        val batch = firestore.batch()
-        submission.items.forEachIndexed { index, row ->
-          val item =
-              Item(
-                  id = submission.itemId(index),
-                  name = row.name,
-                  quantity = row.quantity,
-                  ownerId = submission.ownerId,
-                  householdId = submission.householdId,
-                  sharing = ItemSharing.SHARED,
-                  status = ItemStatus.ACTIVE)
-          batch.set(items.document(item.id), item)
-        }
-        batch.set(submissionDocument(submission.ownerId, submission.id), submission.markerData())
-        batch.commit()
+        firestore
+            .collection(FirestoreCollections.HOUSEHOLDS)
+            .document(submission.householdId)
+            .get()
+            .continueWithTask(Executor { it.run() }) { householdTask ->
+              householdTask.exception?.let { throw it }
+              val household = householdTask.result
+              check(household.exists()) { "Household no longer exists" }
+              val sharing =
+                  when (household.getString(HouseholdFields.TYPE)) {
+                    FridgeType.PRIVATE.name -> ItemSharing.PERSONAL
+                    FridgeType.SHARED.name -> ItemSharing.SHARED
+                    else -> error("Unknown household type")
+                  }
+              val batch = firestore.batch()
+              submission.items.forEachIndexed { index, row ->
+                val item =
+                    Item(
+                        id = submission.itemId(index),
+                        name = row.name,
+                        quantity = row.quantity,
+                        ownerId = submission.ownerId,
+                        householdId = submission.householdId,
+                        sharing = sharing,
+                        status = ItemStatus.ACTIVE)
+                batch.set(items.document(item.id), item)
+              }
+              batch.set(
+                  submissionDocument(submission.ownerId, submission.id), submission.markerData())
+              batch.commit()
+            }
       }
 
   private fun InventorySubmission.markerData() =

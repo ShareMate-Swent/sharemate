@@ -41,7 +41,16 @@ class FirebaseInventorySubmissionTest {
           "home",
           listOf(StagedItem("milk", "Oat milk", 2, 480), StagedItem("bread", "Bread", 1, null)))
 
-  private fun repository(): FirebaseItemRepository {
+  private fun repository(privateHousehold: Boolean = false): FirebaseItemRepository {
+    val homes = mock(CollectionReference::class.java)
+    val home = mock(DocumentReference::class.java)
+    val snapshot = mock(DocumentSnapshot::class.java)
+    `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(homes)
+    `when`(homes.document(submission.householdId)).thenReturn(home)
+    `when`(snapshot.exists()).thenReturn(true)
+    `when`(snapshot.getString(com.android.sharemate.model.household.HouseholdFields.TYPE))
+        .thenReturn(if (privateHousehold) "PRIVATE" else "SHARED")
+    `when`(home.get()).thenReturn(com.google.android.gms.tasks.Tasks.forResult(snapshot))
     `when`(firestore.collection(FirestoreCollections.ITEMS)).thenReturn(items)
     `when`(firestore.collection(FirestoreCollections.USERS)).thenReturn(users)
     `when`(users.document(submission.ownerId)).thenReturn(user)
@@ -85,6 +94,23 @@ class FirebaseInventorySubmissionTest {
     assertEquals(2L, rows.first()[Fields.QUANTITY])
     verify(batch, times(1)).commit()
     assertFalse(write.confirmation.isCompleted)
+    task.setResult(null)
+    assertTrue(write.confirmation.await().isSuccess)
+  }
+
+  @Test
+  fun privateHouseholdStoresPersonalItemsWithoutAnExpense() = runTest {
+    val repository = repository(privateHousehold = true)
+    val refs =
+        submission.items.indices.map { index ->
+          mock(DocumentReference::class.java).also {
+            `when`(items.document(submission.itemId(index))).thenReturn(it)
+          }
+        }
+    val write = repository.addItems(submission) as ItemWrite.Queued
+    val saved = ArgumentCaptor.forClass(Item::class.java)
+    refs.forEach { verify(batch).set(eq(it), saved.capture()) }
+    assertTrue(saved.allValues.all { it.sharing == ItemSharing.PERSONAL })
     task.setResult(null)
     assertTrue(write.confirmation.await().isSuccess)
   }

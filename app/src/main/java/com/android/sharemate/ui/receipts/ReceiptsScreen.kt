@@ -72,13 +72,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Lets the user scan a receipt and review its items. Saving reviewed items to the fridge requires a
- * shared household.
+ * Lets the user scan a receipt and review its items. Private households save items directly; shared
+ * households additionally review the payer and participants.
  *
  * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
- * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
+ * @param sharedHousehold Whether receipts include the expense-sharing review.
  */
 @Composable
 fun ReceiptsScreen(
@@ -327,7 +327,8 @@ private fun ReceiptHistoryFlow(
         }
         var awaitingConfirmation by remember(entry) { mutableStateOf(false) }
         LaunchedEffect(receipt.phase, awaitingConfirmation) {
-          if (awaitingConfirmation && receipt.phase == InventorySavePhase.PENDING) {
+          if (awaitingConfirmation &&
+              receipt.phase in setOf(InventorySavePhase.PENDING, InventorySavePhase.CONFIRMED)) {
             nav.popBackStack(RECEIPTS_ROUTE, false)
           }
         }
@@ -390,7 +391,7 @@ private fun ReceiptHistoryFlow(
         StagingScreen(
             staging,
             onConfirm = { items ->
-              if (sharedHousehold && receipt.submission.draft && !savingReview) {
+              if (receipt.submission.draft && !savingReview) {
                 savingReview = true
                 reviewScope.launch {
                   try {
