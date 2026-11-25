@@ -132,6 +132,8 @@
     <string name="add_item_barcode_description">Fill in the details from its barcode</string>
     <string name="add_item_manual">Enter it manually</string>
     <string name="add_item_manual_description">Type the name, quantity and expiry</string>
+    <string name="add_item_receipt">Scan a receipt</string>
+    <string name="add_item_receipt_description">Add everything you bought at once</string>
     <string name="settings_profile_photo">Profile photo</string>
     <string name="settings_change_photo">Change profile photo</string>
     <string name="settings_photo_upload_failed">Your photo could not be uploaded. Your previous photo is kept.</string>

@@ -3,6 +3,7 @@ package com.android.sharemate.ui.navigation
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
@@ -12,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.ui.finance.BALANCES_ROUTE
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -29,6 +31,7 @@ class AppNavigationTest {
 
   private lateinit var nav: NavHostController
   private var fridgeEntry: NavBackStackEntry? = null
+  private val transitions = ScreenTransitions()
 
   /** The app's routes that these tests visit, with the Settings deep link of a notification. */
   @Before
@@ -36,6 +39,10 @@ class AppNavigationTest {
     compose.setContent {
       nav = rememberNavController()
       fridgeEntry = nav.rememberFridgeEntry()
+      DisposableEffect(nav) {
+        val detach = transitions.attach(nav)
+        onDispose { detach() }
+      }
       NavHost(nav, startDestination = TopLevelDestination.FRIDGE.route) {
         composable(
             TopLevelDestination.FRIDGE.route,
@@ -129,6 +136,94 @@ class AppNavigationTest {
     compose.runOnIdle {
       assertEquals(TopLevelDestination.RECEIPTS.route, route())
       assertSame(fridge, fridgeEntry)
+    }
+  }
+
+  @Test
+  fun choosingAReceiptFromBalancesOpensReceiptsWithTheRequestAndClosesTheSheet() {
+    val menu = AddItemMenuViewModel().apply { openSheet() }
+    compose.runOnIdle {
+      nav.selectTab(TopLevelDestination.RECEIPTS)
+      nav.navigate(BALANCES_ROUTE)
+    }
+    compose.runOnIdle { nav.startAddItem(AddItemMethod.RECEIPT, menu, transitions) }
+    compose.runOnIdle {
+      assertEquals(TopLevelDestination.RECEIPTS.route, route())
+      assertEquals(AddItemMethod.RECEIPT, menu.request.value)
+      assertFalse(menu.isSheetOpen.value)
+    }
+  }
+
+  @Test
+  fun cancellingAReceiptScanStartedOnTheFridgeGoesBackToTheFridgeOnce() {
+    val menu = AddItemMenuViewModel()
+    compose.runOnIdle { nav.startAddItem(AddItemMethod.RECEIPT, menu, transitions) }
+    compose.runOnIdle { assertEquals(TopLevelDestination.RECEIPTS.route, route()) }
+    compose.runOnIdle { nav.cancelAddItem(menu, transitions) }
+    compose.runOnIdle { assertEquals(TopLevelDestination.FRIDGE.route, route()) }
+
+    // The way back is used: a later cancel on Receipts stays there.
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    compose.runOnIdle { nav.cancelAddItem(menu, transitions) }
+    compose.runOnIdle { assertEquals(TopLevelDestination.RECEIPTS.route, route()) }
+  }
+
+  @Test
+  fun cancellingOnTheTabOfTheAddButtonStaysThere() {
+    val menu = AddItemMenuViewModel()
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    compose.runOnIdle {
+      nav.startAddItem(AddItemMethod.RECEIPT, menu, transitions)
+      nav.cancelAddItem(menu, transitions)
+    }
+    compose.runOnIdle { assertEquals(TopLevelDestination.RECEIPTS.route, route()) }
+  }
+
+  @Test
+  fun choosingTheFridgeFormFromReceiptsStaysOnReceiptsWithTheRequest() {
+    val menu = AddItemMenuViewModel()
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    for (method in listOf(AddItemMethod.MANUAL, AddItemMethod.BARCODE)) {
+      compose.runOnIdle { nav.startAddItem(method, menu, transitions) }
+      compose.runOnIdle {
+        // The form opens over Receipts; only a saved item opens the fridge.
+        assertEquals(TopLevelDestination.RECEIPTS.route, route())
+        assertEquals(method, menu.request.value)
+      }
+    }
+  }
+
+  @Test
+  fun addButtonFlowsSwitchTabsWithoutAFadeOnlyOnce() {
+    val menu = AddItemMenuViewModel()
+    val fridge = compose.runOnIdle { checkNotNull(nav.currentBackStackEntry) }
+    compose.runOnIdle { nav.startAddItem(AddItemMethod.RECEIPT, menu, transitions) }
+    val receipts = compose.runOnIdle { checkNotNull(nav.currentBackStackEntry) }
+    compose.runOnIdle {
+      assertTrue(transitions.isInstant(receipts))
+      // The fridge stays in front until the receipt photo covers the switch.
+      assertTrue(transitions.opensUnderFlow(receipts))
+    }
+
+    compose.runOnIdle { nav.cancelAddItem(menu, transitions) }
+    compose.runOnIdle {
+      val back = checkNotNull(nav.currentBackStackEntry)
+      assertEquals(TopLevelDestination.FRIDGE.route, back.destination.route)
+      assertTrue(transitions.isInstant(back))
+      // No dialog covers the way back: the tab shows at once.
+      assertFalse(transitions.opensUnderFlow(back))
+      assertFalse(transitions.isInstant(receipts))
+    }
+
+    // A tab tapped afterwards fades as usual, back to the fridge too.
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    compose.runOnIdle {
+      assertFalse(transitions.isInstant(checkNotNull(nav.currentBackStackEntry)))
+    }
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.FRIDGE) }
+    compose.runOnIdle {
+      assertFalse(transitions.isInstant(checkNotNull(nav.currentBackStackEntry)))
+      assertFalse(transitions.isInstant(fridge))
     }
   }
 }

@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,6 +34,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -159,6 +162,43 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
     compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
     compose.runOnIdle { assertTrue(balancesOpened[0]) }
+  }
+
+  @Test
+  fun receiptOptionOfTheAddButtonOpensTheReceiptPhotoOnceAndReportsItsCancel() {
+    var handled = 0
+    var cancelled = 0
+    // Like the app, the request ends once the screen reports it handled.
+    val requested = mutableStateOf(true)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = UUID.randomUUID().toString(),
+            householdId = UUID.randomUUID().toString(),
+            sharedHousehold = true,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = {
+              handled++
+              requested.value = false
+            },
+            onScanReceiptCancelled = {
+              cancelled++
+              // Opened on Receipts itself: the app stays on it.
+              false
+            })
+      }
+    }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(1, handled)
+      assertEquals(1, cancelled)
+    }
+    // The receipts screen's own scan button is not the add button: no way back to report.
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancelled) }
   }
 
   @Test
