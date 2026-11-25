@@ -54,7 +54,7 @@ class HouseholdChoiceScreenTest {
         .onNodeWithContentDescription(
             activity.getString(
                 R.string.step_indicator_description,
-                HouseholdLayout.SETUP_STEP,
+                HouseholdLayout.CHOICE_STEP,
                 HouseholdLayout.ONBOARDING_STEP_COUNT))
         .assertIsDisplayed()
     composeTestRule

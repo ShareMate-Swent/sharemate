@@ -8,13 +8,16 @@ import androidx.compose.ui.unit.dp
 /** Sizes used only by the household screens. Shared sizes live in `Dimens`. */
 internal object HouseholdLayout {
   /** Number of steps of the onboarding flow shown by the step indicator. */
-  const val ONBOARDING_STEP_COUNT = 2
+  const val ONBOARDING_STEP_COUNT = 3
 
-  /** Onboarding step of the household choice, create and join screens. */
-  const val SETUP_STEP = 1
+  /** Onboarding step of the household choice screen. */
+  const val CHOICE_STEP = 1
+
+  /** Onboarding step of the create form and of the join screen, reached from the choice. */
+  const val FORM_STEP = 2
 
   /** Onboarding step of the "household ready" view, the last one before the app. */
-  const val READY_STEP = 2
+  const val READY_STEP = 3
 
   // Choice cards on the household choice screen.
   val choiceIconBoxSize = 52.dp

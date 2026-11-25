@@ -271,7 +271,7 @@ class CreateHouseholdScreenTest {
   }
 
   @Test
-  fun formShowsTheSetupStep() {
+  fun formShowsTheSecondStep() {
     val viewModel = createViewModel()
     composeTestRule.setContent {
       MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
@@ -280,7 +280,7 @@ class CreateHouseholdScreenTest {
         .onNodeWithContentDescription(
             composeTestRule.activity.getString(
                 R.string.step_indicator_description,
-                HouseholdLayout.SETUP_STEP,
+                HouseholdLayout.FORM_STEP,
                 HouseholdLayout.ONBOARDING_STEP_COUNT))
         .assertIsDisplayed()
   }
@@ -288,7 +288,8 @@ class CreateHouseholdScreenTest {
   @Test
   fun theReadyViewIsTheLastOnboardingStepSoNoStepIsPromisedThatNeverComes() {
     assertEquals(HouseholdLayout.ONBOARDING_STEP_COUNT, HouseholdLayout.READY_STEP)
-    assertEquals(HouseholdLayout.READY_STEP - 1, HouseholdLayout.SETUP_STEP)
+    assertEquals(HouseholdLayout.READY_STEP - 1, HouseholdLayout.FORM_STEP)
+    assertEquals(HouseholdLayout.FORM_STEP - 1, HouseholdLayout.CHOICE_STEP)
   }
 
   @Test

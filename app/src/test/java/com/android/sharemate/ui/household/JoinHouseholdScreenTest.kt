@@ -97,7 +97,7 @@ class JoinHouseholdScreenTest {
   }
 
   @Test
-  fun showsTheSetupStep() {
+  fun showsTheSecondStep() {
     composeTestRule.setContent {
       MaterialTheme { JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {}) }
     }
@@ -105,7 +105,7 @@ class JoinHouseholdScreenTest {
         .onNodeWithContentDescription(
             composeTestRule.activity.getString(
                 R.string.step_indicator_description,
-                HouseholdLayout.SETUP_STEP,
+                HouseholdLayout.FORM_STEP,
                 HouseholdLayout.ONBOARDING_STEP_COUNT))
         .assertIsDisplayed()
   }

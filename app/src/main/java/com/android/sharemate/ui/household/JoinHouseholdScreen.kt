@@ -75,7 +75,7 @@ fun JoinHouseholdScreen(
                     vertical = Dimens.screenVerticalPadding),
         verticalArrangement = Arrangement.spacedBy(Dimens.spacingL),
     ) {
-      AppStepIndicator(HouseholdLayout.SETUP_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+      AppStepIndicator(HouseholdLayout.FORM_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
       AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
       AppScreenTitle(
           title = stringResource(R.string.join_household_title),
