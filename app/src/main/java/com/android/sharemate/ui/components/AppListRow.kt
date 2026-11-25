@@ -43,6 +43,7 @@ fun AppCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -
  * @param onClick Called when the row is tapped; without it the row is not clickable.
  * @param leading Shown before the text, such as a `ProfileAvatar`.
  * @param trailing Shown after the text, usually an [AppTag] or a date.
+ * @param titleModifier Applied to the title text, for example to tag it in tests.
  */
 @Composable
 fun AppListRow(
@@ -52,6 +53,7 @@ fun AppListRow(
     onClick: (() -> Unit)? = null,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    titleModifier: Modifier = Modifier,
 ) {
   Row(
       modifier =
@@ -68,6 +70,7 @@ fun AppListRow(
         verticalArrangement = Arrangement.spacedBy(ComponentLayout.listRowTextSpacing)) {
           SingleLineText(
               text = title,
+              modifier = titleModifier,
               style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
           subtitle?.let {
             SingleLineText(

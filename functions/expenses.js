@@ -46,9 +46,6 @@ async function recordExpense(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in to record an expense.");
   const expense = parseExpense(request);
   if (!expense) throw new HttpsError("invalid-argument", "Invalid expense.");
-  if (expense.paidBy !== uid) {
-    throw new HttpsError("permission-denied", "Only the payer can record this expense.");
-  }
   const household = db.collection(HOUSEHOLDS).doc(expense.householdId);
   const document = household.collection(EXPENSES).doc(expense.id);
   // Bind one submitter's stable operation to one household, including across scope switches.
@@ -62,6 +59,8 @@ async function recordExpense(db, uid, request) {
         throw new HttpsError("permission-denied", "Shared household membership is required.");
       }
       const previous = (await transaction.get(operation)).data();
+      if ((await transaction.get(db.collection("users").doc(uid).collection("receiptDeletions").doc(expense.id))).exists)
+        throw new HttpsError("failed-precondition", "Receipt was deleted.");
       const existing = (await transaction.get(document)).data();
       if (previous || existing) {
         if (previous?.householdId !== expense.householdId || !existing ||
@@ -90,4 +89,4 @@ async function recordExpense(db, uid, request) {
   return request;
 }
 
-module.exports = { recordExpense };
+module.exports = { recordExpense, parseExpense, sameExpense };

@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.android.sharemate.R
 import com.android.sharemate.ui.theme.Dimens
 import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
@@ -196,5 +197,85 @@ class CommonComponentsTest {
     val root = compose.onRoot().getUnclippedBoundsInRoot()
     val last = compose.onNodeWithTag("nav_D").getUnclippedBoundsInRoot()
     assertTrue(last.right <= root.right)
+  }
+
+  private fun stepDescription(step: Int, count: Int) =
+      compose.activity.getString(R.string.step_indicator_description, step, count)
+
+  @Test
+  fun backButtonCallsBackAndIsLabelledForScreenReaders() {
+    show { AppBackButton(onBack = { calls += "back" }, testTag = "back") }
+    compose
+        .onNodeWithTag("back")
+        .assertContentDescriptionEquals(compose.activity.getString(R.string.back))
+        .performClick()
+    assertTouchTarget("back")
+    assertEquals(listOf("back"), calls)
+  }
+
+  @Test
+  fun backHeaderShowsTheTitleNextToTheBackButton() {
+    show {
+      AppBackHeader(title = "Members (4)", onBack = { calls += "back" }, backTestTag = "back")
+    }
+    compose.onNodeWithText("Members (4)").assertIsDisplayed()
+    compose.onNodeWithTag("back").performClick()
+    assertEquals(listOf("back"), calls)
+  }
+
+  @Test
+  fun screenTitleShowsItsDescriptionOnlyWhenThereIsOne() {
+    show {
+      AppScreenTitle(title = "With", description = "Described")
+      AppScreenTitle(title = "Without")
+    }
+    compose.onNodeWithText("With").assertIsDisplayed()
+    compose.onNodeWithText("Described").assertIsDisplayed()
+    compose.onNodeWithText("Without").assertIsDisplayed()
+  }
+
+  @Test
+  fun stepIndicatorDescribesTheCurrentStep() {
+    show { AppStepIndicator(currentStep = 2, stepCount = 3, modifier = Modifier.testTag("steps")) }
+    compose.onNodeWithTag("steps").assertContentDescriptionEquals(stepDescription(2, 3))
+  }
+
+  @Test
+  fun stepIndicatorClampsStepsOutsideTheFlow() {
+    show {
+      AppStepIndicator(currentStep = 9, stepCount = 3, modifier = Modifier.testTag("after"))
+      AppStepIndicator(currentStep = -1, stepCount = 3, modifier = Modifier.testTag("before"))
+    }
+    compose.onNodeWithTag("after").assertContentDescriptionEquals(stepDescription(3, 3))
+    compose.onNodeWithTag("before").assertContentDescriptionEquals(stepDescription(0, 3))
+  }
+
+  @Test
+  fun loadingPrimaryButtonShowsProgressAndCannotBeTapped() {
+    show {
+      AppPrimaryButton(
+          "Save",
+          { calls += "save" },
+          modifier = Modifier.testTag("save"),
+          loading = true,
+          loadingTestTag = "spinner")
+    }
+    compose.onNodeWithTag("spinner").assertIsDisplayed()
+    compose.onNodeWithText("Save").assertDoesNotExist()
+    compose.onNodeWithTag("save").assertIsNotEnabled()
+    assertTrue(calls.isEmpty())
+  }
+
+  @Test
+  fun loadingPrimaryButtonWorksWithoutAProgressTag() {
+    show { AppPrimaryButton("Save", {}, modifier = Modifier.testTag("save"), loading = true) }
+    compose.onNodeWithTag("save").assertIsNotEnabled()
+    compose.onNodeWithText("Save").assertDoesNotExist()
+  }
+
+  @Test
+  fun listRowTitleCanBeTagged() {
+    show { AppListRow(title = "Inge", titleModifier = Modifier.testTag("title")) }
+    compose.onNodeWithTag("title").assertTextEquals("Inge")
   }
 }

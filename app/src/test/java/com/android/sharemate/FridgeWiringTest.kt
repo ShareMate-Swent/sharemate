@@ -15,6 +15,7 @@ import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -52,7 +53,7 @@ class FridgeWiringTest {
   fun privateFridgeHasNoChatTab() {
     resolve(FridgeType.PRIVATE)
     compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.RECEIPTS_TAB).performClick().assertIsSelected()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick().assertIsSelected()
     compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
   }
@@ -74,8 +75,8 @@ class FridgeWiringTest {
     emit("student-home", "Bread")
     compose.onNodeWithText("Bread").assertExists()
     compose.onNodeWithText("Milk").assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
+    compose.onNodeWithTag(SettingsTestTags.BACK).performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.onNodeWithText("Bread").assertExists()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
@@ -85,7 +86,7 @@ class FridgeWiringTest {
   @Test
   fun signOutRemovesInventoryListenerEvenWhenFridgeEntryIsSaved() {
     resolve()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithText(compose.activity.getString(R.string.auth_sign_out)).performClick()
     compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
@@ -116,7 +117,7 @@ class FridgeWiringTest {
     resolve()
     emit("student-home", "Old inventory")
     compose.onNodeWithText("Old inventory").assertExists()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.runOnIdle {
       firebase.setHousehold("trusted-student-id", "replacement-home")
       val activityStore = compose.activity.viewModelStore

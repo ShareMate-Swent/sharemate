@@ -35,12 +35,7 @@ class InventorySubmission(
       }
       require(remaining == 0L)
     }
-    require(
-        expense == null ||
-            (!draft &&
-                expense.id == id &&
-                expense.householdId == householdId &&
-                expense.paidBy == ownerId))
+    require(expense == null || (!draft && expense.id == id && expense.householdId == householdId))
     require(expense != null || (!inventoryConfirmed && expenseProgress == ExpenseProgress.QUEUED))
     require(UUID.fromString(id).toString() == id)
     require(ownerId.isNotBlank() && '/' !in ownerId)

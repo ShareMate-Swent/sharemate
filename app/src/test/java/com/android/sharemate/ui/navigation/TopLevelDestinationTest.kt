@@ -4,6 +4,7 @@ package com.android.sharemate.ui.navigation
 
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
+import com.android.sharemate.ui.finance.BALANCES_ROUTE
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -36,7 +37,7 @@ class TopLevelDestinationTest {
             NavigationTestTags.RECIPES_TAB,
             NavigationTestTags.RECEIPTS_TAB,
             NavigationTestTags.CHAT_TAB,
-            NavigationTestTags.SETTINGS_TAB,
+            NavigationTestTags.PROFILE_ENTRY,
         ),
         TopLevelDestination.entries.map { it.testTag },
     )
@@ -62,21 +63,33 @@ class TopLevelDestinationTest {
   }
 
   @Test
-  fun aSharedFridgeOffersEveryTab() {
-    assertEquals(
-        TopLevelDestination.entries.toList(), TopLevelDestination.availableIn(FridgeType.SHARED))
+  fun theBottomBarShowsOnlyOnItsTabsAndTheirScreens() {
+    TopLevelDestination.bottomBar.forEach {
+      assertTrue(TopLevelDestination.showsBottomBar(it.route))
+    }
+    assertTrue(TopLevelDestination.showsBottomBar(BALANCES_ROUTE))
+    assertFalse(TopLevelDestination.showsBottomBar(TopLevelDestination.SETTINGS.route))
+    assertFalse(TopLevelDestination.showsBottomBar(ChildRoutes.HOUSEHOLD_MEMBERS))
+    assertFalse(TopLevelDestination.showsBottomBar(ChildRoutes.NOTIFICATION_SETTINGS))
+    // A screen that belongs to no tab has no bar until it is added to one.
+    assertFalse(TopLevelDestination.showsBottomBar("new-screen"))
+    assertFalse(TopLevelDestination.showsBottomBar(null))
+  }
+
+  @Test
+  fun aSharedFridgeShowsEveryBottomBarTab() {
+    assertEquals(TopLevelDestination.bottomBar, TopLevelDestination.bottomBarFor(FridgeType.SHARED))
     TopLevelDestination.entries.forEach { assertTrue(it.isAvailableIn(FridgeType.SHARED)) }
   }
 
   @Test
-  fun aPrivateFridgeOffersEveryTabButChatInOrder() {
+  fun aPrivateFridgeShowsEveryBottomBarTabButChatInOrder() {
     assertEquals(
         listOf(
-            TopLevelDestination.FRIDGE,
-            TopLevelDestination.RECIPES,
-            TopLevelDestination.RECEIPTS,
-            TopLevelDestination.SETTINGS),
-        TopLevelDestination.availableIn(FridgeType.PRIVATE))
+            TopLevelDestination.FRIDGE, TopLevelDestination.RECIPES, TopLevelDestination.RECEIPTS),
+        TopLevelDestination.bottomBarFor(FridgeType.PRIVATE))
     assertFalse(TopLevelDestination.CHAT.isAvailableIn(FridgeType.PRIVATE))
+    // Settings is not in the bar but stays available, from the profile photo.
+    assertTrue(TopLevelDestination.SETTINGS.isAvailableIn(FridgeType.PRIVATE))
   }
 }
