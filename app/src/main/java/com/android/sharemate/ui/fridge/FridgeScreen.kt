@@ -348,7 +348,7 @@ fun FridgeScreen(
       uiState = uiState.copy(items = visibleItems),
       expiryStatuses = expiryStatuses,
       onAddItem = viewModel::openAddItemDialog,
-      onDismissAddItem = { viewModel.dismissAddItemDialog() },
+      onDismissAddItem = viewModel::dismissAddItemDialog,
       onNameChange = viewModel::updateName,
       onCategoryChange = viewModel::updateCategory,
       onExpirationDateChange = viewModel::updateExpirationDate,

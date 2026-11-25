@@ -43,6 +43,11 @@ data class FridgeUiState(
      * item in instead.
      */
     val closeOnBarcodeCancel: Boolean = false,
+    /**
+     * Whether an item from a form that the add button opened was saved, until the app opens the
+     * fridge to show it ([FridgeViewModel.addButtonSaveHandled]).
+     */
+    val addButtonItemSaved: Boolean = false,
     val isScanningBarcode: Boolean = false,
     val barcodeValue: String? = null,
     val barcodeScanFailed: Boolean = false,

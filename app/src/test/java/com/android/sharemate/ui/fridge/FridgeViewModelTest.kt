@@ -1947,23 +1947,44 @@ class FridgeViewModelTest {
   }
 
   @Test
-  fun dismissingReportsOnlyFormsThatTheAddButtonOpened() = runTest {
+  fun dismissingClearsHowTheAddButtonOpenedTheFormWithoutReportingASave() = runTest {
     val vm = viewModel()
     runCurrent()
     vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
-    assertTrue(vm.dismissAddItemDialog())
+    vm.dismissAddItemDialog()
     with(vm.uiState.value) {
       assertFalse(isAddItemDialogOpen)
       assertNull(addButtonMethod)
       assertFalse(scanBarcodeOnOpen)
       assertFalse(closeOnBarcodeCancel)
+      assertFalse(addButtonItemSaved)
     }
-    // Already closed: nothing to go back from.
-    assertFalse(vm.dismissAddItemDialog())
+  }
 
+  @Test
+  fun savingAnAddButtonFormKeepsTheSaveUntilItIsHandled() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.MANUAL)
+    vm.updateName("Milk")
+    vm.saveItem()
+    runCurrent()
+    with(vm.uiState.value) {
+      assertFalse(isAddItemDialogOpen)
+      assertNull(addButtonMethod)
+      // Kept for a host that may be recreated meanwhile.
+      assertTrue(addButtonItemSaved)
+    }
+    vm.addButtonSaveHandled()
+    assertFalse(vm.uiState.value.addButtonItemSaved)
+
+    // The fridge's own form does not ask to open the fridge.
     vm.openAddItemDialog()
-    assertNull(vm.uiState.value.addButtonMethod)
-    assertFalse(vm.dismissAddItemDialog())
+    vm.updateName("Bread")
+    vm.saveItem()
+    runCurrent()
+    assertEquals(listOf("Milk", "Bread"), repository.addedItems.map { it.name })
+    assertFalse(vm.uiState.value.addButtonItemSaved)
   }
 
   private fun TestScope.loaded(vararg items: Item): FridgeViewModel {

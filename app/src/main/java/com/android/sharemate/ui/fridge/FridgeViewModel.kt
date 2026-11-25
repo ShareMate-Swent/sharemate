@@ -643,16 +643,8 @@ class FridgeViewModel(
     mutableUiState.update { it.copy(scanBarcodeOnOpen = false) }
   }
 
-  /**
-   * Closes the add-item form without saving, unless it is saving.
-   *
-   * @return Whether it closed a form that the add button of the bottom bar opened, so the caller
-   *   can go back to where the user was.
-   */
-  fun dismissAddItemDialog(): Boolean {
-    val state = uiState.value
-    if (state.isSaving) return false
-    val fromAddButton = state.isAddItemDialogOpen && state.addButtonMethod != null
+  fun dismissAddItemDialog() {
+    if (uiState.value.isSaving) return
     personalPhotos?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
@@ -667,7 +659,11 @@ class FridgeViewModel(
               barcodeLookupError = null,
               formError = null)
     }
-    return fromAddButton
+  }
+
+  /** Called once the app opened the fridge for [FridgeUiState.addButtonItemSaved]. */
+  fun addButtonSaveHandled() {
+    mutableUiState.update { it.copy(addButtonItemSaved = false) }
   }
 
   /**
@@ -963,6 +959,8 @@ class FridgeViewModel(
                 .copy(
                     isSaving = false,
                     isAddItemDialogOpen = false,
+                    // Kept here, as the form may close while its host is being recreated.
+                    addButtonItemSaved = it.addButtonMethod != null,
                     barcodeValue = null,
                     barcodeScanFailed = false,
                     formError = null)

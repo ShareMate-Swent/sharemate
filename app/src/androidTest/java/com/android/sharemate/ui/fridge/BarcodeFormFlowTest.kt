@@ -9,6 +9,7 @@ import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.SavedStateHandle
@@ -33,6 +34,7 @@ import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -54,6 +56,8 @@ class BarcodeFormFlowTest {
   private lateinit var itemPhoto: PhotoPickerViewModel
   private lateinit var fridge: FridgeViewModel
   private val items = EmptyItems()
+  // Whether the add button's host is composed; false stands for an Activity being recreated.
+  private val hostShown = mutableStateOf(true)
   private var result: ProductLookupResult =
       ProductLookupResult.Found(ProductDetails("123", "Milk", "Farm"))
   private val scanned = mutableListOf<String>()
@@ -210,6 +214,28 @@ class BarcodeFormFlowTest {
   }
 
   @Test
+  fun aSaveEndingWhileTheHostIsRecreatedStillOpensTheFridge() {
+    var saved = 0
+    items.saveGate = CompletableDeferred()
+    showFridge(AddItemMethod.MANUAL, overOtherTab = true) { saved++ }
+    compose.runOnIdle { fridge.updateName("Milk") }
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    compose.waitUntil(10_000) { fridge.uiState.value.isSaving }
+    // The host leaves, as during an Activity recreation, and the save ends meanwhile.
+    compose.runOnIdle { hostShown.value = false }
+    compose.runOnIdle { checkNotNull(items.saveGate).complete(Unit) }
+    compose.waitUntil(10_000) { !fridge.uiState.value.isAddItemDialogOpen }
+    compose.runOnIdle { assertEquals(0, saved) }
+
+    compose.runOnIdle { hostShown.value = true }
+    compose.waitUntil(10_000) { saved == 1 }
+    compose.runOnIdle {
+      assertEquals(listOf("Milk"), items.savedNames)
+      assertFalse(fridge.uiState.value.addButtonItemSaved)
+    }
+  }
+
+  @Test
   fun manualOptionOnTheFridgeTabOpensTheFridgeForm() {
     val handled = mutableListOf<AddItemMethod>()
     showFridge(AddItemMethod.MANUAL, handled = { handled += it })
@@ -308,7 +334,7 @@ class BarcodeFormFlowTest {
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         MaterialTheme {
           if (!overOtherTab) FridgeScreen(viewModel = fridge)
-          AddItemHost(fridge, request, handled, overOtherTab, onSaved = saved)
+          if (hostShown.value) AddItemHost(fridge, request, handled, overOtherTab, onSaved = saved)
         }
       }
     }
@@ -335,9 +361,13 @@ class BarcodeFormFlowTest {
     compose.waitUntil(10_000) { picker.state.value.selection != null && !picker.state.value.busy }
   }
 
-  /** No stored items; records the names of the items saved, which only the save test does. */
+  /**
+   * No stored items; records the names of the items saved, which only the save tests do. A save
+   * waits for [saveGate] when it is set.
+   */
   private class EmptyItems : ItemRepository {
     val savedNames = mutableListOf<String>()
+    var saveGate: CompletableDeferred<Unit>? = null
 
     override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
         error("Server inventory reads are not used in this test")
@@ -353,6 +383,7 @@ class BarcodeFormFlowTest {
         error("Submission observation is not used in this test")
 
     override suspend fun addItem(item: Item): String? {
+      saveGate?.await()
       savedNames += item.name
       return "saved-${savedNames.size}"
     }
