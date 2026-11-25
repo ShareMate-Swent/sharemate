@@ -168,14 +168,17 @@ class ReceiptHistoryFlowTest {
   fun receiptOptionOfTheAddButtonOpensTheReceiptPhotoOnceAndReportsItsCancel() {
     var handled = 0
     var cancelled = 0
-    // Like the app, the request ends once the screen reports it handled.
-    val requested = mutableStateOf(true)
+    // Like the app, the request comes once the screen shows, and ends once it is handled.
+    val requested = mutableStateOf(false)
+    // Created once: new ids on each recomposition would reset the screen and its photo.
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
     compose.setContent {
       MaterialTheme {
         ReceiptsScreen(
             itemRepository = UnusedItems,
-            userId = UUID.randomUUID().toString(),
-            householdId = UUID.randomUUID().toString(),
+            userId = owner,
+            householdId = household,
             sharedHousehold = true,
             scanReceiptRequested = requested.value,
             onScanReceiptRequestHandled = {
@@ -189,6 +192,8 @@ class ReceiptHistoryFlowTest {
             })
       }
     }
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).assertIsDisplayed()
+    compose.runOnIdle { requested.value = true }
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed().performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
     compose.runOnIdle {
