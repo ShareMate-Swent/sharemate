@@ -107,7 +107,8 @@ class BoundedOcrImageLoaderTest {
     val loader = BoundedOcrImageLoader({ cache }) { _, _ -> throw SecurityException("denied") }
     val failure = runCatching { loader.load(uri) }.exceptionOrNull()
     assertTrue(failure is IOException)
-    assertTrue(failure?.cause is SecurityException)
+    // Coroutine stack-trace recovery can wrap the original IOException.
+    assertTrue(generateSequence(failure) { it.cause }.any { it is SecurityException })
     assertTrue(cache.listFiles().orEmpty().isEmpty())
   }
 
