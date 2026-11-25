@@ -13,7 +13,7 @@
     <string name="receipt_retry_members">Reload people</string>
     <string name="receipt_balance_loading">Balance unavailable</string>
     <string name="receipt_sync_pending">Sync pending</string>
-    <string name="receipt_sync_failed">Could not save changes</string>
+    <string name="receipt_save_changes_failed">Could not save changes</string>
     <string name="receipt_sync_retry">Retry</string>
     <string name="receipt_sync_saving">Saving…</string>
     <string name="receipt_title_label">Receipt title</string>

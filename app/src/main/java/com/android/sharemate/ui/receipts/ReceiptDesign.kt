@@ -87,7 +87,7 @@ internal fun ReceiptSyncFeedback(
       when {
         editFailed ||
             phase in setOf(InventorySavePhase.FAILED, InventorySavePhase.RECOVERY_FAILED) ->
-            R.string.receipt_sync_failed
+            R.string.receipt_save_changes_failed
         phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING) ->
             R.string.receipt_sync_saving
         phase == InventorySavePhase.PENDING -> R.string.receipt_sync_pending
