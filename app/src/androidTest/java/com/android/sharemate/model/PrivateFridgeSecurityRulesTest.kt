@@ -70,6 +70,17 @@ class PrivateFridgeSecurityRulesTest {
     assertEquals(fridge.id, Tasks.await(users.document(owner).get()).getString("householdId"))
   }
 
+  /** Deleting a private household is the job of the `deletePrivateHousehold` callable only. */
+  @Test
+  fun ownerCannotDeletePrivateFridgeDirectly() = runBlocking {
+    val owner = FirebaseEmulator.signInAs("owner")
+    val fridge = createFridge("private", owner, FridgeType.PRIVATE)
+
+    assertDenied(households.document(fridge.id).delete())
+
+    assertEquals(fridge, repository.getHousehold(fridge.id))
+  }
+
   @Test
   fun outsiderCannotReadPrivateFridgeEvenWithForgedProfile() = runBlocking {
     val owner = FirebaseEmulator.signInAs("owner")
