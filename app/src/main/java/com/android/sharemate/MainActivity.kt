@@ -411,10 +411,15 @@ open class MainActivity : ComponentActivity() {
                                             household.id,
                                             session.uid,
                                             session.displayName
-                                                ?: getString(R.string.chat_default_sender_name))
+                                                ?: getString(R.string.chat_default_sender_name),
+                                            profileRepository,
+                                            profilePhotoBucket)
                                       }
                                     })
-                        ChatScreen(chatViewModel)
+                        ChatScreen(
+                            chatViewModel,
+                            householdName = household.name,
+                            memberCount = household.memberIds.size)
                       }
                   composable(
                       TopLevelDestination.SETTINGS.route,
