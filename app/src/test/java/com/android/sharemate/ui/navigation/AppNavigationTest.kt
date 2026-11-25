@@ -12,6 +12,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.ui.finance.BALANCES_ROUTE
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -225,5 +228,20 @@ class AppNavigationTest {
       assertFalse(transitions.isInstant(checkNotNull(nav.currentBackStackEntry)))
       assertFalse(transitions.isInstant(fridge))
     }
+  }
+
+  @Test
+  fun bottomBarKeepsThePreviousTabUntilTheFlowCoversTheSwitch() = runTest {
+    val held = ScreenTransitions()
+    held.openUnderFlow(entry = null, previousRoute = TopLevelDestination.CHAT.route)
+    assertEquals(TopLevelDestination.CHAT.route, held.heldRoute)
+    launch { held.releaseHeldRoute() }
+    advanceTimeBy(399)
+    assertEquals(TopLevelDestination.CHAT.route, held.heldRoute)
+    advanceTimeBy(2)
+    assertNull(held.heldRoute)
+    // Nothing held: returns at once.
+    held.releaseHeldRoute()
+    assertNull(held.heldRoute)
   }
 }

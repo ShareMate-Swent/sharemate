@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,7 +14,10 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.chat.ChatTestTags
+import com.android.sharemate.ui.navigation.AddItemMethod
+import com.android.sharemate.ui.navigation.AddItemSheetTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
@@ -95,6 +99,24 @@ class MainActivityTest : TestCase() {
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
       composeTestRule.onNodeWithTag(SettingsTestTags.BACK).performClick()
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
+    }
+  }
+
+  @Test
+  fun receiptScanFromTheAddButtonOnChatGoesBackToChatWhenCancelled() = run {
+    step("Open the receipt camera from the add button on Chat") {
+      composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.ADD_BUTTON).performClick()
+      composeTestRule
+          .onNodeWithTag(AddItemSheetTestTags.option(AddItemMethod.RECEIPT))
+          .performClick()
+      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed()
+    }
+    step("Cancel the photo") {
+      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
+      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsSelected()
+      composeTestRule.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
     }
   }
 }
