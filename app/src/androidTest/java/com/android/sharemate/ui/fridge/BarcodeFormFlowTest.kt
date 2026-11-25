@@ -201,7 +201,7 @@ class BarcodeFormFlowTest {
       assertFalse(photo.state.value.visible)
       fridge.updateName("Milk")
     }
-    compose.onNodeWithTag(C.Tag.fridge_save_item).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
     compose.waitUntil(10_000) { !fridge.uiState.value.isAddItemDialogOpen }
     compose.runOnIdle {
       assertEquals(listOf("Milk"), items.savedNames)
