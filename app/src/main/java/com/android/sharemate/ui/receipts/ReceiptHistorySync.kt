@@ -13,12 +13,14 @@ import com.android.sharemate.model.staging.InventorySubmissionStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 
 /** Coordinates receipt recovery and cloud merges within the caller's lifecycle scope. */
 class ReceiptHistorySync(
@@ -39,30 +41,50 @@ class ReceiptHistorySync(
    */
   fun start(scope: CoroutineScope, onChanged: suspend () -> Unit): Job =
       scope.launch {
+        val refreshes = Channel<Unit>(Channel.CONFLATED)
         launch {
-          retry(Operation.RECOVERY) { recovered ->
-            store.resumeSync(ownerId, householdId)
-            recovered()
-          }
-        }
-        launch {
-          retry(Operation.DELETIONS) { recovered ->
-            cloud.observeDeleted(ownerId, householdId).collect { ids ->
-              store.applyCloudDeletions(ownerId, householdId, ids)
+          for (request in refreshes) {
+            // Batch ready writers, then keep at most one refresh queued during the read.
+            yield()
+            while (refreshes.tryReceive().isSuccess) {}
+            retry(Operation.REFRESH) { recovered ->
               onChanged()
               recovered()
             }
           }
         }
-        launch {
-          retry(Operation.RECEIPTS) { recovered ->
-            cloud.observe(ownerId, householdId).collectLatest { entries ->
-              recovered()
-              merge(entries, onChanged)
-            }
-          }
+        try {
+          observeChanges { refreshes.trySend(Unit) }
+        } finally {
+          refreshes.close()
         }
       }
+
+  private suspend fun observeChanges(requestRefresh: () -> Unit) = coroutineScope {
+    launch {
+      retry(Operation.RECOVERY) { recovered ->
+        store.resumeSync(ownerId, householdId)
+        recovered()
+      }
+    }
+    launch {
+      retry(Operation.DELETIONS) { recovered ->
+        cloud.observeDeleted(ownerId, householdId).collect { ids ->
+          store.applyCloudDeletions(ownerId, householdId, ids)
+          requestRefresh()
+          recovered()
+        }
+      }
+    }
+    launch {
+      retry(Operation.RECEIPTS) { recovered ->
+        cloud.observe(ownerId, householdId).collectLatest { entries ->
+          recovered()
+          merge(entries) { requestRefresh() }
+        }
+      }
+    }
+  }
 
   private suspend fun merge(entries: List<ReceiptCloudEntry>, onChanged: suspend () -> Unit) =
       coroutineScope {
@@ -160,6 +182,7 @@ class ReceiptHistorySync(
     RECOVERY,
     DELETIONS,
     RECEIPTS,
-    CACHE
+    CACHE,
+    REFRESH
   }
 }

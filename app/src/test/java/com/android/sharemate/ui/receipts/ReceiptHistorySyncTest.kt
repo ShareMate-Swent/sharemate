@@ -12,6 +12,7 @@ import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.model.staging.StagedItem
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,82 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiptHistorySyncTest {
+  @Test
+  fun bulkSnapshotCoalescesRefreshesWithoutWaitingForFailedEntries() = runTest {
+    val entries = bulkEntries()
+    val saved = mutableSetOf<String>()
+    var allowLast = false
+    val disk =
+        object : InventorySubmissionStore by store {
+          override suspend fun save(submission: InventorySubmission) {
+            if (submission.id == entries.last().submission.id && !allowLast)
+                throw IOException("Busy")
+            saved += submission.id
+          }
+        }
+    val cloud =
+        object : ReceiptCloudRepository {
+          override fun observe(ownerId: String, householdId: String) = flow {
+            emit(entries)
+            awaitCancellation()
+          }
+
+          override fun observeDeleted(ownerId: String, householdId: String) =
+              emptyFlow<Set<String>>()
+        }
+    val snapshots = mutableListOf<Set<String>>()
+    val sync = ReceiptHistorySync(disk, cloud, "owner", "home")
+    sync.start(backgroundScope) { snapshots += saved.toSet() }
+    runCurrent()
+    assertEquals(listOf(entries.dropLast(1).map { it.submission.id }.toSet()), snapshots)
+    assertTrue(sync.error.value)
+    allowLast = true
+    advanceTimeBy(RECEIPT_INITIAL_RETRY_MILLIS)
+    runCurrent()
+    assertEquals(2, snapshots.size)
+    assertEquals(entries.map { it.submission.id }.toSet(), snapshots.last())
+    assertFalse(sync.error.value)
+  }
+
+  @Test
+  fun refreshesNeverOverlapAndQueuedChangesProduceOneTrailingRefresh() = runTest {
+    val entries = MutableStateFlow(emptyList<ReceiptCloudEntry>())
+    val release = CompletableDeferred<Unit>()
+    var refreshes = 0
+    var active = 0
+    var maximumActive = 0
+    val cloud =
+        object : ReceiptCloudRepository {
+          override fun observe(ownerId: String, householdId: String) = entries
+
+          override fun observeDeleted(ownerId: String, householdId: String) =
+              emptyFlow<Set<String>>()
+        }
+    ReceiptHistorySync(store, cloud, "owner", "home").start(backgroundScope) {
+      refreshes++
+      active++
+      maximumActive = maxOf(maximumActive, active)
+      if (refreshes == 1) release.await()
+      active--
+    }
+    runCurrent()
+    entries.value = bulkEntries()
+    runCurrent()
+    assertEquals(1, refreshes)
+    release.complete(Unit)
+    runCurrent()
+    assertEquals(2, refreshes)
+    assertEquals(1, maximumActive)
+  }
+
+  private fun bulkEntries() =
+      List(4) {
+        val id = java.util.UUID.randomUUID().toString()
+        ReceiptCloudEntry(
+            InventorySubmission(id, "owner", "home", emptyList(), draft = true),
+            ReceiptDetails(id, "owner", "home", "", 0))
+      }
+
   @Test
   fun failedEntryRetriesAloneWithoutBlockingPeersOrReplayingSuccessfulWrites() = runTest {
     val bad = java.util.UUID.randomUUID().toString()
