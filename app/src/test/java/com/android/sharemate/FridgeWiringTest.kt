@@ -53,7 +53,7 @@ class FridgeWiringTest {
   fun privateFridgeHasNoChatTab() {
     resolve(FridgeType.PRIVATE)
     compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.RECEIPTS_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.RECIPES_TAB).performClick().assertIsSelected()
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick().assertIsSelected()
     compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
   }

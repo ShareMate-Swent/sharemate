@@ -617,6 +617,9 @@ internal fun clearFridgeNavigation(navController: NavHostController) {
   if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
     fridgeEntry.viewModelStore.clear()
   }
-  TopLevelDestination.entries.forEach { navController.clearBackStack(it.route) }
+  // Only the routes in the graph: a private fridge registers no chat route.
+  TopLevelDestination.entries
+      .filter { navController.graph.findNode(it.route) != null }
+      .forEach { navController.clearBackStack(it.route) }
   navController.popBackStack(navController.graph.id, inclusive = true)
 }
