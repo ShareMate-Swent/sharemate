@@ -16,12 +16,14 @@ import com.android.sharemate.model.chat.PendingFridgeActivity
 import com.android.sharemate.model.chat.PendingFridgeActivityStore
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.ExpirationInput
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.ExpiryStatuses
+import com.android.sharemate.model.item.FridgeAccessDeniedException
 import com.android.sharemate.model.item.FridgeSyncSnapshot
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemCategory
@@ -79,6 +81,14 @@ enum class FridgeSortOrder {
   NAME,
 }
 
+internal data class FridgeScreenState(
+    val uiState: FridgeUiState,
+    val visibleItems: List<Item> = emptyList(),
+    val sortOrder: FridgeSortOrder = FridgeSortOrder.EXPIRATION_DATE,
+    val selectedCategory: ItemCategory? = null,
+    val selectedOwnerId: String? = null,
+)
+
 /**
  * Coordinates the fridge inventory and its presentation state.
  *
@@ -105,6 +115,7 @@ class FridgeViewModel(
     private val chatRepository: ChatRepository? = null,
     private val activitySenderName: String = currentUserDisplayName.orEmpty(),
     private val pendingActivityStore: PendingFridgeActivityStore? = null,
+    private val photoCache: FridgeImageCacheSession? = null,
 ) : ViewModel() {
   private val supportsSharing = fridgeType == FridgeType.SHARED
   private val ownerNames =
@@ -127,7 +138,8 @@ class FridgeViewModel(
               ownerNames = ownerNames.names.value))
   val personalPhotos =
       if (photoStorage != null && photoFiles != null)
-          PersonalPhotoController(itemRepository, photoStorage, photoFiles, viewModelScope)
+          PersonalPhotoController(
+              itemRepository, photoStorage, photoFiles, viewModelScope, photoCache)
       else null
 
   val uiState = mutableUiState.asStateFlow()
@@ -193,7 +205,7 @@ class FridgeViewModel(
               SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
               emptyList())
 
-  val visibleItems: StateFlow<List<Item>> =
+  internal val screenState: StateFlow<FridgeScreenState> =
       combine(
               mutableUiState,
               sortOrderState,
@@ -208,19 +220,23 @@ class FridgeViewModel(
                       (ownerId == null || item.ownerId == ownerId)
                 }
 
-            when (sortOrder) {
-              FridgeSortOrder.EXPIRATION_DATE ->
-                  filteredItems.sortedWith(
-                      compareBy<Item> { it.expirationDate == null }.thenBy { it.expirationDate })
-              FridgeSortOrder.NAME ->
-                  filteredItems.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-            }
+            val visibleItems =
+                when (sortOrder) {
+                  FridgeSortOrder.EXPIRATION_DATE ->
+                      filteredItems.sortedWith(
+                          compareBy<Item> { it.expirationDate == null }
+                              .thenBy { it.expirationDate })
+                  FridgeSortOrder.NAME ->
+                      filteredItems.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+                }
+            FridgeScreenState(state, visibleItems, sortOrder, category, ownerId)
           }
-          .stateIn(
-              scope = viewModelScope,
-              started = SharingStarted.WhileSubscribed(STATE_STOP_TIMEOUT_MILLIS),
-              initialValue = emptyList(),
-          )
+          .stateIn(viewModelScope, SharingStarted.Eagerly, FridgeScreenState(uiState.value))
+
+  val visibleItems: StateFlow<List<Item>> =
+      screenState
+          .map { it.visibleItems }
+          .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   init {
     require(userId.isNotBlank()) { "A real user ID is required" }
@@ -248,6 +264,17 @@ class FridgeViewModel(
         }
       } catch (exception: CancellationException) {
         throw exception
+      } catch (_: FridgeAccessDeniedException) {
+        mutableUiState.update {
+          it.copy(
+              items = emptyList(),
+              isLoading = false,
+              loadFailed = true,
+              pendingRemovalItem = null,
+              pendingDeletionIds = emptySet(),
+              removalFailed = false)
+        }
+        photoCache?.revoke()
       } catch (exception: Exception) {
         mutableUiState.update { it.copy(isLoading = false, loadFailed = true) }
       }

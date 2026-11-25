@@ -325,8 +325,8 @@ fun FridgeScreen(
     modifier: Modifier = Modifier,
     headerTrailing: (@Composable () -> Unit)? = null,
 ) {
-  val uiState by viewModel.uiState.collectAsState()
-  val visibleItems by viewModel.visibleItems.collectAsState()
+  val screenState by viewModel.screenState.collectAsState()
+  val (uiState, visibleItems, sortOrder, selectedCategory, selectedOwnerId) = screenState
   ReportLaunch(
       LaunchStage.DESTINATION,
       when {
@@ -337,9 +337,6 @@ fun FridgeScreen(
             LaunchStatus.WAITING
         else -> LaunchStatus.READY
       })
-  val sortOrder by viewModel.sortOrder.collectAsState()
-  val selectedCategory by viewModel.selectedCategory.collectAsState()
-  val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
   val owners by viewModel.ownerOptions.collectAsState()
   val expiryStatuses by viewModel.expiryStatuses.collectAsStateWithLifecycle()
 

@@ -2,6 +2,7 @@
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.image.FoodImageSelection
+import com.android.sharemate.model.image.PersonalPhotoReference
 
 /** Persistable image reference with optional attribution fields for remote images. */
 data class ItemImage(
@@ -43,3 +44,6 @@ enum class ItemImageOrigin {
   PERSONAL_PHOTO,
   REMOTE_IMAGE
 }
+
+internal fun ItemImage.isStoredPersonalPhoto(): Boolean =
+    origin == ItemImageOrigin.PERSONAL_PHOTO && PersonalPhotoReference.hasStoragePrefix(reference)

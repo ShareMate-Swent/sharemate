@@ -59,6 +59,7 @@ import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
 import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
 import com.android.sharemate.model.image.FoodImageSelector
+import com.android.sharemate.model.image.FridgeImageCache
 import com.android.sharemate.model.incident.FirebaseIncidentPhotoRepository
 import com.android.sharemate.model.item.FirebaseItemRepository
 import com.android.sharemate.model.item.ItemRepository
@@ -135,6 +136,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.messaging.FirebaseMessaging
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -142,6 +144,17 @@ import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
   private var pendingDeepLinkIntent by mutableStateOf<Intent?>(null)
+
+  private val fridgeImageCache by lazy {
+    val context = applicationContext
+    processImageCache
+        ?: FridgeImageCache(
+                context = context,
+                diskCache = FridgeImageCache.diskCache(File(context.cacheDir, "fridge-thumbnails")),
+                storageBucket = profilePhotoBucket.orEmpty(),
+                isCurrentUser = { FirebaseAuth.getInstance().currentUser?.uid == it })
+            .also { processImageCache = it }
+  }
 
   private val authRepository: PushTokenCleaningAuthRepository by lazy {
     PushTokenCleaningAuthRepository(
@@ -152,7 +165,8 @@ open class MainActivity : ComponentActivity() {
         currentUser = FirebaseCurrentUserIdProvider(FirebaseAuth.getInstance()),
         registrar = pushTokenRegistrar,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        cleanupTimeoutMillis = PUSH_TOKEN_CLEANUP_TIMEOUT_MILLIS)
+        cleanupTimeoutMillis = PUSH_TOKEN_CLEANUP_TIMEOUT_MILLIS,
+        beforeSignOut = { fridgeImageCache.purgeAccount(it) })
   }
   private val householdRepository: HouseholdRepository by lazy {
     HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
@@ -418,10 +432,15 @@ open class MainActivity : ComponentActivity() {
                                             household.id,
                                             session.uid,
                                             session.displayName
-                                                ?: getString(R.string.chat_default_sender_name))
+                                                ?: getString(R.string.chat_default_sender_name),
+                                            profileRepository,
+                                            profilePhotoBucket)
                                       }
                                     })
-                        ChatScreen(chatViewModel)
+                        ChatScreen(
+                            chatViewModel,
+                            householdName = household.name,
+                            memberCount = household.memberIds.size)
                       }
                   composable(
                       TopLevelDestination.SETTINGS.route,
@@ -432,7 +451,10 @@ open class MainActivity : ComponentActivity() {
                                 factory =
                                     viewModelFactory {
                                       initializer {
-                                        LeaveHouseholdViewModel(householdRepository, authRepository)
+                                        LeaveHouseholdViewModel(
+                                            householdRepository, authRepository) {
+                                              fridgeImageCache.purgeHousehold(it, household.id)
+                                            }
                                       }
                                     })
                         val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
@@ -567,6 +589,7 @@ open class MainActivity : ComponentActivity() {
                       productCatalogRepository = createProductCatalogRepository(),
                       photoStorage = FirebasePersonalPhotoRepository.create(),
                       photoFiles = AndroidPersonalPhotoFiles(applicationContext),
+                      photoCache = fridgeImageCache.session(session.uid, household.id),
                       expirationPreferences = expirationPreferencesProvider,
                       pseudoRepository = pseudoRepository,
                       memberNameRepository = memberNameRepository,
@@ -593,6 +616,7 @@ open class MainActivity : ComponentActivity() {
 
   private companion object {
     const val PENDING_DEEP_LINK_URI = "pending_deep_link_uri"
+    var processImageCache: FridgeImageCache? = null
 
     /** Longest wait for the push token removal at sign-out, so an offline sign-out still ends. */
     const val PUSH_TOKEN_CLEANUP_TIMEOUT_MILLIS = 3_000L

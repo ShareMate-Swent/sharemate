@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.auth
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -6,6 +7,8 @@ import com.android.sharemate.model.FirestoreCollections
 import com.android.sharemate.model.UserProfileFields
 import com.android.sharemate.model.user.FirebasePseudoRepository
 import com.android.sharemate.utils.FirebaseEmulator
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -72,7 +75,9 @@ class FirestorePseudoRepositoryTest {
       assertEquals(1, results.count { it == null })
       assertEquals(1, results.count { it == AuthError.PSEUDO_TAKEN })
     } finally {
-      secondAuth.app.delete()
+      // Firebase Installations can outlive Firestore. Keep the app until the test process exits.
+      Tasks.await(secondAuth.firestore.terminate())
+      FirebaseAuth.getInstance(secondAuth.app).signOut()
     }
   }
 

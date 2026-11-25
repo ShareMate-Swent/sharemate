@@ -1,14 +1,15 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
+import com.android.sharemate.model.image.FridgeImageCacheSession
 import com.android.sharemate.model.image.PersonalPhotoFiles
 import com.android.sharemate.model.image.PersonalPhotoReference
 import com.android.sharemate.model.image.PersonalPhotoRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemImage
-import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemImageUpdateResult
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.isStoredPersonalPhoto
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,7 @@ class PersonalPhotoController(
     private val storage: PersonalPhotoRepository,
     private val files: PersonalPhotoFiles,
     private val scope: CoroutineScope,
+    internal val imageCache: FridgeImageCacheSession? = null,
 ) {
   private val mutableDraft = MutableStateFlow(PersonalPhotoDraft())
   val draft = mutableDraft.asStateFlow()
@@ -138,16 +140,12 @@ class PersonalPhotoController(
     }
   }
 
-  suspend fun load(path: String): ByteArray =
-      storage.load(PersonalPhotoReference(path)).getOrThrow()
+  internal suspend fun download(reference: PersonalPhotoReference): ByteArray =
+      storage.load(reference).getOrThrow()
 
   suspend fun prepareRemoval(item: Item) {
     val upload = uploads[item.id]
-    val hasPhoto =
-        item.image?.let {
-          it.origin == ItemImageOrigin.PERSONAL_PHOTO &&
-              PersonalPhotoReference.hasStoragePrefix(it.reference)
-        } == true
+    val hasPhoto = item.image?.isStoredPersonalPhoto() == true
     if (upload == null && !hasPhoto) return
     // Keep the item present until Storage authorizes and confirms removal.
     upload?.join()
