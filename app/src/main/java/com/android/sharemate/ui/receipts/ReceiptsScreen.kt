@@ -51,6 +51,7 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
+import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -86,6 +87,7 @@ import kotlinx.coroutines.launch
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
  * @param expenseRepository Authenticated purchase correction and deletion boundary.
+ * @param receiptCloudRepository Household receipt updates and explicit deletion markers.
  * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
  * @param scanReceiptRequested Whether the add button of the bottom bar asked for a receipt scan,
  *   which this screen then starts like its own scan button.
@@ -106,6 +108,7 @@ fun ReceiptsScreen(
     profileRepository: UserProfileRepository? = null,
     barcodeScanner: BarcodeScanner? = null,
     productCatalogRepository: ProductCatalogRepository? = null,
+    receiptCloudRepository: ReceiptCloudRepository,
     scanReceiptRequested: Boolean = false,
     onScanReceiptRequestHandled: () -> Unit = {},
     onScanReceiptCancelled: () -> Boolean = { false },
@@ -134,11 +137,13 @@ fun ReceiptsScreen(
                 initializer {
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = false),
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId),
                       AndroidReceiptPhotoStore(context),
                       userId,
                       householdId,
                       expenses = expenseRepository,
+                      cloud = receiptCloudRepository,
                       now = System::currentTimeMillis)
                 }
               })
@@ -271,6 +276,7 @@ internal fun ReceiptHistoryFlow(
   DiscardPhotoOnDispose(photo)
   val receipts by history.receipts.collectAsStateWithLifecycle()
   val editFailed by history.error.collectAsStateWithLifecycle()
+  val syncFailed by history.syncError.collectAsStateWithLifecycle()
   val scan: ReceiptScanViewModel =
       viewModel(
           factory =
@@ -309,6 +315,7 @@ internal fun ReceiptHistoryFlow(
                     Text(stringResource(R.string.receipt_scan_purchase))
                   }
                 }
+                if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
                 if (editFailed) {
                   Text(stringResource(R.string.receipt_edit_failed))
                   Button(onClick = history::reload) {
@@ -417,6 +424,7 @@ internal fun ReceiptHistoryFlow(
                             .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
               }
               Text(stringResource(receipt.phase.labelResource()))
+              if (syncFailed) Text(stringResource(R.string.receipt_sync_failed))
               if (editFailed) Text(stringResource(R.string.receipt_edit_failed))
               if (receipt.phase == InventorySavePhase.FAILED) {
                 Button(onClick = { history.retry(receipt.submission.id) }) {
