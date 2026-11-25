@@ -43,6 +43,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.MemberNameRepository
 import com.android.sharemate.model.user.PseudoRepository
 import com.android.sharemate.ui.STATE_STOP_TIMEOUT_MILLIS
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -606,7 +607,13 @@ class FridgeViewModel(
     ownerFilterState.value = ownerId.normalizedFilter()
   }
 
-  fun openAddItemDialog() {
+  /**
+   * Opens the add-item form, unless another form or action is in progress.
+   *
+   * @param fromAddButton The option of the add button of the bottom bar that opens the form, or
+   *   null for the fridge's own button. [AddItemMethod.BARCODE] opens the barcode photo right away.
+   */
+  fun openAddItemDialog(fromAddButton: AddItemMethod? = null) {
     if (uiState.value.isSaving ||
         uiState.value.isAddItemDialogOpen ||
         uiState.value.pendingRemovalItem != null ||
@@ -618,6 +625,9 @@ class FridgeViewModel(
       it.resetItemFields()
           .copy(
               isAddItemDialogOpen = true,
+              addButtonMethod = fromAddButton,
+              scanBarcodeOnOpen = fromAddButton == AddItemMethod.BARCODE,
+              closeOnBarcodeCancel = fromAddButton == AddItemMethod.BARCODE,
               canChangeSharing = supportsSharing,
               editingItemId = null,
               isScanningBarcode = false,
@@ -628,8 +638,21 @@ class FridgeViewModel(
     }
   }
 
-  fun dismissAddItemDialog() {
-    if (uiState.value.isSaving) return
+  /** Called by the add-item form once it opened the barcode photo asked by [openAddItemDialog]. */
+  fun barcodeScanOpened() {
+    mutableUiState.update { it.copy(scanBarcodeOnOpen = false) }
+  }
+
+  /**
+   * Closes the add-item form without saving, unless it is saving.
+   *
+   * @return Whether it closed a form that the add button of the bottom bar opened, so the caller
+   *   can go back to where the user was.
+   */
+  fun dismissAddItemDialog(): Boolean {
+    val state = uiState.value
+    if (state.isSaving) return false
+    val fromAddButton = state.isAddItemDialogOpen && state.addButtonMethod != null
     personalPhotos?.discardDraft()
     barcodeDialogGeneration++
     cancelBarcodeScan()
@@ -644,6 +667,7 @@ class FridgeViewModel(
               barcodeLookupError = null,
               formError = null)
     }
+    return fromAddButton
   }
 
   /**
@@ -687,6 +711,7 @@ class FridgeViewModel(
     barcodeScanJob = operation
     mutableUiState.update {
       it.copy(
+          closeOnBarcodeCancel = false,
           isScanningBarcode = true,
           barcodeLookupError = null,
           barcodeScanFailed = false,

@@ -15,16 +15,19 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Checks the tabs of the bottom bar, its inactive add button and the profile photo entry. */
+/** Checks the tabs of the bottom bar, its add button and the profile photo entry. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w360dp-h640dp")
 class AppBottomBarTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val selected = mutableListOf<TopLevelDestination>()
+  private var added = 0
 
   private fun showBar(route: String?) =
       compose.setContent {
-        ShareMateTheme { AppBottomBar(currentRoute = route, onSelect = { selected += it }) }
+        ShareMateTheme {
+          AppBottomBar(currentRoute = route, onSelect = { selected += it }, onAdd = { added++ })
+        }
       }
 
   @Test
@@ -51,13 +54,14 @@ class AppBottomBarTest {
   }
 
   @Test
-  fun addButtonIsAnnouncedAndDoesNothingYet() {
+  fun addButtonIsAnnouncedAndReportsATapWithoutChangingTab() {
     showBar(TopLevelDestination.FRIDGE.route)
     compose
         .onNodeWithTag(NavigationTestTags.ADD_BUTTON)
         .assertContentDescriptionEquals(compose.activity.getString(R.string.nav_add_item))
         .assertHasClickAction()
         .performClick()
+    assertEquals(1, added)
     assertEquals(emptyList<TopLevelDestination>(), selected)
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
   }

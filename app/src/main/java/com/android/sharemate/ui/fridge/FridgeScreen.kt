@@ -51,6 +51,8 @@ private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
  * @param expiryStatuses how close each item, by id, is to its expiration date, already worked out;
  *   an item missing from it is shown as [ExpiryStatus.NORMAL].
  * @param headerTrailing Shown at the end of the header, such as the profile photo.
+ * @param onBarcodeScanOpened Called once the add-item form opened the barcode photo asked by
+ *   [FridgeUiState.scanBarcodeOnOpen].
  */
 @Composable
 fun FridgeScreen(
@@ -84,6 +86,7 @@ fun FridgeScreen(
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
+    onBarcodeScanOpened: () -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val screenModifier =
@@ -270,6 +273,7 @@ fun FridgeScreen(
         onSharingChange = onSharingChange,
         onBarcodeImageConfirmed = onBarcodeImageConfirmed,
         personalPhotos = personalPhotos,
+        onBarcodeScanOpened = onBarcodeScanOpened,
         onDismiss = onDismissAddItem)
   }
   uiState.pendingRemovalItem?.let { item ->
@@ -344,7 +348,7 @@ fun FridgeScreen(
       uiState = uiState.copy(items = visibleItems),
       expiryStatuses = expiryStatuses,
       onAddItem = viewModel::openAddItemDialog,
-      onDismissAddItem = viewModel::dismissAddItemDialog,
+      onDismissAddItem = { viewModel.dismissAddItemDialog() },
       onNameChange = viewModel::updateName,
       onCategoryChange = viewModel::updateCategory,
       onExpirationDateChange = viewModel::updateExpirationDate,
@@ -369,6 +373,7 @@ fun FridgeScreen(
       onConfirmRemoval = viewModel::confirmRemoval,
       personalPhotos = viewModel.personalPhotos,
       headerTrailing = headerTrailing,
+      onBarcodeScanOpened = viewModel::barcodeScanOpened,
   )
 }
 

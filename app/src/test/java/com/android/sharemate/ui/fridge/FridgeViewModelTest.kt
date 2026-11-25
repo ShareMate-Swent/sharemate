@@ -50,6 +50,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.model.user.PseudoRepository
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.io.IOException
 import java.time.LocalDate
 import java.util.Date
@@ -1912,6 +1913,57 @@ class FridgeViewModelTest {
     assertNull(viewModel.uiState.value.pendingRemovalItem)
     assertEquals("Cheese", viewModel.uiState.value.itemName)
     assertTrue(viewModel.uiState.value.isAddItemDialogOpen)
+  }
+
+  @Test
+  fun formOpenedForABarcodeAsksForThePhotoOnceAndClosesWithIt() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    with(vm.uiState.value) {
+      assertTrue(isAddItemDialogOpen)
+      assertEquals(AddItemMethod.BARCODE, addButtonMethod)
+      assertTrue(scanBarcodeOnOpen)
+      assertTrue(closeOnBarcodeCancel)
+    }
+
+    vm.barcodeScanOpened()
+    assertFalse(vm.uiState.value.scanBarcodeOnOpen)
+    assertTrue(vm.uiState.value.closeOnBarcodeCancel)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
+  }
+
+  @Test
+  fun manualOptionOpensTheFormWithoutThePhoto() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.MANUAL)
+    with(vm.uiState.value) {
+      assertTrue(isAddItemDialogOpen)
+      assertEquals(AddItemMethod.MANUAL, addButtonMethod)
+      assertFalse(scanBarcodeOnOpen)
+      assertFalse(closeOnBarcodeCancel)
+    }
+  }
+
+  @Test
+  fun dismissingReportsOnlyFormsThatTheAddButtonOpened() = runTest {
+    val vm = viewModel()
+    runCurrent()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    assertTrue(vm.dismissAddItemDialog())
+    with(vm.uiState.value) {
+      assertFalse(isAddItemDialogOpen)
+      assertNull(addButtonMethod)
+      assertFalse(scanBarcodeOnOpen)
+      assertFalse(closeOnBarcodeCancel)
+    }
+    // Already closed: nothing to go back from.
+    assertFalse(vm.dismissAddItemDialog())
+
+    vm.openAddItemDialog()
+    assertNull(vm.uiState.value.addButtonMethod)
+    assertFalse(vm.dismissAddItemDialog())
   }
 
   private fun TestScope.loaded(vararg items: Item): FridgeViewModel {
