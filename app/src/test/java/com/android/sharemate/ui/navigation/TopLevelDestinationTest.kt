@@ -59,6 +59,17 @@ class TopLevelDestinationTest {
     assertTrue(settings.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
     assertTrue(settings.isParentOf(ChildRoutes.NOTIFICATION_SETTINGS))
     assertFalse(TopLevelDestination.FRIDGE.isSelected(ChildRoutes.NOTIFICATION_SETTINGS))
+    assertTrue(settings.isSelected(ChildRoutes.EDIT_PROFILE))
+    assertTrue(settings.isParentOf(ChildRoutes.EDIT_PROFILE))
+    assertFalse(TopLevelDestination.FRIDGE.isSelected(ChildRoutes.EDIT_PROFILE))
+  }
+
+  @Test
+  fun theEditProfileViewModelIsScopedToOneUser() {
+    assertEquals("edit_profile_user-1", ChildRoutes.editProfileViewModelKey("user-1"))
+    assertFalse(
+        ChildRoutes.editProfileViewModelKey("user-1") ==
+            ChildRoutes.editProfileViewModelKey("user-2"))
   }
 
   @Test
@@ -70,6 +81,7 @@ class TopLevelDestinationTest {
     assertFalse(TopLevelDestination.showsBottomBar(TopLevelDestination.SETTINGS.route))
     assertFalse(TopLevelDestination.showsBottomBar(ChildRoutes.HOUSEHOLD_MEMBERS))
     assertFalse(TopLevelDestination.showsBottomBar(ChildRoutes.NOTIFICATION_SETTINGS))
+    assertFalse(TopLevelDestination.showsBottomBar(ChildRoutes.EDIT_PROFILE))
     // A screen that belongs to no tab has no bar until it is added to one.
     assertFalse(TopLevelDestination.showsBottomBar("new-screen"))
     assertFalse(TopLevelDestination.showsBottomBar(null))

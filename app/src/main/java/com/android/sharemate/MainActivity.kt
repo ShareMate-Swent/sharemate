@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -103,6 +104,8 @@ import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
+import com.android.sharemate.ui.settings.EditProfileScreen
+import com.android.sharemate.ui.settings.EditProfileViewModel
 import com.android.sharemate.ui.settings.NotificationSettingsScreen
 import com.android.sharemate.ui.settings.NotificationSettingsViewModel
 import com.android.sharemate.ui.settings.SettingsScreen
@@ -415,14 +418,16 @@ open class MainActivity : ComponentActivity() {
                                             authRepository,
                                             householdRepository,
                                             pseudoRepository,
-                                            household,
-                                            profilePhotoRepository,
-                                            AndroidPersonalPhotoFiles(applicationContext))
+                                            household)
                                       }
                                     })
                         val settingsState by settingsViewModel.state.collectAsStateWithLifecycle()
                         val settingsScope = rememberCoroutineScope()
-                        val photoCamera = profilePhotoCamera()
+                        // The pseudo may have changed on the Edit profile page.
+                        LifecycleResumeEffect(settingsViewModel) {
+                          settingsViewModel.refreshPseudo()
+                          onPauseOrDispose {}
+                        }
                         SettingsScreen(
                             state = settingsState,
                             leaveState = leaveState,
@@ -442,21 +447,49 @@ open class MainActivity : ComponentActivity() {
                                 }
                               }
                             },
-                            onPseudoChanged = settingsViewModel::updatePseudo,
-                            onSavePseudo = settingsViewModel::savePseudo,
-                            onRetryLoadPseudo = settingsViewModel::retryLoadPseudo,
                             onSignOut = authViewModel::signOut,
                             onOpenNotificationSettings = {
                               navController.navigate(ChildRoutes.NOTIFICATION_SETTINGS)
                             },
-                            onChangePhoto = photoCamera::open,
-                            onRetryPhotoUpload = settingsViewModel::retryPhotoUpload,
+                            onEditProfile = {
+                              navController.navigate(ChildRoutes.EDIT_PROFILE) {
+                                launchSingleTop = true
+                              }
+                            },
                             onBack = navController::leaveSettings)
-                        ProfilePhotoPicker(
-                            onPhotoConfirmed = settingsViewModel::changePhoto,
-                            camera = photoCamera,
-                            title = R.string.settings_change_photo)
                       }
+                  composable(ChildRoutes.EDIT_PROFILE) {
+                    val editProfileViewModel: EditProfileViewModel =
+                        viewModel(
+                            key = ChildRoutes.editProfileViewModelKey(session.uid),
+                            factory =
+                                viewModelFactory {
+                                  initializer {
+                                    EditProfileViewModel(
+                                        authRepository,
+                                        pseudoRepository,
+                                        profilePhotoRepository,
+                                        AndroidPersonalPhotoFiles(applicationContext))
+                                  }
+                                })
+                    val editProfileState by editProfileViewModel.state.collectAsStateWithLifecycle()
+                    val photoCamera = profilePhotoCamera()
+                    EditProfileScreen(
+                        state = editProfileState,
+                        onPseudoChanged = editProfileViewModel::updatePseudo,
+                        onSavePseudo = editProfileViewModel::savePseudo,
+                        onRetryLoadPseudo = editProfileViewModel::retryLoadPseudo,
+                        onChangePhoto = photoCamera::open,
+                        onRetryPhotoUpload = editProfileViewModel::retryPhotoUpload,
+                        onBack = {
+                          // Pops only this page, even if Back is tapped twice.
+                          navController.popBackStack(ChildRoutes.EDIT_PROFILE, inclusive = true)
+                        })
+                    ProfilePhotoPicker(
+                        onPhotoConfirmed = editProfileViewModel::changePhoto,
+                        camera = photoCamera,
+                        title = R.string.settings_change_photo)
+                  }
                   composable(ChildRoutes.HOUSEHOLD_MEMBERS) {
                     // Scoped to this screen, so the members listener stops when it is closed.
                     val membersViewModel: HouseholdMembersViewModel =

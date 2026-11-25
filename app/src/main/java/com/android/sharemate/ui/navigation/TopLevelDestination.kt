@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
 import androidx.annotation.StringRes
@@ -40,6 +41,12 @@ object ChildRoutes {
 
   /** The notification settings sub-page of Settings. */
   const val NOTIFICATION_SETTINGS = "settings/notifications"
+
+  /** The sub-page of Settings where the pseudo and the profile photo are changed. */
+  const val EDIT_PROFILE = "settings/profile"
+
+  /** Key scoping the Edit profile ViewModel to one user. */
+  fun editProfileViewModelKey(userId: String) = "edit_profile_$userId"
 
   /** Key scoping the notification settings ViewModel to one user. */
   fun notificationSettingsViewModelKey(userId: String) = "notification_settings_$userId"
