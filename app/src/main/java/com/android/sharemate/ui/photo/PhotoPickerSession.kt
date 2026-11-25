@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.compose.runtime.Composable
@@ -16,6 +17,8 @@ import com.android.sharemate.model.image.PhotoImportPolicy
 internal fun photoPickerViewModel(
     key: String,
     importPolicy: PhotoImportPolicy = PhotoImportPolicy.STANDARD,
+    defaultLens: CameraLens = CameraLens.BACK,
+    mirrorFrontCamera: Boolean = false,
 ): PhotoPickerViewModel {
   val context = LocalContext.current.applicationContext
   return viewModel(
@@ -24,7 +27,10 @@ internal fun photoPickerViewModel(
           viewModelFactory {
             initializer {
               PhotoPickerViewModel(
-                  AndroidTemporaryPhotoStore(context, importPolicy), createSavedStateHandle())
+                  AndroidTemporaryPhotoStore(context, importPolicy),
+                  createSavedStateHandle(),
+                  defaultLens,
+                  mirrorFrontCamera)
             }
           })
 }

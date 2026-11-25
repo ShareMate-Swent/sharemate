@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import android.Manifest
@@ -111,6 +112,9 @@ fun PhotoPickerDialog(
                   PhotoPage.CAMERA ->
                       CameraCapture(
                           enabled = !state.busy,
+                          lens = state.lens,
+                          onSwitchLens = viewModel::switchLens,
+                          mirrorFrontCamera = viewModel.mirrorFrontCamera,
                           onCapture = viewModel::capture,
                           onFailure = {
                             viewModel.showSources()
@@ -216,6 +220,8 @@ object PhotoPickerTestTags {
   const val CAMERA = "barcode_photo_camera"
   const val GALLERY = "barcode_photo_gallery"
   const val CAPTURE = "barcode_photo_capture"
+  /** Switches between the back and front camera; shown only when the device has both. */
+  const val SWITCH_CAMERA = "photo_picker_switch_camera"
   const val CANCEL = "barcode_photo_cancel"
 }
 
