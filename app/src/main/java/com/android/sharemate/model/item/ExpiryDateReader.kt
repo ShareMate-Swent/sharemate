@@ -7,7 +7,9 @@ import java.time.LocalDate
 fun interface ExpiryDateReader {
   /**
    * Returns distinct dates in recognized-text order, including past dates. An empty list means no
-   * supported date was detected; image/recognition failures propagate, as does cancellation.
+   * supported date was detected. Image/recognition failures propagate; a recognition timeout or
+   * internally cancelled recognition task throws [java.io.IOException]. The caller's scope bounds
+   * the read, and caller cancellation propagates unchanged.
    *
    * Candidates are not necessarily expiry dates (a label may contain a production date). The caller
    * must let the user confirm or correct a candidate before saving. The caller owns the image; this

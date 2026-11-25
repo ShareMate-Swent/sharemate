@@ -3,6 +3,8 @@ package com.android.sharemate.model.item
 
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
@@ -14,6 +16,7 @@ import java.io.IOException
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
@@ -21,6 +24,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -36,6 +40,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -277,6 +282,7 @@ class MlKitExpiryDateReaderTest {
     pending.setResult(recognized("12 OCT 2026"))
     runCurrent()
     assertTrue(read.isCancelled)
+    assertTrue(runCatching { read.await() }.exceptionOrNull() is CancellationException)
   }
 
   @Test
@@ -291,17 +297,61 @@ class MlKitExpiryDateReaderTest {
     assertFalse(read.isCompleted)
     advanceTimeBy(1)
     runCurrent()
-    assertTrue(read.await().exceptionOrNull() is CancellationException)
+    assertFailure(IOException("Text recognition timed out"), read.await().exceptionOrNull())
     verify(client).close()
   }
 
   @Test
-  fun cancelledMlKitTaskPropagatesCancellationAndClosesClient() = runTest {
+  fun cancelledMlKitTaskPropagatesFailureAndClosesClient() = runTest {
     `when`(client.process(image)).thenReturn(Tasks.forCanceled())
     val reader =
         MlKitExpiryDateReader(
             context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
-    assertTrue(runCatching { reader.read(uri) }.exceptionOrNull() is CancellationException)
+    assertFailure(
+        IOException("Text recognition was cancelled"),
+        runCatching { reader.read(uri) }.exceptionOrNull())
+    verify(client).close()
+  }
+
+  @Test
+  fun mlKitTaskCancelledWhileAwaitingIsAFailureAndAllowsRetry() = runTest {
+    val cancellation = CancellationTokenSource()
+    val pending = TaskCompletionSource<Text>(cancellation.token)
+    val next = mock(TextRecognizer::class.java)
+    val clients = ArrayDeque(listOf(client, next))
+    `when`(client.process(image)).thenReturn(pending.task)
+    returnsText(next, "12 OCT 2026")
+    val reader =
+        MlKitExpiryDateReader(
+            context,
+            StandardTestDispatcher(testScheduler),
+            { clients.removeFirst() },
+            { _, _ -> image })
+    val read = async { runCatching { reader.read(uri) } }
+    runCurrent()
+    assertFalse(read.isCompleted)
+    cancellation.cancel()
+    shadowOf(Looper.getMainLooper()).idle()
+    runCurrent()
+    val failure = read.await().exceptionOrNull()
+    assertFailure(IOException("Text recognition was cancelled"), failure)
+    assertTrue(failure?.cause is CancellationException)
+    verify(client).close()
+    assertEquals(listOf(date), reader.read(uri))
+    verify(next).close()
+  }
+
+  @Test
+  fun shorterCallerTimeoutRemainsCancellationAndClosesClient() = runTest {
+    `when`(client.process(image)).thenReturn(TaskCompletionSource<Text>().task)
+    val reader =
+        MlKitExpiryDateReader(
+            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val read = async { runCatching { withTimeout(1) { reader.read(uri) } } }
+    runCurrent()
+    advanceTimeBy(1)
+    runCurrent()
+    assertTrue(read.await().exceptionOrNull() is TimeoutCancellationException)
     verify(client).close()
   }
 
