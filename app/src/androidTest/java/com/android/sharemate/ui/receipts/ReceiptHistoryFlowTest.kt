@@ -210,6 +210,15 @@ class ReceiptHistoryFlowTest {
 
   @Test
   fun confirmingDraftReturnsToHistoryAndPersistsReviewedRows() {
+    confirmDraft(sharedHousehold = true)
+  }
+
+  @Test
+  fun privateDraftConfirmsWithoutExpenseSharing() {
+    confirmDraft(sharedHousehold = false)
+  }
+
+  private fun confirmDraft(sharedHousehold: Boolean) {
     val owner = UUID.randomUUID().toString()
     val household = UUID.randomUUID().toString()
     val id = UUID.randomUUID().toString()
@@ -225,7 +234,7 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold) }
     }
     historyCard(id).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
@@ -233,6 +242,7 @@ class ReceiptHistoryFlowTest {
     compose.runOnIdle {
       org.junit.Assert.assertEquals(rows, submitted.single().items)
       org.junit.Assert.assertEquals(id, submitted.single().id)
+      org.junit.Assert.assertNull(submitted.single().expense)
     }
     runBlocking { org.junit.Assert.assertFalse(store.list(owner, household).single().draft) }
   }

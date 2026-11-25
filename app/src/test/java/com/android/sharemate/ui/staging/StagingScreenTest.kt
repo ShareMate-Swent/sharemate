@@ -77,6 +77,23 @@ class StagingScreenTest {
   private var backs = 0
 
   @Test
+  fun privateReviewConfirmsDirectlyEvenWithSeparateSharingEnabled() {
+    val model = StagingViewModel(listOf(milk))
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingScreen(
+            model,
+            onConfirm = { confirmed = it },
+            onBack = {},
+            separateSharingStep = true,
+            onConfirmPurchase = { error("Private review must not submit an expense") })
+      }
+    }
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    assertEquals(listOf(milk), confirmed)
+  }
+
+  @Test
   fun onlyItemsScrollWhilePreviewAndActionsRemainFixed() {
     composeTestRule.setContent {
       MaterialTheme {
