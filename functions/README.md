@@ -58,11 +58,20 @@ directly; the Firestore rules deny it. The request is exactly `{ householdId }`.
 
 The household document goes last, so a failed call leaves the household in place and calling again
 only redoes what is left. The cleaning repeats until a pass finds nothing, so an item added from
-another device meanwhile is removed too; this makes a leftover very unlikely but cannot rule it out,
-and a household that keeps receiving writes is kept and the call fails, to be repeated. The final
-transaction reads the household again and only deletes the instance that was checked. A household
-that is already gone counts as deleted. The function runs for up to 300 seconds, so callers should
-wait longer than that.
+another device meanwhile is removed too, and a household that keeps receiving writes is kept and the
+call fails, to be repeated. Every deletion checks, in the same transaction, that the household is
+still the instance that was authorized (same `createTime`). If it was deleted or created again under
+the same ID, the cleaning stops and the new household is not touched. The final transaction does the
+same check.
+
+Once the household is gone, a last sweep removes what the caller wrote meanwhile (for example a
+receipt saved from another device after the last pass): their items, receipts, receipt backups and
+deletion markers, and their photos in the household folders. The rules refuse to create any once the
+household is gone, so one pass is enough. Only the caller's own data is swept, which keeps it safe
+when the household was already gone, so a retry runs it again. This makes a leftover very unlikely
+but cannot rule it out; for example, a write that lands in the same instant as the final transaction
+can still survive. A household that is already gone counts as deleted. The function runs for up to
+300 seconds, so callers should wait longer than that.
 
 The function and its Storage access need deployment. Its tests run in two ways: the unit tests need
 no emulator, and `private-household.test.js` calls the function against the Auth, Firestore, Storage

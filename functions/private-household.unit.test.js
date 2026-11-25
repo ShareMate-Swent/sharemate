@@ -13,65 +13,76 @@ function fixture() {
   const records = new Map();
   const files = new Set();
   const calls = { deletedPrefixes: [] };
-  // Lets a test act "at the same time": [afterCommit] runs after each batch deletes, and
-  // [beforeTransaction] runs once the cleaning is over, just before the final transaction.
-  const hooks = { failDeleteFiles: null, failCommit: null, afterCommit: null, beforeTransaction: null };
+  // Lets a test act "at the same time": [afterInitialRead] runs once, right after the household was
+  // first read; [afterCommit] runs after each transaction that wrote; [beforeTransaction] runs
+  // before each transaction, so it is the final one when the household has no items or receipts.
+  const hooks = { failDeleteFiles: null, failCommit: null, afterCommit: null, beforeTransaction: null,
+    afterInitialRead: null };
   // Every document created gets a new version, so a document deleted and created again can be told
   // apart from the original, like Firestore's createTime.
   const versions = new Map();
   let lastVersion = 0;
 
+  // Like a Firestore snapshot, it keeps what the document held when it was read.
   const snapshot = (path) => {
     const version = versions.get(path);
+    const data = records.get(path);
     return {
-      id: path.split("/").pop(), exists: records.has(path), data: () => records.get(path),
-      get: (field) => records.get(path)?.[field],
+      id: path.split("/").pop(), exists: records.has(path), data: () => data,
+      get: (field) => data?.[field],
       createTime: records.has(path) ? { isEqual: (other) => other.version === version, version } : undefined,
     };
   };
   const reference = (path) => ({
-    path, id: path.split("/").pop(), get: async () => snapshot(path),
+    path, id: path.split("/").pop(), get: async () => {
+      const read = snapshot(path);
+      const act = path.startsWith("households/") ? hooks.afterInitialRead : null;
+      hooks.afterInitialRead = act ? null : hooks.afterInitialRead;
+      act?.();
+      return read;
+    },
     collection: (name) => collection(`${path}/${name}`),
     listCollections: async () => [...new Set([...records.keys()]
       .filter((key) => key.startsWith(`${path}/`)).map((key) => key.slice(path.length + 1).split("/")[0]))]
       .map((name) => collection(`${path}/${name}`)),
   });
-  const collection = (path) => ({
-    path, doc: (id) => reference(`${path}/${id}`),
-    where: (field, operator, value) => ({ limit: (count) => ({ get: async () => {
+  // A query is a list of equality filters; [where] can be chained.
+  const query = (path, filters) => ({
+    where: (field, operator, value) => {
       assert.equal(operator, "==");
+      return query(path, [...filters, [field, value]]);
+    },
+    limit: (count) => ({ get: async () => {
       const docs = [...records.entries()]
-        .filter(([key, data]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes("/") && data[field] === value)
+        .filter(([key, data]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes("/")
+          && filters.every(([field, value]) => data[field] === value))
         .slice(0, count).map(([key]) => ({ ...snapshot(key), ref: reference(key) }));
       return { empty: docs.length === 0, docs };
-    } }) }),
+    } }),
+  });
+  const collection = (path) => ({
+    path, doc: (id) => reference(`${path}/${id}`),
+    where: (field, operator, value) => query(path, []).where(field, operator, value),
   });
   const db = {
     collection,
-    batch: () => {
-      const paths = [];
-      return {
-        delete: (ref) => paths.push(ref.path),
-        commit: async () => {
-          if (hooks.failCommit?.()) throw new Error("commit failed");
-          paths.forEach((path) => records.delete(path));
-          hooks.afterCommit?.();
-        },
-      };
-    },
     recursiveDelete: async (target) => {
       [...records.keys()].filter((key) => key.startsWith(`${target.path}/`)).forEach((key) => records.delete(key));
     },
     runTransaction: async (run) => {
       hooks.beforeTransaction?.();
       const writes = [];
-      await run({
+      const result = await run({
         get: async (ref) => snapshot(ref.path),
         delete: (ref) => writes.push(() => records.delete(ref.path)),
         set: (ref, data, options) => writes.push(() => records.set(ref.path,
           options?.merge ? { ...records.get(ref.path), ...data } : data)),
       });
+      if (writes.length === 0) return result;
+      if (hooks.failCommit?.()) throw new Error("commit failed");
       writes.forEach((write) => write());
+      hooks.afterCommit?.();
+      return result;
     },
   };
   const bucket = {
@@ -184,15 +195,21 @@ test("a retry only redoes the work that is left", async () => {
   assert.equal(env.records.has(`households/${HOME}`), false);
 });
 
-test("an already deleted household is a success and touches nothing else", async () => {
+test("an already deleted household is a success, and only the caller's own leftovers are removed", async () => {
   const env = fixture();
   await run(env);
+  env.add("items/mine", { householdId: HOME, ownerId: OWNER });
+  env.files.add("itemPhotos/mine/1");
   env.add("items/orphan", { householdId: HOME });
+  env.add("items/theirs", { householdId: HOME, ownerId: "friend" });
   env.files.add("itemPhotos/orphan/1");
 
   assert.deepEqual(await run(env), { householdId: HOME });
 
+  assert.equal(env.records.has("items/mine"), false);
+  assert.equal(env.files.has("itemPhotos/mine/1"), false);
   assert.equal(env.records.has("items/orphan"), true);
+  assert.equal(env.records.has("items/theirs"), true);
   assert.equal(env.files.has("itemPhotos/orphan/1"), true);
 });
 
@@ -372,4 +389,98 @@ test("a receipt backup saved while an earlier pass runs is deleted by the next p
 
   assert.equal(env.records.has(`users/${OWNER}/receiptBackups/late`), false);
   assert.equal(env.records.has(`households/${HOME}`), false);
+});
+
+function createAgain(env, extra = () => {}) {
+  env.remove(`households/${HOME}`);
+  env.add(`households/${HOME}`, { type: "PRIVATE", createdBy: OWNER, memberIds: [OWNER] });
+  env.add("items/new", { householdId: HOME, ownerId: OWNER });
+  env.add("receipts/new", { householdId: HOME, ownerId: OWNER });
+  env.add(`users/${OWNER}/receiptBackups/new`, { householdId: HOME });
+  env.files.add(`receiptPhotos/${HOME}/${OWNER}/new.jpg`);
+  env.files.add("itemPhotos/new/photo");
+  extra();
+}
+
+function assertNewHouseholdUntouched(env) {
+  for (const path of ["items/new", "receipts/new", `users/${OWNER}/receiptBackups/new`, `households/${HOME}`]) {
+    assert.equal(env.records.has(path), true, path);
+  }
+  assert.equal(env.files.has(`receiptPhotos/${HOME}/${OWNER}/new.jpg`), true);
+  assert.equal(env.files.has("itemPhotos/new/photo"), true);
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, HOME);
+}
+
+test("a household created again under the same ID before the cleaning starts is not cleaned", async () => {
+  const env = fixture();
+  env.hooks.afterInitialRead = () => createAgain(env);
+
+  assert.deepEqual(await run(env), { householdId: HOME });
+
+  assertNewHouseholdUntouched(env);
+});
+
+test("a household created again under the same ID in the middle of the cleaning is not cleaned", async () => {
+  const env = fixture();
+  for (let index = 0; index < PAGE_SIZE + 1; index++) env.add(`items/old${index}`, { householdId: HOME });
+  let once = true;
+  env.hooks.afterCommit = () => {
+    if (!once) return;
+    once = false;
+    createAgain(env);
+  };
+
+  assert.deepEqual(await run(env), { householdId: HOME });
+
+  assertNewHouseholdUntouched(env);
+});
+
+test("when another call already deleted the household, the cleaning stops and the caller's leftovers are swept", async () => {
+  const env = fixture();
+  env.hooks.afterInitialRead = () => {
+    env.remove(`households/${HOME}`);
+    env.add("items/late", { householdId: HOME, ownerId: OWNER });
+    env.add("items/theirs", { householdId: HOME, ownerId: "friend" });
+  };
+
+  assert.deepEqual(await run(env), { householdId: HOME });
+
+  assert.equal(env.records.has("items/late"), false);
+  assert.equal(env.records.has("items/theirs"), true);
+  assert.equal(env.records.get(`users/${OWNER}`).householdId, FieldValue.delete());
+});
+
+test("what the caller saved after the last cleaning pass is removed once the household is deleted", async () => {
+  const env = fixture();
+  env.hooks.beforeTransaction = () => {
+    env.hooks.beforeTransaction = null;
+    env.add("receipts/late", { householdId: HOME, ownerId: OWNER });
+    env.add("receipts/friends", { householdId: HOME, ownerId: "friend" });
+    env.add("items/late", { householdId: HOME, ownerId: OWNER });
+    env.add(`users/${OWNER}/receiptBackups/late`, { householdId: HOME });
+    env.files.add(`receiptPhotos/${HOME}/${OWNER}/late.jpg`);
+    env.files.add(`receiptPhotos/${HOME}/friend/theirs.jpg`);
+  };
+
+  await run(env);
+
+  assert.equal(env.records.has(`households/${HOME}`), false);
+  for (const path of ["receipts/late", "items/late", `users/${OWNER}/receiptBackups/late`]) {
+    assert.equal(env.records.has(path), false, path);
+  }
+  assert.equal(env.files.has(`receiptPhotos/${HOME}/${OWNER}/late.jpg`), false);
+  assert.equal(env.records.has("receipts/friends"), true);
+  assert.equal(env.files.has(`receiptPhotos/${HOME}/friend/theirs.jpg`), true);
+});
+
+test("a household replaced before the final transaction is not swept", async () => {
+  const env = fixture();
+  env.hooks.beforeTransaction = () => {
+    env.hooks.beforeTransaction = null;
+    createAgain(env);
+  };
+
+  await run(env);
+
+  assertNewHouseholdUntouched(env);
 });

@@ -113,15 +113,29 @@ test("leaves other households, other items, photos and personal receipts alone",
   assert.deepEqual(await files(`receiptPhotos/${sharedId}/`), [`receiptPhotos/${sharedId}/${owner.localId}/scoped.jpg`]);
 });
 
-test("deleting twice succeeds, and the second call leaves orphans of the old household untouched", async () => {
+test("deleting twice succeeds, and the second call removes the caller's own leftovers only", async () => {
   const id = `${owner.localId}:twice`;
   await seedHousehold(id, owner);
   await call({ householdId: id });
-  await db.doc("items/twice-orphan").set({ householdId: id, ownerId: owner.localId });
+  await db.doc("items/twice-mine").set({ householdId: id, ownerId: owner.localId });
+  await db.doc("receipts/twice-mine").set({ householdId: id, ownerId: owner.localId });
+  await db.doc(`users/${owner.localId}/receiptBackups/twice-mine`).set({ householdId: id, ownerId: owner.localId });
+  await db.doc("receipts/twice-theirs").set({ householdId: id, ownerId: other.localId });
+  await db.doc("items/twice-nobody").set({ householdId: id });
+  await bucket.file("itemPhotos/twice-mine/photo").save("jpeg");
+  await bucket.file(`receiptPhotos/${id}/${owner.localId}/mine.jpg`).save("jpeg");
+  await bucket.file(`receiptPhotos/${id}/${other.localId}/theirs.jpg`).save("jpeg");
 
   assert.deepEqual(await call({ householdId: id }), { result: { householdId: id } });
 
-  assert.equal(await exists("items/twice-orphan"), true);
+  for (const path of ["items/twice-mine", "receipts/twice-mine", `users/${owner.localId}/receiptBackups/twice-mine`]) {
+    assert.equal(await exists(path), false, path);
+  }
+  assert.deepEqual(await files("itemPhotos/twice-mine/"), []);
+  assert.deepEqual(await files(`receiptPhotos/${id}/${owner.localId}/`), []);
+  assert.equal(await exists("receipts/twice-theirs"), true);
+  assert.equal(await exists("items/twice-nobody"), true);
+  assert.deepEqual(await files(`receiptPhotos/${id}/${other.localId}/`), [`receiptPhotos/${id}/${other.localId}/theirs.jpg`]);
 });
 
 test("refuses another user and a shared household, and deletes nothing", async () => {
