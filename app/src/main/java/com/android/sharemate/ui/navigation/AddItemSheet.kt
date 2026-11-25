@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -125,6 +126,13 @@ private fun AddItemMethod.style(): AddItemOptionStyle {
             colors.onSecondaryContainer,
             R.string.add_item_manual,
             R.string.add_item_manual_description)
+    AddItemMethod.RECEIPT ->
+        AddItemOptionStyle(
+            Icons.AutoMirrored.Filled.ReceiptLong,
+            colors.tertiaryContainer,
+            colors.onTertiaryContainer,
+            R.string.add_item_receipt,
+            R.string.add_item_receipt_description)
   }
 }
 

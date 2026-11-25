@@ -100,15 +100,19 @@ import com.android.sharemate.ui.household.HouseholdMembersScreen
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
 import com.android.sharemate.ui.navigation.AddItemMenuViewModel
+import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.navigation.AddItemSheet
 import com.android.sharemate.ui.navigation.AppBottomBar
 import com.android.sharemate.ui.navigation.AppDeepLinks
 import com.android.sharemate.ui.navigation.ChildRoutes
 import com.android.sharemate.ui.navigation.ProfileEntry
+import com.android.sharemate.ui.navigation.ScreenTransitions
 import com.android.sharemate.ui.navigation.TopLevelDestination
+import com.android.sharemate.ui.navigation.cancelAddItem
 import com.android.sharemate.ui.navigation.leaveSettings
 import com.android.sharemate.ui.navigation.rememberFridgeEntry
 import com.android.sharemate.ui.navigation.selectTab
+import com.android.sharemate.ui.navigation.startAddItem
 import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
@@ -282,12 +286,20 @@ open class MainActivity : ComponentActivity() {
               }
               val currentRoute =
                   navController.currentBackStackEntryAsState().value?.destination?.route
+              val transitions = remember { ScreenTransitions() }
+              DisposableEffect(navController, transitions) {
+                val detach = transitions.attach(navController)
+                onDispose { detach() }
+              }
+              LaunchedEffect(transitions.heldRoute) { transitions.releaseHeldRoute() }
               val addItemMenu: AddItemMenuViewModel =
                   viewModel(key = "add_item_menu_${session.uid}_${household.id}")
               val addItemRequest by addItemMenu.request.collectAsStateWithLifecycle()
               val addItemSheetOpen by addItemMenu.isSheetOpen.collectAsStateWithLifecycle()
               if (addItemSheetOpen) {
-                AddItemSheet(onChoose = addItemMenu::choose, onDismiss = addItemMenu::dismissSheet)
+                AddItemSheet(
+                    onChoose = { navController.startAddItem(it, addItemMenu, transitions) },
+                    onDismiss = addItemMenu::dismissSheet)
               }
               // The fridge is the start screen, so it stays below every tab and its form can open
               // over any of them.
@@ -311,7 +323,7 @@ open class MainActivity : ComponentActivity() {
                   bottomBar = {
                     if (TopLevelDestination.showsBottomBar(currentRoute)) {
                       AppBottomBar(
-                          currentRoute = currentRoute,
+                          currentRoute = transitions.heldRoute ?: currentRoute,
                           onSelect = navController::selectTab,
                           onAdd = addItemMenu::openSheet)
                     }
@@ -321,6 +333,8 @@ open class MainActivity : ComponentActivity() {
                     navController = navController,
                     startDestination = TopLevelDestination.FRIDGE.route,
                     modifier = Modifier.fillMaxSize().padding(innerPadding),
+                    enterTransition = transitions.enter,
+                    exitTransition = transitions.exit,
                 ) {
                   composable(
                       TopLevelDestination.FRIDGE.route,
@@ -363,7 +377,14 @@ open class MainActivity : ComponentActivity() {
                               profileRepository = profileRepository,
                               barcodeScanner = remember { createBarcodeScanner() },
                               productCatalogRepository =
-                                  remember { createProductCatalogRepository() })
+                                  remember { createProductCatalogRepository() },
+                              scanReceiptRequested = addItemRequest == AddItemMethod.RECEIPT,
+                              onScanReceiptRequestHandled = {
+                                addItemMenu.requestHandled(AddItemMethod.RECEIPT)
+                              },
+                              onScanReceiptCancelled = {
+                                navController.cancelAddItem(addItemMenu, transitions)
+                              })
                         }
                       }
                   composable(BALANCES_ROUTE) {

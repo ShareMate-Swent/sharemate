@@ -38,7 +38,7 @@ class AddItemSheetTest {
       }
 
   @Test
-  fun sheetOffersBarcodeThenManualWithTheirTexts() {
+  fun sheetOffersBarcodeManualAndReceiptInOrderWithTheirTexts() {
     showSheet()
     compose.onNodeWithText(compose.activity.getString(R.string.nav_add_item)).assertIsDisplayed()
     compose
@@ -49,7 +49,9 @@ class AddItemSheetTest {
             AddItemMethod.BARCODE to
                 (R.string.add_item_barcode to R.string.add_item_barcode_description),
             AddItemMethod.MANUAL to
-                (R.string.add_item_manual to R.string.add_item_manual_description))
+                (R.string.add_item_manual to R.string.add_item_manual_description),
+            AddItemMethod.RECEIPT to
+                (R.string.add_item_receipt to R.string.add_item_receipt_description))
     texts.values.forEach { (title, description) ->
       compose.onNodeWithText(compose.activity.getString(title)).assertIsDisplayed()
       compose.onNodeWithText(compose.activity.getString(description)).assertIsDisplayed()

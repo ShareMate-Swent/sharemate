@@ -24,16 +24,23 @@ class AddItemMenuViewModelTest {
   @Test
   fun choosingClosesTheSheetAndKeepsTheChoiceUntilItsScreenHandlesIt() {
     menu.openSheet()
-    menu.choose(AddItemMethod.BARCODE)
+    menu.choose(AddItemMethod.RECEIPT)
     assertFalse(menu.isSheetOpen.value)
-    assertEquals(AddItemMethod.BARCODE, menu.request.value)
+    assertEquals(AddItemMethod.RECEIPT, menu.request.value)
 
     // Another screen cannot clear a choice that is not its own.
     menu.requestHandled(AddItemMethod.MANUAL)
-    assertEquals(AddItemMethod.BARCODE, menu.request.value)
+    assertEquals(AddItemMethod.RECEIPT, menu.request.value)
 
-    menu.requestHandled(AddItemMethod.BARCODE)
+    menu.requestHandled(AddItemMethod.RECEIPT)
     assertNull(menu.request.value)
+  }
+
+  @Test
+  fun cancellingGivesTheTabOfTheAddButtonOnce() {
+    menu.choose(AddItemMethod.RECEIPT, from = TopLevelDestination.CHAT)
+    assertEquals(TopLevelDestination.CHAT, menu.cancelled())
+    assertNull(menu.cancelled())
   }
 
   @Test
@@ -41,5 +48,15 @@ class AddItemMenuViewModelTest {
     menu.choose(AddItemMethod.MANUAL)
     menu.choose(AddItemMethod.BARCODE)
     assertEquals(AddItemMethod.BARCODE, menu.request.value)
+  }
+
+  @Test
+  fun barcodeAndManualRunOnTheFridgeAndReceiptOnReceipts() {
+    assertEquals(TopLevelDestination.FRIDGE, AddItemMethod.BARCODE.destination)
+    assertEquals(TopLevelDestination.FRIDGE, AddItemMethod.MANUAL.destination)
+    assertEquals(TopLevelDestination.RECEIPTS, AddItemMethod.RECEIPT.destination)
+    assertTrue(AddItemMethod.BARCODE.opensOverCurrentTab)
+    assertTrue(AddItemMethod.MANUAL.opensOverCurrentTab)
+    assertFalse(AddItemMethod.RECEIPT.opensOverCurrentTab)
   }
 }

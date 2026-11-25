@@ -39,6 +39,7 @@ fun AddItemHost(
         viewModel.openAddItemDialog(fromAddButton = request)
         onRequestHandled(request)
       }
+      AddItemMethod.RECEIPT,
       null -> Unit
     }
   }
