@@ -65,29 +65,15 @@ internal fun ColumnScope.HouseholdReady(
     onContinue: () -> Unit,
 ) {
   val isPrivate = type == FridgeType.PRIVATE
-  AppStepIndicator(HouseholdLayout.READY_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
-  Spacer(Modifier.height(Dimens.spacingXxl))
-  ReadyBadge(Modifier.align(Alignment.CenterHorizontally))
-  Spacer(Modifier.height(Dimens.spacingL))
-  Text(
-      text =
+  ReadyHeader(
+      title =
           stringResource(
               if (isPrivate) R.string.private_fridge_ready_title
               else R.string.household_ready_title),
-      style = MaterialTheme.typography.headlineLarge,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth(),
-  )
-  Spacer(Modifier.height(Dimens.spacingS))
-  Text(
-      text =
+      description =
           stringResource(
               if (isPrivate) R.string.private_fridge_ready_description
               else R.string.household_ready_description),
-      style = MaterialTheme.typography.bodyLarge,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.spacingM),
   )
   Spacer(Modifier.height(Dimens.spacingS))
   Text(
@@ -105,6 +91,49 @@ internal fun ColumnScope.HouseholdReady(
       text = stringResource(R.string.go_to_my_fridge),
       onClick = onContinue,
       modifier = Modifier.testTag(CreateHouseholdTestTags.CONTINUE),
+  )
+}
+
+/**
+ * The view shown after joining a household with an invite code: the last onboarding step, with a
+ * confirmation and the way on to the fridge.
+ *
+ * @param onContinue Called when the user goes on to the fridge.
+ */
+@Composable
+internal fun ColumnScope.HouseholdJoined(onContinue: () -> Unit) {
+  ReadyHeader(
+      title = stringResource(R.string.household_joined_title),
+      description = stringResource(R.string.household_joined_description),
+  )
+  Spacer(Modifier.weight(1f))
+  AppPrimaryButton(
+      text = stringResource(R.string.go_to_my_fridge),
+      onClick = onContinue,
+      modifier = Modifier.testTag(JoinHouseholdTestTags.CONTINUE),
+  )
+}
+
+/** The last onboarding step's header: the full step indicator, the check mark, title and text. */
+@Composable
+private fun ColumnScope.ReadyHeader(title: String, description: String) {
+  AppStepIndicator(HouseholdLayout.READY_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+  Spacer(Modifier.height(Dimens.spacingXxl))
+  ReadyBadge(Modifier.align(Alignment.CenterHorizontally))
+  Spacer(Modifier.height(Dimens.spacingL))
+  Text(
+      text = title,
+      style = MaterialTheme.typography.headlineLarge,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.fillMaxWidth(),
+  )
+  Spacer(Modifier.height(Dimens.spacingS))
+  Text(
+      text = description,
+      style = MaterialTheme.typography.bodyLarge,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.fillMaxWidth().padding(horizontal = Dimens.spacingM),
   )
 }
 

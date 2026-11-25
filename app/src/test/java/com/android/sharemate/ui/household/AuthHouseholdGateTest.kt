@@ -128,6 +128,7 @@ class AuthHouseholdGateTest {
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("JOIN12")
     compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    compose.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).performClick()
     compose.onNodeWithTag("private_app").assertIsDisplayed()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).assertDoesNotExist()
     assertEquals(listOf("student", "student", "student"), households.lookups)
@@ -194,6 +195,7 @@ class AuthHouseholdGateTest {
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).performClick()
     compose.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("JOIN12")
     compose.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    compose.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).performClick()
 
     compose.onNodeWithTag("private_app_household").assertTextEquals("joined-home")
     compose.onNodeWithTag(HouseholdChoiceTestTags.JOIN).assertDoesNotExist()

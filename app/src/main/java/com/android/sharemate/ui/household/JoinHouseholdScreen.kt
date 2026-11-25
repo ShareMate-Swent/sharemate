@@ -20,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,12 +51,16 @@ object JoinHouseholdTestTags {
   const val JOIN = "join_household_button"
   const val LOADING = "join_household_loading"
   const val ERROR = "join_household_error"
+  const val CONTINUE = "join_household_continue"
 
   /** The test tags of the six code boxes, in display order. */
   val CODE_BOXES = listOf(CODE_BOX_1, CODE_BOX_2, CODE_BOX_3, CODE_BOX_4, CODE_BOX_5, CODE_BOX_6)
 }
 
-/** Screen for joining a household with its invite code. */
+/**
+ * Screen for joining a household with its invite code. Once joined, it shows the last onboarding
+ * step; [onJoined] is called when the user goes on to the fridge.
+ */
 @Composable
 fun JoinHouseholdScreen(
     viewModel: JoinHouseholdViewModel,
@@ -65,7 +68,6 @@ fun JoinHouseholdScreen(
     onBack: () -> Unit,
 ) {
   val state = viewModel.state.collectAsStateWithLifecycle().value
-  LaunchedEffect(state.joined) { if (state.joined) onJoined() }
   Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
     Column(
         modifier =
@@ -73,36 +75,54 @@ fun JoinHouseholdScreen(
                 .padding(
                     horizontal = Dimens.screenHorizontalPadding,
                     vertical = Dimens.screenVerticalPadding),
-        verticalArrangement = Arrangement.spacedBy(Dimens.spacingL),
     ) {
-      AppStepIndicator(HouseholdLayout.FORM_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
-      AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
-      AppScreenTitle(
-          title = stringResource(R.string.join_household_title),
-          description = stringResource(R.string.join_household_description),
-      )
-      InviteCodeField(state, viewModel::updateInviteCode)
-      state.error?.let { error ->
-        HouseholdErrorBanner(
-            message =
-                stringResource(
-                    when (error) {
-                      JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
-                      else -> R.string.household_generic_error
-                    }),
-            testTag = JoinHouseholdTestTags.ERROR,
-        )
+      if (state.joined) {
+        ScrollingColumn { HouseholdJoined(onContinue = onJoined) }
+      } else {
+        JoinForm(state, viewModel, onBack)
       }
-      Spacer(Modifier.weight(1f))
-      AppPrimaryButton(
-          text = stringResource(R.string.join_household),
-          onClick = viewModel::joinHousehold,
-          enabled = state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH,
-          loading = state.isLoading,
-          loadingTestTag = JoinHouseholdTestTags.LOADING,
-          modifier = Modifier.testTag(JoinHouseholdTestTags.JOIN),
+    }
+  }
+}
+
+/** The step before joining: the invite code boxes, the error banner and the join button. */
+@Composable
+private fun JoinForm(
+    state: JoinHouseholdUiState,
+    viewModel: JoinHouseholdViewModel,
+    onBack: () -> Unit,
+) {
+  Column(
+      modifier = Modifier.fillMaxSize(),
+      verticalArrangement = Arrangement.spacedBy(Dimens.spacingL),
+  ) {
+    AppStepIndicator(HouseholdLayout.FORM_STEP, HouseholdLayout.ONBOARDING_STEP_COUNT)
+    AppBackButton(onBack = onBack, testTag = JoinHouseholdTestTags.BACK)
+    AppScreenTitle(
+        title = stringResource(R.string.join_household_title),
+        description = stringResource(R.string.join_household_description),
+    )
+    InviteCodeField(state, viewModel::updateInviteCode)
+    state.error?.let { error ->
+      HouseholdErrorBanner(
+          message =
+              stringResource(
+                  when (error) {
+                    JoinHouseholdError.INVALID_CODE -> R.string.invalid_invite_code
+                    else -> R.string.household_generic_error
+                  }),
+          testTag = JoinHouseholdTestTags.ERROR,
       )
     }
+    Spacer(Modifier.weight(1f))
+    AppPrimaryButton(
+        text = stringResource(R.string.join_household),
+        onClick = viewModel::joinHousehold,
+        enabled = state.inviteCode.length == JoinHouseholdViewModel.MAX_CODE_LENGTH,
+        loading = state.isLoading,
+        loadingTestTag = JoinHouseholdTestTags.LOADING,
+        modifier = Modifier.testTag(JoinHouseholdTestTags.JOIN),
+    )
   }
 }
 

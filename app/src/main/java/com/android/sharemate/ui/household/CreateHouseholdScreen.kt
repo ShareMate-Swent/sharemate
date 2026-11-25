@@ -99,7 +99,7 @@ fun CreateHouseholdScreen(
  * phone or with a large system font, so the last action can always be reached.
  */
 @Composable
-private fun ScrollingColumn(content: @Composable ColumnScope.() -> Unit) {
+internal fun ScrollingColumn(content: @Composable ColumnScope.() -> Unit) {
   BoxWithConstraints(Modifier.fillMaxSize()) {
     Column(
         modifier =
