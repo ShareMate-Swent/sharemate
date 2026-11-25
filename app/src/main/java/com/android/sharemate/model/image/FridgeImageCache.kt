@@ -4,8 +4,6 @@ package com.android.sharemate.model.image
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import coil.ImageLoader
 import coil.annotation.ExperimentalCoilApi
 import coil.decode.DataSource
@@ -37,11 +35,16 @@ import okio.Buffer
 
 /** Image requests and access lifecycle for one authorized fridge session. */
 interface FridgeImageCacheSession {
+  /** Whether this session is still active. */
   val isActive: StateFlow<Boolean>
+
+  /** Loads image requests prepared for this session. */
   val imageLoader: ImageLoader
 
+  /** Adds session-scoped caching to remote image requests. */
   fun withCache(request: ImageRequest): ImageRequest
 
+  /** Ends this session and clears the entire fridge disk cache. */
   suspend fun revoke()
 }
 
@@ -52,19 +55,12 @@ internal class FridgeImageCache(
     private val diskCache: DiskCache,
     private val storageBucket: String,
     private val isCurrentUser: (String) -> Boolean,
-    private val isOnline: () -> Boolean = {
-      val connectivity = context.getSystemService(ConnectivityManager::class.java)
-      connectivity
-          ?.getNetworkCapabilities(connectivity.activeNetwork)
-          ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-    },
     callFactory: Call.Factory? = null,
 ) {
   private val sessions = mutableMapOf<Scope, Session>()
   private val loader =
       ImageLoader.Builder(context)
           .diskCache(diskCache)
-          // Check connectivity once on a cache miss for both Firebase and HTTP.
           .networkObserverEnabled(false)
           .apply { if (callFactory != null) callFactory(callFactory) }
           .components {
@@ -169,7 +165,6 @@ internal class FridgeImageCache(
     val cachedRequest = request.newBuilder().data(DiskThumbnail(data.diskKey)).build()
     val local = chain.proceed(cachedRequest)
     if (local is SuccessResult) return local
-    if (!isOnline()) return local
     if (!data.session.hasAccess()) return denied(request)
     val network =
         request.newBuilder().data(data.originalData).memoryCachePolicy(CachePolicy.WRITE_ONLY)
@@ -222,6 +217,6 @@ internal class FridgeImageCache(
 
     private const val DISK_CACHE_BYTES = 50L * 1024 * 1024
     // A single rendition stays available if the layout width changes while offline.
-    internal const val THUMBNAIL_PIXELS = 512
+    internal const val THUMBNAIL_PIXELS = 256
   }
 }

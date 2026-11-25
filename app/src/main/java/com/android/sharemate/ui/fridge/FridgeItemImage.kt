@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -24,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -46,7 +46,7 @@ internal fun FridgeItemImage(
     personalPhotos: PersonalPhotoController? = null,
 ) {
   val cache = personalPhotos?.imageCache
-  val accessRevoked = cache?.isActive?.collectAsState()?.value == false
+  val accessRevoked = cache?.isActive?.collectAsStateWithLifecycle()?.value == false
   val showProgress = item.image?.isStoredPersonalPhoto() == false
   val context = LocalContext.current
   BoxWithConstraints(modifier.size(ThumbnailSize), contentAlignment = Alignment.Center) {

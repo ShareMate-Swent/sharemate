@@ -380,13 +380,9 @@ class PersonalPhotoStorageEmulatorTest {
     val models = ViewModelStore()
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val disk = FridgeImageCache.diskCache(temporary.newFolder())
-    fun cache(online: Boolean) =
+    fun cache() =
         FridgeImageCache(
-            context,
-            disk,
-            storage.reference.bucket,
-            { FirebaseEmulator.auth.uid == it },
-            isOnline = { online })
+            context, disk, storage.reference.bucket, { FirebaseEmulator.auth.uid == it })
     suspend fun load(fridge: FridgeViewModel, item: Item): SuccessResult {
       val photos = checkNotNull(fridge.personalPhotos)
       val session = checkNotNull(photos.imageCache)
@@ -451,7 +447,7 @@ class PersonalPhotoStorageEmulatorTest {
       val reference = PersonalPhotoReference(checkNotNull(saved.image).reference)
       denied(repository.load(reference))
       homes.joinHousehold(home.inviteCode, outsider)
-      val member = fridge(outsider, cache(online = true).session(outsider, home.id))
+      val member = fridge(outsider, cache().session(outsider, home.id))
       val reread =
           withTimeout(15_000) { member.uiState.first { it.items.isNotEmpty() } }.items.single()
       assertEquals(saved, reread)
@@ -462,7 +458,7 @@ class PersonalPhotoStorageEmulatorTest {
       firestore.disableNetwork().await()
       val offlineMember =
           try {
-            val reloaded = fridge(outsider, cache(online = false).session(outsider, home.id))
+            val reloaded = fridge(outsider, cache().session(outsider, home.id))
             withTimeout(15_000) { reloaded.uiState.first { it.items == listOf(reread) } }
             val offline = load(reloaded, reread)
             assertEquals(DataSource.DISK, offline.dataSource)

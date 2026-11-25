@@ -27,7 +27,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.core.app.ActivityOptionsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.FridgeImageCache
@@ -385,13 +389,12 @@ class FridgePersonalPhotoUiTest {
     val online = MutableStateFlow(true)
     val downloads = AtomicInteger()
     val bytes = png(24, 16)
-    loadPhoto = {
-      downloads.incrementAndGet()
-      Result.success(bytes)
+    loadPhoto = { reference ->
+      if (reference == first) downloads.incrementAndGet()
+      if (online.value) Result.success(bytes) else Result.failure(IOException("Offline"))
     }
     val disk = FridgeImageCache.diskCache(temporary.root)
-    fun cache() =
-        FridgeImageCache(testApplication, disk, "bucket", { it == "user" }, { online.value })
+    fun cache() = FridgeImageCache(testApplication, disk, "bucket", { it == "user" })
 
     val original =
         Item(
@@ -402,12 +405,19 @@ class FridgePersonalPhotoUiTest {
     val item = mutableStateOf(original)
     val initial = cache().session("user", "home")
     val controller = mutableStateOf<PersonalPhotoController?>(photoController(initial))
+    val lifecycleOwner =
+        object : LifecycleOwner {
+          override val lifecycle =
+              LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.STARTED }
+        }
     compose.setContent {
       MaterialTheme {
-        FridgeScreen(
-            uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
-            personalPhotos = controller.value,
-            expiryStatuses = emptyMap())
+        CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+          FridgeScreen(
+              uiState = FridgeUiState(items = listOf(item.value), fridgeType = FridgeType.SHARED),
+              personalPhotos = controller.value,
+              expiryStatuses = emptyMap())
+        }
       }
     }
     val placeholder = compose.onNodeWithTag(C.Tag.fridge_image_placeholder)
@@ -439,7 +449,10 @@ class FridgePersonalPhotoUiTest {
     awaitPhoto()
     assertEquals(1, downloads.get())
 
+    compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.CREATED }
     runBlocking { reopened.revoke() }
+    image.assertIsDisplayed()
+    compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.STARTED }
     placeholder.assertIsDisplayed()
     image.assertDoesNotExist()
   }
@@ -453,7 +466,7 @@ class FridgePersonalPhotoUiTest {
     val client =
         OkHttpClient.Builder()
             .addInterceptor { chain ->
-              assertTrue("The fridge should not make a network request offline", online.value)
+              if (!online.value) throw IOException("Offline")
               downloaded += chain.request().url.toString()
               Response.Builder()
                   .request(chain.request())
@@ -467,8 +480,7 @@ class FridgePersonalPhotoUiTest {
             .build()
     val disk = FridgeImageCache.diskCache(temporary.root)
     fun newSession() =
-        FridgeImageCache(
-                testApplication, disk, "bucket", { true }, { online.value }, callFactory = client)
+        FridgeImageCache(testApplication, disk, "bucket", { true }, callFactory = client)
             .session("user", "home")
 
     val milk =

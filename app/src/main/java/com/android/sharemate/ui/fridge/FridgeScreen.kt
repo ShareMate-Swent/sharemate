@@ -321,8 +321,8 @@ fun FridgeScreen(
     modifier: Modifier = Modifier,
     headerTrailing: (@Composable () -> Unit)? = null,
 ) {
-  val uiState by viewModel.uiState.collectAsState()
-  val visibleItems by viewModel.visibleItems.collectAsState()
+  val screenState by viewModel.screenState.collectAsState()
+  val (uiState, visibleItems, sortOrder, selectedCategory, selectedOwnerId) = screenState
   ReportLaunch(
       LaunchStage.DESTINATION,
       when {
@@ -333,16 +333,12 @@ fun FridgeScreen(
             LaunchStatus.WAITING
         else -> LaunchStatus.READY
       })
-  val sortOrder by viewModel.sortOrder.collectAsState()
-  val selectedCategory by viewModel.selectedCategory.collectAsState()
-  val selectedOwnerId by viewModel.selectedOwnerId.collectAsState()
   val owners by viewModel.ownerOptions.collectAsState()
   val expiryStatuses by viewModel.expiryStatuses.collectAsStateWithLifecycle()
 
   FridgeScreen(
       modifier = modifier,
-      // The filtered stream can still contain the previous list when access is revoked.
-      uiState = uiState.copy(items = if (uiState.items.isEmpty()) emptyList() else visibleItems),
+      uiState = uiState.copy(items = visibleItems),
       expiryStatuses = expiryStatuses,
       onAddItem = viewModel::openAddItemDialog,
       onDismissAddItem = viewModel::dismissAddItemDialog,

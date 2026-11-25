@@ -19,6 +19,7 @@ internal fun fridgeThumbnailRequest(context: Context, pixels: Int): ImageRequest
         .setHeader(HttpHeaders.USER_AGENT, FoodImageHttp.USER_AGENT)
         .crossfade(false)
 
+/** Builds the item's thumbnail request, using [session] for caching when available. */
 internal fun fridgeImageRequest(
     context: Context,
     item: Item,

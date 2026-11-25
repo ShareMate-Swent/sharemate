@@ -158,6 +158,24 @@ class FridgeViewModelTest {
   }
 
   @Test
+  fun displayStateKeepsVisibleItemsInSyncAfterPartialRemoval() = runTest {
+    val viewModel = viewModel()
+    val states = mutableListOf<FridgeScreenState>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.screenState.collect { states += it }
+    }
+    repository.emitItems(listOf(milk, bread))
+    runCurrent()
+    assertEquals(listOf(milk, bread), states.last().visibleItems)
+
+    repository.emitItems(listOf(bread))
+    runCurrent()
+
+    assertEquals(listOf(bread), states.last().visibleItems)
+    assertTrue(states.all { it.visibleItems == it.uiState.items })
+  }
+
+  @Test
   fun offlineStatusActionsPreserveDocumentsAndReleaseOnlyLocalLocks() = runTest {
     repository.emitItems(listOf(milk.copy(ownerId = "other-member"), bread))
     repository.statusConfirmation = CompletableDeferred()
@@ -2590,18 +2608,16 @@ class FridgeViewModelTest {
           }
         }
     val viewModel = viewModel(items = items, photoCache = cache)
-    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-      viewModel.visibleItems.collect()
-    }
     runCurrent()
-    assertEquals(listOf(milk), viewModel.visibleItems.value)
+    assertEquals(listOf(milk), viewModel.screenState.value.visibleItems)
 
     denyAccess.complete(Unit)
     runCurrent()
 
-    assertTrue(viewModel.uiState.value.loadFailed)
-    assertTrue(viewModel.uiState.value.items.isEmpty())
-    assertTrue(viewModel.visibleItems.value.isEmpty())
+    val screenState = viewModel.screenState.value
+    assertTrue(screenState.uiState.loadFailed)
+    assertTrue(screenState.uiState.items.isEmpty())
+    assertTrue(screenState.visibleItems.isEmpty())
     assertFalse(cache.isActive.value)
   }
 

@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.net.ConnectivityManager
-import android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
 import coil.annotation.ExperimentalCoilApi
 import coil.decode.DataSource
 import coil.disk.DiskCache
@@ -74,8 +73,8 @@ class FridgeImageCacheTest {
   private val client =
       OkHttpClient.Builder()
           .addInterceptor { chain ->
-            assertTrue(online.value)
             requestedUrls += chain.request().url.toString()
+            if (!online.value) throw IOException("Offline")
             assertEquals(FoodImageHttp.USER_AGENT, chain.request().header("User-Agent"))
             val headers =
                 Response.Builder()
@@ -124,26 +123,21 @@ class FridgeImageCacheTest {
   }
 
   @Test
-  fun cacheMissDownloadsOnlyOnAValidatedNetwork() = runBlocking {
+  fun cacheMissAttemptsDownloadWithoutValidatedNetwork() = runBlocking {
     val connectivity = context.getSystemService(ConnectivityManager::class.java)
     val shadow = shadowOf(connectivity)
     val network = connectivity.activeNetwork!!
-    val capabilities = ShadowNetworkCapabilities.newInstance()
-    val session =
-        FridgeImageCache(context, disk, "bucket", { it == currentUser }, callFactory = client)
-            .session("alice", "home")
+    shadow.setNetworkCapabilities(network, ShadowNetworkCapabilities.newInstance())
+    val session = cache().session("alice", "home")
     serve(Color.BLUE)
 
-    shadow.setDefaultNetworkActive(false)
+    online.value = false
     assertOffline(session.load(remote))
-    shadow.setDefaultNetworkActive(true)
-    shadow.setNetworkCapabilities(network, capabilities)
-    assertOffline(session.load(remote))
-    assertTrue(requestedUrls.isEmpty())
+    assertEquals(0L, disk.size)
 
-    shadowOf(capabilities).addCapability(NET_CAPABILITY_VALIDATED)
+    online.value = true
     assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
-    assertEquals(listOf(remote), requestedUrls)
+    assertEquals(listOf(remote, remote), requestedUrls)
   }
 
   @Test
@@ -162,8 +156,7 @@ class FridgeImageCacheTest {
                 }
           }
       val session =
-          FridgeImageCache(
-                  context, unavailableDisk, "bucket", { it == currentUser }, { true }, client)
+          FridgeImageCache(context, unavailableDisk, "bucket", { it == currentUser }, client)
               .session("alice", "home")
       assertEquals(Color.BLUE, session.load(remote).bitmap().getPixel(0, 0))
       assertEquals(0L, disk.size)
@@ -287,7 +280,7 @@ class FridgeImageCacheTest {
   }
 
   private fun cache(bucket: String = "bucket") =
-      FridgeImageCache(context, disk, bucket, { it == currentUser }, { online.value }, client)
+      FridgeImageCache(context, disk, bucket, { it == currentUser }, client)
 
   private suspend fun FridgeImageCacheSession.load(url: String) =
       load(fridgeThumbnailRequest(context, 80).data(url))
@@ -297,7 +290,12 @@ class FridgeImageCacheTest {
       download: suspend (PersonalPhotoReference) -> ByteArray = {
         error("Unexpected Storage download")
       },
-  ) = load(fridgeThumbnailRequest(context, 80).firebasePhoto(reference, download))
+  ) =
+      load(
+          fridgeThumbnailRequest(context, 80).firebasePhoto(reference) {
+            if (!online.value) throw IOException("Offline")
+            download(it)
+          })
 
   private suspend fun FridgeImageCacheSession.load(builder: ImageRequest.Builder) =
       withTimeout(10_000) { imageLoader.execute(withCache(builder.build())) }
