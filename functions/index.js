@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 const { onCall } = require("firebase-functions/v2/https");
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 
 const SETTLEMENT_REGION = "europe-west6";
 /** Deleting a large household can take a while; the default 60 seconds is too short. */
@@ -46,6 +47,15 @@ exports.deleteReceipt = onCall({ region: SETTLEMENT_REGION }, (request) => {
   return require("./receipt-deletions").deleteReceipt(firestore, request.auth?.uid, request.data,
     path => getStorage().bucket().file(path).delete({ ignoreNotFound: true }));
 });
+
+exports.cleanupDeletedHouseholdReceipts = onDocumentDeleted(
+  { document: "households/{householdId}", region: SETTLEMENT_REGION, retry: true },
+  async event => {
+    const firestore = database();
+    const { getStorage } = require("firebase-admin/storage");
+    await require("./household-receipt-cleanup").cleanupHouseholdReceipts(
+      firestore, getStorage().bucket(), event.params.householdId);
+  });
 
 exports.deletePrivateHousehold = onCall(
   { region: SETTLEMENT_REGION, timeoutSeconds: DELETE_HOUSEHOLD_TIMEOUT_SECONDS },

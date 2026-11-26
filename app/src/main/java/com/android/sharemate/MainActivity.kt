@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -141,6 +142,10 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
@@ -170,8 +175,22 @@ open class MainActivity : ComponentActivity() {
         beforeSignOut = { fridgeImageCache.purgeAccount(it) })
   }
   private val householdRepository: HouseholdRepository by lazy {
-    HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
+    val lifecycle = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(applicationContext)
+    com.android.sharemate.model.receipt.ReceiptHouseholdRepository(
+        HouseholdRepositoryFirestore(FirebaseFirestore.getInstance()),
+        evict = { viewer, home ->
+          lifecycle.evict(viewer, home)
+          androidx.work.WorkManager.getInstance(applicationContext)
+              .cancelAllWorkByTag("receipt-household-$home")
+        },
+        activate = lifecycle::activate,
+        beforeLeave = { owner, home ->
+          com.android.sharemate.model.receipt.ReceiptDepartureSync.create(
+                  applicationContext, itemRepository)
+              .prepare(owner, home)
+        })
   }
+
   private val profileRepository: UserProfileRepository by lazy {
     FirestoreUserProfileRepository(FirebaseFirestore.getInstance())
   }
@@ -256,6 +275,22 @@ open class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    lifecycleScope.launch {
+      authRepository.session.collectLatest { session ->
+        if (session != null) {
+          val cache = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(applicationContext)
+          com.android.sharemate.model.receipt
+              .ReceiptMembershipObserver(FirebaseFirestore.getInstance())
+              .observe(session.uid)
+              .onEach { homes -> cache.reconcile(session.uid, homes) }
+              .retryWhen { _, _ ->
+                delay(5_000)
+                true
+              }
+              .collect {}
+        }
+      }
+    }
     pendingDeepLinkIntent =
         if (savedInstanceState != null) {
           savedInstanceState.getString(PENDING_DEEP_LINK_URI)?.let {

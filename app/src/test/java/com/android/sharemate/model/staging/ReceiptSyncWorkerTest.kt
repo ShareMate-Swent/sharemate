@@ -43,6 +43,20 @@ class ReceiptSyncWorkerTest {
           .build()
 
   @Test
+  fun evictionDiscardsQueuedDeletesEvenAfterRejoin() = runTest {
+    val lifecycle = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(context)
+    lifecycle.evict("owner", "home")
+    lifecycle.activate("home")
+    val deletion = Data.Builder().putAll(input).putBoolean("delete", true).build()
+    assertEquals(
+        ListenableWorker.Result.success(),
+        worker(deletion) { _, _, _, _, _ ->
+              error("An old deletion job must never run after leaving")
+            }
+            .doWork())
+  }
+
+  @Test
   fun validatesInputAndStopsWorkForAnotherSignedInActor() = runTest {
     for (missing in listOf("owner", "home", "id")) {
       val data = Data.Builder().putAll(input.keyValueMap.filterKeys { it != missing }).build()

@@ -45,6 +45,7 @@ class ReceiptHistoryViewModel(
     private val itemSharing: ItemSharing = ItemSharing.SHARED,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
+  private var accessEnded = false
   /** Receipts belonging to this account and household, including pending and failed saves. */
   val receipts = mutableReceipts.asStateFlow()
   private val observations = mutableMapOf<String, Job>()
@@ -198,7 +199,16 @@ class ReceiptHistoryViewModel(
 
   init {
     viewModelScope.launch { refresh() }
-    synchronization.start(viewModelScope, ::refresh)
+    val synchronizationJob = synchronization.start(viewModelScope, ::refresh)
+    viewModelScope.launch {
+      store.invalidations(householdId).collect {
+        accessEnded = true
+        synchronizationJob.cancel()
+        mutableReceipts.value = emptyList()
+        observations.values.forEach { it.cancel() }
+        observations.clear()
+      }
+    }
   }
 
   /** Loads local receipts and resumes server acknowledgement observations after process restart. */
@@ -219,7 +229,7 @@ class ReceiptHistoryViewModel(
                     store.pendingCorrection(submission.ownerId, householdId, submission.id) !=
                         null))
           }
-      mutableReceipts.value = entries
+      mutableReceipts.value = if (accessEnded) emptyList() else entries
       entries
           .filter { it.phase == InventorySavePhase.PENDING && it.submission.expense == null }
           .forEach { observe(it.submission) }
