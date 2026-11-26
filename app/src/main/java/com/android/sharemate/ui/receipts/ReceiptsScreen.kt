@@ -269,6 +269,9 @@ internal fun ReceiptHistoryFlow(
   val receipts by history.receipts.collectAsStateWithLifecycle()
   val editFailed by history.error.collectAsStateWithLifecycle()
   val syncFailed by history.syncError.collectAsStateWithLifecycle()
+  val online by
+      remember(context) { com.android.sharemate.model.receipt.receiptConnectivity(context) }
+          .collectAsStateWithLifecycle(initialValue = null)
   val scan: ReceiptScanViewModel =
       viewModel(
           factory =
@@ -302,6 +305,7 @@ internal fun ReceiptHistoryFlow(
             onRetry = history::reload,
             onOpen = { nav.navigate("receipt/$it") },
             onPurchase = onPurchase,
+            online = online,
         )
       }
     }

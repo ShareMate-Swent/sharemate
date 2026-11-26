@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<resources>
+    <string name="receipt_badge_offline">Waiting to sync</string>
+    <string name="receipt_badge_pending">Awaiting confirmation</string>
+    <string name="receipt_badge_rejected">Save refused</string>
+    <string name="receipt_badge_failed">Save failed</string>
+    <string name="receipt_badge_unverified">Not verified</string>
+    <string name="receipt_badge_checking">Checking</string>
+</resources>
