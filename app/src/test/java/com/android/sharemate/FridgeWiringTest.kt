@@ -155,6 +155,10 @@ class FridgeWiringTest {
 
   private fun resolve(type: FridgeType = FridgeType.SHARED) {
     compose.runOnIdle { firebase.resolveInitialHousehold(type = type) }
+    // Household activation finishes on IO after the Firebase task resolves.
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(C.Tag.fridge_add_item).fetchSemanticsNodes().size == 1
+    }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
   }
 

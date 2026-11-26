@@ -1,9 +1,11 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -23,6 +25,10 @@ class NotificationSettingsNavigationTest {
 
   private fun openNotificationSettings() {
     compose.runOnIdle { firebase.resolveInitialHousehold() }
+    // Household activation finishes on IO after the Firebase task resolves.
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(C.Tag.fridge_add_item).fetchSemanticsNodes().size == 1
+    }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsDisplayed()
     compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(NotificationSettingsTestTags.OPEN_ENTRY).performScrollTo().performClick()
