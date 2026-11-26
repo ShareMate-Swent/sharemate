@@ -423,6 +423,7 @@ class ReceiptHistoryFlowTest {
                               barcode, "Barcode oats", null))
                 })
     fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW).assertDoesNotExist()
     compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     assertEquals(0, scans)
@@ -452,6 +453,11 @@ class ReceiptHistoryFlowTest {
       org.junit.Assert.assertNotNull(photo.state.value.selection)
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(10_000) { !photo.state.value.visible }
+      // The appended row can be outside the lazy list's viewport on smaller screens.
+      compose
+          .onNodeWithTag(StagingTestTags.LIST)
+          .performScrollTo()
+          .performScrollToNode(hasText("Barcode oats"))
       compose.onNodeWithText("Barcode oats").performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
       compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
@@ -460,6 +466,10 @@ class ReceiptHistoryFlowTest {
       assertEquals(250L, added.priceCents)
       assertEquals(1, scans)
       fixture.open()
+      compose
+          .onNodeWithTag(StagingTestTags.LIST)
+          .performScrollTo()
+          .performScrollToNode(hasText("Barcode oats"))
       compose.onNodeWithText("Barcode oats").assertIsDisplayed()
     } finally {
       input.delete()

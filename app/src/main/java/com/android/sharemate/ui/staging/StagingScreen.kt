@@ -8,12 +8,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,10 +52,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
@@ -65,6 +70,7 @@ private const val ITEM_NAME_MAX_LINES = 1
 private const val COMPACT_ITEM_NAME_MAX_LINES = 2
 
 object StagingTestTags {
+  const val CONTENT = "staging_content"
   const val BACK = "staging_back"
   const val LIST = "staging_list"
   const val EMPTY = "staging_empty"
@@ -215,7 +221,7 @@ fun StagingContent(
 ) {
   var showMissingPrices by remember { mutableStateOf(false) }
   if (!state.hasMissingPrices) showMissingPrices = false
-  Column(
+  BoxWithConstraints(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -223,111 +229,140 @@ fun StagingContent(
                   horizontal = Dimens.screenHorizontalPadding,
                   vertical = Dimens.screenVerticalPadding,
               )) {
-        ReceiptHeader(
-            title = stringResource(R.string.staging_title),
-            onBack = onBack,
-            backTag = StagingTestTags.BACK,
-            actions = { ReceiptDeleteActions(onDeleteReceipt) },
-        )
-        if (continueToSharing) {
-          ReceiptProgress(if (savedPurchase) 3 else 1)
-          previewContent()
-          Spacer(Modifier.height(Dimens.spacingS))
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-          LazyColumn(
-              modifier =
-                  Modifier.fillMaxSize()
-                      .then(
-                          if (state.items.isEmpty()) Modifier
-                          else Modifier.testTag(StagingTestTags.LIST)),
-              verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-          ) {
-            if (!continueToSharing)
-                item(key = DESCRIPTION_KEY) {
-                  previewContent()
-                  Text(
-                      text = stringResource(R.string.staging_description),
-                      style = MaterialTheme.typography.bodyLarge,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  )
-                  Spacer(Modifier.height(Dimens.spacingM))
-                }
-            if (state.items.isEmpty()) {
-              item(key = EMPTY_KEY) {
-                Box(
-                    Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
-                    contentAlignment = Alignment.Center,
-                ) {
-                  Text(
-                      text = stringResource(R.string.staging_empty),
-                      style = MaterialTheme.typography.bodyLarge,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                      modifier = Modifier.testTag(StagingTestTags.EMPTY),
-                  )
-                }
-              }
-            } else {
-              items(state.items, key = { it.id }) { item ->
-                StagedItemRow(
-                    item,
-                    onClick = { onItemClick(item.id) },
-                    onDelete = { onDeleteItem(item.id) },
-                    enabled = actionsEnabled,
-                    compact = continueToSharing,
+        val density = LocalDensity.current
+        var headerHeight by remember { mutableStateOf(0) }
+        var footerHeight by remember { mutableStateOf(0) }
+        val listHeight =
+            (maxHeight - with(density) { (headerHeight + footerHeight).toDp() }).coerceAtLeast(
+                StagingLayout.MinimumListHeight)
+        // Keep the preview and controls fixed when they fit. If they do not, the page can scroll
+        // around a usable item viewport instead of measuring the item list at zero height.
+        Column(
+            if (continueToSharing)
+                Modifier.verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight)
+                    .testTag(StagingTestTags.CONTENT)
+            else Modifier.fillMaxSize()) {
+              Column(Modifier.onSizeChanged { headerHeight = it.height }) {
+                ReceiptHeader(
+                    title = stringResource(R.string.staging_title),
+                    onBack = onBack,
+                    backTag = StagingTestTags.BACK,
+                    actions = { ReceiptDeleteActions(onDeleteReceipt) },
                 )
+                if (continueToSharing) {
+                  ReceiptProgress(if (savedPurchase) 3 else 1)
+                  previewContent()
+                  Spacer(Modifier.height(Dimens.spacingS))
+                }
               }
-            }
-            if (!continueToSharing)
-                item(key = STATUS_KEY) {
+              Box(
+                  (if (continueToSharing) Modifier.height(listHeight) else Modifier.weight(1f))
+                      .fillMaxWidth()) {
+                    LazyColumn(
+                        modifier =
+                            Modifier.fillMaxSize()
+                                .then(
+                                    if (state.items.isEmpty()) Modifier
+                                    else Modifier.testTag(StagingTestTags.LIST)),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+                    ) {
+                      if (!continueToSharing)
+                          item(key = DESCRIPTION_KEY) {
+                            previewContent()
+                            Text(
+                                text = stringResource(R.string.staging_description),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(Dimens.spacingM))
+                          }
+                      if (state.items.isEmpty()) {
+                        item(key = EMPTY_KEY) {
+                          Box(
+                              Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
+                              contentAlignment = Alignment.Center,
+                          ) {
+                            Text(
+                                text = stringResource(R.string.staging_empty),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag(StagingTestTags.EMPTY),
+                            )
+                          }
+                        }
+                      } else {
+                        items(state.items, key = { it.id }) { item ->
+                          StagedItemRow(
+                              item,
+                              onClick = { onItemClick(item.id) },
+                              onDelete = { onDeleteItem(item.id) },
+                              enabled = actionsEnabled,
+                              compact = continueToSharing,
+                          )
+                        }
+                      }
+                      if (!continueToSharing)
+                          item(key = STATUS_KEY) {
+                            if (onAddItem != null && !savedPurchase) {
+                              AddItemButton(onAddItem, actionsEnabled)
+                            }
+                            itemActions()
+                            state.purchasePreview?.totalCents?.let {
+                              PurchaseTotal(
+                                  it,
+                                  Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
+                            }
+                            statusContent()
+                          }
+                    }
+                  }
+              Column(Modifier.onSizeChanged { footerHeight = it.height }) {
+                if (continueToSharing) {
                   if (onAddItem != null && !savedPurchase) {
                     AddItemButton(onAddItem, actionsEnabled)
                   }
                   itemActions()
-                  state.purchasePreview?.totalCents?.let {
-                    PurchaseTotal(
-                        it, Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
-                  }
                   statusContent()
                 }
-          }
-        }
-        if (continueToSharing) {
-          if (onAddItem != null && !savedPurchase) {
-            AddItemButton(onAddItem, actionsEnabled)
-          }
-          itemActions()
-          statusContent()
-        }
-        Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))
-        if (continueToSharing) {
-          state.purchasePreview?.totalCents?.let {
-            PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
-          }
-        }
-        if (showMissingPrices) {
-          Text(
-              stringResource(R.string.staging_missing_prices),
-              color = MaterialTheme.colorScheme.error,
-              modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
-          )
-        }
-        if (!savedPurchase || continueToSharing)
-            Button(
-                shape = MaterialTheme.shapes.medium,
-                onClick = { if (state.hasMissingPrices) showMissingPrices = true else onConfirm() },
-                enabled =
-                    (state.items.isNotEmpty() && state.draft == null && actionsEnabled) ||
-                        savedPurchase,
-                modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
-            ) {
-              Text(
-                  stringResource(
-                      if (continueToSharing) R.string.receipt_continue
-                      else if (state.purchase != null) R.string.purchase_save_inventory_only
-                      else R.string.staging_confirm))
+                Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))
+                if (continueToSharing) {
+                  state.purchasePreview?.totalCents?.let {
+                    PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
+                  }
+                }
+                if (showMissingPrices) {
+                  Text(
+                      stringResource(R.string.staging_missing_prices),
+                      color = MaterialTheme.colorScheme.error,
+                      modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
+                  )
+                }
+                if (!savedPurchase || continueToSharing)
+                    Button(
+                        shape = MaterialTheme.shapes.medium,
+                        onClick = {
+                          if (state.hasMissingPrices) showMissingPrices = true else onConfirm()
+                        },
+                        enabled =
+                            (state.items.isNotEmpty() && state.draft == null && actionsEnabled) ||
+                                savedPurchase,
+                        modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
+                    ) {
+                      Text(
+                          stringResource(
+                              if (continueToSharing) R.string.receipt_continue
+                              else if (state.purchase != null) R.string.purchase_save_inventory_only
+                              else R.string.staging_confirm))
+                    }
+              }
             }
       }
+}
+
+private object StagingLayout {
+  /** Keeps at least one editable row reachable when the rest of the page needs to scroll. */
+  val MinimumListHeight = 120.dp
 }
 
 @Composable

@@ -551,16 +551,19 @@ internal fun ReceiptHistoryFlow(
                         Modifier.fillMaxWidth()
                             .padding(bottom = Dimens.spacingS)
                             .testTag(ReceiptHistoryTestTags.TITLE))
-                receipt.details?.photoUri?.let { uri ->
-                  AsyncImage(
-                      model = uri,
-                      contentDescription = stringResource(R.string.receipt_photo_preview),
-                      modifier =
-                          Modifier.fillMaxWidth()
-                              .height(ReceiptLayout.ReviewPhotoHeight)
-                              .clickable { expandedPhotoUri = uri }
-                              .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
-                }
+                receipt.details
+                    ?.photoUri
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { uri ->
+                      AsyncImage(
+                          model = uri,
+                          contentDescription = stringResource(R.string.receipt_photo_preview),
+                          modifier =
+                              Modifier.fillMaxWidth()
+                                  .height(ReceiptLayout.ReviewPhotoHeight)
+                                  .clickable { expandedPhotoUri = uri }
+                                  .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
+                    }
               }
             },
             statusContent = {
