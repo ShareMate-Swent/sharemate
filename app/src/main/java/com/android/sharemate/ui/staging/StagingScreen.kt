@@ -57,7 +57,6 @@ import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
-import com.android.sharemate.ui.receipts.ReceiptDesign
 import com.android.sharemate.ui.receipts.ReceiptHeader
 import com.android.sharemate.ui.receipts.ReceiptProgress
 import com.android.sharemate.ui.theme.Dimens
@@ -102,7 +101,7 @@ fun StagingScreen(
   if (stagedPurchase && sharing) {
     Column(
         Modifier.fillMaxSize()
-            .background(ReceiptDesign.background)
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(Dimens.screenHorizontalPadding)) {
           ReceiptHeader(
@@ -413,7 +412,7 @@ private fun StagedItemRow(
                     style = MaterialTheme.typography.bodyMedium)
                 Text(
                     "×${item.quantity}",
-                    color = ReceiptDesign.muted,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 8.dp))
                 Text(
                     item.priceCents?.let {
@@ -427,10 +426,10 @@ private fun StagedItemRow(
                       Icon(
                           Icons.Outlined.Delete,
                           stringResource(R.string.staging_delete_item, item.name),
-                          tint = ReceiptDesign.muted)
+                          tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
               }
-          HorizontalDivider(color = ReceiptDesign.border)
+          HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     return
   }
@@ -483,7 +482,7 @@ private fun StagedItemCard(
       enabled = enabled,
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
       shape = RoundedCornerShape(12.dp),
-      border = BorderStroke(1.dp, ReceiptDesign.border),
+      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Row(

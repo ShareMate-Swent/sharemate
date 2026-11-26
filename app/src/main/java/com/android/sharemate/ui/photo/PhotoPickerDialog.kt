@@ -42,7 +42,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
-import com.android.sharemate.ui.receipts.ReceiptDesign
 import com.android.sharemate.ui.receipts.ReceiptExitDialog
 import com.android.sharemate.ui.receipts.ReceiptHeader
 import com.android.sharemate.ui.receipts.ReceiptProgress
@@ -105,7 +104,7 @@ fun PhotoPickerDialog(
         Surface(
             modifier = Modifier.fillMaxSize(),
             color =
-                if (labels.receiptProgress) ReceiptDesign.background
+                if (labels.receiptProgress) MaterialTheme.colorScheme.background
                 else MaterialTheme.colorScheme.surface) {
               Column(
                   Modifier.fillMaxSize()
@@ -257,24 +256,24 @@ private fun ReceiptSourceLabel(camera: Boolean) {
       Modifier.fillMaxWidth().padding(vertical = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(color = ReceiptDesign.lavender, shape = RoundedCornerShape(10.dp)) {
+        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
           Icon(
               if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
               null,
               Modifier.padding(10.dp).size(24.dp),
-              tint = ReceiptDesign.purple)
+              tint = MaterialTheme.colorScheme.primary)
         }
         Column {
           Text(
               stringResource(
                   if (camera) R.string.receipt_take_photo else R.string.receipt_choose_gallery),
               fontWeight = FontWeight.Bold,
-              color = ReceiptDesign.ink)
+              color = MaterialTheme.colorScheme.onSurface)
           Text(
               stringResource(
                   if (camera) R.string.receipt_camera_hint else R.string.receipt_gallery_hint),
               fontSize = 12.sp,
-              color = ReceiptDesign.muted)
+              color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       }
 }
