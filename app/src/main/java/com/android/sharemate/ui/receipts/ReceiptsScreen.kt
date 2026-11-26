@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -140,44 +139,32 @@ fun ReceiptsScreen(
   val members =
       memberState?.members?.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }.orEmpty()
   key(userId, householdId) {
-    val scheme = MaterialTheme.colorScheme
-    MaterialTheme(
-        colorScheme =
-            scheme.copy(
-                primary = ReceiptDesign.purple,
-                onPrimary = Color.White,
-                surface = Color.White,
-                onSurface = ReceiptDesign.ink,
-                onSurfaceVariant = ReceiptDesign.muted,
-                background = ReceiptDesign.background,
-                surfaceContainerLow = ReceiptDesign.background,
-                primaryContainer = Color(0xFFEDE5FA),
-                onPrimaryContainer = Color(0xFF35215F))) {
-          ReceiptHistoryFlow(
-              photo,
-              reader,
-              history,
-              sharedHousehold,
-              showBalances,
-              onOpenBalances,
-              itemRepository = itemRepository,
-              balance = balance,
-              expenseRepository = expenseRepository,
-              membersFailed = memberState?.hasError == true,
-              onRetryMembers = { memberModel?.retry() },
-              userId = userId,
-              householdId = householdId,
-              purchaseReview =
-                  if (sharedHousehold && expenseRepository != null)
-                      PurchaseReview.forUser(userId, members)
-                          .copy(
-                              membersAvailable =
-                                  memberState != null &&
-                                      !memberState.isLoading &&
-                                      !memberState.hasError)
-                  else null,
-              onPurchase = null)
-        }
+    MaterialTheme {
+      ReceiptHistoryFlow(
+          photo,
+          reader,
+          history,
+          sharedHousehold,
+          showBalances,
+          onOpenBalances,
+          itemRepository = itemRepository,
+          balance = balance,
+          expenseRepository = expenseRepository,
+          membersFailed = memberState?.hasError == true,
+          onRetryMembers = { memberModel?.retry() },
+          userId = userId,
+          householdId = householdId,
+          purchaseReview =
+              if (sharedHousehold && expenseRepository != null)
+                  PurchaseReview.forUser(userId, members)
+                      .copy(
+                          membersAvailable =
+                              memberState != null &&
+                                  !memberState.isLoading &&
+                                  !memberState.hasError)
+              else null,
+          onPurchase = null)
+    }
   }
 }
 
@@ -268,7 +255,7 @@ private fun ReceiptHistoryFlow(
       val receipt = receipts.firstOrNull { it.submission.id == id }
       if (receipt == null) {
         LaunchedEffect(id) { nav.popBackStack(RECEIPTS_ROUTE, false) }
-        Box(Modifier.fillMaxSize().background(ReceiptDesign.background)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
           androidx.compose.material3.CircularProgressIndicator(
               Modifier.align(androidx.compose.ui.Alignment.Center))
         }
