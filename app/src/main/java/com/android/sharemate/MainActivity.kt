@@ -363,6 +363,7 @@ open class MainActivity : ComponentActivity() {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                           FridgeScreen(
                               viewModel = fridgeViewModel,
+                              householdName = household.name,
                               headerTrailing = {
                                 ProfileEntry(
                                     photoUrl = session.photoUrl,

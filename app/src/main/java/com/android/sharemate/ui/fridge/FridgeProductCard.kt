@@ -1,15 +1,15 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.fridge
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -48,12 +48,15 @@ import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.components.AppTag
 import com.android.sharemate.ui.theme.Dimens
+import com.android.sharemate.ui.theme.ShareMateTheme
 
 /**
- * Compact inventory tile reusing the shared image renderer and attribution components.
+ * Compact inventory row reusing the shared image renderer and attribution components.
  *
  * @param expiryStatus how close [item] is to its expiration date, already worked out.
+ * @param showOwnership whether the fridge needs ownership labels on its rows.
  */
 @Composable
 fun FridgeItem(
@@ -69,19 +72,18 @@ fun FridgeItem(
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
     ownership: ItemOwnership,
     personalPhotos: PersonalPhotoController? = null,
+    showOwnership: Boolean = true,
 ) {
   val sharingLabel =
       stringResource(
-          if (ownership.sharing == ItemSharing.SHARED) R.string.fridge_shared
-          else R.string.fridge_personal)
-  val ownerLabel = ownerLabel(ownership.name, ownership.isCurrentUser)
-  val ownerDescription = stringResource(R.string.fridge_item_owner, ownerLabel)
-  val expiryColor =
-      when (expiryStatus) {
-        ExpiryStatus.EXPIRED -> MaterialTheme.colorScheme.error
-        ExpiryStatus.SOON -> MaterialTheme.colorScheme.tertiary
-        ExpiryStatus.NORMAL -> MaterialTheme.colorScheme.onSurfaceVariant
-      }
+          when {
+            ownership.sharing == ItemSharing.SHARED -> R.string.fridge_shared
+            ownership.isCurrentUser -> R.string.fridge_yours
+            else -> R.string.fridge_personal
+          })
+  val ownerDescription =
+      stringResource(
+          R.string.fridge_item_owner, ownerLabel(ownership.name, ownership.isCurrentUser))
   val expiryText =
       item.expirationDate?.let {
         stringResource(R.string.fridge_card_expiration, ExpirationDates.formatCompact(it))
@@ -94,80 +96,100 @@ fun FridgeItem(
           ExpiryStatus.NORMAL -> it
         }
       }
-  Column(
+  Row(
       modifier =
-          modifier.fillMaxWidth().testTag(C.Tag.fridge_item_prefix + item.id).semantics {
-            contentDescription =
-                listOfNotNull(item.name, sharingLabel, ownerDescription, expiryDescription)
-                    .joinToString(", ")
-          },
-      verticalArrangement = Arrangement.spacedBy(FridgeLayout.productContentSpacing)) {
-        Surface(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .aspectRatio(FridgeLayout.productImageAspectRatio)
-                    .testTag(C.Tag.fridgeProductSquare(item.id)),
-            shape = RoundedCornerShape(FridgeLayout.productCornerRadius),
-            color = MaterialTheme.colorScheme.surfaceVariant) {
-              Box(contentAlignment = Alignment.Center) {
-                FridgeItemImage(item, imageLoader, Modifier.fillMaxSize(), personalPhotos)
-                Box(Modifier.align(Alignment.TopEnd)) {
-                  ItemActions(
-                      item,
-                      editEnabled,
-                      onEdit,
-                      removalEnabled,
-                      onRemove,
-                      statusEnabled,
-                      onStatusChange)
-                }
+          modifier
+              .fillMaxWidth()
+              .testTag(C.Tag.fridge_item_prefix + item.id)
+              .semantics {
+                contentDescription =
+                    listOfNotNull(
+                            item.name,
+                            sharingLabel.takeIf { showOwnership },
+                            ownerDescription.takeIf { showOwnership },
+                            expiryDescription,
+                        )
+                        .joinToString(", ")
               }
-            }
-        val ownershipColor =
-            if (ownership.sharing == ItemSharing.SHARED) MaterialTheme.colorScheme.outline
-            else MaterialTheme.colorScheme.primary
-        Surface(
-            modifier = Modifier.align(Alignment.End),
-            shape = RoundedCornerShape(FridgeLayout.ownershipBadgeCornerPercent),
-            border = BorderStroke(Dimens.borderWidth, ownershipColor),
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = ownershipColor) {
-              Text(
-                  sharingLabel,
-                  modifier =
-                      Modifier.padding(horizontal = FridgeLayout.ownershipLabelSpacing)
-                          .testTag(C.Tag.fridge_sharing_badge_prefix + item.id),
-                  style = MaterialTheme.typography.labelSmall)
-            }
-        Text(
-            item.name,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-            maxLines = FridgeLayout.productTextMaxLines,
-            overflow = TextOverflow.Ellipsis)
+              .padding(start = Dimens.spacingS, top = Dimens.spacingXs, bottom = Dimens.spacingXs),
+      horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Surface(
+        modifier =
+            Modifier.size(FridgeLayout.thumbnailSize).testTag(C.Tag.fridgeProductSquare(item.id)),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+      FridgeItemImage(item, imageLoader, Modifier.fillMaxSize(), personalPhotos)
+    }
+    Column(
+        Modifier.weight(1f),
+        verticalArrangement = Arrangement.spacedBy(FridgeLayout.productContentSpacing),
+    ) {
+      Text(
+          item.name,
+          style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+          maxLines = 2,
+          overflow = TextOverflow.Ellipsis,
+      )
+      Text(
+          pluralStringResource(R.plurals.fridge_card_quantity, item.quantity, item.quantity),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      if (showOwnership) {
         Text(
             ownerDescription,
             modifier = Modifier.testTag(C.Tag.fridge_owner_name_prefix + item.id),
-            style = MaterialTheme.typography.labelSmall,
-            color =
-                if (ownership.isCurrentUser) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis)
-        expiryText?.let {
-          Text(
-              it,
-              color = expiryColor,
-              style = MaterialTheme.typography.bodySmall,
-              maxLines = FridgeLayout.productTextMaxLines,
-              overflow = TextOverflow.Ellipsis)
-        }
-        Text(
-            pluralStringResource(R.plurals.fridge_card_quantity, item.quantity, item.quantity),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = FridgeLayout.productTextMaxLines,
-            overflow = TextOverflow.Ellipsis)
+            overflow = TextOverflow.Ellipsis,
+        )
       }
+    }
+    if (expiryText != null || showOwnership) {
+      val colors = ShareMateTheme.statusColors
+      Column(
+          modifier = Modifier.widthIn(max = FridgeLayout.itemBadgeWidth),
+          horizontalAlignment = Alignment.End,
+          verticalArrangement = Arrangement.spacedBy(Dimens.spacingXxs),
+      ) {
+        if (expiryText != null) {
+          when (expiryStatus) {
+            ExpiryStatus.EXPIRED -> AppTag(stringResource(R.string.fridge_expired), colors.expired)
+            ExpiryStatus.SOON ->
+                AppTag(stringResource(R.string.fridge_expires_soon), colors.expiringSoon)
+            ExpiryStatus.NORMAL -> Unit
+          }
+          Text(
+              expiryText,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+        if (showOwnership) {
+          AppTag(
+              sharingLabel,
+              if (ownership.sharing == ItemSharing.SHARED) colors.shared else colors.personal,
+              modifier = Modifier.testTag(C.Tag.fridge_sharing_badge_prefix + item.id),
+          )
+        }
+      }
+    }
+    Box {
+      ItemActions(
+          item,
+          editEnabled,
+          onEdit,
+          removalEnabled,
+          onRemove,
+          statusEnabled,
+          onStatusChange,
+      )
+    }
+  }
 }
 
 /** Presentation-only formatting; no identifiers or email fallback. */

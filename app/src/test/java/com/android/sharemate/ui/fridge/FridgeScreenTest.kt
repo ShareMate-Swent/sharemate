@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -49,6 +48,7 @@ import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
 import com.android.sharemate.model.user.FakePseudoRepository
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.theme.ShareMateTheme
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +76,7 @@ class FridgeScreenTest {
     get() = RuntimeEnvironment.getApplication()
 
   @Test
-  fun phoneGridHasThreeSquareTilesPerRowAndRealMetadata() {
+  fun phoneListShowsOneProductPerRowWithSquareThumbnailsAndQuantity() {
     val items =
         (1..4).map {
           Item(id = "$it", name = "Food $it", quantity = it, householdId = "household-1")
@@ -86,7 +86,8 @@ class FridgeScreenTest {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(360.dp),
             uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
-            expiryStatuses = emptyMap())
+            expiryStatuses = emptyMap(),
+        )
       }
     }
     val squares =
@@ -98,12 +99,10 @@ class FridgeScreenTest {
               .boundsInRoot
         }
     squares.forEach { assertEquals(it.width, it.height, 1f) }
-    assertEquals(squares[0].top, squares[1].top, 1f)
-    assertEquals(squares[1].top, squares[2].top, 1f)
-    assertTrue(squares[0].right < squares[1].left)
-    assertTrue(squares[1].right < squares[2].left)
-    assertEquals(squares[0].left, squares[3].left, 1f)
-    assertTrue(squares[3].top > squares[0].bottom)
+    squares.zipWithNext().forEach { (first, second) ->
+      assertEquals(first.left, second.left, 1f)
+      assertTrue(first.bottom < second.top)
+    }
     composeRule.onAllNodesWithTag(C.Tag.fridge_image_placeholder).assertCountEquals(4)
     items.forEach {
       composeRule.onNodeWithText(it.name).assertIsDisplayed()
@@ -131,6 +130,68 @@ class FridgeScreenTest {
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
         .assertTextEquals("Fridge type: Shared")
+  }
+
+  @Test
+  fun expirySortGroupsUrgentItemsWhileNameSortUsesOneList() {
+    val expired = itemExpiringIn(-1).copy(id = "expired", name = "Banana")
+    val soon = itemExpiringIn(2).copy(id = "soon", name = "Carrot")
+    val undated = soon.copy(id = "undated", name = "Apple", expirationDate = null)
+    val sort = mutableStateOf(FridgeSortOrder.EXPIRATION_DATE)
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState =
+                FridgeUiState(
+                    fridgeType = FridgeType.PRIVATE,
+                    items =
+                        if (sort.value == FridgeSortOrder.NAME) listOf(undated, expired, soon)
+                        else listOf(expired, soon, undated),
+                ),
+            expiryStatuses =
+                mapOf(expired.id to ExpiryStatus.EXPIRED, soon.id to ExpiryStatus.SOON),
+            sortOrder = sort.value,
+        )
+      }
+    }
+    composeRule.onNodeWithText("Use soon").assertIsDisplayed()
+    composeRule.onNodeWithText("Everything else").assertIsDisplayed()
+    composeRule.onNodeWithText("Expired").assertIsDisplayed()
+    composeRule.onNodeWithText("Expires soon").assertIsDisplayed()
+    assertTrue(
+        composeRule.onNodeWithText("Carrot").fetchSemanticsNode().boundsInRoot.bottom <
+            composeRule.onNodeWithText("Everything else").fetchSemanticsNode().boundsInRoot.top)
+
+    composeRule.runOnIdle { sort.value = FridgeSortOrder.NAME }
+    composeRule.onNodeWithText("Use soon").assertDoesNotExist()
+    composeRule.onNodeWithText("Everything else").assertDoesNotExist()
+    assertTrue(
+        composeRule.onNodeWithText("Apple").fetchSemanticsNode().boundsInRoot.bottom <
+            composeRule.onNodeWithText("Banana").fetchSemanticsNode().boundsInRoot.top)
+  }
+
+  @Test
+  fun clearFiltersResetsCategoryAndOwnerFromTheEmptyState() {
+    val category = mutableStateOf<ItemCategory?>(ItemCategory.DAIRY)
+    val owner = mutableStateOf<String?>("owner-1")
+    composeRule.setContent {
+      MaterialTheme {
+        FridgeScreen(
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
+            expiryStatuses = emptyMap(),
+            selectedCategory = category.value,
+            selectedOwnerId = owner.value,
+            onCategoryFilterChange = { category.value = it },
+            onOwnerFilterChange = { owner.value = it })
+      }
+    }
+    composeRule.onNodeWithText("Clear filters").assertIsDisplayed().performClick()
+    composeRule.runOnIdle {
+      assertEquals(null, category.value)
+      assertEquals(null, owner.value)
+    }
+    composeRule.onNodeWithText("Clear filters").assertDoesNotExist()
+    composeRule.onNodeWithText("Your fridge is empty").assertIsDisplayed()
   }
 
   @Test
@@ -358,7 +419,9 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
-            uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
+            expiryStatuses = emptyMap(),
+        )
       }
     }
 
@@ -375,21 +438,6 @@ class FridgeScreenTest {
         .onNodeWithText(testApplication.getString(R.string.fridge_sort))
         .assertIsDisplayed()
         .assertIsNotEnabled()
-    composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_yours))
-        .assertIsDisplayed()
-        .assertIsNotEnabled()
-        .assertHasNoClickAction()
-        .assertIsNotSelected()
-    composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_shared))
-        .assertIsDisplayed()
-        .assertIsNotEnabled()
-        .assertHasNoClickAction()
-        .assertIsNotSelected()
-    composeRule
-        .onNodeWithContentDescription(testApplication.getString(R.string.fridge_view_options))
-        .assertIsNotEnabled()
     composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsNotEnabled()
   }
 
@@ -403,13 +451,16 @@ class FridgeScreenTest {
                     name = "Milk",
                     category = ItemCategory.DAIRY,
                     ownerId = "owner-1",
-                    householdId = "household-1"),
+                    householdId = "household-1",
+                ),
                 Item(
                     id = "bread",
                     name = "Bread",
                     category = ItemCategory.PANTRY,
                     ownerId = "owner-2",
-                    householdId = "household-1")))
+                    householdId = "household-1",
+                ),
+            ))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -433,7 +484,7 @@ class FridgeScreenTest {
     composeRule.setContent { MaterialTheme { FridgeScreen(viewModel) } }
     composeRule.waitForIdle()
 
-    composeRule.onNodeWithText(testApplication.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_expiration_date)
     composeRule
         .onNodeWithText(testApplication.getString(R.string.fridge_sort_expiration_date))
         .assertIsSelected()
@@ -453,7 +504,7 @@ class FridgeScreenTest {
     assertEquals(ItemCategory.DAIRY, viewModel.selectedCategory.value)
 
     composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_owner_filter))
+        .onNodeWithText(testApplication.getString(R.string.fridge_owner_filter_all))
         .performClick()
     composeRule.onNodeWithText("Alice").assertExists()
     composeRule.onNodeWithText("Unknown member (15321b2a)").assertExists()
@@ -465,7 +516,7 @@ class FridgeScreenTest {
     assertEquals(null, viewModel.selectedOwnerId.value)
     assertEquals(ItemCategory.DAIRY, viewModel.selectedCategory.value)
 
-    composeRule.onNodeWithText(testApplication.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_name)
     composeRule
         .onNodeWithText(testApplication.getString(R.string.fridge_sort_name))
         .assertIsSelected()
@@ -484,7 +535,8 @@ class FridgeScreenTest {
         FakeItemRepository(
             listOf(
                 Item(id = "milk", name = "Milk", ownerId = first, householdId = HOUSEHOLD_ID),
-                Item(id = "bread", name = "Bread", ownerId = second, householdId = HOUSEHOLD_ID)))
+                Item(id = "bread", name = "Bread", ownerId = second, householdId = HOUSEHOLD_ID),
+            ))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -508,7 +560,7 @@ class FridgeScreenTest {
     composeRule.waitForIdle()
 
     composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_owner_filter))
+        .onNodeWithText(testApplication.getString(R.string.fridge_owner_filter_all))
         .performClick()
     composeRule.onNodeWithText("Unknown member (97dcd513-1)").assertExists()
     composeRule.onNodeWithText("Unknown member (97dcd513-2)").assertExists()
@@ -633,32 +685,43 @@ class FridgeScreenTest {
     composeRule.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
     assertEquals(null, selectedCategory.value)
     composeRule.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
-    composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_yours))
-        .assertIsNotEnabled()
-    composeRule
-        .onNodeWithText(testApplication.getString(R.string.fridge_shared))
-        .assertIsNotEnabled()
   }
 
   @Test
-  fun compactAddControlPreservesCallbackAndSavingState() {
+  fun compactAddControlStaysInPlaceAndPreservesSavingState() {
+    val fridgeType = mutableStateOf(FridgeType.PRIVATE)
     val isSaving = mutableStateOf(false)
+    val sortOrder = mutableStateOf(FridgeSortOrder.NAME)
     var requests = 0
     composeRule.setContent {
-      MaterialTheme {
+      ShareMateTheme {
         FridgeScreen(
-            uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = FridgeType.SHARED),
+            modifier = androidx.compose.ui.Modifier.width(210.dp),
+            uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = fridgeType.value),
+            sortOrder = sortOrder.value,
+            owners = listOf(OwnerOption("owner-1", "Alice")),
+            onSortOrderChange = { sortOrder.value = it },
+            onOwnerFilterChange = {},
             onAddItem = { requests++ },
             expiryStatuses = emptyMap())
       }
     }
-    composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
+    val add = composeRule.onNodeWithTag(C.Tag.fridge_add_item)
+    val privateBounds = add.assertIsDisplayed().getUnclippedBoundsInRoot()
+    composeRule.runOnIdle { fridgeType.value = FridgeType.SHARED }
+    val owners = composeRule.onNodeWithContentDescription("All owners").assertIsDisplayed()
+    assertEquals(privateBounds.top, owners.getUnclippedBoundsInRoot().top)
+    openSort(R.string.fridge_sort_name)
+    composeRule.onNodeWithText("Expiry date").performClick()
+    assertEquals(privateBounds.top, owners.getUnclippedBoundsInRoot().top)
+    assertEquals(privateBounds, add.getUnclippedBoundsInRoot())
+
+    add.assertIsEnabled().performClick()
     assertEquals(1, requests)
     composeRule.runOnIdle { isSaving.value = true }
-    composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsNotEnabled()
+    add.assertIsNotEnabled()
     composeRule.runOnIdle { isSaving.value = false }
-    composeRule.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
+    add.assertIsEnabled().performClick()
     assertEquals(2, requests)
   }
 
@@ -669,13 +732,13 @@ class FridgeScreenTest {
         Column {
           FridgeItem(
               item = itemExpiringIn(-1),
-              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              modifier = androidx.compose.ui.Modifier.width(320.dp),
               expiryStatus = ExpiryStatus.EXPIRED,
               ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
           )
           FridgeItem(
               item = itemExpiringIn(3).copy(id = "soon"),
-              modifier = androidx.compose.ui.Modifier.width(100.dp),
+              modifier = androidx.compose.ui.Modifier.width(320.dp),
               expiryStatus = ExpiryStatus.SOON,
               ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
           )
@@ -693,7 +756,7 @@ class FridgeScreenTest {
       MaterialTheme {
         FridgeItem(
             item = itemExpiringIn(4),
-            modifier = androidx.compose.ui.Modifier.width(100.dp),
+            modifier = androidx.compose.ui.Modifier.width(320.dp),
             expiryStatus = ExpiryStatus.NORMAL,
             ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
         )
@@ -718,8 +781,9 @@ class FridgeScreenTest {
                       id = "utc-item",
                       name = "Milk",
                       expirationDate = expiration,
-                      householdId = "household-1"),
-              modifier = androidx.compose.ui.Modifier.width(100.dp),
+                      householdId = "household-1",
+                  ),
+              modifier = androidx.compose.ui.Modifier.width(320.dp),
               expiryStatus = ExpiryStatus.NORMAL,
               ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
           )
@@ -735,6 +799,14 @@ class FridgeScreenTest {
     } finally {
       java.util.TimeZone.setDefault(originalZone)
     }
+  }
+
+  private fun openSort(currentOption: Int) {
+    val context = testApplication
+    composeRule
+        .onNodeWithText(
+            context.getString(R.string.fridge_sort_selected, context.getString(currentOption)))
+        .performClick()
   }
 
   private fun openActions(id: String) {
