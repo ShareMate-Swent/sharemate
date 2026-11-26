@@ -12,6 +12,17 @@ import org.junit.Test
 import org.mockito.Mockito.*
 
 class ReceiptSynchronizationTest {
+  @Test
+  fun privateInventoryUploadsOnlyAfterServerAcknowledgementWithoutAnExpense() = runTest {
+    store.receipt = InventorySubmission(id, "alice", "home", rows, sharing = ItemSharing.PERSONAL)
+    `when`(items.observeSubmission(store.receipt!!))
+        .thenReturn(flowOf(InventorySubmissionStatus.CONFIRMED))
+    assertTrue(sync.synchronize("alice", "home", id, "alice", false))
+    assertEquals(listOf(store.receipt), uploaded)
+    verifyNoInteractions(expenses)
+    verify(items, never()).addItems(store.receipt!!)
+  }
+
   private val id = UUID.randomUUID().toString()
   private val rows = listOf(StagedItem("milk", "Milk", 1, 100))
   private val expense = SharedExpense(id, "home", "alice", 100, mapOf("alice" to 50L, "bob" to 50L))

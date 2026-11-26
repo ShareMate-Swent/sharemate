@@ -145,7 +145,7 @@ fun ReceiptsScreen(
               viewModelFactory {
                 initializer {
                   val store =
-                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                      AndroidInventorySubmissionStore(context, scheduleSync = true)
                           .forViewer(userId)
                   ReceiptHistoryViewModel(
                       itemRepository,
@@ -354,8 +354,8 @@ internal fun ReceiptHistoryFlow(
                                   receipt.submission.ownerId),
                               userId,
                               householdId,
-                              sharedHousehold,
-                              expenseRepository,
+                              canSave = true,
+                              expenses = expenseRepository,
                               itemSharing =
                                   if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL)
                         }
@@ -463,7 +463,10 @@ internal fun ReceiptHistoryFlow(
         StagingScreen(
             staging,
             onConfirm = { items ->
-              if (receipt.submission.draft && !savingReview) {
+              if (!receipt.submission.draft && !sharedHousehold && !savingReview) {
+                val accepted = purchaseSave?.correctPrivateReceipt(items, title) == true
+                if (accepted) submittedHere = true else history.reportEditFailure()
+              } else if (receipt.submission.draft && !savingReview) {
                 savingReview = true
                 reviewScope.launch {
                   try {
@@ -630,14 +633,17 @@ internal fun ReceiptHistoryFlow(
                                   currentPurchase?.participants.orEmpty() != initialParticipants)
                           if (purchaseChanged || title.trim() != initialTitle) {
                             val accepted =
-                                currentPurchase
-                                    ?.takeIf { it.membersAvailable }
-                                    ?.let { review ->
-                                      staging.confirmedPurchase()?.let { purchase ->
-                                        purchaseSave?.correctPurchase(
-                                            purchase, review.members, title) == true
-                                      }
-                                    } == true
+                                if (!sharedHousehold)
+                                    purchaseSave?.correctPrivateReceipt(currentItems, title) == true
+                                else
+                                    currentPurchase
+                                        ?.takeIf { it.membersAvailable }
+                                        ?.let { review ->
+                                          staging.confirmedPurchase()?.let { purchase ->
+                                            purchaseSave?.correctPurchase(
+                                                purchase, review.members, title) == true
+                                          }
+                                        } == true
                             if (accepted) {
                               submittedHere = true
                               showExitChoice = false

@@ -25,6 +25,40 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun privateCorrectionAndAcknowledgementSurviveJournalRestart() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val original =
+        InventorySubmission(
+            id,
+            "alice",
+            "home",
+            listOf(StagedItem("milk", "Milk", 1, 100)),
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
+    val replacement =
+        InventorySubmission(
+            id,
+            "alice",
+            "home",
+            original.items + StagedItem("bread", "Bread", 1, 300),
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
+    store.save(original)
+    store.saveDetails(ReceiptDetails(id, "alice", "home", "photo", 1, savedAtMillis = 2))
+    val correction = ReceiptCorrection("private-edit", original, replacement, "Private edited")
+    store.saveCorrection(correction)
+    val restarted = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(correction, restarted.pendingCorrection("alice", "home", id))
+    restarted.acknowledgeCorrection(correction)
+    val verified = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(replacement, verified.loadById("alice", "home", id))
+    assertEquals("Private edited", verified.details("alice", "home", id)?.title)
+    assertEquals(1L, verified.details("alice", "home", id)?.revision)
+    assertNull(verified.pendingCorrection("alice", "home", id))
+  }
+
+  @Test
   fun sharingModeSurvivesJournalRestartAndLegacySharedEntries() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)

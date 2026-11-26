@@ -211,6 +211,38 @@ class InventorySaveViewModel(
     return true
   }
 
+  /** Corrects a private receipt without creating a shared expense. */
+  fun correctPrivateReceipt(items: List<StagedItem>, title: String): Boolean {
+    val current = state.value
+    val original = current.submission ?: return false
+    if (!canSave ||
+        expenses == null ||
+        original.draft ||
+        original.expense != null ||
+        original.ownerId != userId ||
+        itemSharing != ItemSharing.PERSONAL ||
+        current.phase != InventorySavePhase.CONFIRMED ||
+        current.correctionPending ||
+        items.any { it.priceCents == null })
+        return false
+    val replacement =
+        try {
+          InventorySubmission(
+              original.id, original.ownerId, householdId, items, sharing = ItemSharing.PERSONAL)
+        } catch (_: IllegalArgumentException) {
+          return false
+        }
+    launchCorrection(
+        ReceiptCorrection(
+            UUID.randomUUID().toString(),
+            original,
+            replacement,
+            normalizeReceiptTitle(title),
+            originalTitle,
+            originalRevision))
+    return true
+  }
+
   private fun launchCorrection(correction: ReceiptCorrection) {
     val token = ++generation
     activeCorrection = correction
@@ -227,7 +259,7 @@ class InventorySaveViewModel(
             previousJobs.forEach { it.join() }
             store.saveCorrection(correction)
             checkNotNull(expenses).correctReceipt(correction)
-            val confirmed = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
+            val confirmed = correction.confirmedReplacement
             store.acknowledgeCorrection(correction)
             activeCorrection = null
             if (token == generation) {

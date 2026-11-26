@@ -11,6 +11,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReceiptRemoteMergePolicyTest {
+  @Test
+  fun privateReceiptsAcceptNewerCloudEditsOnlyAfterInventoryWasSaved() {
+    val receipt =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows,
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
+    val local = details.copy(savedAtMillis = 10)
+    val entry = ReceiptCloudEntry(receipt, local.copy(title = "Remote", revision = 3))
+    assertTrue(policy.shouldApplyRemote(receipt, local, entry, false, false))
+    assertFalse(policy.shouldApplyRemote(receipt, details, entry, false, false))
+    assertFalse(policy.shouldApplyRemote(receipt, local, entry, false, true))
+    assertFalse(policy.shouldApplyRemote(receipt, local, entry.copy(details = local), false, false))
+  }
+
   private val policy = ReceiptRemoteMergePolicy()
   private val id = "00000000-0000-0000-0000-000000000001"
   private val rows = listOf(StagedItem("row", "Milk", 1, 100))

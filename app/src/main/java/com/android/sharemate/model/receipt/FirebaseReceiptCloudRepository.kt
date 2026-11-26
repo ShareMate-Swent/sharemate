@@ -39,7 +39,10 @@ class FirebaseReceiptCloudRepository(
     val receipt = entry.submission
     check(lifecycle.isCurrent(receipt.householdId))
     val details = entry.details
-    if (!receipt.draft && receipt.expenseProgress != ExpenseProgress.CONFIRMED) return
+    if (!receipt.draft &&
+        receipt.expenseProgress != ExpenseProgress.CONFIRMED &&
+        !(receipt.sharing == ItemSharing.PERSONAL && receipt.expense == null))
+        return
     val photoPath = ReceiptCloudPaths.photo(receipt.householdId, receipt.ownerId, receipt.id)
     val ref =
         db.collection(ReceiptCloudPaths.USERS)

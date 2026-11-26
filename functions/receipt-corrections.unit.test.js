@@ -32,6 +32,57 @@ function fixture() {
   return { db, records, request };
 }
 
+function privateFixture() {
+  const value = fixture();
+  value.records.set('households/home', { type: 'PRIVATE', createdBy: 'alice', memberIds: ['alice'] });
+  value.records.delete('households/home/expenses/receipt');
+  value.records.delete('users/alice/expenseSubmissions/receipt');
+  for (const [key, item] of value.records) if (key.startsWith('items/')) item.sharing = 'PERSONAL';
+  value.records.set('users/alice/receiptBackups/receipt', { ownerId: 'alice', householdId: 'home', draft: false, photoReady: true });
+  value.request = { ...value.request, expense: null, originalExpense: null,
+    receipt: { id: 'receipt', householdId: 'home' } };
+  return value;
+}
+
+test('private corrections update rows, title and revision once without creating shared finances', async () => {
+  const { db, records, request } = privateFixture();
+  await correctReceipt(db, 'alice', request);
+  assert.equal(records.get('items/receipt_0').name, 'Oat milk');
+  assert.equal(records.get('items/receipt_0').quantity, 3n);
+  assert.equal(records.has('items/receipt_1'), false);
+  assert.equal(records.get('items/receipt_edit_correction_1').sharing, 'PERSONAL');
+  const backup = records.get('users/alice/receiptBackups/receipt');
+  assert.equal(backup.title, request.title);
+  assert.equal(backup.revision, 1);
+  assert.equal(backup.photoReady, true);
+  assert.equal(JSON.parse(backup.submission).sharing, 'PERSONAL');
+  assert.equal(JSON.parse(backup.submission).expense, undefined);
+  assert.equal([...records.keys()].some(k => /expenses|expenseSubmissions|financeMetadata/.test(k)), false);
+  const after = structuredClone(records);
+  await correctReceipt(db, 'alice', request);
+  assert.deepEqual(records, after);
+  await assert.rejects(correctReceipt(db, 'alice', { ...request, operationId: 'stale' }), { code: 'failed-precondition' });
+  assert.deepEqual(records, after);
+});
+
+test('private correction cannot bypass household ownership or the shared correction protocol', async () => {
+  for (const change of [
+    f => f.records.get('households/home').createdBy = 'bob',
+    f => f.records.get('households/home').type = 'SHARED',
+    f => f.records.get('households/home').memberIds = [],
+    f => f.request.ownerId = 'bob',
+    f => f.request.receipt = { id: 'receipt' },
+    f => f.request.originalExpense = { id: 'forged' },
+    f => f.request.rows[0].priceCents = null,
+  ]) {
+    const f = privateFixture();
+    change(f);
+    const before = structuredClone(f.records);
+    await assert.rejects(correctReceipt(f.db, 'alice', f.request));
+    assert.deepEqual(f.records, before);
+  }
+});
+
 test("updates inventory and ledger once and preserves unrelated item metadata", async () => {
   const { db, records, request } = fixture();
   assert.deepEqual(await correctReceipt(db, "alice", request), { operationId: "correction" });

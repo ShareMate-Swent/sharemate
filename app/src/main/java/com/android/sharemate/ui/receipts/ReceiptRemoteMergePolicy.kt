@@ -3,6 +3,7 @@ package com.android.sharemate.ui.receipts
 
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.receipt.ReceiptCloudEntry
 import com.android.sharemate.model.staging.ReceiptDetails
 
@@ -22,7 +23,12 @@ class ReceiptRemoteMergePolicy {
     if (locallyDeleted || correctionPending || entry.details.revision < 0) return false
     if (local == null) return true
     if (entry.submission.draft && !local.draft) return false
-    if (local.draft || local.expenseProgress != ExpenseProgress.CONFIRMED) return false
+    val confirmedPrivate =
+        local.sharing == ItemSharing.PERSONAL &&
+            local.expense == null &&
+            localDetails?.savedAtMillis != null
+    if (local.draft || (!confirmedPrivate && local.expenseProgress != ExpenseProgress.CONFIRMED))
+        return false
     return localDetails == null || entry.details.revision > localDetails.revision
   }
 }

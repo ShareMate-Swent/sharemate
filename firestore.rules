@@ -16,6 +16,13 @@ service cloud.firestore {
           && (resource.data.ownerId == request.auth.uid || resource.data.draft == false);
     }
     match /users/{receiptOwner}/receiptBackups/{receiptId} {
+      function hasConfirmedPrivateInventory() {
+        let home = get(/databases/$(database)/documents/households/$(request.resource.data.householdId)).data;
+        let marker = get(/databases/$(database)/documents/users/$(receiptOwner)/inventorySubmissions/$(receiptId)).data;
+        return home.type == 'PRIVATE' && home.createdBy == request.auth.uid
+            && marker.ownerId == request.auth.uid
+            && marker.householdId == request.resource.data.householdId;
+      }
       function currentRevision() {
         let path = /databases/$(database)/documents/users/$(receiptOwner)/receiptItemLinks/$(receiptId);
         return exists(path) ? get(path).data.get('revision', 0) : 0;
@@ -41,7 +48,8 @@ service cloud.firestore {
               && (resource.data.draft == true ||
                   request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoReady']))))
           && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/receiptDeletions/$(receiptId))
-          && (request.resource.data.draft == true || exists(/databases/$(database)/documents/users/$(request.auth.uid)/expenseSubmissions/$(receiptId)));
+          && (request.resource.data.draft == true || exists(/databases/$(database)/documents/users/$(request.auth.uid)/expenseSubmissions/$(receiptId))
+              || hasConfirmedPrivateInventory());
     }
     function signedIn() {
       return request.auth != null;

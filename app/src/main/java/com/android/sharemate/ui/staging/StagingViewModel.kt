@@ -41,6 +41,10 @@ data class StagingUiState(
   val purchasePreview: PurchasePreview?
     get() = purchase?.preview(items)
 
+  /** Receipt totals are independent of whether its household shares expenses. */
+  val totalCents: Long?
+    get() = if (items.isEmpty() || hasMissingPrices) null else items.sumOf { it.priceCents!! }
+
   /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
     get() = items.isNotEmpty() && draft == null && items.all { it.priceCents != null }

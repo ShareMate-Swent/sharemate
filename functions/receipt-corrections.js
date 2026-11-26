@@ -28,19 +28,25 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
 async function correctReceipt(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
   const ownerId = request?.ownerId ?? uid;
-  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId' && k !== 'originalRevision').sort().join() !== "expense,operationId,originalExpense,originalRows,originalTitle,rows,title" ||
+  if (!isId(ownerId) || !request || Object.keys(request).filter(k => k !== 'ownerId' && k !== 'originalRevision' && k !== 'receipt').sort().join() !== "expense,operationId,originalExpense,originalRows,originalTitle,rows,title" ||
       !isId(request.operationId) || request.operationId.length > 128 || typeof request.title !== "string" || [...request.title].length > 80 ||
       typeof request.originalTitle !== "string" || [...request.originalTitle].length > 80)
     throw new HttpsError("invalid-argument", "Invalid correction.");
   const originalRevision = request.originalRevision ?? 0;
   if (!Number.isSafeInteger(originalRevision) || originalRevision < 0 || originalRevision >= Number.MAX_SAFE_INTEGER)
     throw new HttpsError("invalid-argument", "Invalid receipt revision.");
-  const expense = parseExpense(request.expense);
+  const privateReceipt = request.expense === null;
+  const identity = request.receipt;
+  if (privateReceipt ? (!identity || Object.keys(identity).sort().join() !== 'householdId,id' ||
+      !isId(identity.id) || !isId(identity.householdId) || request.originalExpense !== null)
+      : identity !== undefined) throw new HttpsError('invalid-argument', 'Invalid receipt identity.');
+  const expense = privateReceipt ? identity : parseExpense(request.expense);
   const originalExpense = request.originalExpense === null ? null : parseExpense(request.originalExpense);
   const original = rows(request.originalRows), revised = rows(request.rows);
   if (!expense || expense.id.length > 128 || !original || !revised || (request.originalExpense !== null && !originalExpense) ||
       (originalExpense && (originalExpense.id !== expense.id || originalExpense.householdId !== expense.householdId)) ||
-      revised.some(r => r.priceCents === null) || revised.reduce((total, r) => total + r.priceCents, 0n) !== expense.totalAmountCents)
+      revised.some(r => r.priceCents === null) ||
+      (!privateReceipt && revised.reduce((total, r) => total + r.priceCents, 0n) !== expense.totalAmountCents))
     throw new HttpsError("invalid-argument", "Invalid correction.");
   const hash = createHash("sha256").update(JSON.stringify(stable(request))).digest("hex");
   const home = db.collection("households").doc(expense.householdId);
@@ -55,18 +61,22 @@ async function correctReceipt(db, uid, request) {
   const rejection = await db.runTransaction(async tx => {
     try {
       const household = (await tx.get(home)).data();
-      if (household?.type !== "SHARED" || !Array.isArray(household.memberIds) || !household.memberIds.includes(uid))
+      if (!Array.isArray(household?.memberIds) || !household.memberIds.includes(uid) ||
+          (privateReceipt ? (household.type !== 'PRIVATE' || household.createdBy !== uid || ownerId !== uid)
+              : household.type !== 'SHARED'))
         throw new HttpsError("permission-denied", "Household membership required.");
       const prior = (await tx.get(operation)).data();
       if (prior) {
         if (prior.hash !== hash) throw new HttpsError("already-exists", "Correction identity already used.");
         return;
       }
-      if (![expense.paidBy, ...Object.keys(expense.shares)].every(id => household.memberIds.includes(id)))
+      if (!privateReceipt && ![expense.paidBy, ...Object.keys(expense.shares)].every(id => household.memberIds.includes(id)))
         throw new HttpsError("permission-denied", "Select current household members.");
       const current = (await tx.get(marker)).data();
       const ledger = (await tx.get(expenseRef)).data();
       const ownership = (await tx.get(expenseMarker)).data();
+      if (privateReceipt && (ledger || ownership))
+        throw new HttpsError('failed-precondition', 'Private receipt has a shared expense.');
       if (!current || current.ownerId !== ownerId || current.householdId !== expense.householdId || current.id !== expense.id ||
           (ownerId !== uid && (!ledger || !ownership)) ||
           !sameRows(current.rows, original) ||
@@ -80,7 +90,7 @@ async function correctReceipt(db, uid, request) {
         const ref = db.collection("items").doc(itemId);
         existingItems.set(rowId, { ref, data: (await tx.get(ref)).data() });
       }
-      await tx.get(revision);
+      if (!privateReceipt) await tx.get(revision);
       const backup = (await tx.get(backupRef)).data();
       if (backup && (backup.ownerId !== ownerId || backup.householdId !== expense.householdId))
         throw new HttpsError('permission-denied', 'Receipt ownership mismatch.');
@@ -100,7 +110,7 @@ async function correctReceipt(db, uid, request) {
         Object.defineProperty(nextLinks, row.id, { value: itemId, enumerable: true });
         if (!before) {
           writes.push(() => tx.create(db.collection("items").doc(itemId), { id: itemId, name: row.name, quantity: row.quantity,
-            ownerId: ownerId, householdId: expense.householdId, sharing: "SHARED", status: "ACTIVE", expirationDate: null, category: null, image: null }));
+            ownerId: ownerId, householdId: expense.householdId, sharing: privateReceipt ? "PERSONAL" : "SHARED", status: "ACTIVE", expirationDate: null, category: null, image: null }));
         } else if (row.name !== before.name || row.quantity !== before.quantity) {
           authorizeItem(stored.data);
           if (!stored.data || stored.data.ownerId !== ownerId || stored.data.householdId !== expense.householdId || stored.data.status !== "ACTIVE")
@@ -120,16 +130,19 @@ async function correctReceipt(db, uid, request) {
       writes.forEach(write => write());
       tx.set(marker, { id: expense.id, ownerId: ownerId, householdId: expense.householdId, rows: revised });
       tx.set(linksRef, { links: nextLinks, title: request.title, revision: nextRevision });
-      tx.set(expenseRef, expense);
-      tx.set(expenseMarker, { householdId: expense.householdId });
+      if (!privateReceipt) {
+        tx.set(expenseRef, expense);
+        tx.set(expenseMarker, { householdId: expense.householdId });
+      }
       if (backup) {
         const submission = { id: expense.id, ownerId, householdId: expense.householdId, rows: revised,
-          draft: false, expense: { paidBy: expense.paidBy, totalAmountCents: expense.totalAmountCents, shares: expense.shares },
-          inventoryConfirmed: true, expenseProgress: 'CONFIRMED' };
-        tx.set(backupRef, { ...backup, title: request.title, revision: nextRevision,
+          draft: false, ...(privateReceipt ? { sharing: 'PERSONAL' } : {
+            expense: { paidBy: expense.paidBy, totalAmountCents: expense.totalAmountCents, shares: expense.shares },
+            inventoryConfirmed: true, expenseProgress: 'CONFIRMED' }) };
+        tx.set(backupRef, { ...backup, draft: false, title: request.title, revision: nextRevision,
           submission: JSON.stringify(submission, (_, value) => typeof value === 'bigint' ? Number(value) : value) });
       }
-      tx.set(revision, { lastReceiptCorrection: request.operationId });
+      if (!privateReceipt) tx.set(revision, { lastReceiptCorrection: request.operationId });
       tx.create(operation, { hash });
     } catch (error) { if (error instanceof HttpsError) return error; throw error; }
   });

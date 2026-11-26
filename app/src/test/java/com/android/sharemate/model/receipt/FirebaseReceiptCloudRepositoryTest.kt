@@ -27,6 +27,27 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseReceiptCloudRepositoryTest {
   @Test
+  fun savedPrivateReceiptUploadsWithoutSharedExpenseConfirmation() =
+      runTest(dispatcher) {
+        val privateReceipt =
+            InventorySubmission(
+                id,
+                "owner",
+                "home",
+                listOf(StagedItem("milk", "Milk", 1, 100)),
+                sharing = ItemSharing.PERSONAL)
+        repository.upload(
+            ReceiptCloudEntry(privateReceipt, ReceiptDetails(id, "owner", "home", "", 1)))
+        verify(tx)
+            .set(
+                eq(ref),
+                argThat<Map<String, Any?>> {
+                  it["draft"] == false &&
+                      codec.decode(it["submission"] as String, "owner", "home") == privateReceipt
+                })
+      }
+
+  @Test
   fun departureUploadPreservesAnExistingPhotoWhenItsLocalDownloadFailed() =
       runTest(dispatcher) {
         `when`(existing.exists()).thenReturn(true)
