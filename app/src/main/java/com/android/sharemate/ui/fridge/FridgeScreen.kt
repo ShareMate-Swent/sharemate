@@ -45,6 +45,7 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.components.AppCard
+import com.android.sharemate.ui.components.AppPrimaryButton
 import com.android.sharemate.ui.components.SingleLineText
 import com.android.sharemate.ui.startup.LaunchStage
 import com.android.sharemate.ui.startup.LaunchStatus
@@ -62,6 +63,7 @@ private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
  *   an item missing from it is shown as [ExpiryStatus.NORMAL].
  * @param headerTrailing Shown at the end of the header, such as the profile photo.
  * @param householdName Name shown below the fridge title, when available.
+ * @param onSuggestRecipes Explicit request action; navigation is owned by the caller.
  * @param onBarcodeScanOpened Called once the add-item form opened the barcode photo asked by
  *   [FridgeUiState.scanBarcodeOnOpen].
  */
@@ -99,6 +101,7 @@ fun FridgeScreen(
     householdName: String? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
     onBarcodeScanOpened: () -> Unit = {},
+    onSuggestRecipes: () -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
   val isShared = uiState.fridgeType == FridgeType.SHARED
@@ -123,6 +126,15 @@ fun FridgeScreen(
         isSaving = uiState.isSaving,
         hasItems = activeItems.isNotEmpty(),
         showOwnerFilter = isShared,
+    )
+
+    AppPrimaryButton(
+        text = stringResource(R.string.fridge_suggest_recipes),
+        onClick = onSuggestRecipes,
+        modifier =
+            Modifier.padding(
+                    horizontal = Dimens.screenHorizontalPadding, vertical = Dimens.spacingXs)
+                .testTag(C.Tag.fridge_suggest_recipes),
     )
 
     uiState.editSyncError?.let { error ->
@@ -405,6 +417,7 @@ private fun FridgeEmptyState(filtered: Boolean, onClearFilters: () -> Unit) {
 fun FridgeScreen(
     viewModel: FridgeViewModel,
     modifier: Modifier = Modifier,
+    onSuggestRecipes: () -> Unit = {},
     householdName: String? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
 ) {
@@ -455,6 +468,7 @@ fun FridgeScreen(
       headerTrailing = headerTrailing,
       householdName = householdName,
       onBarcodeScanOpened = viewModel::barcodeScanOpened,
+      onSuggestRecipes = onSuggestRecipes,
   )
 }
 

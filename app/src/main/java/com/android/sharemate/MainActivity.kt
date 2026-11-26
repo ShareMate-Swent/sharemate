@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -72,6 +73,10 @@ import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.FirebaseReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptCloudRepository
+import com.android.sharemate.model.recipes.FakeRecipeRepository
+import com.android.sharemate.model.recipes.RecipeRepository
+import com.android.sharemate.model.recipes.RecipeRequestResult
+import com.android.sharemate.model.recipes.RecipeSuggestion
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -122,6 +127,7 @@ import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
+import com.android.sharemate.ui.recipes.RecipesViewModel
 import com.android.sharemate.ui.settings.NotificationSettingsScreen
 import com.android.sharemate.ui.settings.NotificationSettingsViewModel
 import com.android.sharemate.ui.settings.SettingsScreen
@@ -223,6 +229,26 @@ open class MainActivity : ComponentActivity() {
         FirebaseAuth.getInstance(),
         FirebaseFirestore.getInstance(),
         lazy { FirebaseMessaging.getInstance() })
+  }
+
+  /** Temporary source allowed by #341; #338 can replace it here without changing the UI. */
+  protected open fun createRecipeRepository(): RecipeRepository =
+      FakeRecipeRepository(
+          RecipeRequestResult.Success(
+              listOf(
+                  RecipeSuggestion(
+                      "demo-soup", getString(R.string.recipes_demo_title), null, 2, 1))))
+
+  /** One request state across tabs, owned and cleared by this session's navigation graph. */
+  @Composable
+  private fun recipesViewModel(
+      navController: NavHostController,
+      entry: NavBackStackEntry
+  ): RecipesViewModel {
+    val owner = remember(entry) { navController.getBackStackEntry(navController.graph.id) }
+    return viewModel(
+        viewModelStoreOwner = owner,
+        factory = viewModelFactory { initializer { RecipesViewModel(createRecipeRepository()) } })
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -398,8 +424,13 @@ open class MainActivity : ComponentActivity() {
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.FRIDGE)) { entry ->
                         val fridgeViewModel = fridgeViewModel(entry, session, household)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          val recipes = recipesViewModel(navController, entry)
                           FridgeScreen(
                               viewModel = fridgeViewModel,
+                              onSuggestRecipes = {
+                                recipes.requestRecipes()
+                                navController.selectTab(TopLevelDestination.RECIPES)
+                              },
                               householdName = household.name,
                               headerTrailing = {
                                 ProfileEntry(
@@ -414,9 +445,9 @@ open class MainActivity : ComponentActivity() {
                       }
                   composable(
                       TopLevelDestination.RECIPES.route,
-                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) {
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) { entry ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          RecipesScreen()
+                          RecipesScreen(recipesViewModel(navController, entry), isDemo = true)
                         }
                       }
                   composable(
@@ -680,6 +711,16 @@ internal fun clearFridgeNavigation(navController: NavHostController) {
       }
   if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
     fridgeEntry.viewModelStore.clear()
+  }
+  // Graph-owned requests must stop even if Navigation retains entries during a transition.
+  val graphEntry =
+      try {
+        navController.getBackStackEntry(navController.graph.id)
+      } catch (_: IllegalArgumentException) {
+        null
+      }
+  if (graphEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
+    graphEntry.viewModelStore.clear()
   }
   // Only the routes in the graph: a private fridge registers no chat route.
   TopLevelDestination.entries
