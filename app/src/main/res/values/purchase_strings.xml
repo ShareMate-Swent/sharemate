@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
-    <string name="purchase_total">Purchase total: CHF %1$s</string>
+    <string name="purchase_total">Purchase total: %1$s CHF</string>
     <string name="purchase_paid_by">Paid by</string>
     <string name="purchase_participants">Share equally with</string>
-    <string name="purchase_rounding">Any remainder cents go to participants in user ID order.</string>
+    <string name="purchase_rounding">Any extra cent is included in the amounts below.</string>
     <string name="purchase_confirm">Confirm purchase</string>
     <string name="purchase_save_inventory_only">Save inventory only</string>
     <string name="purchase_submitter_not_member">You must be a current household member to save this purchase.</string>

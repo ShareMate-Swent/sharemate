@@ -92,6 +92,7 @@ class InventorySaveViewModel(
   private var expenseRetry = CompletableDeferred<Unit>()
   private var activeCorrection: ReceiptCorrection? = null
   private var originalTitle = ""
+  private var originalRevision = 0L
 
   init {
     restore()
@@ -105,10 +106,11 @@ class InventorySaveViewModel(
           try {
             mutableDeferred.value = store.deferred(userId, householdId)
             val restored = store.load(userId, householdId)
-            val restoredTitle =
-                restored?.let { store.details(userId, householdId, it.id)?.title }.orEmpty()
+            val restoredDetails = restored?.let { store.details(userId, householdId, it.id) }
+            val restoredTitle = restoredDetails?.title.orEmpty()
             if (generation != token) return@launch
             originalTitle = restoredTitle
+            originalRevision = restoredDetails?.revision ?: 0
             val correction = restored?.let { store.pendingCorrection(userId, householdId, it.id) }
             if (correction != null) {
               launchCorrection(correction)
@@ -201,7 +203,8 @@ class InventorySaveViewModel(
             original,
             replacement,
             normalizeReceiptTitle(title),
-            originalTitle))
+            originalTitle,
+            originalRevision))
     return true
   }
 
@@ -222,14 +225,11 @@ class InventorySaveViewModel(
             store.saveCorrection(correction)
             checkNotNull(expenses).correctReceipt(correction)
             val confirmed = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
-            store.save(confirmed)
-            store.details(userId, householdId, confirmed.id)?.let {
-              store.saveDetails(it.copy(title = correction.title))
-            }
-            store.clearCorrection(userId, householdId, confirmed.id)
+            store.acknowledgeCorrection(correction)
             activeCorrection = null
             if (token == generation) {
               originalTitle = correction.title
+              originalRevision = correction.originalRevision + 1
               mutableState.value = InventorySaveState(InventorySavePhase.CONFIRMED, confirmed)
             }
           } catch (cancelled: CancellationException) {

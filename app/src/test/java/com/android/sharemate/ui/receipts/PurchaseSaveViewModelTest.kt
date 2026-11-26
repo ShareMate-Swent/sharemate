@@ -43,7 +43,7 @@ class PurchaseSaveViewModelTest {
     store.saved = savedOriginal()
     store.metadata =
         com.android.sharemate.model.staging.ReceiptDetails(
-            store.saved!!.id, "alice", "home", "photo", 1, title = "Original title")
+            store.saved!!.id, "alice", "home", "photo", 1, title = "Original title", revision = 4)
     val vm = model()
     store.metadata = store.metadata!!.copy(title = "Changed remotely after opening")
     expenses.correctionFailure = IOException("Offline")
@@ -52,6 +52,7 @@ class PurchaseSaveViewModelTest {
     runCurrent()
     val correction = store.correction
     assertEquals("Original title", correction?.originalTitle)
+    assertEquals(4L, correction?.originalRevision)
     assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
     store.correctionReadFailure = IOException("Storage unavailable")
     vm.retry()
@@ -74,11 +75,13 @@ class PurchaseSaveViewModelTest {
     runCurrent()
     assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
     assertEquals("Groceries", store.metadata?.title)
+    assertEquals(5L, store.metadata?.revision)
     assertTrue(expenses.corrections.all { it == correction })
     assertTrue(inventory.calls.isEmpty())
     assertTrue(vm.correctPurchase(purchase, members, "Second title"))
     runCurrent()
     assertEquals("Groceries", expenses.corrections.last().originalTitle)
+    assertEquals(5L, expenses.corrections.last().originalRevision)
   }
 
   @Test
@@ -103,7 +106,21 @@ class PurchaseSaveViewModelTest {
 
   @Test
   fun correctionRetriesSamePayloadAfterRestartWithoutAnotherInventoryInsert() = runTest {
-    store.saved = savedOriginal()
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            expense =
+                SharedExpense(
+                    "12345678-1234-1234-1234-123456789abc", "home", "alice", 1000, purchase.shares),
+            inventoryConfirmed = true,
+            expenseProgress = ExpenseProgress.CONFIRMED)
+    store.saved = original
+    store.metadata =
+        com.android.sharemate.model.staging.ReceiptDetails(
+            original.id, "alice", "home", "photo", 1, revision = 8)
     val vm = model()
     expenses.correctionFailure = IOException("response lost")
     val edited =
@@ -116,6 +133,7 @@ class PurchaseSaveViewModelTest {
     assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
     val retained = store.correction
     assertNotNull(retained)
+    assertEquals(8L, retained?.originalRevision)
     assertFalse(vm.correctPurchase(edited, members, "Another edit"))
     expenses.correctionFailure = null
     val recovered = restart()
@@ -123,6 +141,7 @@ class PurchaseSaveViewModelTest {
     assertEquals(InventorySavePhase.CONFIRMED, recovered.state.value.phase)
     assertEquals(listOf(retained, retained), expenses.corrections)
     assertEquals("Oat milk", store.saved?.items?.single()?.name)
+    assertEquals(9L, store.metadata?.revision)
     assertNull(store.correction)
     assertTrue(inventory.calls.isEmpty())
     assertTrue(expenses.calls.isEmpty())
@@ -696,6 +715,14 @@ class PurchaseSaveViewModelTest {
 
     override suspend fun saveCorrection(correction: ReceiptCorrection) {
       this.correction = correction
+    }
+
+    override suspend fun acknowledgeCorrection(correction: ReceiptCorrection) {
+      if (this.correction?.operationId != correction.operationId) return
+      save(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
+      metadata =
+          metadata?.copy(title = correction.title, revision = correction.originalRevision + 1)
+      this.correction = null
     }
 
     override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) {
