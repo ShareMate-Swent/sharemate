@@ -54,6 +54,7 @@ import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
 import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
+import com.android.sharemate.model.household.AndroidDeletedHouseholdStore
 import com.android.sharemate.model.household.FirebasePrivateHouseholdDeletionRepository
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
@@ -274,6 +275,9 @@ open class MainActivity : ComponentActivity() {
     FirebaseFunctions.getInstance(FirebasePrivateHouseholdDeletionRepository.REGION)
   }
 
+  private val deletedHouseholdStore by lazy {
+    AndroidDeletedHouseholdStore(applicationContext, Dispatchers.IO)
+  }
   private val privateHouseholdDeletionRepository by lazy {
     createPrivateHouseholdDeletionRepository()
   }
@@ -352,6 +356,7 @@ open class MainActivity : ComponentActivity() {
             householdRepository,
             profileRepository,
             profilePhotoRepository,
+            deletedHouseholdStore,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {

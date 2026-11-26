@@ -38,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.DeletedHouseholdStore
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
@@ -57,6 +58,8 @@ import com.android.sharemate.ui.startup.ReportLaunch
  * just signed up by email first sees the optional profile photo step.
  *
  * @param profilePhotoRepository Uploads the photo picked in the profile photo step.
+ * @param deletedHouseholds Remembers the households the server confirmed deleted, so a cached
+ *   lookup never reopens one, also after the app is restarted offline.
  * @param content The application, shown once the user belongs to a household. It receives that
  *   session, household and two callbacks: one to invoke when membership may have changed (e.g.
  *   after leaving), so the gate looks it up again and shows onboarding if needed, and one to invoke
@@ -70,6 +73,7 @@ fun AuthHouseholdGate(
     householdRepository: HouseholdRepository,
     profileRepository: UserProfileRepository,
     profilePhotoRepository: ProfilePhotoRepository,
+    deletedHouseholds: DeletedHouseholdStore,
     googleTokenProvider: suspend () -> String?,
     modifier: Modifier = Modifier,
     content:
@@ -95,7 +99,10 @@ fun AuthHouseholdGate(
       }
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         val factory = viewModelFactory {
-          initializer { HouseholdGateViewModel(householdRepository, profileRepository, session) }
+          initializer {
+            HouseholdGateViewModel(
+                householdRepository, profileRepository, deletedHouseholds, session)
+          }
           initializer {
             CreateHouseholdViewModel(householdRepository, authRepository, createSavedStateHandle())
           }

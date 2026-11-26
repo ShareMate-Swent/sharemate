@@ -22,6 +22,7 @@ import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.InMemoryDeletedHouseholdStore
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import com.android.sharemate.model.profile.ProfilePhotoRepository
@@ -33,6 +34,7 @@ import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -46,6 +48,7 @@ class AuthHouseholdGateTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val auth = SessionRepository()
   private val households = MembershipRepository()
+  private val deletedHouseholds = InMemoryDeletedHouseholdStore()
   private val profiles = InMemoryUserProfileRepository()
   private val profilePhotos =
       object : ProfilePhotoRepository {
@@ -217,6 +220,19 @@ class AuthHouseholdGateTest {
   }
 
   @Test
+  fun aHouseholdDeletedBeforeAnOfflineRestartStaysOnTheHouseholdChoice() {
+    // The server deleted the household and the app was closed. Started again offline, the lookup
+    // still returns it from the cache, but the device remembers the deletion.
+    households.memberships["student"] = Household(id = "old-home")
+    runBlocking { deletedHouseholds.markDeleted("student", "old-home") }
+
+    compose.setContent { GateContent() }
+
+    compose.onNodeWithTag("private_app").assertDoesNotExist()
+    compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
+  }
+
+  @Test
   fun retryAndAccountChangeCancelOldLookupWithoutRevealingOldHousehold() {
     households.failure = IllegalStateException("Offline")
     compose.setContent { GateContent() }
@@ -257,6 +273,7 @@ class AuthHouseholdGateTest {
           households,
           profiles,
           profilePhotos,
+          deletedHouseholds,
           googleTokenProvider = { null }) {
               session,
               household,

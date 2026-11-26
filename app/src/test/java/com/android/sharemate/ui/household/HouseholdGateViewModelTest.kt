@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.InMemoryDeletedHouseholdStore
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import com.android.sharemate.model.profile.UserProfile
@@ -28,6 +29,7 @@ class HouseholdGateViewModelTest {
   private val store = ViewModelStore()
   private lateinit var repository: LookupRepository
   private val profiles = InMemoryUserProfileRepository()
+  private val deletedHouseholds = InMemoryDeletedHouseholdStore()
   private val session =
       AuthSession(uid = "authenticated-user", email = "user@example.com", displayName = "Ada")
   private lateinit var viewModel: HouseholdGateViewModel
@@ -130,6 +132,58 @@ class HouseholdGateViewModelTest {
   }
 
   @Test
+  fun aDeletionConfirmedBeforeARestartStillHidesTheHouseholdAfterIt() = runTest {
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+    viewModel.householdDeleted("deleted-home")
+    advanceUntilIdle()
+
+    // The app is closed and started again: a new view model, nothing kept in memory. The lookup
+    // still returns the household, as Firestore's cache does when the device is offline.
+    startViewModel(key = "restarted-gate")
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.NeedsHousehold, viewModel.state.value)
+  }
+
+  @Test
+  fun aDeletionIsRememberedForItsAccountOnly() = runTest {
+    repository.result = Household(id = "shared-home")
+    startViewModel()
+    viewModel.householdDeleted("shared-home")
+    advanceUntilIdle()
+
+    startViewModel(forSession = session.copy(uid = "another-user"), key = "other-gate")
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.Ready(repository.result!!), viewModel.state.value)
+  }
+
+  @Test
+  fun aDeletionThatCannotBeRecordedStillHidesTheHouseholdForTheSession() = runTest {
+    deletedHouseholds.writeFailure = java.io.IOException("Disk full")
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+
+    viewModel.householdDeleted("deleted-home")
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.NeedsHousehold, viewModel.state.value)
+  }
+
+  @Test
+  fun recordsThatCannotBeReadDoNotBlockTheLookup() = runTest {
+    deletedHouseholds.readFailure = java.io.IOException("Disk error")
+    repository.result = Household(id = "home")
+    startViewModel()
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.Ready(repository.result!!), viewModel.state.value)
+  }
+
+  @Test
   fun anotherHouseholdIsStillShownAfterADeletion() = runTest {
     repository.result = Household(id = "deleted-home")
     startViewModel()
@@ -217,9 +271,12 @@ class HouseholdGateViewModelTest {
     assertEquals(listOf(null, "https://photos.example/new.jpg"), profiles.saved.map { it.photoUrl })
   }
 
-  private fun startViewModel() {
-    viewModel = HouseholdGateViewModel(repository, profiles, session)
-    store.put("household-gate", viewModel)
+  private fun startViewModel(
+      forSession: AuthSession = session,
+      key: String = "household-gate",
+  ) {
+    viewModel = HouseholdGateViewModel(repository, profiles, deletedHouseholds, forSession)
+    store.put(key, viewModel)
   }
 
   private class LookupRepository : HouseholdRepository by InMemoryHouseholdRepository() {

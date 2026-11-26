@@ -2,9 +2,11 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.DeletedHouseholdStore
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.profile.UserProfile
@@ -36,6 +38,7 @@ sealed interface HouseholdGateState {
 class HouseholdGateViewModel(
     private val householdRepository: HouseholdRepository,
     private val profileRepository: UserProfileRepository,
+    private val deletedHouseholds: DeletedHouseholdStore,
     session: AuthSession,
 ) : ViewModel() {
   private val userId = session.uid
@@ -47,7 +50,9 @@ class HouseholdGateViewModel(
   private var savedProfile: UserProfile? = null
 
   // Households the server confirmed deleted. A lookup that fails to reach the server falls back to
-  // the local cache, which may still hold one of them, so they are never shown again.
+  // the local cache, which may still hold one of them, so they are never shown again. They are also
+  // recorded in [deletedHouseholds], which survives a restart; this set covers the lookups in
+  // flight and a record that cannot be saved or read.
   private val deletedHouseholdIds = mutableSetOf<String>()
 
   init {
@@ -79,11 +84,22 @@ class HouseholdGateViewModel(
 
   /**
    * Records that the server confirmed the deletion of [householdId], then reloads membership. That
-   * household is ignored from now on, even if a lookup still returns it from the local cache.
+   * household is ignored from now on, even if a lookup still returns it from the local cache, and
+   * also after the app is restarted offline.
    */
   fun householdDeleted(householdId: String) {
     deletedHouseholdIds += householdId
-    refresh()
+    viewModelScope.launch {
+      try {
+        deletedHouseholds.markDeleted(userId, householdId)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (failure: Exception) {
+        Log.w(
+            TAG, "Could not record the deleted household; it is ignored for this session", failure)
+      }
+      refresh()
+    }
   }
 
   /** Reloads membership after onboarding or an error, without starting duplicate requests. */
@@ -95,9 +111,7 @@ class HouseholdGateViewModel(
         viewModelScope.launch {
           try {
             val household =
-                householdRepository.getHouseholdForUser(userId)?.takeUnless {
-                  it.id in deletedHouseholdIds
-                }
+                householdRepository.getHouseholdForUser(userId)?.takeUnless { isDeleted(it.id) }
 
             mutableState.value =
                 if (household == null) {
@@ -111,5 +125,21 @@ class HouseholdGateViewModel(
             mutableState.value = HouseholdGateState.Error
           }
         }
+  }
+
+  private suspend fun isDeleted(householdId: String): Boolean {
+    if (householdId in deletedHouseholdIds) return true
+    return try {
+      deletedHouseholds.isDeleted(userId, householdId)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (failure: Exception) {
+      Log.w(TAG, "Could not read the deleted households; the lookup is trusted", failure)
+      false
+    }
+  }
+
+  private companion object {
+    const val TAG = "HouseholdGate"
   }
 }
