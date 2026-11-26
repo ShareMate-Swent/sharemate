@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModel
@@ -45,6 +46,10 @@ class HouseholdGateViewModel(
   private var refreshJob: Job? = null
   private var savedProfile: UserProfile? = null
 
+  // Households the server confirmed deleted. A lookup that fails to reach the server falls back to
+  // the local cache, which may still hold one of them, so they are never shown again.
+  private val deletedHouseholdIds = mutableSetOf<String>()
+
   init {
     updateSession(session)
     refresh()
@@ -72,6 +77,15 @@ class HouseholdGateViewModel(
     }
   }
 
+  /**
+   * Records that the server confirmed the deletion of [householdId], then reloads membership. That
+   * household is ignored from now on, even if a lookup still returns it from the local cache.
+   */
+  fun householdDeleted(householdId: String) {
+    deletedHouseholdIds += householdId
+    refresh()
+  }
+
   /** Reloads membership after onboarding or an error, without starting duplicate requests. */
   fun refresh() {
     if (refreshJob?.isActive == true) return
@@ -80,7 +94,10 @@ class HouseholdGateViewModel(
     refreshJob =
         viewModelScope.launch {
           try {
-            val household = householdRepository.getHouseholdForUser(userId)
+            val household =
+                householdRepository.getHouseholdForUser(userId)?.takeUnless {
+                  it.id in deletedHouseholdIds
+                }
 
             mutableState.value =
                 if (household == null) {

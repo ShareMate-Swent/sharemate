@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import android.app.Activity
@@ -57,8 +58,10 @@ import com.android.sharemate.ui.startup.ReportLaunch
  *
  * @param profilePhotoRepository Uploads the photo picked in the profile photo step.
  * @param content The application, shown once the user belongs to a household. It receives that
- *   session, household and a callback to invoke when membership may have changed (e.g. after
- *   leaving), so the gate looks it up again and shows onboarding if needed.
+ *   session, household and two callbacks: one to invoke when membership may have changed (e.g.
+ *   after leaving), so the gate looks it up again and shows onboarding if needed, and one to invoke
+ *   with the household ID once the server confirmed that it was deleted, so the gate never shows
+ *   that household again, even if a lookup returns it from the local cache.
  */
 @Composable
 fun AuthHouseholdGate(
@@ -71,7 +74,12 @@ fun AuthHouseholdGate(
     modifier: Modifier = Modifier,
     content:
         @Composable
-        (session: AuthSession, household: Household, onMembershipChanged: () -> Unit) -> Unit,
+        (
+            session: AuthSession,
+            household: Household,
+            onMembershipChanged: () -> Unit,
+            onHouseholdDeleted: (householdId: String) -> Unit,
+        ) -> Unit,
 ) {
   AuthGate(authViewModel, modifier, googleTokenProvider) { session ->
     key(session.uid) {
@@ -148,7 +156,10 @@ fun AuthHouseholdGate(
                     onCreateHousehold = { navController.navigate(HouseholdRoutes.CREATE) },
                     onJoinHousehold = { navController.navigate(HouseholdRoutes.JOIN) },
                 ) { household ->
-                  key(household.id) { content(session, household, gateViewModel::refresh) }
+                  key(household.id) {
+                    content(
+                        session, household, gateViewModel::refresh, gateViewModel::householdDeleted)
+                  }
                 }
               }
               if (state !is HouseholdGateState.Ready) {

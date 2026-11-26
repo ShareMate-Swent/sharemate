@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModelStore
@@ -82,6 +83,66 @@ class HouseholdGateViewModelTest {
     advanceUntilIdle()
     assertEquals(HouseholdGateState.Ready(household), viewModel.state.value)
     assertEquals(listOf("authenticated-user", "authenticated-user"), repository.userIds)
+  }
+
+  @Test
+  fun aDeletedHouseholdIsNotShownAgainEvenWhenTheLookupStillReturnsIt() = runTest {
+    // The lookup keeps answering with the household, as a cache would after a lost connection.
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+    assertEquals(HouseholdGateState.Ready(repository.result!!), viewModel.state.value)
+
+    viewModel.householdDeleted("deleted-home")
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.NeedsHousehold, viewModel.state.value)
+    assertEquals(listOf("authenticated-user", "authenticated-user"), repository.userIds)
+  }
+
+  @Test
+  fun aDeletedHouseholdStaysIgnoredOnLaterRefreshes() = runTest {
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+    viewModel.householdDeleted("deleted-home")
+    advanceUntilIdle()
+
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.NeedsHousehold, viewModel.state.value)
+  }
+
+  @Test
+  fun aDeletionConfirmedWhileALookupIsPendingStillHidesItsResult() = runTest {
+    val pending = CompletableDeferred<Unit>()
+    repository.pending = pending
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+
+    viewModel.householdDeleted("deleted-home")
+    pending.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.NeedsHousehold, viewModel.state.value)
+  }
+
+  @Test
+  fun anotherHouseholdIsStillShownAfterADeletion() = runTest {
+    repository.result = Household(id = "deleted-home")
+    startViewModel()
+    advanceUntilIdle()
+    viewModel.householdDeleted("deleted-home")
+    advanceUntilIdle()
+
+    val joined = Household(id = "joined-home")
+    repository.result = joined
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(HouseholdGateState.Ready(joined), viewModel.state.value)
   }
 
   @Test

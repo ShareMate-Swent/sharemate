@@ -285,7 +285,8 @@ open class MainActivity : ComponentActivity() {
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
                 session,
                 household,
-                onMembershipChanged ->
+                onMembershipChanged,
+                onHouseholdDeleted ->
               val navController = rememberNavController()
               val deepLinkIntent = pendingDeepLinkIntent
               LaunchedEffect(navController, deepLinkIntent) {
@@ -508,7 +509,12 @@ open class MainActivity : ComponentActivity() {
                             onConfirmLeave =
                                 if (deletesOnLeave) deleteViewModel::confirmDelete
                                 else leaveViewModel::confirmLeave,
-                            onLeft = onMembershipChanged,
+                            onLeft =
+                                if (deletesOnLeave) {
+                                  { onHouseholdDeleted(household.id) }
+                                } else {
+                                  onMembershipChanged
+                                },
                             onShowMembers = {
                               navController.navigate(ChildRoutes.HOUSEHOLD_MEMBERS) {
                                 launchSingleTop = true
