@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.media.ExifInterface
 import android.net.Uri
 import android.os.CancellationSignal
+import com.android.sharemate.model.image.BoundedPhotoRead
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -178,7 +179,7 @@ class BoundedOcrImageLoaderTest {
       assertTrue(entered.await(5, TimeUnit.SECONDS))
       cancelled.cancelAndJoin()
       assertTrue(cancelled.isCancelled)
-      advanceTimeBy(BoundedOcrImageLoader.LOAD_TIMEOUT_MS - 1)
+      advanceTimeBy(BoundedPhotoRead.TIMEOUT_MS - 1)
       assertFalse(timed.isCompleted)
       advanceTimeBy(1)
       runCurrent()
