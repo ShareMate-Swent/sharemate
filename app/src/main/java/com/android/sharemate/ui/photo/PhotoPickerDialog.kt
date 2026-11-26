@@ -256,13 +256,14 @@ private fun ReceiptSourceLabel(camera: Boolean) {
       Modifier.fillMaxWidth().padding(vertical = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
-          Icon(
-              if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
-              null,
-              Modifier.padding(10.dp).size(24.dp),
-              tint = MaterialTheme.colorScheme.primary)
-        }
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
+              Icon(
+                  if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
+                  null,
+                  Modifier.padding(10.dp).size(24.dp),
+                  tint = MaterialTheme.colorScheme.primary)
+            }
         Column {
           Text(
               stringResource(
