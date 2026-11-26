@@ -55,3 +55,10 @@ and no deployed receipt indexes. The reviewed configuration is already present
 in `main`; this PR documents the missing deployment step rather than weakening
 access checks. Deployment and device verification results must be recorded
 separately; merging this document does not execute the command.
+
+On 2026-11-26, the Firestore configuration from `main` commit `bb2bc894` was
+deployed to `sharemate-swent` with the targeted command above. Firebase accepted
+the rules (one existing nullable-string warning) and both composite indexes;
+the indexes were still `CREATING` immediately after deployment. Device checks
+have not yet been performed. The previous ruleset was
+`290fa6b1-3adf-496b-b9f9-79cb2dd60ef6`.
