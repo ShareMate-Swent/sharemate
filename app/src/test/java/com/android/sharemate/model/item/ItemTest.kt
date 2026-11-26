@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import java.util.Date
@@ -35,7 +36,8 @@ class ItemTest {
   @Test
   fun categoryIsOptionalAndCanBeProvided() {
     assertNull(Item(householdId = "household").category)
-    assertEquals("Dairy", Item(householdId = "household", category = "Dairy").category)
+    assertEquals(
+        ItemCategory.DAIRY, Item(householdId = "household", category = ItemCategory.DAIRY).category)
   }
 
   @Test

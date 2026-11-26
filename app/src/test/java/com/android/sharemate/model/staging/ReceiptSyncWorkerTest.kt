@@ -43,13 +43,16 @@ class ReceiptSyncWorkerTest {
           .build()
 
   @Test
-  fun validatesInputAndWaitsForTheSameSignedInActor() = runTest {
+  fun validatesInputAndStopsWorkForAnotherSignedInActor() = runTest {
     for (missing in listOf("owner", "home", "id")) {
       val data = Data.Builder().putAll(input.keyValueMap.filterKeys { it != missing }).build()
       assertEquals(ListenableWorker.Result.failure(), worker(data).doWork())
     }
     for (user in listOf(null, "someone-else")) {
-      assertEquals(ListenableWorker.Result.retry(), worker(user = user).doWork())
+      assertEquals(
+          ListenableWorker.Result.success(),
+          worker(user = user) { _, _, _, _, _ -> error("Must not synchronize another account") }
+              .doWork())
     }
     val peer =
         Data.Builder().putAll(input).putString("actor", "peer").putBoolean("delete", true).build()

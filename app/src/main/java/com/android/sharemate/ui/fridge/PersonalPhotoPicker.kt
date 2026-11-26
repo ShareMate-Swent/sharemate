@@ -15,6 +15,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.android.sharemate.R
+import com.android.sharemate.model.image.PhotoImportPolicy
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
@@ -29,7 +30,8 @@ internal fun PersonalPhotoPicker(
     draft: PersonalPhotoDraft,
     photos: PersonalPhotoController,
     enabled: Boolean,
-    camera: PhotoPickerViewModel = photoPickerViewModel("add-item-personal-photo"),
+    camera: PhotoPickerViewModel =
+        photoPickerViewModel("add-item-personal-photo", importPolicy = PhotoImportPolicy.PERSONAL),
 ) {
   val state by camera.state.collectAsState()
   DiscardPhotoOnDispose(camera)

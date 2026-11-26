@@ -184,7 +184,8 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = repository)
+            profileRepository = repository,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     openHistoryReceipt(submission.id)
@@ -247,7 +248,8 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     openHistoryReceipt(submission.id)
@@ -377,7 +379,8 @@ class InventorySaveFlowTest {
             "member-retry-home",
             true,
             expenseRepository = expenses,
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     openHistoryReceipt(submission.id)
@@ -391,10 +394,9 @@ class InventorySaveFlowTest {
   }
 
   @Test
-  fun unavailablePurchaseServicesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
+  fun unavailableProfilesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
     val shared = mutableStateOf(false)
     val profilesAvailable = mutableStateOf(false)
-    val expensesAvailable = mutableStateOf(false)
     val profiles =
         object : UserProfileRepository {
           override suspend fun savePublicProfile(profile: UserProfile) = Unit
@@ -414,8 +416,9 @@ class InventorySaveFlowTest {
             "services-owner",
             "services-home",
             shared.value,
-            expenseRepository = expenses.takeIf { expensesAvailable.value },
-            profileRepository = profiles.takeIf { profilesAvailable.value })
+            expenseRepository = expenses,
+            profileRepository = profiles.takeIf { profilesAvailable.value },
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     val app = compose.activity
@@ -424,7 +427,6 @@ class InventorySaveFlowTest {
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { shared.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
-    compose.runOnIdle { expensesAvailable.value = true }
     compose
         .onNodeWithContentDescription(app.getString(R.string.receipt_more_actions))
         .assertDoesNotExist()
@@ -786,6 +788,9 @@ class InventorySaveFlowTest {
     }
 
     override fun observeSubmission(submission: InventorySubmission) = status
+
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
 
     override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 

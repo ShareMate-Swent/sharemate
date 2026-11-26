@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -190,6 +191,9 @@ class CreateHouseholdScreenTest {
             useUnmergedTree = true)
         .assertIsDisplayed()
     composeTestRule.onNodeWithText("ABC123").assertDoesNotExist()
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.fridge_type_private))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.COPY_INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.SHARE_INVITE_CODE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CONTINUE).performClick()
@@ -239,6 +243,79 @@ class CreateHouseholdScreenTest {
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).assertIsEnabled()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_PRIVATE).assertIsEnabled()
     composeTestRule.onNodeWithTag(CreateHouseholdTestTags.TYPE_SHARED).assertIsEnabled()
+  }
+
+  @Test
+  fun readyViewShowsTheSecondStepAndTheHouseholdNameOnTheCode() {
+    val viewModel = createViewModel()
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.NAME).performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performClick()
+    composeTestRule.waitForIdle()
+    val activity = composeTestRule.activity
+    composeTestRule
+        .onNodeWithContentDescription(
+            activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.READY_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.household_invite_code_label, "Kitchen"))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.fridge_type_shared))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun formShowsTheSecondStep() {
+    val viewModel = createViewModel()
+    composeTestRule.setContent {
+      MaterialTheme { CreateHouseholdScreen(viewModel, onContinue = {}, onBack = {}) }
+    }
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.FORM_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun theReadyViewIsTheLastOnboardingStepSoNoStepIsPromisedThatNeverComes() {
+    assertEquals(HouseholdLayout.ONBOARDING_STEP_COUNT, HouseholdLayout.READY_STEP)
+    assertEquals(HouseholdLayout.READY_STEP - 1, HouseholdLayout.FORM_STEP)
+    assertEquals(HouseholdLayout.FORM_STEP - 1, HouseholdLayout.CHOICE_STEP)
+  }
+
+  @Test
+  fun readyViewScrollsSoGoToMyFridgeStaysReachableOnASmallScreen() {
+    val viewModel = createViewModel()
+    var continueCount = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        Box(Modifier.height(240.dp)) {
+          CreateHouseholdScreen(viewModel, onContinue = { continueCount++ }, onBack = {})
+        }
+      }
+    }
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.NAME)
+        .performScrollTo()
+        .performTextInput("Kitchen")
+    composeTestRule.onNodeWithTag(CreateHouseholdTestTags.CREATE).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+
+    composeTestRule
+        .onNodeWithTag(CreateHouseholdTestTags.CONTINUE)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    assertEquals(1, continueCount)
   }
 
   @Test

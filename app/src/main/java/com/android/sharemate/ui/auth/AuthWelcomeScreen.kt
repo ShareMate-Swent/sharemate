@@ -20,23 +20,34 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.toSize
 import com.android.sharemate.R
+import com.android.sharemate.ui.startup.LocalLaunchState
+import com.android.sharemate.ui.startup.LocalLaunchVisible
+import com.android.sharemate.ui.startup.ShareMateBrand
 import com.android.sharemate.ui.theme.Dimens
+import com.android.sharemate.ui.theme.ShareMateBrandColors
 
 /**
- * First screen of the entry flow: an illustration, the app's pitch, and the ways to get in. Google
- * is the main action; email log in and sign up open the form.
+ * First screen of the entry flow: the handwritten brand, the app's pitch, and the ways to get in.
+ * Google is the main action; email log in and sign up open the form.
  *
  * @param onLogIn Opens the email log in form.
  * @param onCreateAccount Opens the email sign up form.
@@ -53,34 +64,55 @@ fun AuthWelcomeScreen(
     isLoading: Boolean = false,
     error: AuthUiError? = null,
 ) {
-  Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-    BoxWithConstraints(contentAlignment = Alignment.TopCenter) {
-      Column(
-          modifier =
-              Modifier.widthIn(max = AuthLayout.maxContentWidth)
-                  .fillMaxWidth()
-                  .verticalScroll(rememberScrollState())
-                  .heightIn(min = this@BoxWithConstraints.maxHeight)
-                  .padding(Dimens.spacingL)
-                  .testTag(AuthTestTags.WELCOME),
-          verticalArrangement = Arrangement.SpaceBetween) {
-            WelcomeIllustration(Modifier.padding(top = Dimens.spacingL))
-            Column(
-                modifier = Modifier.padding(top = Dimens.spacingXl),
-                verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
-                  Text(
-                      text = stringResource(R.string.auth_welcome_title),
-                      style = MaterialTheme.typography.displaySmall)
-                  Text(
-                      text = stringResource(R.string.auth_welcome_description),
-                      style = MaterialTheme.typography.bodyLarge,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant)
-                  Spacer(Modifier.height(Dimens.spacingXs))
-                  WelcomeActions(onLogIn, onCreateAccount, onGoogleSignIn, isLoading, error)
-                }
-          }
+  MaterialTheme(colorScheme = MaterialTheme.colorScheme) {
+    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+      BoxWithConstraints(contentAlignment = Alignment.TopCenter) {
+        Column(
+            modifier =
+                Modifier.widthIn(max = AuthLayout.maxContentWidth)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = this@BoxWithConstraints.maxHeight)
+                    .padding(vertical = Dimens.spacingL)
+                    .testTag(AuthTestTags.WELCOME),
+            verticalArrangement = Arrangement.Center) {
+              BrandHeader()
+              Column(
+                  modifier =
+                      Modifier.padding(horizontal = Dimens.spacingL)
+                          .padding(top = Dimens.spacingXs),
+                  verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+                    Text(
+                        text = stringResource(R.string.auth_welcome_title),
+                        style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        text = stringResource(R.string.auth_welcome_description),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(Dimens.spacingXs))
+                    WelcomeActions(onLogIn, onCreateAccount, onGoogleSignIn, isLoading, error)
+                  }
+            }
+      }
     }
   }
+}
+
+/** Keeps the ShareMate identity visible while the user chooses a sign-in method. */
+@Composable
+private fun BrandHeader(modifier: Modifier = Modifier) {
+  val launchState = LocalLaunchState.current
+  val launchVisible = LocalLaunchVisible.current
+  DisposableEffect(launchState) { onDispose { launchState?.welcomeBrandBounds = null } }
+  ShareMateBrand(
+      modifier =
+          modifier
+              .testTag(AuthTestTags.BRAND_HEADER)
+              .onGloballyPositioned {
+                val bounds = Rect(it.positionInRoot(), it.size.toSize())
+                launchState?.welcomeBrandBounds = bounds
+              }
+              .graphicsLayer { alpha = if (launchVisible) 0f else 1f })
 }
 
 @Composable
@@ -108,7 +140,9 @@ private fun WelcomeActions(
         AuthButton(
             onClick = onGoogleSignIn,
             enabled = !isLoading,
-            colors = authPrimaryButtonColors(),
+            colors =
+                ButtonDefaults.buttonColors(
+                    containerColor = ShareMateBrandColors.mintName, contentColor = Color.White),
             modifier = Modifier.testTag(AuthTestTags.GOOGLE_SIGN_IN)) {
               GoogleLogo()
               Spacer(Modifier.width(Dimens.spacingS))

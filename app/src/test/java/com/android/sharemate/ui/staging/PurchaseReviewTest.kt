@@ -81,6 +81,7 @@ class PurchaseReviewTest {
       vm.selectPayer("a")
       vm.toggleParticipant("b")
       assertNull(vm.confirmedPurchase())
+      assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
       assertNotNull(vm.confirmedItems())
     }
   }
@@ -115,11 +116,11 @@ class PurchaseReviewTest {
   }
 
   @Test
-  fun unknownPricesBlockOnlyFinancialConfirmation() {
+  fun unknownPricesBlockAllConfirmation() {
     val vm = model(listOf(item(null)))
     vm.toggleParticipant("a")
-    assertTrue(vm.state.value.canConfirm)
-    assertNotNull(vm.confirmedItems())
+    assertFalse(vm.state.value.canConfirm)
+    assertNull(vm.confirmedItems())
     assertNull(vm.confirmedPurchase())
     assertEquals(PurchaseReviewError.MISSING_PRICE, vm.state.value.purchasePreview?.error)
     vm.startEditing("row")
@@ -174,7 +175,7 @@ class PurchaseReviewTest {
     assertNull(vm.state.value.purchase?.paidBy)
     assertNull(vm.confirmedPurchase())
     vm.selectPayer("b")
-    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
   }
 
   @Test
@@ -192,7 +193,7 @@ class PurchaseReviewTest {
     vm.updateDraftName("Milk")
     vm.saveDraft()
     assertNull(vm.confirmedPurchase())
-    vm.deleteItem(vm.state.value.items.last().id)
+    vm.cancelEditing()
     assertEquals(250L, vm.confirmedPurchase()?.totalCents)
     vm.deleteItem("row")
     assertNull(vm.confirmedPurchase())

@@ -9,17 +9,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.width
+import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
@@ -94,6 +98,20 @@ class JoinHouseholdScreenTest {
   }
 
   @Test
+  fun showsTheSecondStep() {
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {}) }
+    }
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.FORM_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+  }
+
+  @Test
   fun backCallbackIsCalled() {
     var back = 0
     composeTestRule.setContent {
@@ -104,7 +122,7 @@ class JoinHouseholdScreenTest {
   }
 
   @Test
-  fun joinedCallbackRunsOnceAcrossRecomposition() {
+  fun joinedShowsTheLastStepAndLeavesOnlyWhenTheUserContinues() {
     val viewModel = joinViewModel()
     var joined = 0
     composeTestRule.setContent {
@@ -113,8 +131,53 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABC234")
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
     composeTestRule.waitForIdle()
+
+    val activity = composeTestRule.activity
+    composeTestRule
+        .onNodeWithContentDescription(
+            activity.getString(
+                R.string.step_indicator_description,
+                HouseholdLayout.READY_STEP,
+                HouseholdLayout.ONBOARDING_STEP_COUNT))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(activity.getString(R.string.household_joined_title))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.BACK).assertDoesNotExist()
+    // Joining alone does not leave the screen: the user continues from the last step.
+    assertEquals(0, joined)
     composeTestRule.runOnIdle { viewModel.updateInviteCode("ABC123") }
     composeTestRule.waitForIdle()
+    assertEquals(0, joined)
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).performClick()
+    assertEquals(1, joined)
+  }
+
+  @Test
+  fun formDoesNotShowTheContinueButtonBeforeJoining() {
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(joinViewModel(), onJoined = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CONTINUE).assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "w320dp-h240dp")
+  fun joinFormAndJoinedViewScrollSoTheirButtonsStayReachableOnASmallScreen() {
+    val viewModel = joinViewModel()
+    var joined = 0
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(viewModel, onJoined = { joined++ }, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABC234")
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule
+        .onNodeWithTag(JoinHouseholdTestTags.CONTINUE)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
     assertEquals(1, joined)
   }
 
@@ -150,6 +213,23 @@ class JoinHouseholdScreenTest {
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
     composeTestRule.waitForIdle()
     composeTestRule.onNodeWithTag(JoinHouseholdTestTags.ERROR).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(JoinHouseholdTestTags.ERROR)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.invalid_invite_code))
+  }
+
+  @Test
+  fun otherFailuresShowTheGenericError() {
+    val viewModel = joinViewModel(TestHouseholdRepository(IllegalStateException("offline")))
+    composeTestRule.setContent {
+      MaterialTheme { JoinHouseholdScreen(viewModel, onJoined = {}, onBack = {}) }
+    }
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.CODE_INPUT).performTextInput("ABCDEF")
+    composeTestRule.onNodeWithTag(JoinHouseholdTestTags.JOIN).performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule
+        .onNodeWithTag(JoinHouseholdTestTags.ERROR)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.household_generic_error))
   }
 
   private fun showFullCodeAndMeasureBoxes(): List<DpRect> {

@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-// Co-authored-by: OpenAI Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.household
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -96,7 +96,9 @@ class LeaveHouseholdViewModelTest {
   }
 
   @Test
-  fun failureKeepsTheDialogOpenAndCanBeRetried() = runTest {
+  fun failedLeaveCanBeRetriedAndOnlySuccessPurgesPhotos() = runTest {
+    val purged = mutableListOf<String>()
+    val viewModel = LeaveHouseholdViewModel(repository, auth) { purged += it }
     repository.failure = IllegalStateException("unavailable")
     viewModel.requestLeave()
     viewModel.confirmLeave()
@@ -105,6 +107,7 @@ class LeaveHouseholdViewModelTest {
     assertEquals(LeaveHouseholdError.LEAVE_FAILED, viewModel.state.value.error)
     assertTrue(viewModel.state.value.isConfirming)
     assertFalse(viewModel.state.value.left)
+    assertTrue(purged.isEmpty())
 
     repository.failure = null
     viewModel.confirmLeave()
@@ -113,6 +116,7 @@ class LeaveHouseholdViewModelTest {
     assertTrue(viewModel.state.value.left)
     assertNull(viewModel.state.value.error)
     assertEquals(2, repository.leftUserIds.size)
+    assertEquals(listOf("user-1"), purged)
   }
 
   @Test

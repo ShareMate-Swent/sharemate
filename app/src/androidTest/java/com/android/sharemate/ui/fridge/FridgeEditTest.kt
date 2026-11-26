@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -24,6 +25,7 @@ import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -58,7 +60,7 @@ class FridgeEditTest {
           ownerId = "other-member",
           householdId = "household",
           quantity = 3,
-          category = "Dairy",
+          category = ItemCategory.DAIRY,
           expirationDate = Date(0))
   private val otherItem = item.copy(id = "bread", name = "Bread", expirationDate = null)
 
@@ -103,6 +105,12 @@ class FridgeEditTest {
     compose.onNodeWithTag(tag).performScrollTo().performTextReplacement(text)
   }
 
+  /** Opens the category field and picks [category]. */
+  private fun pickCategory(category: ItemCategory) {
+    compose.onNodeWithTag(C.Tag.fridge_category_input).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridgeCategoryOption(category)).performClick()
+  }
+
   private fun save() {
     Espresso.closeSoftKeyboard()
     compose.onNodeWithTag(C.Tag.fridge_save_item).assertIsEnabled().performClick()
@@ -140,17 +148,22 @@ class FridgeEditTest {
     assertFields("Milk", "3", "Dairy", "1970-01-01")
     replace(C.Tag.fridge_name_input, "Cheese")
     replace(C.Tag.fridge_quantity_input, "4")
-    replace(C.Tag.fridge_category_input, "Protein")
+    pickCategory(ItemCategory.MEAT_FISH)
     replace(C.Tag.fridge_expiration_input, "2026-12-31")
     save()
     compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
     compose.onNodeWithText("Cheese").assertIsDisplayed()
     compose.runOnIdle {
       val date = ExpirationDates.toDate(LocalDate.of(2026, 12, 31))
-      assertEquals(listOf(item.id to ItemEdit("Cheese", 4, "Protein", date)), repository.edits)
+      assertEquals(
+          listOf(item.id to ItemEdit("Cheese", 4, ItemCategory.MEAT_FISH, date)), repository.edits)
       assertEquals(
           listOf(
-              item.copy(name = "Cheese", quantity = 4, category = "Protein", expirationDate = date),
+              item.copy(
+                  name = "Cheese",
+                  quantity = 4,
+                  category = ItemCategory.MEAT_FISH,
+                  expirationDate = date),
               otherItem),
           repository.items.value)
     }
@@ -161,7 +174,7 @@ class FridgeEditTest {
     show()
     replace(C.Tag.fridge_name_input, "Changed")
     replace(C.Tag.fridge_quantity_input, "7")
-    replace(C.Tag.fridge_category_input, "Fruit")
+    pickCategory(ItemCategory.FRUITS)
     replace(C.Tag.fridge_expiration_input, "2027-01-01")
     cancel()
     openEdit()
@@ -290,6 +303,9 @@ class FridgeEditTest {
     val edits = mutableListOf<Pair<String, ItemEdit>>()
     var editFailure: Exception? = null
     var editConfirmation: CompletableDeferred<Result<Unit>>? = null
+
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
 
     override fun getFridgeItems(householdId: String, userId: String) = items
 
