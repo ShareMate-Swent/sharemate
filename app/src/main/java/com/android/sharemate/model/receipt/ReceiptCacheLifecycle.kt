@@ -56,12 +56,14 @@ class ReceiptCacheLifecycle(context: Context) {
             }
             .toSet()
     (known - homes).forEach { evict(viewer, it) }
-    homes.forEach(::activate)
+    homes.forEach { activate(it) }
   }
 
-  /** Called only after a successful membership lookup, join or creation. */
-  fun activate(home: String) =
-      synchronized(lock) { check(preferences.edit().remove(BLOCKED + home).commit()) }
+  /** Reactivates the cache after confirmed membership, persisting the barrier change off main. */
+  suspend fun activate(home: String) =
+      withContext(Dispatchers.IO) {
+        synchronized(lock) { check(preferences.edit().remove(BLOCKED + home).commit()) }
+      }
 
   suspend fun evict(viewer: String, home: String) =
       withContext(Dispatchers.IO) {
@@ -78,16 +80,8 @@ class ReceiptCacheLifecycle(context: Context) {
                         }
                         .getOrDefault(false)
               }
-          val photos =
-              keys
-                  .filter { it.startsWith("details:") }
-                  .mapNotNull {
-                    preferences.getString(it, null)?.let(::JSONObject)?.optString("id")
-                  }
-                  .toSet() +
-                  keys
-                      .filter { it.startsWith("download:") }
-                      .mapNotNull { preferences.getString(it, null) }
+          // Photo files are shared by receipt ID; another viewer may still need the same image.
+          val photos = photoIds(keys) - photoIds(preferences.all.keys - keys.toSet())
           // Persist the barrier first. A crash can then only leave data to clean up on retry.
           check(
               preferences
@@ -105,6 +99,21 @@ class ReceiptCacheLifecycle(context: Context) {
           check(editor.commit())
         }
       }
+
+  private fun photoIds(keys: Collection<String>): Set<String> =
+      keys
+          .mapNotNull { key ->
+            when {
+              key.startsWith("details:") ->
+                  preferences
+                      .getString(key, null)
+                      ?.let(::JSONObject)
+                      ?.optString(com.android.sharemate.model.item.InventorySubmissionFields.ID)
+              key.startsWith("download:") -> preferences.getString(key, null)
+              else -> null
+            }
+          }
+          .toSet()
 
   private companion object {
     const val EPOCH = "receipt-epoch:"

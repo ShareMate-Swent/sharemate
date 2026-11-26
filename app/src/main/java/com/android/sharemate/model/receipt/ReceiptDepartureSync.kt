@@ -7,13 +7,19 @@ import com.android.sharemate.model.staging.InventorySubmissionStore
 /** Finish durable uploads before membership is removed, so eviction cannot lose a new scan. */
 class ReceiptDepartureSync(
     private val store: InventorySubmissionStore,
-    private val synchronize: suspend (InventorySubmission) -> Boolean,
+    private val synchronize: suspend (InventorySubmission, String) -> Boolean,
 ) {
-  suspend fun prepare(owner: String, home: String) {
+  /**
+   * Flushes the departing viewer's own receipts and shared edits; failure leaves departure blocked.
+   */
+  suspend fun prepare(viewer: String, home: String) {
     try {
       kotlinx.coroutines.withTimeout(UPLOAD_TIMEOUT) {
-        for (receipt in store.list(owner, home)) {
-          check(synchronize(receipt)) { "Receipt synchronization must finish before leaving" }
+        val scoped = store.forViewer(viewer)
+        for (receipt in scoped.list(viewer, home) + scoped.sharedReceipts(viewer, home)) {
+          check(synchronize(receipt, viewer)) {
+            "Receipt synchronization must finish before leaving"
+          }
         }
       }
     } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
@@ -42,19 +48,21 @@ class ReceiptDepartureSync(
         expenses: com.android.sharemate.model.finance.ExpenseSubmissionRepository,
         upload: suspend (ReceiptCloudEntry) -> Unit,
     ): ReceiptDepartureSync {
-      val sync =
-          com.android.sharemate.model.staging.ReceiptSynchronization(store, items, expenses) {}
-      return ReceiptDepartureSync(store) { receipt ->
+      return ReceiptDepartureSync(store) { receipt, actor ->
+        val scoped = store.forViewer(actor)
+        val sync =
+            com.android.sharemate.model.staging.ReceiptSynchronization(scoped, items, expenses) {}
         val owner = receipt.ownerId
         val home = receipt.householdId
-        if (!sync.synchronize(owner, home, receipt.id, owner, false)) false
+        if (!sync.synchronize(owner, home, receipt.id, actor, false)) false
+        else if (actor != owner) true
         else {
-          val latest = checkNotNull(store.loadById(owner, home, receipt.id))
+          val latest = checkNotNull(scoped.loadById(owner, home, receipt.id))
           check(
               latest.draft ||
                   latest.expenseProgress ==
                       com.android.sharemate.model.item.ExpenseProgress.CONFIRMED)
-          upload(ReceiptCloudEntry(latest, checkNotNull(store.details(owner, home, receipt.id))))
+          upload(ReceiptCloudEntry(latest, checkNotNull(scoped.details(owner, home, receipt.id))))
           true
         }
       }

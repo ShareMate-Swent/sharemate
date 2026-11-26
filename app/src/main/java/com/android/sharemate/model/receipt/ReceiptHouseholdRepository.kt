@@ -9,7 +9,7 @@ import com.android.sharemate.model.household.HouseholdRepository
 class ReceiptHouseholdRepository(
     private val delegate: HouseholdRepository,
     private val evict: suspend (String, String) -> Unit,
-    private val activate: (String) -> Unit,
+    private val activate: suspend (String) -> Unit,
     private val beforeLeave: suspend (String, String) -> Unit = { _, _ -> },
 ) : HouseholdRepository by delegate {
   override suspend fun leaveHousehold(userId: String) {

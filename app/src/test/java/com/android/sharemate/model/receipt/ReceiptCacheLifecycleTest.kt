@@ -18,6 +18,44 @@ class ReceiptCacheLifecycleTest {
   private val app = RuntimeEnvironment.getApplication()
 
   @Test
+  fun leavingPreservesTheSameReceiptPhotoUntilItsLastAccountLeaves() = runTest {
+    val store = AndroidInventorySubmissionStore(app, scheduleSync = false)
+    val row = receipt("bob", "home", false)
+    val photo = File(app.filesDir, "receipts/${row.id}.jpg")
+    photo.parentFile!!.mkdirs()
+    photo.writeText("shared receipt image")
+    val metadata = details(row).copy(photoUri = android.net.Uri.fromFile(photo).toString())
+    store.save(row)
+    store.saveDetails(metadata)
+    store.cacheShared("alice", "home", listOf(ReceiptCloudEntry(row, metadata)))
+
+    ReceiptCacheLifecycle(app).evict("alice", "home")
+
+    assertNull(store.forViewer("alice").loadById("bob", "home", row.id))
+    assertEquals(row, store.loadById("bob", "home", row.id))
+    assertEquals(metadata, store.details("bob", "home", row.id))
+    assertEquals("shared receipt image", photo.readText())
+    ReceiptCacheLifecycle(app).evict("bob", "home")
+    assertFalse(photo.exists())
+    assertNull(store.loadById("bob", "home", row.id))
+  }
+
+  @Test
+  fun leavingPreservesAPhotoTrackedByAnotherViewerBeforeTheirMetadataArrives() = runTest {
+    val lifecycle = ReceiptCacheLifecycle(app)
+    val id = UUID.randomUUID().toString()
+    lifecycle.trackDownload("alice", "home", id)
+    lifecycle.trackDownload("bob", "home", id)
+    val photo = File(app.filesDir, "receipts/$id.jpg")
+    photo.parentFile!!.mkdirs()
+    photo.writeText("downloaded image")
+    lifecycle.evict("alice", "home")
+    assertEquals("downloaded image", photo.readText())
+    lifecycle.evict("bob", "home")
+    assertFalse(photo.exists())
+  }
+
+  @Test
   fun leavePurgesOwnAndSharedPhotosButPreservesOtherHouseholdsAndPrivateDrafts() = runTest {
     val store = AndroidInventorySubmissionStore(app)
     val own = receipt("alice", "home")
