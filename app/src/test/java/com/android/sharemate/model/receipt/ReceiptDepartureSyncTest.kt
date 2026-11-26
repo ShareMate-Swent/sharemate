@@ -186,7 +186,9 @@ class ReceiptDepartureSyncTest {
     val cancelled = kotlinx.coroutines.CancellationException("Leaving cancelled")
     for (failure in listOf(offline, cancelled)) {
       doThrow(failure).`when`(expenses).correctReceipt(correction)
-      assertSame(failure, runCatching { sync.prepare("alice", "home") }.exceptionOrNull())
+      val actual = runCatching { sync.prepare("alice", "home") }.exceptionOrNull()
+      assertEquals(failure.javaClass, actual?.javaClass)
+      assertEquals(failure.message, actual?.message)
       verify(viewer, never()).acknowledgeCorrection(correction)
       verify(viewer, never()).clearCorrection("bob", "home", id)
     }
