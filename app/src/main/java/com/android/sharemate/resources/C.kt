@@ -18,6 +18,8 @@ object C {
     const val fridge_type = "fridge_type"
     const val fridge_empty = "fridge_empty"
     const val fridge_add_item = "fridge_add_item"
+    /** Fridge button that opens Recipes and explicitly requests suggestions. */
+    const val fridge_suggest_recipes = "fridge_suggest_recipes"
     const val fridge_add_dialog = "fridge_add_dialog"
     const val fridge_sharing_selector = "fridge_sharing_selector"
     const val fridge_sharing_shared = "fridge_sharing_shared"
