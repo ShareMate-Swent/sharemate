@@ -692,12 +692,15 @@ class FridgeScreenTest {
     val fridgeType = mutableStateOf(FridgeType.PRIVATE)
     val isSaving = mutableStateOf(false)
     val sortOrder = mutableStateOf(FridgeSortOrder.NAME)
+    val sharedHouseholdName = "The roommates of a very long household"
     var requests = 0
     composeRule.setContent {
       ShareMateTheme {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(210.dp),
             uiState = FridgeUiState(isSaving = isSaving.value, fridgeType = fridgeType.value),
+            householdName =
+                if (fridgeType.value == FridgeType.SHARED) sharedHouseholdName else "Home",
             sortOrder = sortOrder.value,
             owners = listOf(OwnerOption("owner-1", "Alice")),
             onSortOrderChange = { sortOrder.value = it },
@@ -709,6 +712,8 @@ class FridgeScreenTest {
     val add = composeRule.onNodeWithTag(C.Tag.fridge_add_item)
     val privateBounds = add.assertIsDisplayed().getUnclippedBoundsInRoot()
     composeRule.runOnIdle { fridgeType.value = FridgeType.SHARED }
+    assertEquals(privateBounds, add.getUnclippedBoundsInRoot())
+    composeRule.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Shared · $sharedHouseholdName")
     val owners = composeRule.onNodeWithContentDescription("All owners").assertIsDisplayed()
     assertEquals(privateBounds.top, owners.getUnclippedBoundsInRoot().top)
     openSort(R.string.fridge_sort_name)

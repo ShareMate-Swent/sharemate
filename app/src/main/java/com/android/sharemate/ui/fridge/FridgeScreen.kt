@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
@@ -46,6 +45,7 @@ import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.components.AppCard
+import com.android.sharemate.ui.components.SingleLineText
 import com.android.sharemate.ui.startup.LaunchStage
 import com.android.sharemate.ui.startup.LaunchStatus
 import com.android.sharemate.ui.startup.ReportLaunch
@@ -322,14 +322,13 @@ private fun FridgeHeader(
           modifier = Modifier.testTag(C.Tag.fridge_title),
           style = MaterialTheme.typography.headlineLarge,
       )
-      Text(
-          if (householdName.isNullOrBlank()) stringResource(R.string.fridge_type_label, type)
-          else stringResource(R.string.fridge_household_label, householdName, type),
+      SingleLineText(
+          text =
+              if (householdName.isNullOrBlank()) stringResource(R.string.fridge_type_label, type)
+              else stringResource(R.string.fridge_household_label, type, householdName),
           modifier = Modifier.testTag(C.Tag.fridge_type),
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
-          maxLines = 2,
-          overflow = TextOverflow.Ellipsis,
       )
     }
     trailing?.invoke()
