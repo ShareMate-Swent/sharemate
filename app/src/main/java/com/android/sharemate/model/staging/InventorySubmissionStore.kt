@@ -8,6 +8,7 @@ import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -486,6 +487,7 @@ class AndroidInventorySubmissionStore(
             .put(Fields.OWNER, submission.ownerId)
             .put(Fields.HOUSEHOLD, submission.householdId)
             .put(Fields.DRAFT, submission.draft)
+            .put(Fields.SHARING, submission.sharing.name)
             .put(
                 Fields.ROWS,
                 JSONArray(
@@ -727,7 +729,8 @@ class AndroidInventorySubmissionStore(
             else false,
             if (json.has(Fields.EXPENSE))
                 ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))
-            else ExpenseProgress.QUEUED)
+            else ExpenseProgress.QUEUED,
+            sharing = ItemSharing.valueOf(json.optString(Fields.SHARING, ItemSharing.SHARED.name)))
         .also { require(it.ownerId == ownerId && it.householdId == householdId) }
   }
 

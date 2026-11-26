@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<resources>
+    <string name="receipt_changes_title">Save changes?</string>
+    <string name="receipt_keep_changes">Keep changes</string>
+    <string name="receipt_discard_changes">Discard changes</string>
+    <string name="receipt_retry_members">Reload people</string>
+    <string name="receipt_title_label">Receipt title</string>
+    <string name="receipt_title_example">e.g. Groceries at Migros</string>
+    <string name="receipt_add_title">Add receipt</string>
+</resources>
