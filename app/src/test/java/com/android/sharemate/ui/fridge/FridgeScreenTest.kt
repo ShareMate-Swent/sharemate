@@ -86,8 +86,7 @@ class FridgeScreenTest {
         FridgeScreen(
             modifier = androidx.compose.ui.Modifier.width(360.dp),
             uiState = FridgeUiState(items = items, fridgeType = FridgeType.SHARED),
-            expiryStatuses = emptyMap(),
-        )
+            expiryStatuses = emptyMap())
       }
     }
     val squares =
@@ -419,9 +418,7 @@ class FridgeScreenTest {
     composeRule.setContent {
       MaterialTheme {
         FridgeScreen(
-            uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
-            expiryStatuses = emptyMap(),
-        )
+            uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
       }
     }
 
@@ -451,16 +448,13 @@ class FridgeScreenTest {
                     name = "Milk",
                     category = ItemCategory.DAIRY,
                     ownerId = "owner-1",
-                    householdId = "household-1",
-                ),
+                    householdId = "household-1"),
                 Item(
                     id = "bread",
                     name = "Bread",
                     category = ItemCategory.PANTRY,
                     ownerId = "owner-2",
-                    householdId = "household-1",
-                ),
-            ))
+                    householdId = "household-1")))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -535,8 +529,7 @@ class FridgeScreenTest {
         FakeItemRepository(
             listOf(
                 Item(id = "milk", name = "Milk", ownerId = first, householdId = HOUSEHOLD_ID),
-                Item(id = "bread", name = "Bread", ownerId = second, householdId = HOUSEHOLD_ID),
-            ))
+                Item(id = "bread", name = "Bread", ownerId = second, householdId = HOUSEHOLD_ID)))
     val imageRepository =
         object : FoodImageRepository {
           override suspend fun searchByTitle(title: String) = FoodImageSearchResult.NotFound
@@ -731,6 +724,27 @@ class FridgeScreenTest {
   }
 
   @Test
+  fun narrowSharedFridgeKeepsProductActionsAccessible() {
+    val item = itemExpiringIn(2).copy(name = "Fresh carrots from the organic vegetable box")
+    composeRule.setContent {
+      ShareMateTheme {
+        FridgeScreen(
+            modifier = androidx.compose.ui.Modifier.width(250.dp),
+            uiState = FridgeUiState(items = listOf(item), fridgeType = FridgeType.SHARED),
+            expiryStatuses = mapOf(item.id to ExpiryStatus.SOON),
+            onEditItem = {})
+      }
+    }
+    composeRule.onNodeWithText("Expires soon").assertIsDisplayed()
+    composeRule.onNodeWithTag(C.Tag.fridge_sharing_badge_prefix + item.id).assertIsDisplayed()
+    composeRule.onNodeWithTag(C.Tag.fridgeItemActions(item.id)).assertIsDisplayed().performClick()
+    composeRule
+        .onNodeWithTag(C.Tag.fridge_edit_prefix + item.id)
+        .assertIsDisplayed()
+        .assertIsEnabled()
+  }
+
+  @Test
   fun highlightsExpiredAndSoonToExpireItems() {
     composeRule.setContent {
       MaterialTheme {
@@ -786,8 +800,7 @@ class FridgeScreenTest {
                       id = "utc-item",
                       name = "Milk",
                       expirationDate = expiration,
-                      householdId = "household-1",
-                  ),
+                      householdId = "household-1"),
               modifier = androidx.compose.ui.Modifier.width(320.dp),
               expiryStatus = ExpiryStatus.NORMAL,
               ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
