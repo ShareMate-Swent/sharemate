@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.graphics.Bitmap
@@ -8,6 +9,7 @@ import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.SavedStateHandle
@@ -21,15 +23,18 @@ import com.android.sharemate.model.barcode.BarcodeScanner
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.*
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.product.*
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodeFormTestTags
+import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.photo.PhotoPickerTestTags
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -50,6 +55,9 @@ class BarcodeFormFlowTest {
   private lateinit var photo: PhotoPickerViewModel
   private lateinit var itemPhoto: PhotoPickerViewModel
   private lateinit var fridge: FridgeViewModel
+  private val items = EmptyItems()
+  // Whether the add button's host is composed; false stands for an Activity being recreated.
+  private val hostShown = mutableStateOf(true)
   private var result: ProductLookupResult =
       ProductLookupResult.Found(ProductDetails("123", "Milk", "Farm"))
   private val scanned = mutableListOf<String>()
@@ -150,6 +158,93 @@ class BarcodeFormFlowTest {
     compose.runOnIdle { assertEquals("Manual correction", fridge.uiState.value.itemName) }
   }
 
+  @Test
+  fun barcodeOptionOpensOverTheOpenTabAndCancellingThePhotoLeavesTheForm() {
+    val handled = mutableListOf<AddItemMethod>()
+    var saved = 0
+    showFridge(AddItemMethod.BARCODE, overOtherTab = true, handled = { handled += it }) { saved++ }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertExists()
+    // Only the camera shows: the form waits for a photo, so it never flashes behind it.
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+    // The form opens over the open tab: the fridge never shows.
+    compose.onNodeWithTag(C.Tag.fridge_screen_container).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(listOf(AddItemMethod.BARCODE), handled)
+      assertTrue(photo.state.value.visible)
+      assertFalse(fridge.uiState.value.scanBarcodeOnOpen)
+    }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+    compose.runOnIdle {
+      assertFalse(fridge.uiState.value.isAddItemDialogOpen)
+      assertEquals(0, saved)
+    }
+  }
+
+  @Test
+  fun barcodeOptionKeepsTheFormAfterAFailedLookup() {
+    result = ProductLookupResult.NotFound
+    showFridge(AddItemMethod.BARCODE, overOtherTab = true)
+    capture(photo, Color.BLACK)
+    confirm()
+    compose.waitUntil(10_000) { photo.state.value.failed && !photo.state.value.busy }
+    // The camera stays in front of the form, which waits behind it.
+    compose.onNodeWithTag(C.Tag.fridge_add_dialog).assertDoesNotExist()
+    // The lookup failed: leaving the photo keeps the form, to type the item in instead.
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(C.Tag.fridge_name_input).assertExists()
+  }
+
+  @Test
+  fun manualOptionOverAnotherTabOpensTheFridgeOnlyOnceTheItemIsSaved() {
+    var saved = 0
+    showFridge(AddItemMethod.MANUAL, overOtherTab = true) { saved++ }
+    compose.onNodeWithTag(C.Tag.fridge_name_input).assertExists()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle {
+      assertFalse(photo.state.value.visible)
+      fridge.updateName("Milk")
+    }
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    compose.waitUntil(10_000) { !fridge.uiState.value.isAddItemDialogOpen }
+    compose.runOnIdle {
+      assertEquals(listOf("Milk"), items.savedNames)
+      assertEquals(1, saved)
+    }
+  }
+
+  @Test
+  fun aSaveEndingWhileTheHostIsRecreatedStillOpensTheFridge() {
+    var saved = 0
+    items.saveGate = CompletableDeferred()
+    showFridge(AddItemMethod.MANUAL, overOtherTab = true) { saved++ }
+    compose.runOnIdle { fridge.updateName("Milk") }
+    compose.onNodeWithTag(C.Tag.fridge_save_item).performClick()
+    compose.waitUntil(10_000) { fridge.uiState.value.isSaving }
+    // The host leaves, as during an Activity recreation, and the save ends meanwhile.
+    compose.runOnIdle { hostShown.value = false }
+    compose.runOnIdle { checkNotNull(items.saveGate).complete(Unit) }
+    compose.waitUntil(10_000) { !fridge.uiState.value.isAddItemDialogOpen }
+    compose.runOnIdle { assertEquals(0, saved) }
+
+    compose.runOnIdle { hostShown.value = true }
+    compose.waitUntil(10_000) { saved == 1 }
+    compose.runOnIdle {
+      assertEquals(listOf("Milk"), items.savedNames)
+      assertFalse(fridge.uiState.value.addButtonItemSaved)
+    }
+  }
+
+  @Test
+  fun manualOptionOnTheFridgeTabOpensTheFridgeForm() {
+    val handled = mutableListOf<AddItemMethod>()
+    showFridge(AddItemMethod.MANUAL, handled = { handled += it })
+    compose.onNodeWithTag(C.Tag.fridge_screen_container).assertExists()
+    compose.onNodeWithTag(C.Tag.fridge_name_input).assertExists()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(listOf(AddItemMethod.MANUAL), handled) }
+  }
+
   private fun confirm() {
     compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
   }
@@ -160,13 +255,33 @@ class BarcodeFormFlowTest {
   }
 
   private fun showForm() {
+    showFridge()
+    compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
+    compose.runOnIdle {
+      fridge.updateName("Manual food")
+      fridge.updateQuantity("3")
+      fridge.updateCategory(ItemCategory.DAIRY)
+    }
+  }
+
+  /**
+   * Shows the fridge with real ViewModels and no form open, as the fridge tab, or, with
+   * [overOtherTab], only the host of the add button's form, as on another tab. The host gets the
+   * add-button [request], reports it to [handled] and a saved item to [saved].
+   */
+  private fun showFridge(
+      request: AddItemMethod? = null,
+      overOtherTab: Boolean = false,
+      handled: (AddItemMethod) -> Unit = {},
+      saved: () -> Unit = {},
+  ) {
     compose.runOnIdle {
       photo = PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
       itemPhoto =
           PhotoPickerViewModel(AndroidTemporaryPhotoStore(compose.activity), SavedStateHandle())
       fridge =
           FridgeViewModel(
-              EmptyItems(),
+              items,
               "user",
               "household",
               FoodImageSelector(
@@ -217,14 +332,11 @@ class BarcodeFormFlowTest {
     }
     compose.setContent {
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        MaterialTheme { FridgeScreen(viewModel = fridge) }
+        MaterialTheme {
+          if (!overOtherTab) FridgeScreen(viewModel = fridge)
+          if (hostShown.value) AddItemHost(fridge, request, handled, overOtherTab, onSaved = saved)
+        }
       }
-    }
-    compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
-    compose.runOnIdle {
-      fridge.updateName("Manual food")
-      fridge.updateQuantity("3")
-      fridge.updateCategory("Dairy")
     }
   }
 
@@ -249,7 +361,17 @@ class BarcodeFormFlowTest {
     compose.waitUntil(10_000) { picker.state.value.selection != null && !picker.state.value.busy }
   }
 
+  /**
+   * No stored items; records the names of the items saved, which only the save tests do. A save
+   * waits for [saveGate] when it is set.
+   */
   private class EmptyItems : ItemRepository {
+    val savedNames = mutableListOf<String>()
+    var saveGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String) = flowOf(emptyList<Item>())
 
     override fun addItems(submission: InventorySubmission): ItemWrite =
@@ -260,7 +382,11 @@ class BarcodeFormFlowTest {
     ): kotlinx.coroutines.flow.Flow<InventorySubmissionStatus> =
         error("Submission observation is not used in this test")
 
-    override suspend fun addItem(item: Item): String? = error("Lookup must not save an item")
+    override suspend fun addItem(item: Item): String? {
+      saveGate?.await()
+      savedNames += item.name
+      return "saved-${savedNames.size}"
+    }
 
     override suspend fun updateItemImageIfAbsent(
         itemId: String,

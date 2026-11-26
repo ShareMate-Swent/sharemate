@@ -12,6 +12,7 @@ import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
 import com.android.sharemate.model.incident.IncidentPhotoReference
 import com.android.sharemate.model.incident.IncidentPhotoRepository
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemQuantity
 import com.android.sharemate.model.push.FirebasePushTokenRepository
 import com.android.sharemate.model.text.TextLimits
@@ -677,25 +678,24 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun itemNamesAndCategoriesAreLimitedOnCreation() {
+  fun itemNamesAreLimitedAndCategoriesMustBeFromTheListOnCreation() {
     val household = createHouseholdAs("creator")
     val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
     val nameLimit = TextLimits.ITEM_NAME
-    val categoryLimit = TextLimits.ITEM_CATEGORY
     val allowed =
         listOf(
             "a".repeat(nameLimit) to null,
             "😀".repeat(nameLimit) to null,
-            "Milk" to "c".repeat(categoryLimit),
-            "Milk" to "😀".repeat(categoryLimit),
-            "Milk" to "")
+            "Milk" to ItemCategory.DAIRY.name,
+            "Milk" to ItemCategory.OTHER.name)
     val denied =
         listOf(
             "a".repeat(nameLimit + 1) to null,
             "😀".repeat(nameLimit + 1) to null,
             "" to null,
-            "Milk" to "c".repeat(categoryLimit + 1),
-            "Milk" to "😀".repeat(categoryLimit + 1))
+            "Milk" to "Dairy",
+            "Milk" to "dairy",
+            "Milk" to "")
 
     for ((index, texts) in allowed.withIndex()) {
       Tasks.await(itemReference("ok$index").set(itemTexts(ownerId, household.id, texts)))
@@ -706,19 +706,19 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun editedItemTextsMustFitTheLimits() {
+  fun editedItemNamesMustFitAndCategoriesMustBeFromTheList() {
     val household = createHouseholdAs("creator")
     val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
     val itemRef = itemReference("item1")
     Tasks.await(itemRef.set(itemData(ownerId, household.id, "PERSONAL")))
 
     assertDenied(itemRef.update("name", "n".repeat(TextLimits.ITEM_NAME + 1)))
-    assertDenied(itemRef.update("category", "c".repeat(TextLimits.ITEM_CATEGORY + 1)))
-    assertDenied(
-        itemRef.update(
-            mapOf("name" to "Milk", "category" to "c".repeat(TextLimits.ITEM_CATEGORY + 1))))
+    assertDenied(itemRef.update("category", "Fruit"))
+    assertDenied(itemRef.update(mapOf("name" to "Milk", "category" to "Fruit")))
     Tasks.await(itemRef.update("name", "n".repeat(TextLimits.ITEM_NAME)))
-    Tasks.await(itemRef.update("category", "c".repeat(TextLimits.ITEM_CATEGORY)))
+    for (category in ItemCategory.entries) {
+      Tasks.await(itemRef.update("category", category.name))
+    }
     Tasks.await(itemRef.update("category", null))
   }
 
@@ -770,29 +770,31 @@ class FirestoreSecurityRulesTest {
   }
 
   @Test
-  fun itemSavedBeforeTheLimitsCanStillChangeStatusAndSharingButNotKeepEditingTheLongText() {
+  fun itemSavedBeforeTheLimitsCanStillChangeButNotKeepEditingItsOldTexts() {
     val household = createHouseholdAs("creator")
     val ownerId = checkNotNull(FirebaseEmulator.auth.uid)
     val longName = "n".repeat(TextLimits.ITEM_NAME * 2)
-    val longCategory = "c".repeat(TextLimits.ITEM_CATEGORY * 2)
+    // A free-text category from before the fixed list.
+    val oldCategory = "fruta"
     FirebaseEmulator.seedDocument(
         FirestoreCollections.ITEMS,
         "legacy",
         itemData(ownerId, household.id, "PERSONAL")
             .filterValues { it != null }
             .mapValues { checkNotNull(it.value) } +
-            mapOf("name" to longName, "category" to longCategory))
+            mapOf("name" to longName, "category" to oldCategory))
     val itemRef = itemReference("legacy")
 
     Tasks.await(itemRef.update("status", "EATEN"))
     Tasks.await(itemRef.update("sharing", "SHARED"))
     Tasks.await(itemRef.update("quantity", 2))
-    // Rewriting the long texts as they are is allowed; changing them to another long text is not.
-    Tasks.await(itemRef.update(mapOf("name" to longName, "category" to longCategory)))
+    // Rewriting the old texts as they are is allowed; changing them to other free text is not.
+    Tasks.await(itemRef.update(mapOf("name" to longName, "category" to oldCategory)))
     assertDenied(itemRef.update("name", longName + "x"))
-    assertDenied(itemRef.update("category", longCategory + "x"))
-    Tasks.await(itemRef.update(mapOf("name" to "Milk", "category" to "Dairy")))
+    assertDenied(itemRef.update("category", "Fruit"))
+    Tasks.await(itemRef.update(mapOf("name" to "Milk", "category" to ItemCategory.DAIRY.name)))
     assertDenied(itemRef.update("name", longName))
+    assertDenied(itemRef.update("category", oldCategory))
   }
 
   @Test
@@ -956,23 +958,70 @@ class FirestoreSecurityRulesTest {
     for (type in listOf(MessageType.EATEN, MessageType.THROWN)) {
       val activityId =
           chat.sendActivity(
-              household.id, senderId, "Sender", type, " Milk ", "https://example.com/image")
+              household.id,
+              senderId,
+              "Sender",
+              type,
+              " Milk ",
+              "https://example.com/image",
+              "${household.id}:${type.name}")
       assertNotNull(activityId)
       val stored = Tasks.await(messageReference(household.id, activityId!!).get())
       assertEquals(type.name, stored.getString("type"))
       assertEquals("Milk", stored.getString("itemName"))
     }
 
-    assertNotNull(chat.sendActivity(household.id, senderId, "Sender", MessageType.EATEN, "Milk"))
+    assertNotNull(
+        chat.sendActivity(
+            household.id,
+            senderId,
+            "Sender",
+            MessageType.EATEN,
+            "Milk",
+            "https://example.com/image",
+            "milk-eaten-monday"))
+    assertNotNull(
+        chat.sendActivity(
+            household.id,
+            senderId,
+            "Sender",
+            MessageType.EATEN,
+            "Milk",
+            activityId = "milk-eaten-friday"))
     val ordered =
         Tasks.await(
             householdReference(household.id)
                 .collection(FirestoreCollections.MESSAGES)
                 .orderBy("timestamp")
                 .get(Source.SERVER))
+    assertEquals(5, ordered.documents.size)
     val timestamps = ordered.documents.map { checkNotNull(it.getTimestamp("timestamp")) }
     assertEquals(timestamps.sorted(), timestamps)
     assertEquals(textId, ordered.documents.first().id)
+  }
+
+  @Test
+  fun chatActivityReplayRequiresOriginalSenderAndKnownKeys() = runBlocking {
+    val household = createHouseholdAs("creator")
+    val creatorId = checkNotNull(FirebaseEmulator.auth.uid)
+    val memberId = FirebaseEmulator.signInAs("member")
+    repository.joinHousehold(household.inviteCode, memberId)
+    FirebaseEmulator.signInAs("creator")
+    Tasks.await(
+        firestore
+            .collection(FirestoreCollections.PROFILES)
+            .document(creatorId)
+            .set(mapOf("displayName" to "Alice")))
+    val ref = messageReference(household.id, "activity")
+    val base = activityData("activity", creatorId) + ("senderName" to "Alice")
+    Tasks.await(ref.set(base))
+
+    FirebaseEmulator.signInAs("member")
+    assertDenied(ref.set(base))
+
+    FirebaseEmulator.signInAs("creator")
+    assertDenied(ref.set(base + ("unexpected" to "field")))
+    assertDenied(ref.set(base + ("itemName" to "Banana")))
   }
 
   @Test

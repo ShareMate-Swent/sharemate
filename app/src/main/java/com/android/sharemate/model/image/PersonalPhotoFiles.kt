@@ -51,12 +51,7 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
                 }
           }
         }
-        // Verify that the image can be decoded without allocating its full size.
-        ImageDecoder.decodeBitmap(ImageDecoder.createSource(target)) { decoder, info, _ ->
-              require(info.mimeType == PhotoMimeTypes.JPEG || info.mimeType == PhotoMimeTypes.PNG)
-              decoder.setTargetSize(1, 1)
-            }
-            .recycle()
+        validatePersonalGalleryPhoto(target)
         target
       }
     } catch (failure: Throwable) {
@@ -96,6 +91,15 @@ class AndroidPersonalPhotoFiles(context: Context) : PersonalPhotoFiles {
         }
         Unit
       }
+}
+
+/** Detect incomplete images without allocating a full-size bitmap. */
+internal fun validatePersonalGalleryPhoto(file: File) {
+  ImageDecoder.decodeBitmap(ImageDecoder.createSource(file)) { decoder, info, _ ->
+        require(info.mimeType == PhotoMimeTypes.JPEG || info.mimeType == PhotoMimeTypes.PNG)
+        decoder.setTargetSize(1, 1)
+      }
+      .recycle()
 }
 
 private const val CAPTURE_MAX_DIMENSION_PX = 1280.0

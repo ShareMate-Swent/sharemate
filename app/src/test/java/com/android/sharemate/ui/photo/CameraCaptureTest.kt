@@ -1,10 +1,13 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
@@ -35,12 +38,17 @@ class CameraCaptureTest {
   private val future = SettableFuture.create<ProcessCameraProvider>()
   private val visible = mutableStateOf(true)
   private val enabled = mutableStateOf(true)
+  private val lens = mutableStateOf(CameraLens.BACK)
+  private val mirror = mutableStateOf(false)
+  private var switches = 0
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private var failures = 0
 
   @After fun tearDown() = scope.cancel()
 
-  private fun show(onCapture: (suspend (String) -> Unit) -> Unit = {}) {
+  private var takePicture: (suspend (String) -> Unit)? = null
+
+  private fun show(onCapture: (suspend (String) -> Unit) -> Unit = { takePicture = it }) {
     compose.setContent {
       MaterialTheme {
         if (visible.value) {
@@ -48,6 +56,9 @@ class CameraCaptureTest {
               enabled.value,
               onCapture,
               { failures++ },
+              lens = lens.value,
+              onSwitchLens = { switches++ },
+              mirrorFrontCamera = mirror.value,
               providerLoader = { future },
               imageCaptureFactory = { capture })
         }
@@ -67,13 +78,15 @@ class CameraCaptureTest {
     val binding =
         mockingDetails(provider).invocations.single { it.method.name == "bindToLifecycle" }
     assertSame(CameraSelector.DEFAULT_BACK_CAMERA, binding.rawArguments[1])
-    val useCases = binding.rawArguments[2] as Array<*>
-    assertTrue(useCases[0] is Preview)
-    assertSame(capture, useCases[1])
+    val group = binding.rawArguments[2] as UseCaseGroup
+    assertEquals(ViewPort.FIT, group.viewPort?.scaleType)
+    val useCases = group.useCases.toSet()
+    assertTrue(useCases.any { it is Preview })
+    assertTrue(capture in useCases)
     compose.runOnIdle { visible.value = false }
     compose.waitForIdle()
     val unbind = mockingDetails(provider).invocations.single { it.method.name == "unbind" }
-    assertArrayEquals(useCases, unbind.rawArguments[0] as Array<*>)
+    assertEquals(useCases, (unbind.rawArguments[0] as Array<*>).toSet())
     assertFalse(mockingDetails(provider).invocations.any { it.method.name == "unbindAll" })
     assertEquals(0, failures)
   }
@@ -109,6 +122,137 @@ class CameraCaptureTest {
     }
     compose.runOnIdle { assertSame(error, results[1].exceptionOrNull()) }
     verify(capture, times(2)).setTargetRotation(anyInt())
+    assertEquals(0, failures)
+  }
+
+  private fun bindings() =
+      mockingDetails(provider).invocations.filter { it.method.name == "bindToLifecycle" }
+
+  private fun unbinds() = mockingDetails(provider).invocations.count { it.method.name == "unbind" }
+
+  /** Takes a photo and returns whether it is saved mirrored, like the front-camera preview. */
+  private fun captureIsMirrored(): Boolean {
+    var options: ImageCapture.OutputFileOptions? = null
+    doAnswer {
+          options = it.getArgument(0)
+          null
+        }
+        .`when`(capture)
+        .takePicture(
+            any(ImageCapture.OutputFileOptions::class.java),
+            any(Executor::class.java),
+            any(ImageCapture.OnImageSavedCallback::class.java))
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).performClick()
+    compose.runOnIdle { scope.launch { requireNotNull(takePicture)("file:///private/photo.jpg") } }
+    compose.waitForIdle()
+    return requireNotNull(options).metadata.isReversedHorizontal
+  }
+
+  private fun hasCameras(back: Boolean, front: Boolean) {
+    `when`(provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)).thenReturn(back)
+    `when`(provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)).thenReturn(front)
+  }
+
+  /** Shows the camera on [initial] with both lenses available and waits for the first bind. */
+  private fun showWithBothLenses(initial: CameraLens = CameraLens.BACK) {
+    hasCameras(back = true, front = true)
+    lens.value = initial
+    show()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled()
+  }
+
+  @Test
+  fun switchIsShownOnlyOnceBothLensesAreKnownAndAsksForTheOtherLens() {
+    hasCameras(back = true, front = true)
+    show()
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertDoesNotExist()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertIsEnabled().performClick()
+    compose.runOnIdle { assertEquals(1, switches) }
+  }
+
+  @Test
+  fun switchRebindsFrontWithSameViewPortGroup() {
+    showWithBothLenses()
+    compose.runOnIdle { lens.value = CameraLens.FRONT }
+    compose.waitForIdle()
+    val (back, front) = bindings()
+    assertSame(CameraSelector.DEFAULT_BACK_CAMERA, back.rawArguments[1])
+    assertSame(CameraSelector.DEFAULT_FRONT_CAMERA, front.rawArguments[1])
+    val group = front.rawArguments[2] as UseCaseGroup
+    assertEquals(ViewPort.FIT, group.viewPort?.scaleType)
+    assertTrue(group.useCases.any { it is Preview })
+    assertTrue(capture in group.useCases)
+    assertEquals(1, unbinds())
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled()
+    assertEquals(0, failures)
+  }
+
+  @Test
+  fun switchIsDisabledWhileBusy() {
+    showWithBothLenses()
+    compose.runOnIdle { enabled.value = false }
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertIsNotEnabled()
+  }
+
+  @Test
+  fun selfieFrontCaptureIsMirrored() {
+    mirror.value = true
+    showWithBothLenses(CameraLens.FRONT)
+    assertTrue(captureIsMirrored())
+  }
+
+  @Test
+  fun nonSelfieFrontCaptureIsNotMirrored() {
+    showWithBothLenses(CameraLens.FRONT)
+    assertFalse(captureIsMirrored())
+  }
+
+  @Test
+  fun selfieBackCaptureIsNotMirrored() {
+    mirror.value = true
+    showWithBothLenses(CameraLens.BACK)
+    assertFalse(captureIsMirrored())
+  }
+
+  @Test
+  fun frontBindFailureFallsBackToTheBackCameraWithoutAnError() {
+    `when`(
+            provider.bindToLifecycle(
+                any(), eq(CameraSelector.DEFAULT_FRONT_CAMERA), any(UseCaseGroup::class.java)))
+        .thenThrow(IllegalArgumentException("Unsupported ViewPort"))
+    showWithBothLenses(CameraLens.FRONT)
+    val (front, back) = bindings()
+    assertSame(CameraSelector.DEFAULT_FRONT_CAMERA, front.rawArguments[1])
+    assertSame(CameraSelector.DEFAULT_BACK_CAMERA, back.rawArguments[1])
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertDoesNotExist()
+    assertEquals(0, failures)
+  }
+
+  @Test
+  fun bindFailureWithoutAnotherLensReportsAnError() {
+    hasCameras(back = true, front = false)
+    `when`(
+            provider.bindToLifecycle(
+                any(), eq(CameraSelector.DEFAULT_BACK_CAMERA), any(UseCaseGroup::class.java)))
+        .thenThrow(IllegalArgumentException("Camera in use"))
+    show()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsNotEnabled()
+    compose.runOnIdle { assertEquals(1, failures) }
+  }
+
+  @Test
+  fun missingFrontCameraHidesTheSwitchAndFallsBackToTheBackCamera() {
+    hasCameras(back = true, front = false)
+    lens.value = CameraLens.FRONT
+    show()
+    compose.runOnIdle { future.set(provider) }
+    compose.onNodeWithTag(PhotoPickerTestTags.CAPTURE).assertIsEnabled()
+    compose.onNodeWithTag(PhotoPickerTestTags.SWITCH_CAMERA).assertDoesNotExist()
+    assertSame(CameraSelector.DEFAULT_BACK_CAMERA, bindings().single().rawArguments[1])
+    assertFalse(captureIsMirrored())
     assertEquals(0, failures)
   }
 

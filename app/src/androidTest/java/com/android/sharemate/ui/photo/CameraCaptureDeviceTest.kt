@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import android.Manifest
@@ -31,6 +32,7 @@ import androidx.test.rule.GrantPermissionRule
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.image.AndroidTemporaryPhotoStore
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.barcode.BarcodeFormTestTags
 import com.android.sharemate.ui.fridge.AddItemDialog
@@ -115,7 +117,7 @@ class CameraCaptureDeviceTest {
               FridgeUiState(
                   itemName = "Milk",
                   itemQuantity = "2",
-                  itemCategory = "Dairy",
+                  itemCategory = ItemCategory.DAIRY,
                   fridgeType = FridgeType.SHARED),
               {},
               {},

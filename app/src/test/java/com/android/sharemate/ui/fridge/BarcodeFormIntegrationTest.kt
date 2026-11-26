@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.lifecycle.ViewModelStore
@@ -9,11 +10,13 @@ import com.android.sharemate.model.image.FoodImageRepository
 import com.android.sharemate.model.image.FoodImageSearchResult
 import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.FakeItemRepository
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.product.ProductDetails
 import com.android.sharemate.model.product.ProductLookupResult
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.FakeExpirationPreferencesRepository
+import com.android.sharemate.ui.navigation.AddItemMethod
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -70,7 +73,7 @@ class BarcodeFormIntegrationTest {
     owner.put("fridge", vm)
     vm.openAddItemDialog()
     vm.updateName("Manual food")
-    vm.updateCategory("Dairy")
+    vm.updateCategory(ItemCategory.DAIRY)
     vm.updateQuantity("3")
     vm.updateExpirationDate("2027-01-01")
   }
@@ -79,6 +82,21 @@ class BarcodeFormIntegrationTest {
   fun tearDown() {
     owner.clear()
     Dispatchers.resetMain()
+  }
+
+  @Test
+  fun readingAPhotoKeepsABarcodeFormOpenWhenThePhotoIsCancelledLater() = runTest {
+    vm.dismissAddItemDialog()
+    vm.openAddItemDialog(fromAddButton = AddItemMethod.BARCODE)
+    assertTrue(vm.uiState.value.closeOnBarcodeCancel)
+    lookup = { ProductLookupResult.NotFound }
+    try {
+      vm.confirmBarcodeImage("file:///private/photo.png")
+      fail("The product is not in the catalog")
+    } catch (_: BarcodeLookupException) {}
+    // The lookup failed: the form stays, to type the item in instead.
+    assertFalse(vm.uiState.value.closeOnBarcodeCancel)
+    assertTrue(vm.uiState.value.isAddItemDialogOpen)
   }
 
   @Test
@@ -98,7 +116,7 @@ class BarcodeFormIntegrationTest {
     runCurrent()
     assertEquals("Corrected milk — Farm", items.addedItems.single().name)
     assertEquals(3, items.addedItems.single().quantity)
-    assertEquals("Dairy", items.addedItems.single().category)
+    assertEquals(ItemCategory.DAIRY, items.addedItems.single().category)
   }
 
   @Test
@@ -253,7 +271,7 @@ class BarcodeFormIntegrationTest {
   }
 
   private fun assertManualFieldsPreserved() {
-    assertEquals("Dairy", vm.uiState.value.itemCategory)
+    assertEquals(ItemCategory.DAIRY, vm.uiState.value.itemCategory)
     assertEquals("3", vm.uiState.value.itemQuantity)
     assertEquals("2027-01-01", vm.uiState.value.expirationDateInput)
     assertTrue(vm.uiState.value.isAddItemDialogOpen)

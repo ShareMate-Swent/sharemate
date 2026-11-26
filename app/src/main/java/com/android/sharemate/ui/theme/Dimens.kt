@@ -35,13 +35,6 @@ object Dimens {
   val progressSize = 20.dp
   val progressStrokeWidth = 2.dp
 
-  // Chat activity badges.
-  /** Icon size for the fridge action shown in a chat badge. */
-  val activityBadgeIconSize = 24.dp
-
-  /** Item thumbnail size for a fridge activity shown in chat. */
-  val activityBadgeImageSize = 48.dp
-
   // Corner radii of the design system, used by the theme's shapes.
   /** Corner radius of the smallest elements, like badges. */
   val cornerRadiusXs = 8.dp

@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.android.sharemate.model.FirestoreCollections
@@ -122,9 +123,9 @@ class ItemMutationTest {
     val expiry = Date(1_900_000_000_000)
     val fields =
         mapOf(
-            "name" to "Apple", "quantity" to 3, "category" to "Fruits", "expirationDate" to expiry)
+            "name" to "Apple", "quantity" to 3, "category" to "FRUITS", "expirationDate" to expiry)
     `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
-    val result = repository.updateItem("item", ItemEdit("Apple", 3, "Fruits", expiry))
+    val result = repository.updateItem("item", ItemEdit("Apple", 3, ItemCategory.FRUITS, expiry))
     assertTrue((result as ItemWrite.Queued).confirmation.await().isSuccess)
     verify(document).update(fields)
     verifyNoMoreInteractions(document)
@@ -161,15 +162,15 @@ class ItemMutationTest {
     val doc = validDocument()
     val date = Date(1234)
     `when`(doc.getTimestamp("expirationDate")).thenReturn(com.google.firebase.Timestamp(date))
-    `when`(doc.getString("category")).thenReturn("Dairy")
+    `when`(doc.get("category")).thenReturn("Dairy")
     val base = checkNotNull(doc.toItemOrNull())
     assertEquals(1, base.quantity)
     assertEquals(ItemStatus.ACTIVE, base.status)
-    assertEquals("Dairy", base.category)
+    assertEquals(ItemCategory.DAIRY, base.category)
     assertEquals(date, base.expirationDate)
-    `when`(doc.getString("category")).thenReturn("  ")
+    `when`(doc.get("category")).thenReturn("  ")
     assertEquals(base.copy(category = null), doc.toItemOrNull())
-    `when`(doc.getString("category")).thenReturn("Dairy")
+    `when`(doc.get("category")).thenReturn("Dairy")
     `when`(doc.contains("quantity")).thenReturn(true)
     `when`(doc.get("quantity")).thenReturn(5L)
     `when`(doc.contains("status")).thenReturn(true)
@@ -193,9 +194,10 @@ class ItemMutationTest {
       `when`(doc.get("status")).thenReturn(status)
       assertNull(doc.toItemOrNull())
     }
+    // A category that is not text is read as no category rather than dropping the item.
     val doc = validDocument()
-    `when`(doc.getString("category")).thenThrow(RuntimeException("Wrong type"))
-    assertNull(doc.toItemOrNull())
+    `when`(doc.get("category")).thenReturn(42L)
+    assertNull(checkNotNull(doc.toItemOrNull()).category)
   }
 
   @Test
@@ -203,7 +205,12 @@ class ItemMutationTest {
     val fake = FakeItemRepository()
     val personalItem =
         Item(
-            "personal", "Milk", "owner", "home", category = "Dairy", sharing = ItemSharing.PERSONAL)
+            "personal",
+            "Milk",
+            "owner",
+            "home",
+            category = ItemCategory.DAIRY,
+            sharing = ItemSharing.PERSONAL)
     val sharedItem = Item("shared", "Bread", "owner", "home", sharing = ItemSharing.SHARED)
     fake.emitItems(listOf(personalItem, sharedItem))
     assertTrue(fake.updateItem("personal", ItemEdit(" Milk ", 4, null, null)) is ItemWrite.Queued)
@@ -233,15 +240,11 @@ class ItemMutationTest {
       }
 
   @Test
-  fun editsWithTextsOverTheLimitsAreRejectedBeforeWriting() {
+  fun editsWithANameOverTheLimitAreRejectedBeforeWriting() {
     val tooLongName = "n".repeat(TextLimits.ITEM_NAME + 1)
-    val tooLongCategory = "c".repeat(TextLimits.ITEM_CATEGORY + 1)
 
     assertTrue(
         repository.updateItem("item", ItemEdit(tooLongName, 1, null, null)) is ItemWrite.Rejected)
-    assertTrue(
-        repository.updateItem("item", ItemEdit("Milk", 1, tooLongCategory, null))
-            is ItemWrite.Rejected)
     verifyNoInteractions(document)
   }
 
@@ -273,14 +276,27 @@ class ItemMutationTest {
   }
 
   @Test
-  fun editsWithTextsAtTheLimitsAreSubmittedTrimmed() {
+  fun editsWithANameAtTheLimitAreSubmittedTrimmedWithTheCategoryName() {
     val name = "n".repeat(TextLimits.ITEM_NAME)
-    val category = "c".repeat(TextLimits.ITEM_CATEGORY)
     val fields =
-        mapOf("name" to name, "quantity" to 1, "category" to category, "expirationDate" to null)
+        mapOf("name" to name, "quantity" to 1, "category" to "DAIRY", "expirationDate" to null)
     `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
 
-    val result = repository.updateItem("item", ItemEdit(" $name ", 1, category, null))
+    val result = repository.updateItem("item", ItemEdit(" $name ", 1, ItemCategory.DAIRY, null))
+
+    assertTrue(result is ItemWrite.Queued)
+    verify(document).update(fields)
+  }
+
+  @Test
+  fun editsThatKeepTheCategoryDoNotWriteIt() {
+    // The stored category may be older free text; leaving it out keeps it as it is.
+    val fields = mapOf("name" to "Milk", "quantity" to 1, "expirationDate" to null)
+    `when`(document.update(fields)).thenReturn(Tasks.forResult(null))
+
+    val result =
+        repository.updateItem(
+            "item", ItemEdit("Milk", 1, ItemCategory.OTHER, null, updatesCategory = false))
 
     assertTrue(result is ItemWrite.Queued)
     verify(document).update(fields)

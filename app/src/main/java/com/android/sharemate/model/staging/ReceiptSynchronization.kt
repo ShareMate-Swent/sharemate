@@ -22,6 +22,7 @@ internal class ReceiptSynchronization(
   ): Boolean {
     if (delete) {
       expenses.deleteReceipt(home, id)
+      store.acknowledgeDeletion(owner, home, id)
       return true
     }
     val receipt = store.loadById(owner, home, id) ?: return true

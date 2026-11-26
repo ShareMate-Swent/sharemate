@@ -1,9 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.image.PhotoImportRejection
+import com.android.sharemate.model.image.PhotoImportValidationException
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +30,15 @@ enum class PhotoSource {
   GALLERY
 }
 
+/** The camera the picker captures with. */
+enum class CameraLens {
+  BACK,
+  FRONT;
+
+  /** The other lens, used by the switch button. */
+  fun other(): CameraLens = if (this == BACK) FRONT else BACK
+}
+
 /** A private image and the source that produced it, valid during confirmation. */
 data class SelectedPhoto(val uri: String, val source: PhotoSource)
 
@@ -38,11 +50,22 @@ data class PhotoPickerState(
     val failed: Boolean = false,
     val confirmationFailed: Boolean = false,
     val confirmed: Boolean = false,
+    val galleryImportRejection: PhotoImportRejection? = null,
+    val lens: CameraLens = CameraLens.BACK,
 )
 
+/**
+ * Holds the picker dialog state, including the chosen camera lens.
+ *
+ * @param defaultLens Lens used until the user switches it, e.g. [CameraLens.FRONT] for selfies.
+ * @property mirrorFrontCamera Whether front-camera photos are saved mirrored, like the preview.
+ *   Only for selfies: mirrored text breaks receipt OCR and barcode scanning.
+ */
 class PhotoPickerViewModel(
     private val store: TemporaryPhotoStore,
     private val savedState: SavedStateHandle,
+    private val defaultLens: CameraLens = CameraLens.BACK,
+    val mirrorFrontCamera: Boolean = false,
 ) : ViewModel() {
   private fun restoreSelection(): SelectedPhoto? =
       savedState.get<String>(IMAGE_KEY)?.let { uri ->
@@ -57,7 +80,8 @@ class PhotoPickerViewModel(
           PhotoPickerState(
               selection = restoreSelection(),
               confirmed = savedState[CONFIRMED_KEY] ?: false,
-              visible = savedState[VISIBLE_KEY] ?: false))
+              visible = savedState[VISIBLE_KEY] ?: false,
+              lens = savedState.get<String>(LENS_KEY)?.let(CameraLens::valueOf) ?: defaultLens))
   val state = mutableState.asStateFlow()
   private var operation: Job? = null
 
@@ -84,6 +108,14 @@ class PhotoPickerViewModel(
         }
   }
 
+  /** Switches between the back and front camera; the choice survives recreation. */
+  fun switchLens() {
+    if (state.value.busy) return
+    val lens = state.value.lens.other()
+    savedState[LENS_KEY] = lens.name
+    mutableState.update { it.copy(lens = lens) }
+  }
+
   fun showSources() {
     if (!state.value.busy)
         mutableState.update {
@@ -100,7 +132,9 @@ class PhotoPickerViewModel(
 
   fun reportFailure() {
     // A failed replacement must not make the previous image eligible for a second handoff.
-    mutableState.update { it.copy(failed = true, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(failed = true, confirmationFailed = false, galleryImportRejection = null)
+    }
   }
 
   fun select(uri: String?) {
@@ -154,7 +188,8 @@ class PhotoPickerViewModel(
     savedState[CAMERA_KEY] = null
     savedState[CONFIRMED_KEY] = false
     savedState[VISIBLE_KEY] = false
-    mutableState.value = PhotoPickerState()
+    savedState[LENS_KEY] = null
+    mutableState.value = PhotoPickerState(lens = defaultLens)
     if (uri != null) CoroutineScope(Dispatchers.Main.immediate).launch { store.delete(uri) }
   }
 
@@ -185,15 +220,22 @@ class PhotoPickerViewModel(
 
   private fun runOperation(action: suspend () -> Unit) {
     if (state.value.busy) return
-    mutableState.update { it.copy(busy = true, failed = false, confirmationFailed = false) }
+    mutableState.update {
+      it.copy(
+          busy = true, failed = false, confirmationFailed = false, galleryImportRejection = null)
+    }
     operation =
         viewModelScope.launch {
           try {
             action()
           } catch (cancelled: CancellationException) {
             throw cancelled
-          } catch (_: Exception) {
-            mutableState.update { it.copy(failed = true) }
+          } catch (failure: Exception) {
+            mutableState.update {
+              it.copy(
+                  failed = true,
+                  galleryImportRejection = (failure as? PhotoImportValidationException)?.rejection)
+            }
           } finally {
             mutableState.update { it.copy(busy = false) }
           }
@@ -216,5 +258,7 @@ class PhotoPickerViewModel(
     const val CAMERA_KEY = "barcodePhotoFromCamera"
     const val CONFIRMED_KEY = "barcodePhotoConfirmed"
     const val VISIBLE_KEY = "barcodePhotoVisible"
+    /** Saved-state key of the chosen [CameraLens]. */
+    const val LENS_KEY = "photoPickerCameraLens"
   }
 }

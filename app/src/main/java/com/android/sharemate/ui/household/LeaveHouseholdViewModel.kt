@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-// Co-authored-by: OpenAI Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.household
 
 import androidx.lifecycle.ViewModel
@@ -40,6 +40,7 @@ data class LeaveHouseholdUiState(
 class LeaveHouseholdViewModel(
     private val householdRepository: HouseholdRepository,
     private val authRepository: AuthRepository,
+    private val onHouseholdLeft: suspend (String) -> Unit = {},
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(LeaveHouseholdUiState())
   val state = mutableState.asStateFlow()
@@ -70,6 +71,7 @@ class LeaveHouseholdViewModel(
           mutableState.update { it.copy(error = LeaveHouseholdError.NO_SESSION) }
         } else {
           householdRepository.leaveHousehold(session.uid)
+          onHouseholdLeft(session.uid)
           mutableState.update { it.copy(isConfirming = false, left = true) }
         }
       } catch (cancelled: CancellationException) {

@@ -28,8 +28,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.mockito.ArgumentCaptor
@@ -62,11 +65,15 @@ class FirebaseChatRepositoryUnitTest {
     `when`(firestore.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(households)
     `when`(household.collection(FirestoreCollections.MESSAGES)).thenReturn(collection)
     `when`(collection.document()).thenReturn(document)
+    `when`(collection.document(any())).thenReturn(document)
     `when`(document.id).thenReturn("m1")
     `when`(firestore.collection(FirestoreCollections.PROFILES)).thenReturn(profiles)
     `when`(profiles.document("u1")).thenReturn(profileReference)
     `when`(profileReference.get(Source.CACHE)).thenReturn(Tasks.forResult(profile))
     `when`(profileReference.get(Source.SERVER)).thenReturn(Tasks.forResult(profile))
+    val absentDocument = mock(DocumentSnapshot::class.java)
+    `when`(absentDocument.exists()).thenReturn(false)
+    `when`(document.get()).thenReturn(Tasks.forResult(absentDocument))
     `when`(profile.exists()).thenReturn(true)
     `when`(profile.getString("displayName")).thenReturn("Ann")
     repository = FirebaseChatRepository(firestore, photos)
@@ -283,6 +290,52 @@ class FirebaseChatRepositoryUnitTest {
                 "itemImageUrl" to "http://i"),
             captor.value)
         verify(profileReference).get(Source.CACHE)
+      }
+
+  @Test
+  fun sendActivity_usesStableActionKeyToSeparateSameNameItems() =
+      runBlocking<Unit> {
+        `when`(document.set(any())).thenReturn(Tasks.forResult(null))
+        assertNotNull(
+            repository.sendActivity(
+                "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "item-monday:EATEN"))
+        assertNotNull(
+            repository.sendActivity(
+                "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "item-friday:EATEN"))
+        val captor = ArgumentCaptor.forClass(String::class.java)
+        verify(collection, times(2)).document(captor.capture())
+        assertNotEquals(captor.allValues[0], captor.allValues[1])
+      }
+
+  @Test
+  fun sendActivity_transientExistenceCheckFailureIsThrownAndNothingIsWritten() =
+      runBlocking<Unit> {
+        listOf(
+                FirebaseFirestoreException.Code.UNAVAILABLE,
+                FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
+            .forEach { code ->
+              `when`(document.get())
+                  .thenReturn(Tasks.forException(FirebaseFirestoreException("offline", code)))
+              try {
+                repository.sendActivity(
+                    "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "i:EATEN")
+                fail("Expected TransientActivityException")
+              } catch (_: TransientActivityException) {}
+            }
+        verify(document, never()).set(any())
+      }
+
+  @Test
+  fun sendActivity_permanentExistenceCheckFailureReturnsNull() =
+      runBlocking<Unit> {
+        `when`(document.get())
+            .thenReturn(
+                Tasks.forException(
+                    FirebaseFirestoreException(
+                        "denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+        assertNull(
+            repository.sendActivity(
+                "h1", "u1", "Ann", MessageType.EATEN, "Milk", activityId = "i:EATEN"))
       }
 
   @Test

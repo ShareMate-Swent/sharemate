@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -36,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +70,8 @@ import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [SettingsScreen]. */
 object SettingsTestTags {
+  /** Returns from Settings to the fridge. */
+  const val BACK = "settings_back"
   const val PROFILE_PHOTO = "settings_profile_photo"
   const val PROFILE_PLACEHOLDER = "settings_profile_placeholder"
   const val PROFILE_NAME = "settings_profile_name"
@@ -120,6 +124,7 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * @param onSavePseudo Saves the edited pseudo as the public profile name.
  * @param onRetryLoadPseudo Loads the saved pseudo again after a load failure.
  * @param onSignOut Signs out the current user.
+ * @param onBack Leaves Settings from the back arrow, the only way back since it has no bottom bar.
  * @param onOpenNotificationSettings Opens the notification settings.
  * @param onChangePhoto Opens the camera/gallery dialog to change the profile photo.
  * @param onRetryPhotoUpload Uploads the photo of a failed upload again.
@@ -138,6 +143,7 @@ fun SettingsScreen(
     onSavePseudo: () -> Unit,
     onRetryLoadPseudo: () -> Unit,
     onSignOut: () -> Unit,
+    onBack: () -> Unit,
     onOpenNotificationSettings: () -> Unit = {},
     onChangePhoto: () -> Unit = {},
     onRetryPhotoUpload: () -> Unit = {},
@@ -151,12 +157,21 @@ fun SettingsScreen(
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     Spacer(Modifier.height(Dimens.spacingL))
-    Text(
-        text = stringResource(R.string.settings_title),
-        modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
-        style = MaterialTheme.typography.headlineSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+      IconButton(
+          onClick = onBack,
+          modifier = Modifier.align(Alignment.CenterStart).testTag(SettingsTestTags.BACK)) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.settings_back))
+          }
+      Text(
+          text = stringResource(R.string.settings_title),
+          modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT),
+          style = MaterialTheme.typography.headlineSmall,
+          color = MaterialTheme.colorScheme.onSurface,
+      )
+    }
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
     ProfileHeader(state, onChangePhoto, onRetryPhotoUpload)
     Spacer(Modifier.height(Dimens.spacingL))

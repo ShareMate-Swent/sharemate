@@ -102,6 +102,14 @@ class ReceiptJournalRecoveryTest {
             .enqueueUniqueWork(
                 eq("receipt-sync-owner-$id"), eq(ExistingWorkPolicy.KEEP), request.capture())
         assertTrue(request.value.workSpec.input.getBoolean("delete", false))
+        store.acknowledgeDeletion("owner", "home", id)
+        clearInvocations(manager)
+        AndroidInventorySubmissionStore(
+                context, dispatcher, scheduleSync = true, viewerId = "owner")
+            .resumeSync("owner", "home")
+        verify(manager, never())
+            .enqueueUniqueWork(eq("receipt-sync-owner-$id"), any(), any<OneTimeWorkRequest>())
+        assertTrue(store.isDeleted("owner", "home", id))
         clearInvocations(manager)
         AndroidInventorySubmissionStore(context, dispatcher).resumeSync("owner", "home")
         AndroidInventorySubmissionStore(

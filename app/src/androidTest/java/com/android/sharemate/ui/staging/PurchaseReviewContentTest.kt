@@ -77,7 +77,7 @@ class PurchaseReviewContentTest {
             PurchaseReviewError.MEMBERSHIP_CHANGED to R.string.purchase_membership_changed,
             PurchaseReviewError.NONPOSITIVE_TOTAL to R.string.purchase_positive_total,
             PurchaseReviewError.INVALID_PAYER to R.string.purchase_invalid_payer,
-            PurchaseReviewError.PAYER_MUST_SUBMIT to R.string.purchase_payer_must_submit,
+            PurchaseReviewError.SUBMITTER_NOT_MEMBER to R.string.purchase_submitter_not_member,
             PurchaseReviewError.NO_PARTICIPANTS to R.string.purchase_no_participants,
             PurchaseReviewError.INVALID_PARTICIPANTS to R.string.purchase_invalid_participants,
         )
