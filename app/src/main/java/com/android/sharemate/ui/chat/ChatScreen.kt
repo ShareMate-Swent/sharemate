@@ -3,6 +3,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.chat
 
+import android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+import android.view.WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +19,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -29,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.chat.Message
+import com.android.sharemate.ui.photo.findActivity
 import com.android.sharemate.ui.theme.Dimens
 import java.time.ZonedDateTime
 import java.util.Locale
@@ -130,6 +137,7 @@ fun ChatContent(
     memberCount: Int = 0,
     clock: () -> ZonedDateTime = { ZonedDateTime.now() },
 ) {
+  ResizeWindowForKeyboard()
   val defaultName = stringResource(R.string.chat_default_sender_name)
   val resources = LocalContext.current.resources
   val configuration = LocalConfiguration.current
@@ -186,6 +194,28 @@ fun ChatContent(
   }
 }
 
+/**
+ * Makes the window resize instead of pan while the chat is shown, so opening the keyboard shrinks
+ * the message list rather than pushing the whole screen (and messages that would still fit) up out
+ * of view. The previous soft input mode is restored when the chat leaves composition.
+ */
+@Composable
+private fun ResizeWindowForKeyboard() {
+  val window = (LocalContext.current.findActivity() ?: return).window
+  DisposableEffect(window) {
+    val previous = window.attributes.softInputMode
+    window.setSoftInputMode(withAdjustResize(previous))
+    // Restore through the attributes: setSoftInputMode(0) leaves the attribute unchanged, so an
+    // activity that started unspecified would keep adjustResize on its other screens.
+    onDispose { window.attributes = window.attributes.apply { softInputMode = previous } }
+  }
+}
+
+/** Returns [softInputMode] with its adjust flags replaced by `SOFT_INPUT_ADJUST_RESIZE`. */
+internal fun withAdjustResize(softInputMode: Int): Int =
+    (softInputMode and SOFT_INPUT_MASK_ADJUST.inv()) or SOFT_INPUT_ADJUST_RESIZE
+
+/** Shows [messages], which is never empty: [ChatContent] shows the empty state instead. */
 @Composable
 private fun MessageList(
     messages: List<Message>,
@@ -201,11 +231,19 @@ private fun MessageList(
       remember(messages, currentUserId, today, zone) {
         buildChatItems(messages, currentUserId, today, zone)
       }
-  LaunchedEffect(messages.lastOrNull()?.id, items.size) {
-    if (items.isNotEmpty()) listState.scrollToItem(items.lastIndex)
+  // Re-pin to the latest item when the viewport resizes (e.g. keyboard opens or closes).
+  // The list clamps the scroll, so messages that fit above the keyboard stay where they are.
+  // The height comes from onSizeChanged rather than layoutInfo, which changes after every
+  // layout and would recompose forever if read here.
+  var viewportHeight by remember { mutableIntStateOf(0) }
+  LaunchedEffect(messages.last().id, items.size, viewportHeight) {
+    listState.scrollToItem(items.lastIndex)
   }
   LazyColumn(
-      modifier = Modifier.fillMaxSize().testTag(ChatTestTags.LIST),
+      modifier =
+          Modifier.fillMaxSize()
+              .onSizeChanged { viewportHeight = it.height }
+              .testTag(ChatTestTags.LIST),
       state = listState,
       contentPadding = PaddingValues(horizontal = Dimens.spacingS),
       verticalArrangement = Arrangement.spacedBy(ChatLayout.messageSpacing)) {
