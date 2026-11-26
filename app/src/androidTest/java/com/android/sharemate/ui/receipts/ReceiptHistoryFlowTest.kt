@@ -281,6 +281,57 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun draftWithoutMetadataOrPurchaseServicesCanStillKeepLocalEdits() {
+    val fixture = WorkflowFixture(draft = true, metadata = false, purchaseServices = false)
+    fixture.open()
+    compose.onNodeWithTag("receipt_title").performTextReplacement("Recovered draft")
+    fixture.backAndKeep()
+    assertEquals("Recovered draft", fixture.details().title)
+    assertTrue(fixture.retained().draft)
+    assertEquals("Milk", fixture.retained().items.single().name)
+    assertEquals(0, fixture.recorded)
+    assertTrue(fixture.details().draftParticipants.isEmpty())
+  }
+
+  @Test
+  fun savedReceiptWithoutPurchaseServicesKeepsRejectedEditsLocal() {
+    val fixture = WorkflowFixture(draft = false, purchaseServices = false)
+    fixture.open()
+    compose.onNodeWithText("Milk").performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    fixture.backAndKeep(waitForHistory = false)
+    compose.onNodeWithTag("receipt_save_draft").assertIsDisplayed()
+    assertEquals(100L, fixture.retained().expense?.totalAmountCents)
+    assertEquals(0, fixture.corrected)
+    compose.onNodeWithTag("receipt_discard").performClick()
+    fixture.awaitHistory()
+    assertEquals(100L, fixture.retained().items.single().priceCents)
+  }
+
+  @Test
+  fun failedDeletionKeepsReceiptOpenAndCanBeRetried() {
+    val fixture = WorkflowFixture(draft = false)
+    fixture.failFirstDeletion = true
+    fixture.open()
+    repeat(2) { attempt ->
+      compose.onNodeWithContentDescription("More receipt actions").performClick()
+      compose.onNodeWithText("Delete receipt").performClick()
+      compose.onNodeWithText("Delete").performClick()
+      compose.waitUntil(10_000) { fixture.deleted == attempt + 1 }
+      if (attempt == 0) {
+        compose.onNodeWithText("Milk").assertIsDisplayed()
+        assertEquals(fixture.id, fixture.retained().id)
+      }
+    }
+    compose.waitUntil(10_000) {
+      compose.onAllNodesWithText("No receipts yet").fetchSemanticsNodes().isNotEmpty()
+    }
+    assertTrue(
+        runBlocking { fixture.store.loadById(fixture.owner, fixture.home, fixture.id) } == null)
+  }
+
+  @Test
   fun editedDraftKeepsItsStatusUntilThePurchaseIsConfirmed() {
     val fixture = WorkflowFixture(draft = true)
     fixture.open()
@@ -481,7 +532,12 @@ class ReceiptHistoryFlowTest {
     return compose.onNodeWithTag("receipt_card_$id").assertIsDisplayed()
   }
 
-  private inner class WorkflowFixture(draft: Boolean, seed: Boolean = true) {
+  private inner class WorkflowFixture(
+      draft: Boolean,
+      seed: Boolean = true,
+      metadata: Boolean = true,
+      purchaseServices: Boolean = true
+  ) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
     val id = UUID.randomUUID().toString()
@@ -490,6 +546,7 @@ class ReceiptHistoryFlowTest {
     var corrected = 0
     var failFirstCorrection = false
     var deleted = 0
+    var failFirstDeletion = false
 
     init {
       if (seed)
@@ -506,9 +563,10 @@ class ReceiptHistoryFlowTest {
                     expense,
                     !draft,
                     if (draft) ExpenseProgress.QUEUED else ExpenseProgress.CONFIRMED))
-            store.saveDetails(
-                ReceiptDetails(
-                    id, owner, home, "", System.currentTimeMillis(), title = "Groceries"))
+            if (metadata)
+                store.saveDetails(
+                    ReceiptDetails(
+                        id, owner, home, "", System.currentTimeMillis(), title = "Groceries"))
           }
       val items =
           object : ItemRepository by UnusedItems {
@@ -533,6 +591,7 @@ class ReceiptHistoryFlowTest {
 
             override suspend fun deleteReceipt(householdId: String, id: String) {
               deleted++
+              if (failFirstDeletion && deleted == 1) throw java.io.IOException("Offline")
             }
           }
       val profiles =
@@ -545,7 +604,12 @@ class ReceiptHistoryFlowTest {
       compose.setContent {
         MaterialTheme {
           ReceiptsScreen(
-              items, owner, home, true, expenseRepository = expenses, profileRepository = profiles)
+              items,
+              owner,
+              home,
+              true,
+              expenseRepository = expenses.takeIf { purchaseServices },
+              profileRepository = profiles.takeIf { purchaseServices })
         }
       }
     }

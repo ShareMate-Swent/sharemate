@@ -19,6 +19,31 @@ import org.mockito.Mockito.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseInventorySubmissionTest {
   @Test
+  fun missingOrUnknownHouseholdRejectsSubmissionWithoutWritingItems() = runTest {
+    for ((exists, type) in listOf(false to "SHARED", true to null, true to "UNKNOWN", true to "")) {
+      val db = mock(FirebaseFirestore::class.java)
+      val homes = mock(CollectionReference::class.java)
+      val home = mock(DocumentReference::class.java)
+      val snapshot = mock(DocumentSnapshot::class.java)
+      `when`(db.collection(FirestoreCollections.HOUSEHOLDS)).thenReturn(homes)
+      `when`(homes.document(submission.householdId)).thenReturn(home)
+      `when`(snapshot.exists()).thenReturn(exists)
+      `when`(snapshot.getString(com.android.sharemate.model.household.HouseholdFields.TYPE))
+          .thenReturn(type)
+      val lookup = TaskCompletionSource<DocumentSnapshot>()
+      `when`(home.get()).thenReturn(lookup.task)
+      val write = FirebaseItemRepository(db).addItems(submission) as ItemWrite.Queued
+      lookup.setResult(snapshot)
+      val failure = write.confirmation.await().exceptionOrNull()
+      assertTrue(failure is IllegalStateException)
+      assertEquals(
+          if (exists) "Unknown household type" else "Household no longer exists", failure?.message)
+      verify(db, never()).batch()
+      verify(db, never()).collection(FirestoreCollections.ITEMS)
+    }
+  }
+
+  @Test
   fun draftCannotBeEnqueuedBeforeFinalValidation() {
     val draft = InventorySubmission(ID, "owner", "home", submission.items, draft = true)
     val result = FirebaseItemRepository(firestore).addItems(draft)
