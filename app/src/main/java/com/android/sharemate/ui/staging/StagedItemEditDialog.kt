@@ -88,7 +88,7 @@ fun StagedItemEditDialog(
               value = draft.price,
               onValueChange = onPriceChange,
               label = { Text(stringResource(R.string.staging_price_label)) },
-              suffix = { Text(" " + stringResource(R.string.staging_currency)) },
+              suffix = { Text(stringResource(R.string.staging_currency)) },
               supportingText = { Text(stringResource(R.string.staging_price_hint)) },
               isError = draft.error == StagedItemError.INVALID_PRICE,
               singleLine = true,
