@@ -28,7 +28,10 @@ class AddItemSheetFlowTest {
         ShareMateTheme {
           val open by menu.isSheetOpen.collectAsState()
           AppBottomBar(
-              currentRoute = TopLevelDestination.CHAT.route, onSelect = {}, onAdd = menu::openSheet)
+              currentRoute = TopLevelDestination.CHAT.route,
+              tabs = TopLevelDestination.bottomBar,
+              onSelect = {},
+              onAdd = menu::openSheet)
           if (open) AddItemSheet(onChoose = menu::choose, onDismiss = menu::dismissSheet)
         }
       }

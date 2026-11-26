@@ -11,6 +11,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.finance.BALANCES_ROUTE
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -60,6 +61,26 @@ class AppNavigationTest {
   }
 
   private fun route() = nav.currentDestination?.route
+
+  private fun linkTo(destination: TopLevelDestination) =
+      Intent()
+          .setData(Uri.parse(AppDeepLinks.uri(destination)))
+          .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+  // This graph has no chat route, like that of a private fridge.
+  @Test
+  fun chatLinkInAPrivateFridgeOpensTheFridgeFromAnotherTab() {
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    compose.runOnIdle { nav.openDeepLink(linkTo(TopLevelDestination.CHAT), FridgeType.PRIVATE) }
+    compose.runOnIdle { assertEquals(TopLevelDestination.FRIDGE.route, route()) }
+  }
+
+  @Test
+  fun otherLinksInAPrivateFridgeStillOpenTheirScreen() {
+    compose.runOnIdle { nav.selectTab(TopLevelDestination.RECEIPTS) }
+    compose.runOnIdle { nav.openDeepLink(linkTo(TopLevelDestination.SETTINGS), FridgeType.PRIVATE) }
+    compose.runOnIdle { assertEquals(TopLevelDestination.SETTINGS.route, route()) }
+  }
 
   @Test
   fun tappingReceiptsFromBalancesShowsReceipts() {

@@ -113,6 +113,7 @@ import com.android.sharemate.ui.navigation.ScreenTransitions
 import com.android.sharemate.ui.navigation.TopLevelDestination
 import com.android.sharemate.ui.navigation.cancelAddItem
 import com.android.sharemate.ui.navigation.leaveSettings
+import com.android.sharemate.ui.navigation.openDeepLink
 import com.android.sharemate.ui.navigation.rememberFridgeEntry
 import com.android.sharemate.ui.navigation.selectTab
 import com.android.sharemate.ui.navigation.startAddItem
@@ -283,7 +284,7 @@ open class MainActivity : ComponentActivity() {
               val deepLinkIntent = pendingDeepLinkIntent
               LaunchedEffect(navController, deepLinkIntent) {
                 deepLinkIntent?.let {
-                  navController.handleDeepLink(it)
+                  navController.openDeepLink(it, household.type)
                   if (pendingDeepLinkIntent === it) pendingDeepLinkIntent = null
                 }
               }
@@ -344,6 +345,7 @@ open class MainActivity : ComponentActivity() {
                     if (TopLevelDestination.showsBottomBar(currentRoute)) {
                       AppBottomBar(
                           currentRoute = transitions.heldRoute ?: currentRoute,
+                          tabs = TopLevelDestination.bottomBarFor(household.type),
                           onSelect = navController::selectTab,
                           onAdd = addItemMenu::openSheet)
                     }
@@ -418,30 +420,34 @@ open class MainActivity : ComponentActivity() {
                         profileRepository,
                         onBack = { navController.popBackStack() })
                   }
-                  composable(
-                      TopLevelDestination.CHAT.route,
-                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {
-                        val chatViewModel: ChatViewModel =
-                            viewModel(
-                                key = "chat_${session.uid}_${household.id}",
-                                factory =
-                                    viewModelFactory {
-                                      initializer {
-                                        ChatViewModel(
-                                            chatRepository,
-                                            household.id,
-                                            session.uid,
-                                            session.displayName
-                                                ?: getString(R.string.chat_default_sender_name),
-                                            profileRepository,
-                                            profilePhotoBucket)
-                                      }
-                                    })
-                        ChatScreen(
-                            chatViewModel,
-                            householdName = household.name,
-                            memberCount = household.memberIds.size)
-                      }
+                  // A private fridge has no chat: no tab, no route, so a chat deep link opens the
+                  // fridge instead of a screen whose reads and writes the rules refuse.
+                  if (TopLevelDestination.CHAT.isAvailableIn(household.type)) {
+                    composable(
+                        TopLevelDestination.CHAT.route,
+                        deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.CHAT)) {
+                          val chatViewModel: ChatViewModel =
+                              viewModel(
+                                  key = "chat_${session.uid}_${household.id}",
+                                  factory =
+                                      viewModelFactory {
+                                        initializer {
+                                          ChatViewModel(
+                                              chatRepository,
+                                              household.id,
+                                              session.uid,
+                                              session.displayName
+                                                  ?: getString(R.string.chat_default_sender_name),
+                                              profileRepository,
+                                              profilePhotoBucket)
+                                        }
+                                      })
+                          ChatScreen(
+                              chatViewModel,
+                              householdName = household.name,
+                              memberCount = household.memberIds.size)
+                        }
+                  }
                   composable(
                       TopLevelDestination.SETTINGS.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.SETTINGS)) {
@@ -638,6 +644,9 @@ internal fun clearFridgeNavigation(navController: NavHostController) {
   if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
     fridgeEntry.viewModelStore.clear()
   }
-  TopLevelDestination.entries.forEach { navController.clearBackStack(it.route) }
+  // Only the routes in the graph: a private fridge registers no chat route.
+  TopLevelDestination.entries
+      .filter { navController.graph.findNode(it.route) != null }
+      .forEach { navController.clearBackStack(it.route) }
   navController.popBackStack(navController.graph.id, inclusive = true)
 }

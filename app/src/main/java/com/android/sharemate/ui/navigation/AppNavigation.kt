@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -17,7 +18,19 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.android.sharemate.model.household.FridgeType
 import kotlinx.coroutines.delay
+
+/**
+ * Opens the app link [intent] in a fridge of [type]. A link to a screen this fridge does not offer,
+ * such as the chat of a private fridge, has no route in the graph, so it opens the fridge instead
+ * of leaving the user on the current tab. Every other link is handled by Navigation as before.
+ */
+internal fun NavController.openDeepLink(intent: Intent, type: FridgeType) {
+  val target = AppDeepLinks.destinationOf(intent.dataString)
+  if (target != null && !target.isAvailableIn(type)) selectTab(TopLevelDestination.FRIDGE)
+  else handleDeepLink(intent)
+}
 
 /**
  * Opens [destination] from the bottom bar. Tapping the tab of the open screen, such as Receipts

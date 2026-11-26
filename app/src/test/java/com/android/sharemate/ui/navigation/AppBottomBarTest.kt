@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,7 +27,11 @@ class AppBottomBarTest {
   private fun showBar(route: String?) =
       compose.setContent {
         ShareMateTheme {
-          AppBottomBar(currentRoute = route, onSelect = { selected += it }, onAdd = { added++ })
+          AppBottomBar(
+              currentRoute = route,
+              tabs = TopLevelDestination.bottomBar,
+              onSelect = { selected += it },
+              onAdd = { added++ })
         }
       }
 
@@ -43,6 +48,28 @@ class AppBottomBarTest {
             .map { compose.onNodeWithTag(it).assertIsDisplayed().getUnclippedBoundsInRoot().left }
     assertEquals(order.sortedBy { it.value }, order)
     compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun privateFridgeBarHasNoChatTab() {
+    compose.setContent {
+      ShareMateTheme {
+        AppBottomBar(
+            currentRoute = TopLevelDestination.FRIDGE.route,
+            tabs = TopLevelDestination.bottomBarFor(FridgeType.PRIVATE),
+            onSelect = { selected += it },
+            onAdd = { added++ })
+      }
+    }
+    val order =
+        listOf(
+                NavigationTestTags.FRIDGE_TAB,
+                NavigationTestTags.RECIPES_TAB,
+                NavigationTestTags.ADD_BUTTON,
+                NavigationTestTags.RECEIPTS_TAB)
+            .map { compose.onNodeWithTag(it).assertIsDisplayed().getUnclippedBoundsInRoot().left }
+    assertEquals(order.sortedBy { it.value }, order)
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
   }
 
   @Test

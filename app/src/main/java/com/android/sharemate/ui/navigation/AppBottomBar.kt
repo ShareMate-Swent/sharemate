@@ -68,6 +68,8 @@ internal object ProfileEntryTestTags {
  * item ([AddItemSheet]).
  *
  * @param currentRoute The open screen, which decides the selected tab.
+ * @param tabs The tabs to show, in order: [TopLevelDestination.bottomBarFor] the household's fridge
+ *   type, so a private fridge has no chat tab.
  * @param onSelect Called with the tab the user tapped.
  * @param onAdd Called when the user taps the add button.
  * @param modifier Applied to the bar.
@@ -75,12 +77,13 @@ internal object ProfileEntryTestTags {
 @Composable
 internal fun AppBottomBar(
     currentRoute: String?,
+    tabs: List<TopLevelDestination>,
     onSelect: (TopLevelDestination) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val items =
-      TopLevelDestination.bottomBar.map { destination ->
+      tabs.map { destination ->
         FloatingNavItem(
             label = stringResource(destination.labelRes),
             icon = destination.icon(),
