@@ -63,6 +63,13 @@
     <string name="fridge_edit_sync_failed">An edit to %1$s could not synchronize. Check its current values and try again.</string>
     <string name="fridge_item_category_optional">Category (optional)</string>
     <string name="fridge_item_expiration_optional">Expiration date (optional)</string>
+    <string name="fridge_scan_expiry">Scan expiry date</string>
+    <string name="fridge_expiry_photo_preview">Expiry date photo</string>
+    <string name="fridge_expiry_photo_sources">Take a clear photo of the printed date or choose one from your gallery.</string>
+    <string name="fridge_expiry_scan_failed">Couldn’t read the photo. Try again or cancel to enter the date manually.</string>
+    <string name="fridge_expiry_candidates">Choose the expiry date</string>
+    <string name="fridge_expiry_no_date">No date found. You can still enter it manually.</string>
+    <string name="fridge_expiry_enter_manually">Enter manually</string>
     <string name="fridge_date_format">YYYY-MM-DD</string>
     <string name="fridge_name_required">Enter an item name.</string>
     <string name="fridge_name_too_long">An item name can have at most %1$d characters.</string>
