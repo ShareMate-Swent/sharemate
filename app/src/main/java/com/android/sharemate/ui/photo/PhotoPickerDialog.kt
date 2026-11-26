@@ -309,5 +309,6 @@ object PhotoPickerTestTags {
   const val CANCEL = "barcode_photo_cancel"
 }
 
-private const val PREVIEW_MAX_PIXELS = 1280
+/** Maximum requested image dimension, in pixels, for photo picker and attachment previews. */
+internal const val PREVIEW_MAX_PIXELS = 1280
 internal val PhotoFrameHeight = 300.dp
