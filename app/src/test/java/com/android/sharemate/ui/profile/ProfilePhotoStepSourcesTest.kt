@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.profile
 
 import android.Manifest
@@ -50,6 +51,8 @@ class ProfilePhotoStepSourcesTest {
   /** What each external activity answers, and how often each was launched. */
   private var permissionGranted: Boolean? = null
   private var galleryResult: Uri? = null
+  private var deferGalleryResult = false
+  private var completeGallery: () -> Unit = {}
   private var unavailable = false
   private val launched = mutableListOf<String>()
 
@@ -76,7 +79,8 @@ class ProfilePhotoStepSourcesTest {
             }
             is ActivityResultContracts.PickVisualMedia -> {
               launched += "gallery"
-              dispatchResult(requestCode, galleryResult)
+              completeGallery = { dispatchResult(requestCode, galleryResult) }
+              if (!deferGalleryResult) completeGallery()
             }
             else -> error("Unexpected external activity")
           }
@@ -148,14 +152,24 @@ class ProfilePhotoStepSourcesTest {
   }
 
   @Test
-  fun cancelledGalleryPickChangesNothing() {
+  fun doubleTapOpensOneGalleryAndCancellationAllowsAnother() {
+    deferGalleryResult = true
     setScreen(cameraAllowed = true)
+    click(ProfilePhotoStepTestTags.FROM_GALLERY)
     click(ProfilePhotoStepTestTags.FROM_GALLERY)
     compose.runOnIdle {
       assertEquals(listOf("gallery"), launched)
+      completeGallery()
       assertTrue(files.copies.isEmpty())
       assertEquals(null, viewModel.state.value.photo)
     }
+    galleryResult = Uri.parse("content://media/picked")
+    click(ProfilePhotoStepTestTags.FROM_GALLERY)
+    compose.runOnIdle {
+      assertEquals(listOf("gallery", "gallery"), launched)
+      completeGallery()
+    }
+    compose.waitUntil { viewModel.state.value.photo != null }
   }
 
   @Test

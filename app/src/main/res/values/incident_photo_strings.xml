@@ -1,0 +1,9 @@
+<!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+<resources>
+    <string name="incident_photo_add">Add incident photo</string>
+    <string name="incident_photo_replace">Replace photo</string>
+    <string name="incident_photo_remove">Remove photo</string>
+    <string name="incident_photo_preview">Incident photo preview</string>
+    <string name="incident_photo_sources">Take a photo or choose one from your gallery.</string>
+    <string name="incident_photo_invalid">Unable to use this photo. Try again or choose another JPEG or PNG image (up to %1$d MiB).</string>
+</resources>

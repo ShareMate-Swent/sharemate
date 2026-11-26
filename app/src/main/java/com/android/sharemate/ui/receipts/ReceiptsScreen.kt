@@ -1,4 +1,5 @@
-// Co-authored-by: Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import androidx.activity.compose.BackHandler
@@ -21,7 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -43,9 +44,11 @@ import com.android.sharemate.model.finance.HouseholdFinanceRepository
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
+import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -56,6 +59,7 @@ import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.HouseholdTopBar
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.photo.DiscardPhotoOnDispose
+import com.android.sharemate.ui.photo.OnPhotoPickerCancelled
 import com.android.sharemate.ui.photo.PhotoPickerDialog
 import com.android.sharemate.ui.photo.PhotoPickerLabels
 import com.android.sharemate.ui.photo.PhotoPickerViewModel
@@ -78,7 +82,15 @@ import kotlinx.coroutines.launch
  * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
+ * @param expenseRepository Authenticated purchase correction and deletion boundary.
+ * @param receiptCloudRepository Household receipt updates and explicit deletion markers.
  * @param sharedHousehold Whether receipts include the expense-sharing review.
+ * @param scanReceiptRequested Whether the add button of the bottom bar asked for a receipt scan,
+ *   which this screen then starts like its own scan button.
+ * @param onScanReceiptRequestHandled Called once the requested scan is started.
+ * @param onScanReceiptCancelled Called when the user leaves the requested scan's photo without
+ *   confirming one, so the app can go back to where the user was. Returns whether the app leaves
+ *   Receipts for that; if not, the screen shows again.
  */
 @Composable
 fun ReceiptsScreen(
@@ -88,11 +100,15 @@ fun ReceiptsScreen(
     sharedHousehold: Boolean,
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
-    expenseRepository: ExpenseSubmissionRepository? = null,
+    expenseRepository: ExpenseSubmissionRepository,
     profileRepository: UserProfileRepository? = null,
     barcodeScanner: BarcodeScanner? = null,
     productCatalogRepository: ProductCatalogRepository? = null,
     financeRepository: HouseholdFinanceRepository? = null,
+    receiptCloudRepository: ReceiptCloudRepository,
+    scanReceiptRequested: Boolean = false,
+    onScanReceiptRequestHandled: () -> Unit = {},
+    onScanReceiptCancelled: () -> Boolean = { false },
 ) {
   val balanceModel: ReceiptBalanceViewModel? =
       if (showBalances && financeRepository != null) {
@@ -107,24 +123,42 @@ fun ReceiptsScreen(
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
   val photo = photoPickerViewModel("receipt-photo_${userId}_$householdId")
+  val barcode: PurchaseBarcodeViewModel? =
+      if (barcodeScanner != null && productCatalogRepository != null) {
+        viewModel(
+            key = "receipt-barcode_${userId}_$householdId",
+            factory =
+                viewModelFactory {
+                  initializer {
+                    PurchaseBarcodeViewModel(
+                        barcodeScanner, productCatalogRepository, createSavedStateHandle())
+                  }
+                })
+      } else null
+  val barcodePhoto =
+      if (barcode != null) photoPickerViewModel("receipt-barcode-photo_${userId}_$householdId")
+      else null
   val history: ReceiptHistoryViewModel =
       viewModel(
           key = "receipt-history_${userId}_$householdId",
           factory =
               viewModelFactory {
                 initializer {
+                  val store =
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId)
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(
-                              context, legacyActive = false, scheduleSync = true)
-                          .forViewer(userId),
+                      store,
                       AndroidReceiptPhotoStore(context),
                       userId,
                       householdId,
                       expenses = expenseRepository,
-                      cloud =
-                          com.android.sharemate.model.receipt.FirebaseReceiptCloudRepository(
-                              context))
+                      synchronization =
+                          ReceiptHistorySync(store, receiptCloudRepository, userId, householdId),
+                      now = System::currentTimeMillis,
+                      itemSharing =
+                          if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL)
                 }
               })
   val memberModel: HouseholdMembersViewModel? =
@@ -139,45 +173,64 @@ fun ReceiptsScreen(
   val memberState = memberModel?.state?.collectAsStateWithLifecycle()?.value
   val members =
       memberState?.members?.associate { it.uid to (it.displayName ?: it.email ?: it.uid) }.orEmpty()
+  // Whether the photo shown was opened by the add button, until it is confirmed or cancelled.
+  var scanFromAddButton by rememberSaveable(userId, householdId) { mutableStateOf(false) }
+  // The screen stays hidden under a photo that the add button opened, until it is confirmed: the
+  // user did not open Receipts, and a cancel goes back to their tab while the photo fades out.
+  // Not saved, so the screen shows again when the tab is reopened later.
+  var hiddenUnderAddButtonScan by remember(userId, householdId) { mutableStateOf(false) }
+  LaunchedEffect(scanReceiptRequested) {
+    if (!scanReceiptRequested) return@LaunchedEffect
+    photo.reset()
+    photo.open()
+    scanFromAddButton = true
+    hiddenUnderAddButtonScan = true
+    onScanReceiptRequestHandled()
+  }
+  val photoConfirmed = photo.state.collectAsStateWithLifecycle().value.confirmed
+  LaunchedEffect(photoConfirmed) {
+    if (photoConfirmed) {
+      scanFromAddButton = false
+      hiddenUnderAddButtonScan = false
+    }
+  }
+  OnPhotoPickerCancelled(photo) {
+    if (scanFromAddButton) {
+      scanFromAddButton = false
+      // Stays hidden while the app leaves, so the fading photo does not uncover Receipts.
+      if (!onScanReceiptCancelled()) hiddenUnderAddButtonScan = false
+    }
+  }
   key(userId, householdId) {
-    val scheme = MaterialTheme.colorScheme
-    MaterialTheme(
-        colorScheme =
-            scheme.copy(
-                primary = ReceiptDesign.purple,
-                onPrimary = Color.White,
-                surface = Color.White,
-                onSurface = ReceiptDesign.ink,
-                onSurfaceVariant = ReceiptDesign.muted,
-                background = ReceiptDesign.background,
-                surfaceContainerLow = ReceiptDesign.background,
-                primaryContainer = Color(0xFFEDE5FA),
-                onPrimaryContainer = Color(0xFF35215F))) {
-          ReceiptHistoryFlow(
-              photo,
-              reader,
-              history,
-              sharedHousehold,
-              showBalances,
-              onOpenBalances,
-              itemRepository = itemRepository,
-              balance = balance,
-              expenseRepository = expenseRepository,
-              membersFailed = memberState?.hasError == true,
-              onRetryMembers = { memberModel?.retry() },
-              userId = userId,
-              householdId = householdId,
-              purchaseReview =
-                  if (sharedHousehold && expenseRepository != null)
-                      PurchaseReview.forUser(userId, members)
-                          .copy(
-                              membersAvailable =
-                                  memberState != null &&
-                                      !memberState.isLoading &&
-                                      !memberState.hasError)
-                  else null,
-              onPurchase = null)
-        }
+    Box(Modifier.alpha(if (hiddenUnderAddButtonScan) 0f else 1f)) {
+      ReceiptHistoryFlow(
+          photo,
+          reader,
+          history,
+          sharedHousehold,
+          showBalances,
+          onOpenBalances,
+          itemRepository = itemRepository,
+          balance = balance,
+          expenseRepository =
+              expenseRepository.takeIf { !sharedHousehold || profileRepository != null },
+          membersFailed = memberState?.hasError == true,
+          onRetryMembers = { memberModel?.retry() },
+          userId = userId,
+          householdId = householdId,
+          purchaseReview =
+              if (sharedHousehold && profileRepository != null)
+                  PurchaseReview.forUser(userId, members)
+                      .copy(
+                          membersAvailable =
+                              memberState != null &&
+                                  !memberState.isLoading &&
+                                  !memberState.hasError)
+              else null,
+          onPurchase = null,
+          barcode = barcode,
+          barcodePhoto = barcodePhoto)
+    }
   }
 }
 
@@ -189,7 +242,7 @@ private val receiptPhotoLabels =
         receiptProgress = true)
 
 @Composable
-private fun ReceiptHistoryFlow(
+internal fun ReceiptHistoryFlow(
     photo: PhotoPickerViewModel,
     reader: ReceiptReader,
     history: ReceiptHistoryViewModel,
@@ -205,6 +258,8 @@ private fun ReceiptHistoryFlow(
     balance: Long? = null,
     membersFailed: Boolean = false,
     onRetryMembers: () -> Unit = {},
+    barcode: PurchaseBarcodeViewModel? = null,
+    barcodePhoto: PhotoPickerViewModel? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val nav = rememberNavController()
@@ -213,54 +268,42 @@ private fun ReceiptHistoryFlow(
   DiscardPhotoOnDispose(photo)
   val receipts by history.receipts.collectAsStateWithLifecycle()
   val editFailed by history.error.collectAsStateWithLifecycle()
+  val syncFailed by history.syncError.collectAsStateWithLifecycle()
   val scan: ReceiptScanViewModel =
       viewModel(
           factory =
               viewModelFactory {
                 initializer { ReceiptScanViewModel(reader, createSavedStateHandle()) }
               })
-  var newReceiptId by remember { mutableStateOf<String?>(null) }
+  val newReceiptId by history.scanToReview.collectAsStateWithLifecycle()
   LaunchedEffect(newReceiptId) {
-    newReceiptId?.let { nav.navigate("receipt/$it?fresh=true") }
-    newReceiptId = null
+    newReceiptId?.let { id ->
+      nav.navigate("receipt/$id?fresh=true") { launchSingleTop = true }
+      history.scanReviewOpened(id)
+    }
   }
   NavHost(nav, startDestination = RECEIPTS_ROUTE) {
     composable(RECEIPTS_ROUTE) {
-      ReceiptDashboard(
-          receipts = receipts,
-          showBalances = showBalances,
-          balance = balance,
-          error = editFailed,
-          onScan = {
-            photo.reset()
-            photo.open()
-          },
-          onBalances = onOpenBalances,
-          onRetry = history::reload,
-          onOpen = { nav.navigate("receipt/$it") },
-          onPurchase = onPurchase,
-      )
-      PhotoPickerDialog(
-          photo,
-          labels = receiptPhotoLabels,
-          confirmationError = stringResource(R.string.receipt_unreadable),
-          onSaveDraft = { selection ->
-            val items =
-                try {
-                  scan.read(selection.uri)
-                  scan.currentItems()
-                } catch (cancelled: CancellationException) {
-                  throw cancelled
-                } catch (_: Exception) {
-                  emptyList()
-                }
-            history.retainScan(selection.uri, items)
-          },
-          onImageConfirmed = { selection ->
-            scan.read(selection.uri) { items ->
-              newReceiptId = history.retainScan(selection.uri, items)
-            }
-          })
+      Column(Modifier.fillMaxSize()) {
+        if (syncFailed)
+            Text(
+                stringResource(R.string.receipt_sync_failed),
+                Modifier.testTag(ReceiptHistoryTestTags.SYNC_ERROR))
+        ReceiptDashboard(
+            receipts = receipts,
+            showBalances = showBalances,
+            balance = balance,
+            error = editFailed,
+            onScan = {
+              photo.reset()
+              photo.open()
+            },
+            onBalances = onOpenBalances,
+            onRetry = history::reload,
+            onOpen = { nav.navigate("receipt/$it") },
+            onPurchase = onPurchase,
+        )
+      }
     }
     composable("receipt/{id}?fresh={fresh}") { entry ->
       val id = entry.arguments?.getString("id")
@@ -268,7 +311,7 @@ private fun ReceiptHistoryFlow(
       val receipt = receipts.firstOrNull { it.submission.id == id }
       if (receipt == null) {
         LaunchedEffect(id) { nav.popBackStack(RECEIPTS_ROUTE, false) }
-        Box(Modifier.fillMaxSize().background(ReceiptDesign.background)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
           androidx.compose.material3.CircularProgressIndicator(
               Modifier.align(androidx.compose.ui.Alignment.Center))
         }
@@ -308,19 +351,22 @@ private fun ReceiptHistoryFlow(
                               userId,
                               householdId,
                               sharedHousehold,
-                              expenseRepository)
+                              expenseRepository,
+                              itemSharing =
+                                  if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL)
                         }
                       })
             } else null
         val purchaseState = purchaseSave?.state?.collectAsStateWithLifecycle()?.value
         var submittedHere by rememberSaveable { mutableStateOf(false) }
-        LaunchedEffect(purchaseState?.phase) {
+        // A fast correction can finish between two frames without exposing SUBMITTING to Compose.
+        LaunchedEffect(purchaseState?.phase, purchaseState?.correctionPending, submittedHere) {
           if (purchaseState?.correctionPending == true) submittedHere = true
           if (purchaseState?.phase == InventorySavePhase.PENDING) history.refresh()
           if (purchaseState?.phase == InventorySavePhase.CONFIRMED) {
             history.refresh()
             if (submittedHere) {
-              kotlinx.coroutines.delay(900)
+              kotlinx.coroutines.delay(RECEIPT_SUCCESS_MESSAGE_MILLIS)
               nav.popBackStack(RECEIPTS_ROUTE, false)
             }
           }
@@ -388,6 +434,28 @@ private fun ReceiptHistoryFlow(
           Unit
         }
         BackHandler(onBack = leaveReview)
+        val barcodePhotoState = barcodePhoto?.state?.collectAsStateWithLifecycle()?.value
+        val barcodeError = barcode?.error?.collectAsStateWithLifecycle()?.value
+        val reviewEditable =
+            !savingReview &&
+                !(submittedHere && purchaseState?.phase == InventorySavePhase.CONFIRMED) &&
+                purchaseState?.correctionPending != true &&
+                purchaseState?.phase !in
+                    setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING)
+        DisposableEffect(entry, barcode, barcodePhoto) {
+          onDispose {
+            barcode?.cancelScan()
+            barcodePhoto?.discard()
+          }
+        }
+        if (barcode != null && barcodePhoto != null) {
+          BarcodePhotoPicker(
+              barcodePhoto,
+              confirmationError = stringResource(barcodeError.messageResource()),
+              onImageConfirmed = { uri ->
+                barcode.read(uri)?.let { if (reviewEditable) staging.appendBarcode(it) }
+              })
+        }
         StagingScreen(
             staging,
             onConfirm = { items ->
@@ -447,12 +515,29 @@ private fun ReceiptHistoryFlow(
                     Unit
                   }
                 },
-            actionsEnabled =
-                !savingReview &&
-                    !(submittedHere && purchaseState?.phase == InventorySavePhase.CONFIRMED) &&
-                    purchaseState?.correctionPending != true &&
-                    purchaseState?.phase !in
-                        setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING),
+            actionsEnabled = reviewEditable && barcodePhotoState?.busy != true,
+            itemActions = {
+              if (receipt.submission.draft && barcode != null && barcodePhoto != null) {
+                Text(stringResource(R.string.purchase_barcode_price_hint))
+                Button(
+                    enabled =
+                        reviewEditable &&
+                            stagingState.draft == null &&
+                            barcodePhotoState?.busy != true,
+                    modifier = Modifier.testTag(PurchaseBarcodeTestTags.ADD),
+                    onClick = {
+                      barcode.startScan()
+                      barcodePhoto.reset()
+                      barcodePhoto.open()
+                    }) {
+                      Text(stringResource(R.string.purchase_barcode_add))
+                    }
+                barcodeError?.let {
+                  Text(
+                      stringResource(it.messageResource()), color = MaterialTheme.colorScheme.error)
+                }
+              }
+            },
             previewContent = {
               Column {
                 OutlinedTextField(
@@ -463,17 +548,22 @@ private fun ReceiptHistoryFlow(
                     singleLine = true,
                     readOnly = savingReview || purchaseState?.correctionPending == true,
                     modifier =
-                        Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("receipt_title"))
-                receipt.details?.photoUri?.let { uri ->
-                  AsyncImage(
-                      model = uri,
-                      contentDescription = stringResource(R.string.receipt_photo_preview),
-                      modifier =
-                          Modifier.fillMaxWidth()
-                              .height(ReceiptLayout.ReviewPhotoHeight)
-                              .clickable { expandedPhotoUri = uri }
-                              .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
-                }
+                        Modifier.fillMaxWidth()
+                            .padding(bottom = Dimens.spacingS)
+                            .testTag(ReceiptHistoryTestTags.TITLE))
+                receipt.details
+                    ?.photoUri
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { uri ->
+                      AsyncImage(
+                          model = uri,
+                          contentDescription = stringResource(R.string.receipt_photo_preview),
+                          modifier =
+                              Modifier.fillMaxWidth()
+                                  .height(ReceiptLayout.ReviewPhotoHeight)
+                                  .clickable { expandedPhotoUri = uri }
+                                  .testTag(ReceiptHistoryTestTags.PHOTO_PREVIEW))
+                    }
               }
             },
             statusContent = {
@@ -587,6 +677,26 @@ private fun ReceiptHistoryFlow(
       }
     }
   }
+  // Outside the destinations, so the add button can open it on a receipt's details too.
+  PhotoPickerDialog(
+      photo,
+      labels = receiptPhotoLabels,
+      confirmationError = stringResource(R.string.receipt_unreadable),
+      onSaveDraft = { selection ->
+        val items =
+            try {
+              scan.read(selection.uri)
+              scan.currentItems()
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (_: Exception) {
+              emptyList()
+            }
+        history.addDraft(selection.uri, items)
+      },
+      onImageConfirmed = { selection ->
+        scan.read(selection.uri) { items -> history.retainScan(selection.uri, items) }
+      })
   expandedPhotoUri?.let { uri ->
     Dialog(
         onDismissRequest = { expandedPhotoUri = null },
@@ -606,6 +716,9 @@ private fun ReceiptHistoryFlow(
   }
 }
 
+/** Briefly shows the saved confirmation before returning to receipt history. */
+private const val RECEIPT_SUCCESS_MESSAGE_MILLIS = 900L
+
 /** Photo dimensions shared by retained receipt surfaces. */
 private object ReceiptLayout {
   val CardPhotoHeight = 72.dp
@@ -622,6 +735,10 @@ private fun InventorySavePhase.labelResource(): Int =
 
 /** Stable semantics for opening a retained receipt photo. */
 object ReceiptHistoryTestTags {
+  /** Editable title of the retained receipt. */
+  const val TITLE = "receipt_title"
+  /** Household synchronization failure, displayed once above the receipt list. */
+  const val SYNC_ERROR = "receipt_sync_error"
   const val PHOTO_PREVIEW = "receipt_photo_preview"
   const val PHOTO_EXPANDED = "receipt_photo_expanded"
 }

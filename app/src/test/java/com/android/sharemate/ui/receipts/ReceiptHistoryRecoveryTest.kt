@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.receipt.*
@@ -51,38 +52,88 @@ class ReceiptHistoryRecoveryTest {
     Dispatchers.resetMain()
   }
 
+  // Stop retries before runTest drains virtual time; @After runs too late for that.
+  private fun runHistoryTest(block: suspend TestScope.() -> Unit) = runTest {
+    try {
+      block()
+    } finally {
+      lifecycle.clear()
+      runCurrent()
+    }
+  }
+
   private fun TestScope.store() =
       AndroidInventorySubmissionStore(
           RuntimeEnvironment.getApplication(), StandardTestDispatcher(testScheduler))
 
   private fun TestScope.model(
       store: InventorySubmissionStore,
-      cloud: ReceiptCloudRepository? = null
+      cloud: ReceiptCloudRepository = EmptyReceiptCloud,
+      expenses: ExpenseSubmissionRepository = mock(ExpenseSubmissionRepository::class.java)
   ): ReceiptHistoryViewModel =
-      ReceiptHistoryViewModel(items, store, photos, "owner", "home", now = { 7 }, cloud = cloud)
+      ReceiptHistoryViewModel(
+              items,
+              store,
+              photos,
+              "owner",
+              "home",
+              now = { 7 },
+              synchronization = ReceiptHistorySync(store, cloud, "owner", "home"),
+              expenses = expenses)
           .also {
             lifecycle.put(UUID.randomUUID().toString(), it)
             runCurrent()
           }
 
   @Test
-  fun viewerHistoryLoadsSharedMetadataWithoutChangingCreatorsJournal() = runTest {
+  fun acknowledgedRemoteDeletionSurvivesPhotoAndStoreFailureAndRestart() = runHistoryTest {
     val disk = store()
-    val peer = InventorySubmission(id, "alice", "home", rows)
-    val details = ReceiptDetails(id, "alice", "home", "", 1, title = "Shared groceries")
-    val cloud =
-        object : ReceiptCloudRepository {
-          override fun observe(ownerId: String, householdId: String) =
-              flowOf(listOf(ReceiptCloudEntry(peer, details)))
+    disk.save(receipt())
+    val expenses = mock(ExpenseSubmissionRepository::class.java)
+    val failingStore =
+        object : InventorySubmissionStore by disk {
+          override suspend fun deleteReceipt(ownerId: String, householdId: String, id: String) {
+            throw IOException("Disk full")
+          }
         }
-    val history = model(disk.forViewer("owner"), cloud)
-    assertEquals(peer, history.receipts.value.single().submission)
-    assertEquals(details, history.receipts.value.single().details)
-    assertTrue(disk.list("alice", "home").isEmpty())
+    val history = model(failingStore, expenses = expenses)
+    `when`(photos.delete(id)).thenThrow(IllegalStateException("Photo busy"))
+    assertFalse(history.deleteReceipt(id))
+    assertTrue(history.error.value)
+    assertTrue(disk.isDeletionAcknowledged("owner", "home", id))
+    assertNotNull(disk.loadById("owner", "home", id))
+    reset(photos)
+    assertFalse(history.deleteReceipt(id))
+    assertTrue(history.error.value)
+    lifecycle.clear()
+    val restarted = model(store(), expenses = expenses)
+    assertTrue(restarted.deleteReceipt(id))
+    assertFalse(restarted.error.value)
+    assertTrue(restarted.receipts.value.isEmpty())
+    assertTrue(disk.isDeleted("owner", "home", id))
+    verify(expenses, times(1)).deleteReceipt("home", id)
   }
 
   @Test
-  fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runTest {
+  fun refusedDeletionDoesNotReportIoFailureOrTouchTheServer() = runHistoryTest {
+    val disk = store()
+    val expenses = mock(ExpenseSubmissionRepository::class.java)
+    disk.save(receipt(confirmed = false))
+    val history = model(disk, expenses = expenses)
+    assertFalse(history.deleteReceipt(id))
+    assertFalse(history.error.value)
+    disk.save(receipt())
+    disk.saveCorrection(ReceiptCorrection("pending", receipt(), receipt(), "Edited"))
+    history.refresh()
+    assertFalse(history.deleteReceipt(id))
+    assertFalse(history.error.value)
+    assertFalse(history.deleteReceipt("absent"))
+    assertFalse(disk.isDeletionAcknowledged("owner", "home", id))
+    verifyNoInteractions(expenses, photos)
+  }
+
+  @Test
+  fun cloudUpdatesConfirmedContentButNeverOverwritesDraftsOrPendingCorrections() = runHistoryTest {
     val store = store()
     val updates = MutableSharedFlow<List<ReceiptCloudEntry>>()
     val cloud =
@@ -105,7 +156,8 @@ class ReceiptHistoryRecoveryTest {
     }
     updates.emit(listOf(remote))
     runCurrent()
-    updates.emit(listOf(remote.copy(details = remote.details.copy(title = "Changed title"))))
+    updates.emit(
+        listOf(remote.copy(details = remote.details.copy(title = "Changed title", revision = 1))))
     runCurrent()
     assertEquals("Changed title", history.receipts.value.single().details?.title)
     store.saveCorrection(ReceiptCorrection("revision", remote.submission, receipt(), "Pending"))
@@ -123,7 +175,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun titleFallbacksAndFailuresKeepTheCurrentReviewRecoverable() = runTest {
+  fun titleFallbacksAndFailuresKeepTheCurrentReviewRecoverable() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
     var failure: Exception? = null
@@ -161,7 +213,7 @@ class ReceiptHistoryRecoveryTest {
   }
 
   @Test
-  fun cancellationsPropagateWhileResumeAndCloudFailuresBecomeVisible() = runTest {
+  fun cancellationsPropagateWhileResumeAndCloudFailuresBecomeVisible() = runHistoryTest {
     val disk = store()
     disk.save(receipt(draft = true))
     val cancelled = CancellationException("Stopped")
@@ -176,7 +228,10 @@ class ReceiptHistoryRecoveryTest {
           }
         }
     val history = model(store)
-    assertTrue(history.error.value)
+    assertTrue(history.syncError.value)
+    history.refresh()
+    assertFalse(history.error.value)
+    assertTrue(history.syncError.value)
     assertTrue(runCatching { history.discardDraft(id) }.exceptionOrNull() is CancellationException)
     `when`(photos.delete(id)).thenThrow(cancelled)
     assertTrue(runCatching { history.deleteReceipt(id) }.exceptionOrNull() is CancellationException)
@@ -206,7 +261,10 @@ class ReceiptHistoryRecoveryTest {
       val observing = model(disk, cloud)
       disconnected.complete(Unit)
       runCurrent()
-      assertTrue(observing.error.value)
+      assertTrue(observing.syncError.value)
+      observing.refresh()
+      assertFalse(observing.error.value)
+      assertTrue(observing.syncError.value)
     }
   }
 }

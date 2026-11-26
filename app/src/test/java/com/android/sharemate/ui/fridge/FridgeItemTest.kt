@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import android.content.ActivityNotFoundException
@@ -34,6 +35,7 @@ import coil.size.Size
 import com.android.sharemate.R
 import com.android.sharemate.model.item.ExpiryStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageOrigin
 import com.android.sharemate.resources.C
@@ -41,6 +43,7 @@ import com.android.sharemate.ui.theme.ShareMateTheme
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -119,7 +122,7 @@ class FridgeItemTest {
               FridgeItem(
                   item = item.value,
                   imageLoader = loader,
-                  modifier = Modifier.width(120.dp),
+                  modifier = Modifier.width(320.dp),
                   expiryStatus = ExpiryStatus.NORMAL,
                   ownership = ItemOwnership(com.android.sharemate.model.item.ItemSharing.PERSONAL),
               )
@@ -163,8 +166,8 @@ class FridgeItemTest {
     compose
         .onNodeWithTag(C.Tag.fridge_image_placeholder)
         .assertIsDisplayed()
-        .assertWidthIsEqualTo(120.dp)
-        .assertHeightIsEqualTo(120.dp)
+        .assertWidthIsEqualTo(FridgeLayout.thumbnailSize)
+        .assertHeightIsEqualTo(FridgeLayout.thumbnailSize)
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertDoesNotExist()
     assertTrue(pending.isEmpty())
   }
@@ -181,7 +184,8 @@ class FridgeItemTest {
     assertEquals(item.value.image!!.reference, pending.single().source)
     assertEquals(
         "ShareMate/1.0 (https://github.com/ShareMate-Swent/sharemate)", pending.single().userAgent)
-    val pixels = (120 * context.resources.displayMetrics.density).toInt()
+    val pixels =
+        (FridgeLayout.thumbnailSize.value * context.resources.displayMetrics.density).roundToInt()
     assertEquals(Size(pixels, pixels), pending.single().size)
 
     pending.single().succeeds.complete(true)
@@ -189,11 +193,11 @@ class FridgeItemTest {
     compose.onNodeWithContentDescription("Photo of Milk").assertIsDisplayed()
     compose
         .onNodeWithTag(C.Tag.fridge_image)
-        .assertWidthIsEqualTo(120.dp)
-        .assertHeightIsEqualTo(120.dp)
+        .assertWidthIsEqualTo(FridgeLayout.thumbnailSize)
+        .assertHeightIsEqualTo(FridgeLayout.thumbnailSize)
     compose.onNodeWithTag(C.Tag.fridge_image_loading).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_image_placeholder).assertDoesNotExist()
-    compose.runOnIdle { item.value = item.value.copy(category = "Dairy") }
+    compose.runOnIdle { item.value = item.value.copy(category = ItemCategory.DAIRY) }
     compose.waitForIdle()
     assertEquals(1, pending.size)
   }

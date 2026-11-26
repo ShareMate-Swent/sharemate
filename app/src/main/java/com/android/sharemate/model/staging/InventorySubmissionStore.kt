@@ -8,6 +8,7 @@ import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.receipt.ReceiptCacheLifecycle
 import kotlinx.coroutines.CoroutineDispatcher
@@ -37,6 +38,11 @@ interface InventorySubmissionStore {
   suspend fun applyCloudDeletions(ownerId: String, householdId: String, ids: Set<String>) {}
   /** Locally discarded identities must not be restored by a delayed cloud snapshot. */
   suspend fun isDeleted(ownerId: String, householdId: String, id: String): Boolean = false
+  /** Retains the tombstone but stops replaying a server-acknowledged deletion. */
+  suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {}
+  /** Whether remote deletion already succeeded, even if local photo cleanup is still pending. */
+  suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String): Boolean =
+      false
   /** Cached household receipts visible to this viewer, excluding their own history. */
   suspend fun sharedReceipts(viewerId: String, householdId: String): List<InventorySubmission> =
       emptyList()
@@ -185,6 +191,9 @@ class AndroidInventorySubmissionStore(
       val prefix = "deleted:${key(ownerId, householdId)}:"
       for (entry in
           preferences.all.filterKeys { it.startsWith(prefix) }.filterValues { it == true }) {
+        if (preferences.getBoolean(
+            "deleteAcked:${key(ownerId, householdId)}:${entry.key.removePrefix(prefix)}", false))
+            continue
         val receipt =
             InventorySubmission(
                 entry.key.removePrefix(prefix), ownerId, householdId, emptyList(), draft = true)
@@ -197,11 +206,28 @@ class AndroidInventorySubmissionStore(
     val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher)
     for (id in ids) {
       cache.deleteReceipt(ownerId, householdId, id)
+      cache.acknowledgeDeletion(ownerId, householdId, id)
       com.android.sharemate.model.receipt
           .AndroidReceiptPhotoStore(applicationContext, dispatcher)
           .delete(id)
     }
   }
+
+  override suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          check(
+              preferences
+                  .edit()
+                  .putBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", true)
+                  .commit())
+        }
+      }
+
+  override suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        preferences.getBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", false)
+      }
 
   override suspend fun isDeleted(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
@@ -488,6 +514,7 @@ class AndroidInventorySubmissionStore(
             .put(Fields.OWNER, submission.ownerId)
             .put(Fields.HOUSEHOLD, submission.householdId)
             .put(Fields.DRAFT, submission.draft)
+            .put(Fields.SHARING, submission.sharing.name)
             .put(
                 Fields.ROWS,
                 JSONArray(
@@ -732,7 +759,8 @@ class AndroidInventorySubmissionStore(
             else false,
             if (json.has(Fields.EXPENSE))
                 ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))
-            else ExpenseProgress.QUEUED)
+            else ExpenseProgress.QUEUED,
+            sharing = ItemSharing.valueOf(json.optString(Fields.SHARING, ItemSharing.SHARED.name)))
         .also { require(it.ownerId == ownerId && it.householdId == householdId) }
   }
 

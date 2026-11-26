@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
@@ -15,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -28,13 +31,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.ui.receipts.PurchaseBarcodeTestTags
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -55,15 +61,15 @@ class StagingScreenTest {
         StagingContent(StagingUiState(), {}, {}, {}, {}, onDeleteReceipt = { deleted++ })
       }
     }
-    composeTestRule.onNodeWithTag("receipt_more").performClick()
-    composeTestRule.onNodeWithTag("receipt_delete").performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_MORE).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_DELETE).performClick()
     composeTestRule
         .onNode(hasText("Are you sure you want to delete this receipt?"))
         .assertIsDisplayed()
     composeTestRule.onNode(hasText("Cancel")).performClick()
     assertEquals(0, deleted)
-    composeTestRule.onNodeWithTag("receipt_more").performClick()
-    composeTestRule.onNodeWithTag("receipt_delete").performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_MORE).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_DELETE).performClick()
     composeTestRule.onNode(hasText("Delete", substring = false)).performClick()
     assertEquals(1, deleted)
   }
@@ -135,6 +141,84 @@ class StagingScreenTest {
   }
 
   @Test
+  @Config(qualifiers = "w320dp-h640dp")
+  fun compactReceiptWithPhotoAndBarcodeControlsKeepsItemsReachable() {
+    assertCompactReceiptReachable(320.dp, 582.dp)
+  }
+
+  @Test
+  @Config(qualifiers = "w640dp-h320dp-land")
+  fun landscapeReceiptWithPhotoAndBarcodeControlsKeepsItemsReachable() {
+    assertCompactReceiptReachable(640.dp, 262.dp)
+  }
+
+  private fun assertCompactReceiptReachable(width: Dp, height: Dp) {
+    var selected: String? = null
+    var scans = 0
+    var additions = 0
+    var continuations = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        // Match the CI display's available area after its status and navigation bars.
+        Box(Modifier.width(width).height(height)) {
+          StagingContent(
+              state =
+                  StagingUiState(
+                      items = listOf(milk, bread),
+                      purchase = PurchaseReview.forUser("a", mapOf("a" to "Alex"))),
+              onItemClick = { selected = it },
+              onDeleteItem = {},
+              onConfirm = { continuations++ },
+              onBack = {},
+              onAddItem = { additions++ },
+              continueToSharing = true,
+              previewContent = {
+                Text("Receipt title", Modifier.height(68.dp))
+                Box(Modifier.fillMaxWidth().height(160.dp))
+              },
+              itemActions = {
+                Text(stringResource(R.string.purchase_barcode_price_hint))
+                Button(
+                    onClick = { scans++ },
+                    modifier = Modifier.testTag(PurchaseBarcodeTestTags.ADD)) {
+                      Text(stringResource(R.string.purchase_barcode_add))
+                    }
+              })
+        }
+      }
+    }
+    val list = composeTestRule.onNodeWithTag(StagingTestTags.LIST)
+    val bounds = list.getUnclippedBoundsInRoot()
+    assertTrue("Receipt items must have a visible viewport", bounds.bottom - bounds.top > 0.dp)
+    list.performScrollTo()
+    list.performScrollToNode(hasTestTag(StagingTestTags.item("bread")))
+    composeTestRule.onNodeWithTag(StagingTestTags.item("bread")).assertIsDisplayed().performClick()
+    assertEquals("bread", selected)
+    composeTestRule
+        .onNodeWithTag(StagingTestTags.ADD)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(PurchaseBarcodeTestTags.ADD)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(StagingTestTags.CONFIRM)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(StagingTestTags.MISSING_PRICES)
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertEquals(1, additions)
+    assertEquals(1, scans)
+    assertEquals(0, continuations)
+  }
+
+  @Test
   fun totalStaysCloseToContinueWithShortAndLongItemLists() {
     val rows = mutableStateOf(listOf(milk))
     composeTestRule.setContent {
@@ -184,6 +268,13 @@ class StagingScreenTest {
             continueToSharing = true)
       }
     }
+    composeTestRule
+        .onNode(
+            hasText(
+                composeTestRule.activity.getString(R.string.staging_quantity, milk.quantity)) and
+                hasAnyAncestor(hasTestTag(StagingTestTags.item("milk"))),
+            useUnmergedTree = true)
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
     composeTestRule.runOnIdle {
       assertEquals("milk", vm.state.value.draft?.itemId)
@@ -224,7 +315,50 @@ class StagingScreenTest {
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     composeTestRule.onNodeWithTag("staging_share_a").assertIsDisplayed()
     composeTestRule.onNodeWithTag("staging_payer_b").assertIsNotEnabled()
-    composeTestRule.onNodeWithTag("staging_confirm_purchase").assertDoesNotExist()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE).assertDoesNotExist()
+  }
+
+  @Test
+  fun bothPurchaseLayoutsShareConfirmationGuards() {
+    val separate = mutableStateOf(false)
+    val enabled = mutableStateOf(true)
+    val hasCallback = mutableStateOf(true)
+    val vm = StagingViewModel(listOf(milk), PurchaseReview.forUser("a", mapOf("a" to "Alex")))
+    var submissions = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingScreen(
+            vm,
+            {},
+            {},
+            actionsEnabled = enabled.value,
+            onConfirmPurchase =
+                if (hasCallback.value) {
+                  { submissions++ }
+                } else null,
+            separateSharingStep = separate.value)
+      }
+    }
+    for (separated in listOf(false, true)) {
+      composeTestRule.runOnIdle { separate.value = separated }
+      if (separated) composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+      val confirm = composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
+      confirm.performScrollTo().assertIsNotEnabled()
+      composeTestRule.runOnIdle { vm.toggleParticipant("a") }
+      confirm.assertIsEnabled().performClick()
+      composeTestRule.runOnIdle { enabled.value = false }
+      confirm.assertIsNotEnabled()
+      composeTestRule.runOnIdle {
+        enabled.value = true
+        hasCallback.value = false
+      }
+      confirm.assertIsNotEnabled()
+      composeTestRule.runOnIdle {
+        hasCallback.value = true
+        vm.toggleParticipant("a")
+      }
+    }
+    assertEquals(2, submissions)
   }
 
   @Test
@@ -242,7 +376,7 @@ class StagingScreenTest {
       }
     }
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    composeTestRule.onNodeWithTag("staging_confirm_purchase").assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE).assertIsNotEnabled()
     assertNull(confirmed)
     assertNull(purchase)
     composeTestRule.onNodeWithTag(StagingTestTags.BACK).performClick()
@@ -312,14 +446,14 @@ class StagingScreenTest {
     }
     composeTestRule.onNodeWithTag("staging_payer_b").performScrollTo().performClick()
     composeTestRule
-        .onNodeWithTag("staging_confirm_purchase")
+        .onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
     assertEquals("b", purchase?.paidBy)
     composeTestRule.onNodeWithTag("staging_payer_a").performScrollTo().performClick()
     composeTestRule
-        .onNodeWithTag("staging_confirm_purchase")
+        .onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
@@ -360,6 +494,16 @@ class StagingScreenTest {
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
 
     assertEquals(listOf(milk, bread.copy(priceCents = 200)), confirmed)
+  }
+
+  @Test
+  fun missingScannedPriceShowsErrorAndBlocksContinue() {
+    setScreen(StagingViewModel(listOf(milk, bread)))
+
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+
+    composeTestRule.onNodeWithTag(StagingTestTags.MISSING_PRICES).assertIsDisplayed()
+    assertNull(confirmed)
   }
 
   @Test

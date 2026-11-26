@@ -22,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.android.sharemate.R
 import com.android.sharemate.model.item.ItemQuantity
+import com.android.sharemate.model.staging.PriceInput
+import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.theme.Dimens
@@ -86,7 +88,7 @@ fun StagedItemEditDialog(
               value = draft.price,
               onValueChange = onPriceChange,
               label = { Text(stringResource(R.string.staging_price_label)) },
-              suffix = { Text(" " + stringResource(R.string.staging_currency)) },
+              suffix = { Text(stringResource(R.string.staging_currency)) },
               supportingText = { Text(stringResource(R.string.staging_price_hint)) },
               isError = draft.error == StagedItemError.INVALID_PRICE,
               singleLine = true,
@@ -103,12 +105,15 @@ fun StagedItemEditDialog(
         }
       },
       confirmButton = {
-        Button(onClick = onSave, modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
-          Text(
-              stringResource(
-                  if (draft.itemId == null) R.string.staging_add_item
-                  else R.string.receipt_save_changes))
-        }
+        Button(
+            onClick = onSave,
+            enabled = Prices.parse(draft.price) is PriceInput.Valid,
+            modifier = Modifier.testTag(StagedItemEditTestTags.SAVE)) {
+              Text(
+                  stringResource(
+                      if (draft.itemId == null) R.string.staging_add_item
+                      else R.string.receipt_save_changes))
+            }
       },
       dismissButton = {
         TextButton(onClick = onCancel, modifier = Modifier.testTag(StagedItemEditTestTags.CANCEL)) {

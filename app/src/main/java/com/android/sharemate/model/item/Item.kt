@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.item
 
 import com.google.firebase.firestore.Exclude
@@ -14,7 +15,7 @@ import java.util.Date
  * @property householdId ID of the household (fridge) containing the item. Never blank: an item
  *   always belongs to a household.
  * @property expirationDate Expiration date of the food.
- * @property category Optional category entered by the user.
+ * @property category Optional category; null when the user chose none.
  * @property image Optional image reference and attribution; null uses the local placeholder.
  * @property sharing Whether the item is visible to the whole household ([ItemSharing.SHARED]) or
  *   only to its owner ([ItemSharing.PERSONAL], the default).
@@ -25,7 +26,7 @@ data class Item(
     val ownerId: String = "",
     val householdId: String,
     val expirationDate: Date? = null,
-    val category: String? = null,
+    val category: ItemCategory? = null,
     val image: ItemImage? = null,
     /** Positive count of units. */
     val quantity: Int = 1,

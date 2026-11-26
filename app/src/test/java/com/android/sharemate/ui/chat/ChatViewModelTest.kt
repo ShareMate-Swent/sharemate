@@ -6,10 +6,14 @@ import com.android.sharemate.model.chat.ChatRepository
 import com.android.sharemate.model.chat.Message
 import com.android.sharemate.model.chat.MessageType
 import com.android.sharemate.model.incident.IncidentPhotoReference
+import com.android.sharemate.model.profile.ProfilePhotoPaths
+import com.android.sharemate.model.profile.UserProfile
+import com.android.sharemate.model.profile.UserProfileRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -38,7 +42,8 @@ class ChatViewModelTest {
         senderName: String,
         type: MessageType,
         itemName: String,
-        itemImageUrl: String?
+        itemImageUrl: String?,
+        activityId: String?,
     ): String? = null
 
     override suspend fun sendIncident(
@@ -136,7 +141,8 @@ class ChatViewModelTest {
                   senderName: String,
                   type: MessageType,
                   itemName: String,
-                  itemImageUrl: String?
+                  itemImageUrl: String?,
+                  activityId: String?,
               ): String? = null
 
               override suspend fun sendIncident(
@@ -187,7 +193,8 @@ class ChatViewModelTest {
                   senderName: String,
                   type: MessageType,
                   itemName: String,
-                  itemImageUrl: String?
+                  itemImageUrl: String?,
+                  activityId: String?,
               ): String? = null
 
               override suspend fun sendIncident(
@@ -213,5 +220,109 @@ class ChatViewModelTest {
     assertEquals(null, vm.state.value.error)
     assertFalse(vm.state.value.isSending)
     assertTrue(vm.state.value.canSend)
+  }
+
+  private class FakeProfileRepository : UserProfileRepository {
+    val members = MutableStateFlow<List<UserProfile>>(emptyList())
+    var fail = false
+    val observed = mutableListOf<String>()
+
+    override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+    override fun observeMembers(householdId: String): Flow<List<UserProfile>> {
+      observed += householdId
+      return if (fail) flow { throw IllegalStateException("offline") } else members
+    }
+  }
+
+  private val profiles = FakeProfileRepository()
+
+  private fun viewModelWithPhotos(bucket: String? = BUCKET) =
+      ChatViewModel(repository, "h1", "u1", "Alex", profiles, bucket)
+
+  @Test
+  fun exposesSupportedMemberPhotosInRealTime() {
+    val vm = viewModelWithPhotos()
+    assertEquals(listOf("h1"), profiles.observed)
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+
+    profiles.members.value =
+        listOf(UserProfile("u2", "Sam", GOOGLE_PHOTO), UserProfile("u3", "Lucía", null))
+    assertEquals(mapOf("u2" to GOOGLE_PHOTO), vm.state.value.memberPhotos)
+
+    profiles.members.value = listOf(UserProfile("u3", "Lucía", GOOGLE_PHOTO))
+    assertEquals(mapOf("u3" to GOOGLE_PHOTO), vm.state.value.memberPhotos)
+  }
+
+  @Test
+  fun dropsUnsupportedAndBlankPhotoUrls() {
+    val vm = viewModelWithPhotos()
+    profiles.members.value =
+        listOf(
+            UserProfile("u2", photoUrl = "https://evil.example.com/a.png"),
+            UserProfile("u3", photoUrl = "http://lh3.googleusercontent.com/a"),
+            UserProfile("u4", photoUrl = " "),
+            UserProfile("u5", photoUrl = "not a url"))
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+  }
+
+  @Test
+  fun keepsUploadsOnlyFromTheMembersOwnFolderInTheConfiguredBucket() {
+    val path = ProfilePhotoPaths.avatar("u2", "photo1").replace("/", "%2F")
+    val upload = "https://firebasestorage.googleapis.com/v0/b/$BUCKET/o/$path?alt=media"
+    val vm = viewModelWithPhotos()
+    // u3 points at u2's photo: it is not their own upload, so it is dropped.
+    profiles.members.value =
+        listOf(UserProfile("u2", photoUrl = upload), UserProfile("u3", photoUrl = upload))
+    assertEquals(mapOf("u2" to upload), vm.state.value.memberPhotos)
+
+    profiles.members.value = listOf(UserProfile("u2", photoUrl = upload))
+    val noBucket = viewModelWithPhotos(bucket = null)
+    assertTrue(noBucket.state.value.memberPhotos.isEmpty())
+  }
+
+  @Test
+  fun profileFailureLeavesPhotosOutWithoutBlockingTheChat() {
+    profiles.fail = true
+    val vm = viewModelWithPhotos()
+    repository.messages.value = listOf(Message("1", "u2", "Sam", "hi"))
+
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+    assertEquals(null, vm.state.value.error)
+    assertFalse(vm.state.value.isLoading)
+    assertEquals(listOf("hi"), vm.state.value.messages.map { it.text })
+  }
+
+  @Test
+  fun profileFailureAfterALoadClearsThePhotos() {
+    val fail = MutableStateFlow(false)
+    val failing =
+        object : UserProfileRepository {
+          override suspend fun savePublicProfile(profile: UserProfile) = Unit
+
+          override fun observeMembers(householdId: String): Flow<List<UserProfile>> = flow {
+            emit(listOf(UserProfile("u2", photoUrl = GOOGLE_PHOTO)))
+            fail.first { it }
+            throw IllegalStateException("member profile unreadable")
+          }
+        }
+    val vm = ChatViewModel(repository, "h1", "u1", "Alex", failing, BUCKET)
+    assertEquals(mapOf("u2" to GOOGLE_PHOTO), vm.state.value.memberPhotos)
+
+    // For example a member left and a remaining member's profile could not be read.
+    fail.value = true
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+    assertEquals(null, vm.state.value.error)
+  }
+
+  @Test
+  fun withoutProfileRepositoryShowsNoPhotos() {
+    val vm = viewModel()
+    assertTrue(vm.state.value.memberPhotos.isEmpty())
+  }
+
+  private companion object {
+    const val BUCKET = "sharemate.appspot.com"
+    const val GOOGLE_PHOTO = "https://lh3.googleusercontent.com/a/photo"
   }
 }

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.android.sharemate.R
 import org.junit.Assert.assertEquals
@@ -107,5 +108,27 @@ class HouseholdMembersScreenTest {
 
     assertEquals(1, backs)
     assertEquals(0, retries)
+  }
+
+  @Test
+  fun titleShowsTheMemberCountOnceLoaded() {
+    show(HouseholdMembersUiState(members = listOf(me, emailOnly), isLoading = false))
+    val title = composeTestRule.activity.getString(R.string.household_members_title_with_count, 2)
+    composeTestRule.onNodeWithText(title).assertIsDisplayed()
+  }
+
+  @Test
+  fun titleHasNoCountWhileLoading() {
+    show(HouseholdMembersUiState(isLoading = true))
+    val title = composeTestRule.activity.getString(R.string.household_members_title)
+    composeTestRule.onNodeWithText(title).assertIsDisplayed()
+  }
+
+  @Test
+  fun titleHasNoCountAfterAnError() {
+    show(HouseholdMembersUiState(isLoading = false, hasError = true))
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.household_members_title))
+        .assertIsDisplayed()
   }
 }

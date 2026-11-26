@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,7 +14,11 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.chat.ChatTestTags
+import com.android.sharemate.ui.navigation.AddItemMethod
+import com.android.sharemate.ui.navigation.AddItemSheetTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.receipts.ReceiptDashboardTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
 import org.junit.Rule
@@ -48,7 +53,6 @@ class MainActivityTest : TestCase() {
               NavigationTestTags.RECIPES_TAB to R.string.recipes_title,
               NavigationTestTags.RECEIPTS_TAB to R.string.receipts_title,
               NavigationTestTags.CHAT_TAB to R.string.chat_title,
-              NavigationTestTags.SETTINGS_TAB to R.string.settings_title,
           )
 
       destinations.forEach { (testTag, labelRes) ->
@@ -85,6 +89,34 @@ class MainActivityTest : TestCase() {
               .assertDoesNotExist()
         }
       }
+    }
+    step("Open Settings from the profile photo and come back") {
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
+      composeTestRule
+          .onNodeWithTag(NavigationTestTags.PAGE_CONTENT)
+          .assertTextEquals(composeTestRule.activity.getString(R.string.settings_title))
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(SettingsTestTags.BACK).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
+    }
+  }
+
+  @Test
+  fun receiptScanFromTheAddButtonOnChatGoesBackToChatWhenCancelled() = run {
+    step("Open the receipt camera from the add button on Chat") {
+      composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.ADD_BUTTON).performClick()
+      composeTestRule
+          .onNodeWithTag(AddItemSheetTestTags.option(AddItemMethod.RECEIPT))
+          .performClick()
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertIsDisplayed()
+    }
+    step("Cancel the photo") {
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).performClick()
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsSelected()
+      composeTestRule.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
     }
   }
 }

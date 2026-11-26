@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.fridge
 
 import androidx.activity.ComponentActivity
@@ -30,6 +31,7 @@ import com.android.sharemate.model.image.FoodImageSelector
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.Item
+import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemEdit
 import com.android.sharemate.model.item.ItemImage
 import com.android.sharemate.model.item.ItemImageUpdateResult
@@ -62,7 +64,7 @@ class FridgeScreenTest {
   private lateinit var viewModel: FridgeViewModel
 
   @Test
-  fun compactToolbarCreatesAnItemAndShowsItsQuantityInTheGrid() {
+  fun compactToolbarCreatesAnItemAndShowsItsQuantityInTheList() {
     showScreen(emptyList())
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
@@ -117,7 +119,7 @@ class FridgeScreenTest {
   @Test
   fun sortMenuChangesTheRenderedOrder() {
     showScreen()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_expiration_date)
     compose
         .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
         .assertIsSelected()
@@ -129,11 +131,11 @@ class FridgeScreenTest {
         .performClick()
     assertItemOrder("carrot", "banana", "apple")
 
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_expiration_date)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     assertItemOrder("apple", "banana", "carrot")
 
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_name)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).assertIsSelected()
     compose
         .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
@@ -146,17 +148,17 @@ class FridgeScreenTest {
   fun categoryChipsFilterItemsAndCanBeCleared() {
     showScreen()
     compose
-        .onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits"))
+        .onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS))
         .performScrollTo()
         .assertIsDisplayed()
         .performClick()
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsSelected()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS)).assertIsSelected()
     item("banana").assertIsDisplayed()
     item("apple").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
 
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Fruits")).assertIsNotSelected()
+    compose.onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.FRUITS)).assertIsNotSelected()
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
     assertItemOrder("carrot", "banana", "apple")
   }
@@ -164,25 +166,29 @@ class FridgeScreenTest {
   @Test
   fun ownerAndCategoryFiltersCombineAndShowAnEmptyResult() {
     showScreen()
-    filterChip("Owner").assertIsDisplayed().performClick()
+    filterChip("All owners").assertIsDisplayed().performClick()
     compose.onNodeWithTag(C.Tag.fridgeFilterOwner("alice")).performClick()
     item("banana").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
     item("apple").assertDoesNotExist()
 
-    compose.onNodeWithTag(C.Tag.fridgeFilterCategory("Vegetables")).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(C.Tag.fridgeFilterCategory(ItemCategory.VEGETABLES))
+        .performScrollTo()
+        .performClick()
     compose
         .onNodeWithTag(C.Tag.fridge_empty)
         .assertIsDisplayed()
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty_filtered))
     item("banana").assertDoesNotExist()
 
-    filterChip("Owner: Alice").assertIsDisplayed().performClick()
-    compose.onNodeWithTag(C.Tag.fridge_filter_owner_all).performClick()
-    item("carrot").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_clear_filters)).performClick()
+    compose.runOnIdle {
+      assertEquals(null, viewModel.selectedCategory.value)
+      assertEquals(null, viewModel.selectedOwnerId.value)
+    }
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
-
-    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
@@ -194,10 +200,8 @@ class FridgeScreenTest {
         .assertIsDisplayed()
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsNotEnabled().assertIsSelected()
-    filterChip("Owner").assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_yours)).assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_shared)).assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    filterChip("All owners").assertIsNotEnabled()
+    openSort(R.string.fridge_sort_expiration_date)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     compose.runOnIdle { assertEquals(FridgeSortOrder.NAME, viewModel.sortOrder.value) }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
@@ -248,10 +252,21 @@ class FridgeScreenTest {
 
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
+  private fun openSort(currentOption: Int) {
+    val activity = compose.activity
+    compose
+        .onNodeWithText(
+            activity.getString(R.string.fridge_sort_selected, activity.getString(currentOption)))
+        .performClick()
+  }
+
   private fun assertItemOrder(vararg ids: String) {
     val list = compose.onNodeWithTag(C.Tag.fridge_item_list)
-    ids.forEachIndexed { index, id ->
-      assertEquals(index, list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey](id))
+    val indexForKey = list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey]
+    val indices = ids.map { indexForKey(it) }
+    assertTrue(indices.all { it >= 0 })
+    assertTrue(indices.zipWithNext().all { (first, second) -> first < second })
+    ids.zip(indices).forEach { (id, index) ->
       list.performScrollToIndex(index)
       item(id).assertIsDisplayed()
     }
@@ -261,6 +276,9 @@ class FridgeScreenTest {
     val inventory = MutableStateFlow(items)
     val statusChanges = mutableListOf<Pair<String, ItemStatus>>()
     val confirmations = mutableListOf<CompletableDeferred<Result<Unit>>>()
+
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
 
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> =
         inventory.map { items -> items.filter { it.householdId == householdId } }
@@ -313,20 +331,20 @@ class FridgeScreenTest {
               name = "Banana",
               ownerId = "alice",
               householdId = "household",
-              category = "Fruits",
+              category = ItemCategory.FRUITS,
               expirationDate = Date(2_000)),
           Item(
               id = "carrot",
               name = "Carrot",
               ownerId = "bob",
               householdId = "household",
-              category = "Vegetables",
+              category = ItemCategory.VEGETABLES,
               expirationDate = Date(1_000)),
           Item(
               id = "apple",
               name = "Apple",
               ownerId = "bob",
               householdId = "household",
-              category = "Fruits"),
+              category = ItemCategory.FRUITS),
       )
 }

@@ -4,13 +4,27 @@ package com.android.sharemate.model.image
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.android.sharemate.model.ocr.BoundedOcrImageLoader
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -19,6 +33,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowBitmapFactory
@@ -26,7 +41,7 @@ import org.robolectric.shadows.ShadowBitmapFactory
 @RunWith(RobolectricTestRunner::class)
 class TemporaryPhotoStoreTest {
   private val context = RuntimeEnvironment.getApplication()
-  private val store = AndroidTemporaryPhotoStore(context)
+  private val store = storeWithRegisteredStreams(PhotoImportPolicy.STANDARD)
   private val directory = File(context.cacheDir, "barcode-photos")
 
   @Before
@@ -36,7 +51,7 @@ class TemporaryPhotoStoreTest {
   }
 
   @Test
-  fun importsReadablePrivateCopyAndNeverDeletesGalleryOriginal() = runTest {
+  fun importsReadablePrivateCopyAndNeverDeletesGalleryOriginal() = runBlocking {
     val source = File(context.cacheDir, "original.png").apply { writeBytes(png()) }
     val selected = Uri.parse("content://photos/selected")
     shadowOf(context.contentResolver).registerInputStream(selected, source.inputStream())
@@ -52,8 +67,69 @@ class TemporaryPhotoStoreTest {
     assertTrue(source.exists())
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   @Test
-  fun fileUrisAndNetworkUrisAreNotAcceptedAsGalleryInput() = runTest {
+  fun stalledGalleryReadsTimeOutAndLeaveCameraOcrAvailable() = runTest {
+    val entered = CountDownLatch(2)
+    val release = CountDownLatch(1)
+    val signaled = CountDownLatch(2)
+    val closed = CountDownLatch(2)
+    val stalledStore =
+        AndroidTemporaryPhotoStore(context, PhotoImportPolicy.STANDARD) { _, signal ->
+          signal.setOnCancelListener { signaled.countDown() }
+          object : InputStream() {
+            override fun read(): Int {
+              entered.countDown()
+              release.await()
+              return -1
+            }
+
+            override fun close() = closed.countDown()
+          }
+        }
+
+    val capture = store.createCapture()
+    val captureUri = Uri.parse(capture)
+    File(requireNotNull(captureUri.path)).writeBytes(png())
+    try {
+      val imports =
+          List(2) { index ->
+            async { runCatching { stalledStore.importImage("content://photos/stalled/$index") } }
+          }
+      runCurrent()
+      assertTrue(entered.await(5, TimeUnit.SECONDS))
+      advanceTimeBy(BoundedPhotoRead.TIMEOUT_MS - 1)
+      assertTrue(imports.none { it.isCompleted })
+      advanceTimeBy(1)
+      runCurrent()
+      for (result in imports) {
+        val failure = result.await().exceptionOrNull()
+        assertTrue(failure is IOException)
+        assertEquals("Gallery image import timed out", failure?.message)
+      }
+      assertTrue(signaled.await(5, TimeUnit.SECONDS))
+      val loader =
+          BoundedOcrImageLoader({ context.cacheDir }) { uri, _ ->
+            File(requireNotNull(uri.path)).inputStream()
+          }
+      val bitmap = withContext(Dispatchers.IO) { loader.load(captureUri) }
+      assertEquals(4, bitmap.width)
+      assertEquals(4, bitmap.height)
+      bitmap.recycle()
+      assertEquals(2L, closed.count)
+    } finally {
+      release.countDown()
+      store.delete(capture)
+    }
+
+    assertTrue(closed.await(5, TimeUnit.SECONDS))
+    withContext(Dispatchers.IO) {
+      withTimeout(5_000) { while (directory.listFiles().orEmpty().isNotEmpty()) delay(10) }
+    }
+  }
+
+  @Test
+  fun fileUrisAndNetworkUrisAreNotAcceptedAsGalleryInput() = runBlocking {
     for (uri in listOf("file:///private/secret", "https://example.org/image.png")) {
       try {
         store.importImage(uri)
@@ -64,7 +140,7 @@ class TemporaryPhotoStoreTest {
   }
 
   @Test
-  fun deleteAndValidationCannotEscapePrivateDirectory() = runTest {
+  fun deleteAndValidationCannotEscapePrivateDirectory() = runBlocking {
     val outside = File(context.cacheDir, "unrelated.png").apply { writeBytes(png()) }
     directory.mkdirs()
     val paths =
@@ -80,7 +156,7 @@ class TemporaryPhotoStoreTest {
   }
 
   @Test
-  fun emptyMalformedAndInterruptedImportsRemovePartialCopies() = runTest {
+  fun emptyMalformedAndInterruptedImportsRemovePartialCopies() = runBlocking {
     val sources =
         listOf(
             ByteArrayInputStream(byteArrayOf()),
@@ -103,7 +179,7 @@ class TemporaryPhotoStoreTest {
   }
 
   @Test
-  fun imageSizeLimitAcceptsBoundaryAndRejectsNextByteWithoutLeakingCopy() = runTest {
+  fun imageSizeLimitAcceptsBoundaryAndRejectsNextByteWithoutLeakingCopy() = runBlocking {
     for (extra in listOf(0L, 1L)) {
       val source = Uri.parse("content://photos/boundary/$extra")
       shadowOf(context.contentResolver)
@@ -116,14 +192,78 @@ class TemporaryPhotoStoreTest {
         try {
           store.importImage(source.toString())
           fail("Oversized image must not be accepted")
-        } catch (_: IOException) {}
+        } catch (failure: IOException) {
+          assertFalse(failure is PhotoImportValidationException)
+        }
       }
       assertTrue(directory.listFiles().orEmpty().isEmpty())
     }
   }
 
   @Test
-  fun emptyAndMissingCapturedImagesCannotBeConfirmed() = runTest {
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun personalGalleryRejectsOversizedUnsupportedAndTruncatedImagesBeforePreview() = runBlocking {
+    val personalStore = storeWithRegisteredStreams(PhotoImportPolicy.PERSONAL)
+    val limit = PersonalPhotoRepository.MAX_BYTES.toLong()
+    val random = Random(0)
+    val pixels = IntArray(32 * 32) { random.nextInt() }
+    val png = png(Bitmap.createBitmap(pixels, 32, 32, Bitmap.Config.ARGB_8888))
+    val truncatedPng = png.copyOf(png.size / 2)
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(truncatedPng, 0, truncatedPng.size, bounds)
+    assertEquals(PhotoMimeTypes.PNG, bounds.outMimeType)
+    assertTrue(bounds.outWidth > 0 && bounds.outHeight > 0)
+    val gif =
+        Base64.getDecoder().decode("R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==")
+    val sources =
+        mapOf(
+            "valid" to PaddedImage(png, limit),
+            "too-large" to PaddedImage(png, limit + 1),
+            "truncated" to truncatedPng.inputStream(),
+            "gif" to gif.inputStream())
+    for ((name, stream) in sources) {
+      val uri = Uri.parse("content://photos/personal/$name")
+      shadowOf(context.contentResolver).registerInputStream(uri, stream)
+      if (name == "valid") {
+        val copy = personalStore.importImage(uri.toString())
+        assertEquals(limit, File(Uri.parse(copy).path!!).length())
+        personalStore.delete(copy)
+      } else {
+        val failure = runCatching { personalStore.importImage(uri.toString()) }.exceptionOrNull()
+        assertEquals(
+            "Expected import to reject $name before preview",
+            PhotoImportRejection.PERSONAL_REQUIREMENTS,
+            (failure as? PhotoImportValidationException)?.rejection)
+      }
+      assertTrue(directory.listFiles().orEmpty().isEmpty())
+    }
+    val receipt = Uri.parse("content://photos/receipt/gif")
+    shadowOf(context.contentResolver).registerInputStream(receipt, gif.inputStream())
+    val receiptCopy = store.importImage(receipt.toString())
+    assertArrayEquals(gif, File(Uri.parse(receiptCopy).path!!).readBytes())
+    store.delete(receiptCopy)
+  }
+
+  @Test
+  fun personalGalleryKeepsProviderReadErrorsGeneric() = runBlocking {
+    val source = Uri.parse("content://photos/personal/unavailable")
+    val readError = IOException("Gallery unavailable")
+    shadowOf(context.contentResolver)
+        .registerInputStream(
+            source,
+            object : InputStream() {
+              override fun read(): Int = throw readError
+            })
+    val personalStore = storeWithRegisteredStreams(PhotoImportPolicy.PERSONAL)
+    val failure = runCatching { personalStore.importImage(source.toString()) }.exceptionOrNull()
+    // Coroutine stack-trace recovery can copy the exception when returning from Dispatchers.IO.
+    assertEquals(IOException::class.java, failure?.javaClass)
+    assertEquals(readError.message, failure?.message)
+    assertTrue(directory.listFiles().orEmpty().isEmpty())
+  }
+
+  @Test
+  fun emptyAndMissingCapturedImagesCannotBeConfirmed() = runBlocking {
     val capture = store.createCapture()
     try {
       store.validate(capture)
@@ -138,7 +278,7 @@ class TemporaryPhotoStoreTest {
 
   @Test
   @Config(shadows = [BoundsOnlyDecoder::class])
-  fun pixelLimitAcceptsBoundaryAndRejectsOversizedMetadataWithoutLeakingCopies() = runTest {
+  fun pixelLimitAcceptsBoundaryAndRejectsOversizedMetadataWithoutLeakingCopies() = runBlocking {
     val limit = MAX_INPUT_PHOTO_PIXELS.toInt()
     for ((width, height) in
         listOf(1 to limit - 1, 1 to limit, 1 to limit + 1, Int.MAX_VALUE to Int.MAX_VALUE)) {
@@ -158,7 +298,15 @@ class TemporaryPhotoStoreTest {
           fail("Oversized decoder dimensions must be rejected even for a small file")
         } catch (failure: IOException) {
           assertEquals("Image exceeds pixel limit", failure.message)
+          assertFalse(failure is PhotoImportValidationException)
         }
+        val personalStore = storeWithRegisteredStreams(PhotoImportPolicy.PERSONAL)
+        shadowOf(context.contentResolver).registerInputStream(selected, compressed.inputStream())
+        val rejection =
+            runCatching { personalStore.importImage(selected.toString()) }.exceptionOrNull()
+        assertEquals(
+            PhotoImportRejection.PIXEL_LIMIT,
+            (rejection as? PhotoImportValidationException)?.rejection)
       }
       assertTrue(
           "No rejected or deleted copies should remain", directory.listFiles().orEmpty().isEmpty())
@@ -185,8 +333,12 @@ class TemporaryPhotoStoreTest {
     }
   }
 
-  private fun png(): ByteArray {
-    val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+  private fun storeWithRegisteredStreams(policy: PhotoImportPolicy): AndroidTemporaryPhotoStore =
+      AndroidTemporaryPhotoStore(context, policy) { uri, _ ->
+        context.contentResolver.openInputStream(uri)
+      }
+
+  private fun png(image: Bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)): ByteArray {
     return ByteArrayOutputStream().use {
       image.compress(Bitmap.CompressFormat.PNG, 100, it)
       image.recycle()

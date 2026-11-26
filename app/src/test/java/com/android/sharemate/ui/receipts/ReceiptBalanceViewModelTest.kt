@@ -16,6 +16,48 @@ import org.mockito.Mockito.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiptBalanceViewModelTest {
   @Test
+  fun failedObservationReconnectsAndClearingTheModelStopsIt() = runTest {
+    Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+    val owner = ViewModelStore()
+    var attempts = 0
+    var stopped = false
+    try {
+      val repository = mock(HouseholdFinanceRepository::class.java)
+      `when`(repository.observeHouseholdFinances("home"))
+          .thenReturn(
+              kotlinx.coroutines.flow.flow {
+                if (++attempts == 1) throw java.io.IOException("Offline")
+                emit(HouseholdFinanceSnapshot("home", emptyList(), emptyList()))
+                try {
+                  kotlinx.coroutines.awaitCancellation()
+                } finally {
+                  stopped = true
+                }
+              })
+      val model = ReceiptBalanceViewModel(repository, "home", "a")
+      owner.put("balance", model)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.balance.collect() }
+      runCurrent()
+      assertNull(model.balance.value)
+      assertEquals(1, attempts)
+      advanceTimeBy(com.android.sharemate.model.receipt.RECEIPT_INITIAL_RETRY_MILLIS)
+      runCurrent()
+      assertEquals(0L, model.balance.value)
+      assertEquals(2, attempts)
+      owner.clear()
+      runCurrent()
+      assertTrue(stopped)
+      advanceTimeBy(com.android.sharemate.model.receipt.RECEIPT_MAX_RETRY_MILLIS)
+      runCurrent()
+      assertEquals(2, attempts)
+    } finally {
+      owner.clear()
+      runCurrent()
+      Dispatchers.resetMain()
+    }
+  }
+
+  @Test
   fun confirmedBalancesUpdateAndCachedDataIsUnknown() = runTest {
     Dispatchers.setMain(StandardTestDispatcher(testScheduler))
     val owner = ViewModelStore()

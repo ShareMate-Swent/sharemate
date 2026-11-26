@@ -8,20 +8,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -44,11 +46,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,20 +62,33 @@ import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
-import com.android.sharemate.ui.receipts.ReceiptDesign
 import com.android.sharemate.ui.receipts.ReceiptHeader
 import com.android.sharemate.ui.receipts.ReceiptProgress
 import com.android.sharemate.ui.theme.Dimens
 
 private const val ITEM_NAME_MAX_LINES = 1
+private const val COMPACT_ITEM_NAME_MAX_LINES = 2
 
 object StagingTestTags {
+  const val CONTENT = "staging_content"
   const val BACK = "staging_back"
   const val LIST = "staging_list"
   const val EMPTY = "staging_empty"
   const val CONFIRM = "staging_confirm"
   const val ADD = "staging_add"
   const val TOTAL = "staging_total"
+  /** Confirms the reviewed payer and participant allocation. */
+  const val CONFIRM_PURCHASE = "staging_confirm_purchase"
+  /** Opens the receipt actions menu. */
+  const val RECEIPT_MORE = "receipt_more"
+  /** Requests receipt deletion, before confirmation. */
+  const val RECEIPT_DELETE = "receipt_delete"
+  /** Receipt actions popup surface. */
+  const val RECEIPT_MENU = "receipt_menu"
+  /** Receipt deletion confirmation surface. */
+  const val RECEIPT_DELETE_DIALOG = "receipt_delete_dialog"
+  /** Explains why items without prices cannot be confirmed. */
+  const val MISSING_PRICES = "staging_missing_prices"
 
   fun item(id: String) = "staging_item_$id"
 
@@ -91,6 +109,7 @@ fun StagingScreen(
     onConfirmPurchase: ((ReviewedPurchase) -> Unit)? = null,
     separateSharingStep: Boolean = false,
     previewContent: @Composable () -> Unit = {},
+    itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     savedPreview: PurchasePreview? = null,
     onDeleteReceipt: (() -> Unit)? = null,
@@ -98,11 +117,20 @@ fun StagingScreen(
   val state = viewModel.state.collectAsState().value
   var sharing by rememberSaveable { mutableStateOf(false) }
   val stagedPurchase = separateSharingStep && state.purchase != null
+  val canConfirmPurchase =
+      actionsEnabled &&
+          state.canConfirm &&
+          state.purchasePreview?.error == null &&
+          onConfirmPurchase != null
+  val confirmPurchase: () -> Unit = {
+    viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
+    Unit
+  }
   BackHandler(enabled = stagedPurchase && sharing) { sharing = false }
   if (stagedPurchase && sharing) {
     Column(
         Modifier.fillMaxSize()
-            .background(ReceiptDesign.background)
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(Dimens.screenHorizontalPadding)) {
           ReceiptHeader(
@@ -118,19 +146,10 @@ fun StagingScreen(
               viewModel::toggleParticipant,
               actionsEnabled)
           if (!savedPurchase)
-              Button(
-                  shape = RoundedCornerShape(14.dp),
-                  onClick = {
-                    viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
-                  },
-                  enabled =
-                      actionsEnabled &&
-                          state.canConfirm &&
-                          state.purchasePreview?.error == null &&
-                          onConfirmPurchase != null,
-                  modifier = Modifier.fillMaxWidth().testTag("staging_confirm_purchase")) {
-                    Text(stringResource(R.string.receipt_save_purchase))
-                  }
+              ConfirmPurchaseButton(
+                  canConfirmPurchase,
+                  confirmPurchase,
+                  stringResource(R.string.receipt_save_purchase))
           statusContent()
         }
   } else {
@@ -156,25 +175,15 @@ fun StagingScreen(
                     viewModel::toggleParticipant,
                     actionsEnabled,
                 )
-                Button(
-                    onClick = {
-                      viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
-                    },
-                    enabled =
-                        actionsEnabled &&
-                            state.canConfirm &&
-                            state.purchasePreview?.error == null &&
-                            onConfirmPurchase != null,
-                    modifier = Modifier.fillMaxWidth().testTag("staging_confirm_purchase"),
-                ) {
-                  Text(stringResource(R.string.purchase_confirm))
-                }
+                ConfirmPurchaseButton(
+                    canConfirmPurchase, confirmPurchase, stringResource(R.string.purchase_confirm))
               }
           statusContent()
         },
         onAddItem = viewModel::startAdding,
         continueToSharing = stagedPurchase,
         previewContent = previewContent,
+        itemActions = itemActions,
         savedPurchase = savedPurchase,
         onDeleteReceipt = onDeleteReceipt,
     )
@@ -206,10 +215,13 @@ fun StagingContent(
     onAddItem: (() -> Unit)? = null,
     continueToSharing: Boolean = false,
     previewContent: @Composable () -> Unit = {},
+    itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
-  Column(
+  var showMissingPrices by remember { mutableStateOf(false) }
+  if (!state.hasMissingPrices) showMissingPrices = false
+  BoxWithConstraints(
       modifier =
           Modifier.fillMaxSize()
               .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -217,118 +229,170 @@ fun StagingContent(
                   horizontal = Dimens.screenHorizontalPadding,
                   vertical = Dimens.screenVerticalPadding,
               )) {
-        ReceiptHeader(
-            title = stringResource(R.string.staging_title),
-            onBack = onBack,
-            backTag = StagingTestTags.BACK,
-            actions = { ReceiptDeleteActions(onDeleteReceipt) },
-        )
-        if (continueToSharing) {
-          ReceiptProgress(if (savedPurchase) 3 else 1)
-          previewContent()
-          Spacer(Modifier.height(Dimens.spacingS))
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-          LazyColumn(
-              modifier =
-                  Modifier.fillMaxSize()
-                      .then(
-                          if (state.items.isEmpty()) Modifier
-                          else Modifier.testTag(StagingTestTags.LIST)),
-              verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
-          ) {
-            if (!continueToSharing)
-                item(key = DESCRIPTION_KEY) {
-                  previewContent()
-                  if (!continueToSharing)
-                      Text(
-                          text = stringResource(R.string.staging_description),
-                          style = MaterialTheme.typography.bodyLarge,
-                          color = MaterialTheme.colorScheme.onSurfaceVariant,
-                      )
-                  Spacer(Modifier.height(Dimens.spacingM))
-                }
-            if (state.items.isEmpty()) {
-              item(key = EMPTY_KEY) {
-                Box(
-                    Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
-                    contentAlignment = Alignment.Center,
-                ) {
-                  Text(
-                      text = stringResource(R.string.staging_empty),
-                      style = MaterialTheme.typography.bodyLarge,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                      modifier = Modifier.testTag(StagingTestTags.EMPTY),
-                  )
-                }
-              }
-            } else {
-              items(state.items, key = { it.id }) { item ->
-                StagedItemRow(
-                    item,
-                    onClick = { onItemClick(item.id) },
-                    onDelete = { onDeleteItem(item.id) },
-                    enabled = actionsEnabled,
-                    compact = continueToSharing,
+        val density = LocalDensity.current
+        var headerHeight by remember { mutableStateOf(0) }
+        var footerHeight by remember { mutableStateOf(0) }
+        val listHeight =
+            (maxHeight - with(density) { (headerHeight + footerHeight).toDp() }).coerceAtLeast(
+                StagingLayout.MinimumListHeight)
+        // Keep the preview and controls fixed when they fit. If they do not, the page can scroll
+        // around a usable item viewport instead of measuring the item list at zero height.
+        Column(
+            if (continueToSharing)
+                Modifier.verticalScroll(rememberScrollState())
+                    .heightIn(min = maxHeight)
+                    .testTag(StagingTestTags.CONTENT)
+            else Modifier.fillMaxSize()) {
+              Column(Modifier.onSizeChanged { headerHeight = it.height }) {
+                ReceiptHeader(
+                    title = stringResource(R.string.staging_title),
+                    onBack = onBack,
+                    backTag = StagingTestTags.BACK,
+                    actions = { ReceiptDeleteActions(onDeleteReceipt) },
                 )
+                if (continueToSharing) {
+                  ReceiptProgress(if (savedPurchase) 3 else 1)
+                  previewContent()
+                  Spacer(Modifier.height(Dimens.spacingS))
+                }
               }
-            }
-            if (!continueToSharing)
-                item(key = STATUS_KEY) {
-                  if (onAddItem != null && !savedPurchase) {
-                    androidx.compose.material3.TextButton(
-                        onClick = onAddItem,
-                        enabled = actionsEnabled,
-                        modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
-                          Text("＋ " + stringResource(R.string.staging_add_item))
+              Box(
+                  (if (continueToSharing) Modifier.height(listHeight) else Modifier.weight(1f))
+                      .fillMaxWidth()) {
+                    LazyColumn(
+                        modifier =
+                            Modifier.fillMaxSize()
+                                .then(
+                                    if (state.items.isEmpty()) Modifier
+                                    else Modifier.testTag(StagingTestTags.LIST)),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+                    ) {
+                      if (!continueToSharing)
+                          item(key = DESCRIPTION_KEY) {
+                            previewContent()
+                            Text(
+                                text = stringResource(R.string.staging_description),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(Dimens.spacingM))
+                          }
+                      if (state.items.isEmpty()) {
+                        item(key = EMPTY_KEY) {
+                          Box(
+                              Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
+                              contentAlignment = Alignment.Center,
+                          ) {
+                            Text(
+                                text = stringResource(R.string.staging_empty),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.testTag(StagingTestTags.EMPTY),
+                            )
+                          }
                         }
-                  }
-                  state.purchasePreview
-                      ?.totalCents
-                      ?.takeUnless { continueToSharing }
-                      ?.let {
-                        Text(
-                            stringResource(R.string.purchase_total, Prices.format(it)),
-                            modifier = Modifier.padding(top = 24.dp, bottom = 12.dp),
-                            fontWeight = FontWeight.Bold)
+                      } else {
+                        items(state.items, key = { it.id }) { item ->
+                          StagedItemRow(
+                              item,
+                              onClick = { onItemClick(item.id) },
+                              onDelete = { onDeleteItem(item.id) },
+                              enabled = actionsEnabled,
+                              compact = continueToSharing,
+                          )
+                        }
                       }
+                      if (!continueToSharing)
+                          item(key = STATUS_KEY) {
+                            if (onAddItem != null && !savedPurchase) {
+                              AddItemButton(onAddItem, actionsEnabled)
+                            }
+                            itemActions()
+                            state.purchasePreview?.totalCents?.let {
+                              PurchaseTotal(
+                                  it,
+                                  Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
+                            }
+                            statusContent()
+                          }
+                    }
+                  }
+              Column(Modifier.onSizeChanged { footerHeight = it.height }) {
+                if (continueToSharing) {
+                  if (onAddItem != null && !savedPurchase) {
+                    AddItemButton(onAddItem, actionsEnabled)
+                  }
+                  itemActions()
                   statusContent()
                 }
-          }
-        }
-        if (continueToSharing) {
-          if (onAddItem != null && !savedPurchase) {
-            androidx.compose.material3.TextButton(
-                onClick = onAddItem,
-                enabled = actionsEnabled,
-                modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
-                  Text("＋ " + stringResource(R.string.staging_add_item))
+                Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))
+                if (continueToSharing) {
+                  state.purchasePreview?.totalCents?.let {
+                    PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
+                  }
                 }
-          }
-          statusContent()
-        }
-        Spacer(Modifier.height(if (continueToSharing) 24.dp else Dimens.spacingM))
-        if (continueToSharing) {
-          state.purchasePreview?.totalCents?.let {
-            Text(
-                stringResource(R.string.purchase_total, Prices.format(it)),
-                modifier = Modifier.padding(bottom = 8.dp).testTag(StagingTestTags.TOTAL),
-                fontWeight = FontWeight.Bold)
-          }
-        }
-        if (!savedPurchase || continueToSharing)
-            Button(
-                shape = RoundedCornerShape(14.dp),
-                onClick = onConfirm,
-                enabled = (state.canConfirm && actionsEnabled) || savedPurchase,
-                modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
-            ) {
-              Text(
-                  stringResource(
-                      if (continueToSharing) R.string.receipt_continue
-                      else if (state.purchase != null) R.string.purchase_save_inventory_only
-                      else R.string.staging_confirm))
+                if (showMissingPrices) {
+                  Text(
+                      stringResource(R.string.staging_missing_prices),
+                      color = MaterialTheme.colorScheme.error,
+                      modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
+                  )
+                }
+                if (!savedPurchase || continueToSharing)
+                    Button(
+                        shape = MaterialTheme.shapes.medium,
+                        onClick = {
+                          if (state.hasMissingPrices) showMissingPrices = true else onConfirm()
+                        },
+                        enabled =
+                            (state.items.isNotEmpty() && state.draft == null && actionsEnabled) ||
+                                savedPurchase,
+                        modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM),
+                    ) {
+                      Text(
+                          stringResource(
+                              if (continueToSharing) R.string.receipt_continue
+                              else if (state.purchase != null) R.string.purchase_save_inventory_only
+                              else R.string.staging_confirm))
+                    }
+              }
             }
+      }
+}
+
+private object StagingLayout {
+  /** Keeps at least one editable row reachable when the rest of the page needs to scroll. */
+  val MinimumListHeight = 120.dp
+}
+
+@Composable
+private fun AddItemButton(onClick: () -> Unit, enabled: Boolean) {
+  TextButton(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
+        Icon(Icons.Default.Add, contentDescription = null)
+        Spacer(Modifier.width(Dimens.spacingXs))
+        Text(stringResource(R.string.staging_add_item))
+      }
+}
+
+@Composable
+private fun PurchaseTotal(totalCents: Long, modifier: Modifier = Modifier) {
+  Text(
+      stringResource(R.string.purchase_total, Prices.format(totalCents)),
+      modifier.testTag(StagingTestTags.TOTAL),
+      fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun ConfirmPurchaseButton(enabled: Boolean, onClick: () -> Unit, label: String) {
+  Button(
+      onClick = onClick,
+      enabled = enabled,
+      shape = MaterialTheme.shapes.medium,
+      modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM_PURCHASE)) {
+        Text(label)
       }
 }
 
@@ -338,15 +402,16 @@ private fun ReceiptDeleteActions(onDeleteReceipt: (() -> Unit)?) {
   var menuOpen by rememberSaveable { mutableStateOf(false) }
   var confirmOpen by rememberSaveable { mutableStateOf(false) }
   Box {
-    IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("receipt_more")) {
-      Icon(
-          Icons.Outlined.MoreVert,
-          contentDescription = stringResource(R.string.receipt_more_actions))
-    }
+    IconButton(
+        onClick = { menuOpen = true }, modifier = Modifier.testTag(StagingTestTags.RECEIPT_MORE)) {
+          Icon(
+              Icons.Outlined.MoreVert,
+              contentDescription = stringResource(R.string.receipt_more_actions))
+        }
     DropdownMenu(
         expanded = menuOpen,
         onDismissRequest = { menuOpen = false },
-        modifier = Modifier.background(androidx.compose.ui.graphics.Color.White)) {
+        modifier = Modifier.testTag(StagingTestTags.RECEIPT_MENU)) {
           DropdownMenuItem(
               text = {
                 Text(
@@ -357,12 +422,12 @@ private fun ReceiptDeleteActions(onDeleteReceipt: (() -> Unit)?) {
                 menuOpen = false
                 confirmOpen = true
               },
-              modifier = Modifier.testTag("receipt_delete"))
+              modifier = Modifier.testTag(StagingTestTags.RECEIPT_DELETE))
         }
   }
   if (confirmOpen)
       AlertDialog(
-          containerColor = androidx.compose.ui.graphics.Color.White,
+          modifier = Modifier.testTag(StagingTestTags.RECEIPT_DELETE_DIALOG),
           onDismissRequest = { confirmOpen = false },
           text = { Text(stringResource(R.string.receipt_delete_confirmation)) },
           confirmButton = {
@@ -404,17 +469,17 @@ private fun StagedItemRow(
             .clickable(enabled = enabled, onClick = onClick)
             .testTag(StagingTestTags.item(item.id))) {
           Row(
-              Modifier.fillMaxWidth().padding(vertical = 14.dp),
+              Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
               verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     item.name,
                     Modifier.weight(1f),
-                    maxLines = 2,
+                    maxLines = COMPACT_ITEM_NAME_MAX_LINES,
                     style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "×${item.quantity}",
-                    color = ReceiptDesign.muted,
-                    modifier = Modifier.padding(horizontal = 8.dp))
+                    stringResource(R.string.staging_quantity, item.quantity),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = Dimens.spacingXs))
                 Text(
                     item.priceCents?.let {
                       stringResource(R.string.staging_price, Prices.format(it))
@@ -427,10 +492,10 @@ private fun StagedItemRow(
                       Icon(
                           Icons.Outlined.Delete,
                           stringResource(R.string.staging_delete_item, item.name),
-                          tint = ReceiptDesign.muted)
+                          tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
               }
-          HorizontalDivider(color = ReceiptDesign.border)
+          HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     return
   }
@@ -479,11 +544,13 @@ private fun StagedItemCard(
     enabled: Boolean,
 ) {
   Card(
-      onClick = onClick,
-      enabled = enabled,
+      // Keep the card content fully opaque when editing is unavailable. Material's disabled
+      // Card applies disabled alpha to every child, which makes receipt names and prices
+      // unreadable.
+      onClick = { if (enabled) onClick() },
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
-      shape = RoundedCornerShape(12.dp),
-      border = BorderStroke(1.dp, ReceiptDesign.border),
+      shape = MaterialTheme.shapes.large,
+      border = BorderStroke(Dimens.borderWidth, MaterialTheme.colorScheme.outlineVariant),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Row(
@@ -515,8 +582,8 @@ private fun StagedItemCard(
               else MaterialTheme.colorScheme.onSurface,
       )
       IconButton(
-          onClick = onDelete,
-          enabled = enabled,
+          // The action remains a no-op when editing is unavailable, while the icon stays visible.
+          onClick = { if (enabled) onDelete() },
           modifier = Modifier.testTag(StagingTestTags.delete(item.id)),
       ) {
         Icon(

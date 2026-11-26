@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui
 
 import androidx.activity.ComponentActivity
@@ -38,10 +39,10 @@ class TextLengthCounterTest {
   @Test
   fun countsAnEmojiAsOneCharacter() {
     composeTestRule.setContent {
-      TextLengthCounter("😀".repeat(TextLimits.ITEM_CATEGORY), TextLimits.ITEM_CATEGORY)
+      TextLengthCounter("😀".repeat(TextLimits.HOUSEHOLD_NAME), TextLimits.HOUSEHOLD_NAME)
     }
     composeTestRule
-        .onNodeWithText("${TextLimits.ITEM_CATEGORY}/${TextLimits.ITEM_CATEGORY}")
+        .onNodeWithText("${TextLimits.HOUSEHOLD_NAME}/${TextLimits.HOUSEHOLD_NAME}")
         .assertExists()
   }
 }

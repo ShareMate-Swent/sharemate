@@ -70,7 +70,9 @@ class ReceiptLifecycleEmulatorTest {
     val restored =
         withTimeout(TIMEOUT) {
           FirebaseReceiptCloudRepository(context, db, storage).observe(owner, home.id).first {
-            it.isNotEmpty()
+            it.any { entry ->
+              entry.submission.id == receipt.id && entry.details.photoUri.isNotBlank()
+            }
           }
         }
     assertEquals(receipt.id, restored.single().submission.id)

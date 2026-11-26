@@ -46,6 +46,10 @@ import com.android.sharemate.ui.auth.AuthGate
 import com.android.sharemate.ui.auth.AuthViewModel
 import com.android.sharemate.ui.profile.ProfilePhotoStepScreen
 import com.android.sharemate.ui.profile.ProfilePhotoViewModel
+import com.android.sharemate.ui.startup.LaunchStage
+import com.android.sharemate.ui.startup.LaunchStatus
+import com.android.sharemate.ui.startup.LocalLaunchAttempt
+import com.android.sharemate.ui.startup.ReportLaunch
 
 /**
  * Gives each signed-in user an isolated household flow, cleared when their session ends. A user who
@@ -73,7 +77,7 @@ fun AuthHouseholdGate(
     key(session.uid) {
       val owner: HouseholdFlowStore =
           viewModel(
-              key = "household_flow_${session.uid}",
+              key = "household_flow_${session.uid}_${LocalLaunchAttempt.current}",
               factory = viewModelFactory { initializer { HouseholdFlowStore() } },
           )
       val context = LocalContext.current
@@ -102,6 +106,16 @@ fun AuthHouseholdGate(
         }
         val gateViewModel: HouseholdGateViewModel = viewModel(factory = factory)
         val state by gateViewModel.state.collectAsStateWithLifecycle()
+        ReportLaunch(
+            LaunchStage.HOUSEHOLD,
+            when {
+              startDestination == HouseholdRoutes.PHOTO -> LaunchStatus.READY
+              state is HouseholdGateState.Ready -> LaunchStatus.CONTINUE
+              state is HouseholdGateState.NeedsHousehold -> LaunchStatus.READY
+              // The error destination is usable: it exposes retry and account sign-out.
+              state is HouseholdGateState.Error -> LaunchStatus.READY
+              else -> LaunchStatus.WAITING
+            })
         LaunchedEffect(session) { gateViewModel.updateSession(session) }
         val navController = rememberNavController()
         val complete = {

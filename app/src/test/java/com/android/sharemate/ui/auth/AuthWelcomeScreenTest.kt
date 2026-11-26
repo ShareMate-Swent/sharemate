@@ -221,6 +221,7 @@ class AuthWelcomeScreenTest {
     val app = compose.activity
     compose.onNodeWithText(app.getString(R.string.auth_welcome_title)).assertExists()
     compose.onNodeWithText(app.getString(R.string.auth_welcome_description)).assertExists()
+    compose.onNodeWithTag(AuthTestTags.BRAND_HEADER).assertExists()
     compose
         .onNodeWithTag(AuthTestTags.GOOGLE_SIGN_IN)
         .assertTextEquals(app.getString(R.string.auth_google_sign_in))

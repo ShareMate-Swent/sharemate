@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.notifications.push
 
 import com.android.sharemate.model.auth.AuthRepository
@@ -31,6 +32,7 @@ class PushTokenCleaningAuthRepository(
     private val registrar: PushTokenRegistrar,
     private val scope: CoroutineScope,
     private val cleanupTimeoutMillis: Long,
+    private val beforeSignOut: suspend (String) -> Unit = {},
 ) : AuthRepository by delegate {
   @Volatile private var pendingSignOut: Job? = null
 
@@ -40,7 +42,14 @@ class PushTokenCleaningAuthRepository(
       delegate.signOut()
       return
     }
-    pendingSignOut = scope.launch { removeTokenThenSignOut(userId) }
+    pendingSignOut =
+        scope.launch {
+          try {
+            beforeSignOut(userId)
+          } finally {
+            removeTokenThenSignOut(userId)
+          }
+        }
   }
 
   private suspend fun removeTokenThenSignOut(userId: String) {

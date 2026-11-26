@@ -108,7 +108,7 @@ class OwnershipDisplayEmulatorTest {
           vm.uiState.value.ownerNames[alice] == "Alice" &&
           vm.uiState.value.ownerNames[bob] == "Bob"
     }
-    compose.onNodeWithTag(C.Tag.fridge_sharing_badge_prefix + aliceId).assertTextEquals("Personal")
+    compose.onNodeWithTag(C.Tag.fridge_sharing_badge_prefix + aliceId).assertTextEquals("Yours")
     compose
         .onNodeWithTag(C.Tag.fridge_owner_name_prefix + aliceId)
         .assertTextEquals("Owner: Alice (you)")
@@ -160,9 +160,7 @@ class OwnershipDisplayEmulatorTest {
     compose.waitUntil(10_000) {
       vm.uiState.value.ownerNames[owner] == "Private pseudo" && vm.uiState.value.items.size == 1
     }
-    compose
-        .onNodeWithTag(C.Tag.fridge_owner_name_prefix + itemId)
-        .assertTextEquals("Owner: Private pseudo (you)")
+    compose.onNodeWithTag(C.Tag.fridge_owner_name_prefix + itemId).assertDoesNotExist()
     runBlocking {
       firestore
           .collection(FirestoreCollections.PROFILES)
@@ -171,9 +169,7 @@ class OwnershipDisplayEmulatorTest {
           .await()
     }
     compose.waitUntil(10_000) { vm.uiState.value.ownerNames[owner] == "Renamed pseudo" }
-    compose
-        .onNodeWithTag(C.Tag.fridge_owner_name_prefix + itemId)
-        .assertTextEquals("Owner: Renamed pseudo (you)")
+    compose.onNodeWithTag(C.Tag.fridge_owner_name_prefix + itemId).assertDoesNotExist()
     assertEquals(listOf(itemId), vm.uiState.value.items.map { it.id })
   }
 

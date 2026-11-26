@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.assertIsDisplayed
@@ -28,6 +30,7 @@ import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.profile.UserProfile
 import com.android.sharemate.model.profile.UserProfileRepository
+import com.android.sharemate.model.receipt.*
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptCorrection
@@ -44,6 +47,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -94,11 +98,25 @@ class ReceiptHistoryFlowTest {
             itemRepository = UnusedItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository =
+                object : ReceiptCloudRepository {
+                  override fun observe(
+                      ownerId: String,
+                      householdId: String
+                  ): Flow<List<ReceiptCloudEntry>> = flow {
+                    throw ReceiptCloudPermanentException(IllegalStateException("Access revoked"))
+                  }
+                })
       }
     }
 
     historyCard(firstId, 2).assertExists()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.SYNC_ERROR).assertIsDisplayed()
+    compose
+        .onAllNodesWithText(compose.activity.getString(R.string.receipt_sync_failed))
+        .assertCountEquals(1)
     historyCard(secondId, 2).performClick()
     compose.onAllNodesWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW)[0].performClick()
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertIsDisplayed()
@@ -143,7 +161,9 @@ class ReceiptHistoryFlowTest {
             itemRepository = pendingItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
 
@@ -179,17 +199,19 @@ class ReceiptHistoryFlowTest {
             sharedHousehold = true,
             showBalances = true,
             financeRepository = finances,
-            onOpenBalances = { balancesOpened[0] = true })
+            onOpenBalances = { balancesOpened[0] = true },
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose
-        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_action), substring = true)
+        .onNodeWithText(compose.activity.getString(R.string.scan_receipt), substring = true)
         .performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
     compose.onNodeWithTag("receipt_back").performClick()
     compose.onNodeWithTag(com.android.sharemate.ui.finance.BalancesTestTags.ENTRY).performClick()
     compose.runOnIdle { assertTrue(balancesOpened[0]) }
-    compose.onNodeWithText("You owe 0.00 CHF").assertIsDisplayed()
+    compose.onNodeWithText("All settled up").assertIsDisplayed()
     compose.runOnIdle {
       ledger.value =
           HouseholdFinanceSnapshot(
@@ -206,6 +228,89 @@ class ReceiptHistoryFlowTest {
               emptyList())
     }
     compose.onNodeWithText("You’re owed 5.00 CHF").assertIsDisplayed()
+  }
+
+  @Test
+  fun receiptOptionOfTheAddButtonOpensTheReceiptPhotoOnceAndReportsItsCancel() {
+    var handled = 0
+    var cancelled = 0
+    // Like the app, the request comes once the screen shows, and ends once it is handled.
+    val requested = mutableStateOf(false)
+    // Created once: new ids on each recomposition would reset the screen and its photo.
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = {
+              handled++
+              requested.value = false
+            },
+            onScanReceiptCancelled = {
+              cancelled++
+              // Opened on Receipts itself: the app stays on it.
+              false
+            })
+      }
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).assertIsDisplayed()
+    compose.runOnIdle { requested.value = true }
+    compose.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(1, handled)
+      assertEquals(1, cancelled)
+    }
+    // The receipts screen's own scan button is not the add button: no way back to report.
+    compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.BACK).performClick()
+    compose.runOnIdle { assertEquals(1, cancelled) }
+  }
+
+  @Test
+  fun receiptOptionOfTheAddButtonOpensThePhotoOnAReceiptsDetails() {
+    val owner = UUID.randomUUID().toString()
+    val household = UUID.randomUUID().toString()
+    val id = UUID.randomUUID().toString()
+    val rows = listOf(StagedItem("a", "Apple", 1, 100))
+    val store = AndroidInventorySubmissionStore(compose.activity)
+    runBlocking { store.save(InventorySubmission(id, owner, household, rows, draft = true)) }
+    var cancelled = 0
+    val requested = mutableStateOf(false)
+    compose.setContent {
+      MaterialTheme {
+        ReceiptsScreen(
+            itemRepository = UnusedItems,
+            userId = owner,
+            householdId = household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
+            scanReceiptRequested = requested.value,
+            onScanReceiptRequestHandled = { requested.value = false },
+            onScanReceiptCancelled = {
+              cancelled++
+              false
+            })
+      }
+    }
+    historyCard(id).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+
+    // The add button asks for a scan while the receipt's details are open.
+    compose.runOnIdle { requested.value = true }
+    compose.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    // Opened on Receipts itself: the details are still open.
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, cancelled) }
   }
 
   @Test
@@ -234,7 +339,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = sharedHousehold,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     historyCard(id).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
@@ -243,6 +356,9 @@ class ReceiptHistoryFlowTest {
       org.junit.Assert.assertEquals(rows, submitted.single().items)
       org.junit.Assert.assertEquals(id, submitted.single().id)
       org.junit.Assert.assertNull(submitted.single().expense)
+      assertEquals(
+          if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL,
+          submitted.single().sharing)
     }
     runBlocking { org.junit.Assert.assertFalse(store.list(owner, household).single().draft) }
   }
@@ -268,7 +384,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     historyCard(id).performClick()
     val retry = compose.activity.getString(R.string.receipt_sync_retry)
@@ -281,15 +405,138 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun realReceiptEditorAddsBarcodeProductAndKeepsItsEnteredPrice() {
+    var scans = 0
+    val fixture =
+        WorkflowFixture(
+            draft = true,
+            barcodeScanner =
+                com.android.sharemate.model.barcode.BarcodeScanner {
+                  scans++
+                  com.android.sharemate.model.barcode.BarcodeScanResult.Found("1234567890123")
+                },
+            catalog =
+                object : com.android.sharemate.model.product.ProductCatalogRepository {
+                  override suspend fun lookupByBarcode(barcode: String) =
+                      com.android.sharemate.model.product.ProductLookupResult.Found(
+                          com.android.sharemate.model.product.ProductDetails(
+                              barcode, "Barcode oats", null))
+                })
+    fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW).assertDoesNotExist()
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    assertEquals(0, scans)
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
+    val directory = File(compose.activity.cacheDir, "test-fixtures").apply { mkdirs() }
+    val input = File.createTempFile("barcode-review", ".png", directory)
+    val sourceUri =
+        androidx.core.content.FileProvider.getUriForFile(
+            compose.activity, "${compose.activity.packageName}.test-fixtures", input)
+    try {
+      val bitmap =
+          android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888)
+      input.outputStream().use {
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+      }
+      bitmap.recycle()
+      val photo =
+          androidx.lifecycle
+              .ViewModelProvider(compose.activity)[
+                  "receipt-barcode-photo_${fixture.owner}_${fixture.home}",
+                  com.android.sharemate.ui.photo.PhotoPickerViewModel::class.java]
+      compose.runOnIdle { photo.select(sourceUri.toString()) }
+      compose.waitUntil(10_000) {
+        !photo.state.value.busy && (photo.state.value.selection != null || photo.state.value.failed)
+      }
+      org.junit.Assert.assertFalse("Barcode photo import failed", photo.state.value.failed)
+      org.junit.Assert.assertNotNull(photo.state.value.selection)
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+      compose.waitUntil(10_000) { !photo.state.value.visible }
+      // The appended row can be outside the lazy list's viewport on smaller screens.
+      compose
+          .onNodeWithTag(StagingTestTags.LIST)
+          .performScrollTo()
+          .performScrollToNode(hasText("Barcode oats"))
+      compose.onNodeWithText("Barcode oats").performClick()
+      compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+      fixture.backAndKeep()
+      val added = fixture.retained().items.single { it.name == "Barcode oats" }
+      assertEquals(250L, added.priceCents)
+      assertEquals(1, scans)
+      fixture.open()
+      compose
+          .onNodeWithTag(StagingTestTags.LIST)
+          .performScrollTo()
+          .performScrollToNode(hasText("Barcode oats"))
+      compose.onNodeWithText("Barcode oats").assertIsDisplayed()
+    } finally {
+      input.delete()
+    }
+  }
+
+  @Test
+  fun draftWithoutMetadataOrProfilesCanStillKeepLocalEdits() {
+    val fixture = WorkflowFixture(draft = true, metadata = false, purchaseServices = false)
+    fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Recovered draft")
+    fixture.backAndKeep()
+    assertEquals("Recovered draft", fixture.details().title)
+    assertTrue(fixture.retained().draft)
+    assertEquals("Milk", fixture.retained().items.single().name)
+    assertEquals(0, fixture.recorded)
+    assertTrue(fixture.details().draftParticipants.isEmpty())
+  }
+
+  @Test
+  fun savedReceiptWithoutProfilesKeepsRejectedEditsLocal() {
+    val fixture = WorkflowFixture(draft = false, purchaseServices = false)
+    fixture.open()
+    compose.onNodeWithText("Milk").performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    fixture.backAndKeep(waitForHistory = false)
+    compose.onNodeWithTag("receipt_save_draft").assertIsDisplayed()
+    assertEquals(100L, fixture.retained().expense?.totalAmountCents)
+    assertEquals(0, fixture.corrected)
+    compose.onNodeWithTag("receipt_discard").performClick()
+    fixture.awaitHistory()
+    assertEquals(100L, fixture.retained().items.single().priceCents)
+  }
+
+  @Test
+  fun failedDeletionKeepsReceiptOpenAndCanBeRetried() {
+    val fixture = WorkflowFixture(draft = false)
+    fixture.failFirstDeletion = true
+    fixture.open()
+    repeat(2) { attempt ->
+      compose.onNodeWithContentDescription("More receipt actions").performClick()
+      compose.onNodeWithText("Delete receipt").performClick()
+      compose.onNodeWithText("Delete").performClick()
+      compose.waitUntil(10_000) { fixture.deleted == attempt + 1 }
+      if (attempt == 0) {
+        compose.onNodeWithText("Milk").assertIsDisplayed()
+        assertEquals(fixture.id, fixture.retained().id)
+      }
+    }
+    compose.waitUntil(10_000) {
+      compose.onAllNodesWithText("No receipts yet").fetchSemanticsNodes().isNotEmpty()
+    }
+    assertTrue(
+        runBlocking { fixture.store.loadById(fixture.owner, fixture.home, fixture.id) } == null)
+  }
+
+  @Test
   fun editedDraftKeepsItsStatusUntilThePurchaseIsConfirmed() {
     val fixture = WorkflowFixture(draft = true)
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Weekend groceries")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Weekend groceries")
     fixture.backAndKeep()
     assertTrue(fixture.retained().draft)
     assertEquals("Weekend groceries", fixture.details().title)
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Discarded title")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Discarded title")
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     compose.onNodeWithTag("receipt_discard").performClick()
     fixture.awaitHistory()
@@ -318,7 +565,7 @@ class ReceiptHistoryFlowTest {
     fixture.awaitHistory()
     compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Renamed groceries")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Renamed groceries")
     fixture.backAndKeep()
     assertEquals(1, fixture.corrected)
     assertEquals("Renamed groceries", fixture.details().title)
@@ -346,7 +593,9 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithText("Milk").performClick()
     compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
     compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Corrected groceries")
+    compose
+        .onNodeWithTag(ReceiptHistoryTestTags.TITLE)
+        .performTextReplacement("Corrected groceries")
     fixture.failFirstCorrection = true
     fixture.backAndKeep(waitForHistory = false)
     compose.waitUntil(10_000) { fixture.corrected == 1 }
@@ -373,7 +622,17 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("3.00")
     compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().performClick()
+    // Finish the correction between frames: Compose can observe CONFIRMED both before and after it.
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo()
+    compose.mainClock.autoAdvance = false
+    try {
+      compose.onNodeWithTag("staging_confirm_purchase").performClick()
+      compose.waitUntil(10_000) {
+        fixture.corrected == 1 && fixture.retained().expense?.totalAmountCents == 300L
+      }
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
     fixture.awaitHistory()
     assertEquals(1, fixture.corrected)
     assertEquals(300L, fixture.retained().expense?.totalAmountCents)
@@ -481,7 +740,14 @@ class ReceiptHistoryFlowTest {
     return compose.onNodeWithTag("receipt_card_$id").assertIsDisplayed()
   }
 
-  private inner class WorkflowFixture(draft: Boolean, seed: Boolean = true) {
+  private inner class WorkflowFixture(
+      draft: Boolean,
+      seed: Boolean = true,
+      metadata: Boolean = true,
+      purchaseServices: Boolean = true,
+      barcodeScanner: com.android.sharemate.model.barcode.BarcodeScanner? = null,
+      catalog: com.android.sharemate.model.product.ProductCatalogRepository? = null,
+  ) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
     val id = UUID.randomUUID().toString()
@@ -490,6 +756,7 @@ class ReceiptHistoryFlowTest {
     var corrected = 0
     var failFirstCorrection = false
     var deleted = 0
+    var failFirstDeletion = false
 
     init {
       if (seed)
@@ -506,9 +773,10 @@ class ReceiptHistoryFlowTest {
                     expense,
                     !draft,
                     if (draft) ExpenseProgress.QUEUED else ExpenseProgress.CONFIRMED))
-            store.saveDetails(
-                ReceiptDetails(
-                    id, owner, home, "", System.currentTimeMillis(), title = "Groceries"))
+            if (metadata)
+                store.saveDetails(
+                    ReceiptDetails(
+                        id, owner, home, "", System.currentTimeMillis(), title = "Groceries"))
           }
       val items =
           object : ItemRepository by UnusedItems {
@@ -533,6 +801,7 @@ class ReceiptHistoryFlowTest {
 
             override suspend fun deleteReceipt(householdId: String, id: String) {
               deleted++
+              if (failFirstDeletion && deleted == 1) throw java.io.IOException("Offline")
             }
           }
       val profiles =
@@ -545,7 +814,15 @@ class ReceiptHistoryFlowTest {
       compose.setContent {
         MaterialTheme {
           ReceiptsScreen(
-              items, owner, home, true, expenseRepository = expenses, profileRepository = profiles)
+              items,
+              owner,
+              home,
+              true,
+              barcodeScanner = barcodeScanner,
+              productCatalogRepository = catalog,
+              expenseRepository = expenses,
+              receiptCloudRepository = UnusedReceiptCloud,
+              profileRepository = profiles.takeIf { purchaseServices })
         }
       }
     }
@@ -558,7 +835,7 @@ class ReceiptHistoryFlowTest {
       awaitHistory()
       compose.onNodeWithTag("receipt_card_$id").performClick()
       compose.waitUntil(10_000) {
-        compose.onAllNodesWithTag("receipt_title").fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodesWithTag(ReceiptHistoryTestTags.TITLE).fetchSemanticsNodes().isNotEmpty()
       }
       compose.waitUntil(10_000) {
         compose
@@ -595,6 +872,9 @@ class ReceiptHistoryFlowTest {
   }
 
   private object UnusedItems : ItemRepository {
+    override suspend fun getFridgeItemsFromServer(householdId: String, userId: String): List<Item> =
+        error("Server inventory reads are not used in this test")
+
     override fun getFridgeItems(householdId: String, userId: String): Flow<List<Item>> = emptyFlow()
 
     override suspend fun addItem(item: Item): String? = error("No inventory write expected")

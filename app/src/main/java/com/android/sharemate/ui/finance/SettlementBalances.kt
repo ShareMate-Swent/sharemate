@@ -1,7 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +16,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.android.sharemate.R
 import com.android.sharemate.model.finance.Debt
 import com.android.sharemate.model.finance.FinanceAmounts
+import com.android.sharemate.ui.components.AppCard
+import com.android.sharemate.ui.components.AppPrimaryButton
+import com.android.sharemate.ui.theme.Dimens
 import java.math.BigDecimal
 
 /** Settlement presentation; persistence and payment guards belong to the ViewModel. */
@@ -23,6 +28,7 @@ internal fun SettlementBalances(
     onRetry: () -> Unit,
     onSettle: (Debt, Long) -> Boolean,
     onRetrySettlement: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
   var recipient by rememberSaveable { mutableStateOf<String?>(null) }
   val ready = state as? SettlementUiState.Ready
@@ -38,25 +44,50 @@ internal fun SettlementBalances(
         is SettlementUiState.Ready ->
             BalancesUiState.Ready(state.currentUserId, state.summary, state.memberNames)
       }
-  Column {
-    if (ready != null && !ready.isSynced) {
-      Text(stringResource(R.string.settlement_cached_balances))
-    }
-    when (phase) {
-      SettlementPhase.FAILED -> {
-        Text(stringResource(R.string.settlement_uncertain))
-        Button(onClick = onRetrySettlement) { Text(stringResource(R.string.household_retry)) }
+  val cached = ready?.isSynced == false
+  val feedbackMessage =
+      when (phase) {
+        SettlementPhase.FAILED -> R.string.settlement_uncertain
+        SettlementPhase.REJECTED -> R.string.settlement_rejected
+        SettlementPhase.SUBMITTING,
+        SettlementPhase.AWAITING_CONFIRMATION -> R.string.settlement_pending
+        else -> null
       }
-      SettlementPhase.REJECTED ->
-          Text(
-              stringResource(R.string.settlement_rejected), color = MaterialTheme.colorScheme.error)
-      SettlementPhase.SUBMITTING,
-      SettlementPhase.AWAITING_CONFIRMATION -> Text(stringResource(R.string.settlement_pending))
-      else -> Unit
-    }
-    BalancesScreen(
-        balances, onRetry, onSettle = if (canSettle) ({ recipient = it.creditorId }) else null)
-  }
+  BalancesScreen(
+      balances,
+      onRetry,
+      onSettle = if (canSettle) ({ recipient = it.creditorId }) else null,
+      onBack = onBack,
+      feedback =
+          if (cached || feedbackMessage != null) {
+            {
+              AppCard {
+                Column(
+                    modifier = Modifier.padding(vertical = Dimens.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+                      if (cached) {
+                        Text(
+                            stringResource(R.string.settlement_cached_balances),
+                            style = MaterialTheme.typography.bodyLarge)
+                      }
+                      if (feedbackMessage != null) {
+                        Text(
+                            stringResource(feedbackMessage),
+                            color =
+                                if (phase == SettlementPhase.REJECTED)
+                                    MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge)
+                      }
+                      if (phase == SettlementPhase.FAILED) {
+                        AppPrimaryButton(
+                            text = stringResource(R.string.household_retry),
+                            onClick = onRetrySettlement)
+                      }
+                    }
+              }
+            }
+          } else null)
   val debt =
       ready?.summary?.debts?.firstOrNull {
         it.debtorId == ready.currentUserId && it.creditorId == recipient

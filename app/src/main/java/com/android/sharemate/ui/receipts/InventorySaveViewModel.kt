@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sharemate.model.finance.ExpenseRejectedException
@@ -10,7 +11,9 @@ import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.receipt.normalizeReceiptTitle
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptCorrection
 import com.android.sharemate.model.staging.StagedItem
@@ -77,6 +80,7 @@ class InventorySaveViewModel(
     private val householdId: String,
     private val canSave: Boolean = true,
     private val expenses: ExpenseSubmissionRepository? = null,
+    private val itemSharing: ItemSharing = ItemSharing.SHARED,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(InventorySaveState())
   /** Current operation and its retained reviewed rows; server confirmation alone marks success. */
@@ -191,7 +195,8 @@ class InventorySaveViewModel(
                       householdId,
                       purchase.paidBy,
                       purchase.totalCents,
-                      purchase.shares))
+                      purchase.shares),
+              sharing = original.sharing)
         } catch (_: IllegalArgumentException) {
           return false
         }
@@ -200,7 +205,7 @@ class InventorySaveViewModel(
             UUID.randomUUID().toString(),
             original,
             replacement,
-            title.trim().take(80),
+            normalizeReceiptTitle(title),
             originalTitle,
             originalRevision))
     return true
@@ -232,7 +237,8 @@ class InventorySaveViewModel(
             }
           } catch (cancelled: CancellationException) {
             throw cancelled
-          } catch (_: Exception) {
+          } catch (failure: Exception) {
+            logCorrectionFailure("Receipt correction failed", failure)
             if (token == generation)
                 mutableState.value =
                     InventorySaveState(
@@ -254,7 +260,8 @@ class InventorySaveViewModel(
               expense =
                   purchase?.let {
                     SharedExpense(identity, householdId, it.paidBy, it.totalCents, it.shares)
-                  })
+                  },
+              sharing = itemSharing)
         } catch (_: IllegalArgumentException) {
           mutableState.value =
               state.value.copy(phase = InventorySavePhase.FAILED, invalidInput = true)
@@ -375,7 +382,8 @@ class InventorySaveViewModel(
               (pending ?: activeCorrection)?.let(::launchCorrection)
             } catch (cancelled: CancellationException) {
               throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+              logCorrectionFailure("Unable to read pending receipt correction", failure)
               mutableState.value = current.copy(phase = InventorySavePhase.FAILED)
             }
           }
@@ -457,7 +465,13 @@ class InventorySaveViewModel(
   suspend fun beginNewScan(items: List<StagedItem>): Boolean {
     if (!state.value.canStartScan) return false
     val next =
-        InventorySubmission(UUID.randomUUID().toString(), userId, householdId, items, draft = true)
+        InventorySubmission(
+            UUID.randomUUID().toString(),
+            userId,
+            householdId,
+            items,
+            draft = true,
+            sharing = itemSharing)
     val token = ++generation
     observation?.cancel()
     submissionJob?.cancel()
@@ -509,4 +523,9 @@ class InventorySaveViewModel(
           }
         }
   }
+}
+
+/** Exception messages may contain receipt data; retain only the failure type for diagnostics. */
+private fun logCorrectionFailure(message: String, failure: Exception) {
+  Log.w("InventorySave", "$message (${failure.javaClass.simpleName})")
 }

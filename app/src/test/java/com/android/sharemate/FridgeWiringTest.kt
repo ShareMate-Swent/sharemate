@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
@@ -14,6 +15,7 @@ import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.household.HouseholdGateTestTags
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.settings.SettingsTestTags
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -28,7 +30,8 @@ class FridgeWiringTest {
 
   @Test
   fun inventoryIsNotObservedUntilHouseholdIsResolved() {
-    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertExists()
+    compose.onNodeWithTag("launch_reveal").assertExists()
+    compose.onNodeWithTag(HouseholdGateTestTags.LOADING).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
     assertEquals(emptyList<String>(), firebase.observedHouseholds)
     resolve()
@@ -44,6 +47,15 @@ class FridgeWiringTest {
     resolve()
     compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
     compose.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun privateFridgeHasNoChatTab() {
+    resolve(FridgeType.PRIVATE)
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.RECIPES_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
   }
 
   @Test
@@ -63,8 +75,8 @@ class FridgeWiringTest {
     emit("student-home", "Bread")
     compose.onNodeWithText("Bread").assertExists()
     compose.onNodeWithText("Milk").assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
-    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
+    compose.onNodeWithTag(SettingsTestTags.BACK).performClick()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
     compose.onNodeWithText("Bread").assertExists()
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
@@ -74,7 +86,7 @@ class FridgeWiringTest {
   @Test
   fun signOutRemovesInventoryListenerEvenWhenFridgeEntryIsSaved() {
     resolve()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithText(compose.activity.getString(R.string.auth_sign_out)).performClick()
     compose.onNodeWithTag(AuthTestTags.WELCOME).assertExists()
     compose.onNodeWithTag(C.Tag.fridge_type).assertDoesNotExist()
@@ -105,7 +117,7 @@ class FridgeWiringTest {
     resolve()
     emit("student-home", "Old inventory")
     compose.onNodeWithText("Old inventory").assertExists()
-    compose.onNodeWithTag(NavigationTestTags.SETTINGS_TAB).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.runOnIdle {
       firebase.setHousehold("trusted-student-id", "replacement-home")
       val activityStore = compose.activity.viewModelStore

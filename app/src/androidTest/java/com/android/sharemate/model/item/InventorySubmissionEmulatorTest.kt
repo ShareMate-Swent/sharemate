@@ -109,7 +109,13 @@ class InventorySubmissionEmulatorTest {
       runBlocking {
         val shared = households.createHousehold("Home", owner)
         val private = households.createHousehold("Private", owner, FridgeType.PRIVATE)
-        val privateSubmission = submission(private.id)
+        val privateSubmission =
+            InventorySubmission(
+                UUID.randomUUID().toString(),
+                owner,
+                private.id,
+                rows,
+                sharing = ItemSharing.PERSONAL)
         confirm(repository.addItems(privateSubmission))
         assertEquals(
             ItemSharing.PERSONAL.name,

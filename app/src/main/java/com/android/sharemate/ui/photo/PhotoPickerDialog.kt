@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.photo
 
 import android.Manifest
@@ -10,12 +11,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -31,7 +30,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
@@ -42,7 +40,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.android.sharemate.R
-import com.android.sharemate.ui.receipts.ReceiptDesign
+import com.android.sharemate.model.image.MAX_INPUT_PHOTO_PIXELS
+import com.android.sharemate.model.image.PhotoImportRejection
 import com.android.sharemate.ui.receipts.ReceiptExitDialog
 import com.android.sharemate.ui.receipts.ReceiptHeader
 import com.android.sharemate.ui.receipts.ReceiptProgress
@@ -82,10 +81,9 @@ fun PhotoPickerDialog(
         denied = !granted
         if (granted) viewModel.showCamera()
       }
-  val gallery =
-      rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {
-        viewModel.select(it?.toString())
-      }
+  val openGallery =
+      rememberPhotoGalleryLauncher(
+          onResult = { viewModel.select(it.toString()) }, onFailure = viewModel::reportFailure)
   DisposableEffect(lifecycle, waitingForSettings) {
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_RESUME && waitingForSettings) {
@@ -105,7 +103,7 @@ fun PhotoPickerDialog(
         Surface(
             modifier = Modifier.fillMaxSize(),
             color =
-                if (labels.receiptProgress) ReceiptDesign.background
+                if (labels.receiptProgress) MaterialTheme.colorScheme.background
                 else MaterialTheme.colorScheme.surface) {
               Column(
                   Modifier.fillMaxSize()
@@ -125,13 +123,26 @@ fun PhotoPickerDialog(
                             Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.LOADING))
                     if (state.failed)
                         Text(
-                            confirmationError.takeIf { state.confirmationFailed }
-                                ?: stringResource(R.string.photo_picker_failed),
+                            when {
+                              state.confirmationFailed && confirmationError != null ->
+                                  confirmationError
+                              state.galleryImportRejection ==
+                                  PhotoImportRejection.PERSONAL_REQUIREMENTS ->
+                                  stringResource(R.string.personal_photo_invalid)
+                              state.galleryImportRejection == PhotoImportRejection.PIXEL_LIMIT ->
+                                  stringResource(
+                                      R.string.photo_picker_pixel_limit,
+                                      MAX_INPUT_PHOTO_PIXELS / 1_000_000)
+                              else -> stringResource(R.string.photo_picker_failed)
+                            },
                             color = MaterialTheme.colorScheme.error)
                     when (state.page) {
                       PhotoPage.CAMERA ->
                           CameraCapture(
                               enabled = !state.busy,
+                              lens = state.lens,
+                              onSwitchLens = viewModel::switchLens,
+                              mirrorFrontCamera = viewModel.mirrorFrontCamera,
                               onCapture = viewModel::capture,
                               onFailure = {
                                 viewModel.showSources()
@@ -190,7 +201,7 @@ fun PhotoPickerDialog(
                     }
                     if (state.page != PhotoPage.CAMERA)
                         OutlinedButton(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = MaterialTheme.shapes.medium,
                             colors =
                                 ButtonDefaults.outlinedButtonColors(
                                     containerColor = MaterialTheme.colorScheme.surface),
@@ -210,19 +221,11 @@ fun PhotoPickerDialog(
                               else Text(stringResource(R.string.photo_picker_camera))
                             }
                     OutlinedButton(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MaterialTheme.shapes.medium,
                         colors =
                             ButtonDefaults.outlinedButtonColors(
                                 containerColor = MaterialTheme.colorScheme.surface),
-                        onClick = {
-                          try {
-                            gallery.launch(
-                                PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly))
-                          } catch (_: Exception) {
-                            viewModel.reportFailure()
-                          }
-                        },
+                        onClick = openGallery,
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth().testTag(PhotoPickerTestTags.GALLERY)) {
                           if (labels.receiptProgress) ReceiptSourceLabel(false)
@@ -254,27 +257,29 @@ fun PhotoPickerDialog(
 @Composable
 private fun ReceiptSourceLabel(camera: Boolean) {
   Row(
-      Modifier.fillMaxWidth().padding(vertical = 10.dp),
+      Modifier.fillMaxWidth().padding(vertical = Dimens.spacingS),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(color = ReceiptDesign.lavender, shape = RoundedCornerShape(10.dp)) {
-          Icon(
-              if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
-              null,
-              Modifier.padding(10.dp).size(24.dp),
-              tint = ReceiptDesign.purple)
-        }
+      horizontalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = MaterialTheme.shapes.small) {
+              Icon(
+                  if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
+                  null,
+                  Modifier.padding(Dimens.spacingS),
+                  tint = MaterialTheme.colorScheme.primary)
+            }
         Column {
           Text(
               stringResource(
                   if (camera) R.string.receipt_take_photo else R.string.receipt_choose_gallery),
               fontWeight = FontWeight.Bold,
-              color = ReceiptDesign.ink)
+              color = MaterialTheme.colorScheme.onSurface)
           Text(
               stringResource(
                   if (camera) R.string.receipt_camera_hint else R.string.receipt_gallery_hint),
-              fontSize = 12.sp,
-              color = ReceiptDesign.muted)
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       }
 }
@@ -299,8 +304,11 @@ object PhotoPickerTestTags {
   const val CAMERA = "barcode_photo_camera"
   const val GALLERY = "barcode_photo_gallery"
   const val CAPTURE = "barcode_photo_capture"
+  /** Switches between the back and front camera; shown only when the device has both. */
+  const val SWITCH_CAMERA = "photo_picker_switch_camera"
   const val CANCEL = "barcode_photo_cancel"
 }
 
-private const val PREVIEW_MAX_PIXELS = 1280
+/** Maximum requested image dimension, in pixels, for photo picker and attachment previews. */
+internal const val PREVIEW_MAX_PIXELS = 1280
 internal val PhotoFrameHeight = 300.dp

@@ -38,10 +38,10 @@ class PurchaseReviewContentTest {
         StagingScreen(vm, onConfirm = {}, onBack = {}, onConfirmPurchase = { confirmed = it })
       }
     }
-    compose.onNodeWithTag("staging_confirm_purchase").assertIsNotEnabled()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE).assertIsNotEnabled()
     visibleControl("staging_participant_b").performClick().assertIsOn()
     visibleControl("staging_share_b").assertIsDisplayed()
-    visibleControl("staging_confirm_purchase").performClick()
+    visibleControl(StagingTestTags.CONFIRM_PURCHASE).performClick()
     compose.runOnIdle {
       assertEquals("a", confirmed?.paidBy)
       assertEquals(mapOf("b" to 1000L), confirmed?.shares)
@@ -77,7 +77,7 @@ class PurchaseReviewContentTest {
             PurchaseReviewError.MEMBERSHIP_CHANGED to R.string.purchase_membership_changed,
             PurchaseReviewError.NONPOSITIVE_TOTAL to R.string.purchase_positive_total,
             PurchaseReviewError.INVALID_PAYER to R.string.purchase_invalid_payer,
-            PurchaseReviewError.PAYER_MUST_SUBMIT to R.string.purchase_payer_must_submit,
+            PurchaseReviewError.SUBMITTER_NOT_MEMBER to R.string.purchase_submitter_not_member,
             PurchaseReviewError.NO_PARTICIPANTS to R.string.purchase_no_participants,
             PurchaseReviewError.INVALID_PARTICIPANTS to R.string.purchase_invalid_participants,
         )
@@ -113,7 +113,7 @@ class PurchaseReviewContentTest {
     }
     visibleControl("staging_payer_a").performClick().assertIsSelected()
     visibleControl("staging_participant_a").performClick().assertIsOn()
-    visibleControl("staging_confirm_purchase").performClick()
+    visibleControl(StagingTestTags.CONFIRM_PURCHASE).performClick()
     compose.runOnIdle {
       assertEquals("a", confirmed?.paidBy)
       assertEquals(mapOf("a" to 1000L), confirmed?.shares)
