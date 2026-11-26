@@ -2,13 +2,18 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.activity.ComponentActivity
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.model.staging.StagedItem
+import com.android.sharemate.ui.theme.DarkColorScheme
+import com.android.sharemate.ui.theme.DarkStatusColors
+import com.android.sharemate.ui.theme.LightColorScheme
+import com.android.sharemate.ui.theme.LightStatusColors
+import com.android.sharemate.ui.theme.ShareMateTheme
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -23,18 +28,64 @@ class ReceiptDashboardTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
   @Test
+  @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+  fun dashboardUsesLightAndDarkThemeSurfacesAndStatusBadges() {
+    val dark = mutableStateOf(false)
+    val receipts = listOf(receipt(0), receipt(1, false))
+    compose.setContent {
+      ShareMateTheme(darkTheme = dark.value) {
+        ReceiptDashboard(receipts, false, false, {}, {}, {}, {}, null)
+      }
+    }
+    for (isDark in listOf(false, true)) {
+      compose.runOnIdle { dark.value = isDark }
+      val colors = if (isDark) DarkColorScheme else LightColorScheme
+      val status = if (isDark) DarkStatusColors else LightStatusColors
+      for ((receipt, badge) in
+          listOf(receipts[0] to status.expiringSoon, receipts[1] to status.fresh)) {
+        compose
+            .onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST)
+            .performScrollToNode(hasTestTag(ReceiptDashboardTestTags.card(receipt.submission.id)))
+        compose
+            .onNodeWithTag(ReceiptDashboardTestTags.card(receipt.submission.id))
+            .assertIsDisplayed()
+        compose.runOnIdle {
+          val view = compose.activity.window.decorView
+          val bitmap =
+              android.graphics.Bitmap.createBitmap(
+                  view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+          try {
+            view.draw(android.graphics.Canvas(bitmap))
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            for (color in
+                listOf(colors.background, colors.surface, colors.primary, badge.container)) {
+              org.junit.Assert.assertTrue(
+                  "Missing theme color $color in dark=$isDark", pixels.any { it == color.toArgb() })
+            }
+          } finally {
+            bitmap.recycle()
+          }
+        }
+      }
+    }
+  }
+
+  @Test
   fun emptyMessageMatchesSelectedFilter() {
     compose.setContent {
-      MaterialTheme { ReceiptDashboard(emptyList(), false, false, {}, {}, {}, {}, null) }
+      ShareMateTheme(darkTheme = false) {
+        ReceiptDashboard(emptyList(), false, false, {}, {}, {}, {}, null)
+      }
     }
     compose.onNodeWithText("No receipts yet").assertIsDisplayed()
-    compose.onNodeWithTag("receipt_filter_1").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.filter(1)).performClick()
     compose.onNodeWithText("No saved receipts yet").assertIsDisplayed()
     compose.onNodeWithText("No receipts yet").assertDoesNotExist()
-    compose.onNodeWithTag("receipt_filter_2").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.filter(2)).performClick()
     compose.onNodeWithText("No drafts yet").assertIsDisplayed()
     compose.onNodeWithText("No saved receipts yet").assertDoesNotExist()
-    compose.onNodeWithTag("receipt_filter_0").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.filter(0)).performClick()
     compose.onNodeWithText("No receipts yet").assertIsDisplayed()
   }
 
@@ -42,20 +93,20 @@ class ReceiptDashboardTest {
   fun balanceShowsDebtCreditAndZero() {
     val balance = mutableStateOf(0L)
     compose.setContent {
-      MaterialTheme {
+      ShareMateTheme(darkTheme = false) {
         ReceiptDashboard(emptyList(), true, false, {}, {}, {}, {}, null, balance.value)
       }
     }
-    compose.onNodeWithText("You owe 0.00 CHF").assertIsDisplayed()
+    compose.onNodeWithText("All settled up").assertIsDisplayed()
     compose.onNodeWithText("Shared balances").assertDoesNotExist()
-    compose.onNodeWithText("All settled up").assertDoesNotExist()
+    compose.onNodeWithText("You owe 0.00 CHF").assertDoesNotExist()
     compose.runOnIdle { balance.value = -300L }
     compose.onNodeWithText("You owe 3.00 CHF").assertIsDisplayed()
     compose.runOnIdle { balance.value = 400L }
     compose.onNodeWithText("You’re owed 4.00 CHF").assertIsDisplayed()
     compose.onNodeWithText("You owe 0.00 CHF").assertDoesNotExist()
     compose.runOnIdle { balance.value = 0L }
-    compose.onNodeWithText("You owe 0.00 CHF").assertIsDisplayed()
+    compose.onNodeWithText("All settled up").assertIsDisplayed()
   }
 
   @Test
@@ -63,7 +114,9 @@ class ReceiptDashboardTest {
     val phase = mutableStateOf(InventorySavePhase.PENDING)
     var retries = 0
     compose.setContent {
-      MaterialTheme { ReceiptSyncFeedback(null, phase.value, false) { retries++ } }
+      ShareMateTheme(darkTheme = false) {
+        ReceiptSyncFeedback(null, phase.value, false) { retries++ }
+      }
     }
     compose.onNodeWithText("Sync pending").assertIsDisplayed()
     compose.onAllNodesWithTag(InventorySaveTestTags.STATUS).assertCountEquals(1)
@@ -91,7 +144,9 @@ class ReceiptDashboardTest {
   fun cardsUseReceiptTitlesAndDoNotExposeRedundantActions() {
     val receipt = receipt(0).let { it.copy(details = it.details?.copy(title = "Courses Migros")) }
     compose.setContent {
-      MaterialTheme { ReceiptDashboard(listOf(receipt), false, false, {}, {}, {}, {}, {}) }
+      ShareMateTheme(darkTheme = false) {
+        ReceiptDashboard(listOf(receipt), false, false, {}, {}, {}, {}, {})
+      }
     }
     compose.onNodeWithText("Courses Migros").assertIsDisplayed()
     compose.onNodeWithText("Item 0").assertDoesNotExist()
@@ -105,20 +160,22 @@ class ReceiptDashboardTest {
   fun viewMoreAddsTenUntilAllReceiptsAreVisible() {
     val receipts = (0 until 25).map { receipt(it) }
     compose.setContent {
-      MaterialTheme { ReceiptDashboard(receipts, false, false, {}, {}, {}, {}, null) }
+      ShareMateTheme(darkTheme = false) {
+        ReceiptDashboard(receipts, false, false, {}, {}, {}, {}, null)
+      }
     }
-    val list = compose.onNodeWithTag("receipt_history_list")
-    list.performScrollToNode(hasTestTag("receipt_view_more"))
+    val list = compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST)
+    list.performScrollToNode(hasTestTag(ReceiptDashboardTestTags.VIEW_MORE))
     compose.onNodeWithText("Item 9").assertExists()
     compose.onNodeWithText("Item 10").assertDoesNotExist()
-    compose.onNodeWithTag("receipt_view_more").performClick()
-    list.performScrollToNode(hasTestTag("receipt_view_more"))
+    compose.onNodeWithTag(ReceiptDashboardTestTags.VIEW_MORE).performClick()
+    list.performScrollToNode(hasTestTag(ReceiptDashboardTestTags.VIEW_MORE))
     compose.onNodeWithText("Item 19").assertExists()
     compose.onNodeWithText("Item 20").assertDoesNotExist()
-    compose.onNodeWithTag("receipt_view_more").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.VIEW_MORE).performClick()
     list.performScrollToNode(hasText("Item 24"))
     compose.onNodeWithText("Item 24").assertIsDisplayed()
-    compose.onNodeWithTag("receipt_view_more").assertDoesNotExist()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.VIEW_MORE).assertDoesNotExist()
     compose.onNodeWithText("View less").assertDoesNotExist()
   }
 
@@ -127,13 +184,15 @@ class ReceiptDashboardTest {
     val receipts = listOf(receipt(0), receipt(1, false))
     var opened: String? = null
     compose.setContent {
-      MaterialTheme { ReceiptDashboard(receipts, false, false, {}, {}, {}, { opened = it }, null) }
+      ShareMateTheme(darkTheme = false) {
+        ReceiptDashboard(receipts, false, false, {}, {}, {}, { opened = it }, null)
+      }
     }
-    compose.onNodeWithTag("receipt_filter_1").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.filter(1)).performClick()
     compose.onNodeWithText("Item 0").assertDoesNotExist()
     compose.onNodeWithText("Item 1").performClick()
     assertEquals(receipts[1].submission.id, opened)
-    compose.onNodeWithTag("receipt_filter_2").performClick()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.filter(2)).performClick()
     compose.onNodeWithText("Item 1").assertDoesNotExist()
     compose.onNodeWithText("Item 0").assertIsDisplayed()
   }
@@ -151,7 +210,7 @@ class ReceiptDashboardTest {
     var balances = 0
     var retries = 0
     compose.setContent {
-      MaterialTheme {
+      ShareMateTheme(darkTheme = false) {
         ReceiptDashboard(
             listOf(missing, failed, ready),
             true,
@@ -174,12 +233,12 @@ class ReceiptDashboardTest {
     assertEquals(1, scans)
     assertEquals(1, balances)
     assertEquals(1, retries)
-    val list = compose.onNodeWithTag("receipt_history_list")
-    list.performScrollToNode(hasTestTag("receipt_card_${missing.submission.id}"))
-    compose.onNodeWithTag("receipt_card_${missing.submission.id}").assertIsDisplayed()
+    val list = compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST)
+    list.performScrollToNode(hasTestTag(ReceiptDashboardTestTags.card(missing.submission.id)))
+    compose.onNodeWithTag(ReceiptDashboardTestTags.card(missing.submission.id)).assertIsDisplayed()
     assertTimelineIsDrawn()
-    list.performScrollToNode(hasTestTag("receipt_card_${failed.submission.id}"))
-    compose.onNodeWithTag("receipt_card_${failed.submission.id}").assertIsDisplayed()
+    list.performScrollToNode(hasTestTag(ReceiptDashboardTestTags.card(failed.submission.id)))
+    compose.onNodeWithTag(ReceiptDashboardTestTags.card(failed.submission.id)).assertIsDisplayed()
     assertTimelineIsDrawn()
   }
 
@@ -193,7 +252,7 @@ class ReceiptDashboardTest {
     var saves = 0
     var discards = 0
     compose.setContent {
-      MaterialTheme {
+      ShareMateTheme(darkTheme = false) {
         androidx.compose.foundation.layout.Column {
           ReceiptHeader(
               "Review items", { backs++ }, actions = { androidx.compose.material3.Text("Menu") })
@@ -212,7 +271,10 @@ class ReceiptDashboardTest {
                 onDismiss = { showDialog.value = false })
       }
     }
-    compose.onNodeWithTag("receipt_back").performClick()
+    compose
+        .onNodeWithTag(ReceiptDashboardTestTags.BACK)
+        .assertContentDescriptionEquals("Back")
+        .performClick()
     assertEquals(1, backs)
     compose.onNodeWithText("Menu").assertIsDisplayed()
     for (step in 0..3) {
@@ -234,8 +296,8 @@ class ReceiptDashboardTest {
       busy.value = true
       failed.value = true
     }
-    compose.onNodeWithTag("receipt_save_draft").assertIsNotEnabled()
-    compose.onNodeWithTag("receipt_discard").assertIsNotEnabled()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.SAVE_DRAFT).assertIsNotEnabled()
+    compose.onNodeWithTag(ReceiptDashboardTestTags.DISCARD).assertIsNotEnabled()
     compose.onNodeWithText("Could not finish. Try again.").assertIsDisplayed()
     compose.runOnIdle {
       busy.value = false
@@ -254,7 +316,7 @@ class ReceiptDashboardTest {
         view.draw(android.graphics.Canvas(bitmap))
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        org.junit.Assert.assertTrue(pixels.any { it == android.graphics.Color.rgb(110, 75, 195) })
+        org.junit.Assert.assertTrue(pixels.any { it == LightColorScheme.primary.toArgb() })
       } finally {
         bitmap.recycle()
       }

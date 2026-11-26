@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -14,8 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -24,20 +25,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sharemate.R
+import com.android.sharemate.ui.components.AppBackButton
 import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.theme.ShareMateTheme
 import java.text.DateFormat
 import java.util.Date
-
-/** Shared visual tokens for receipt history, review and sharing screens. */
-object ReceiptDesign {
-  val background = Color(0xFFF5F3FA)
-  val purple = Color(0xFF6E4BC3)
-  val ink = Color(0xFF251C35)
-  val muted = Color(0xFF756C82)
-  val border = Color(0xFFE6DEF0)
-  val lavender = Color(0xFFEEE8FA)
-}
 
 @Composable
 internal fun ReceiptExitDialog(
@@ -63,13 +56,15 @@ internal fun ReceiptExitDialog(
         TextButton(
             onClick = onSaveDraft,
             enabled = !busy,
-            modifier = Modifier.testTag("receipt_save_draft")) {
+            modifier = Modifier.testTag(ReceiptDashboardTestTags.SAVE_DRAFT)) {
               Text(saveLabel)
             }
       },
       dismissButton = {
         TextButton(
-            onClick = onDiscard, enabled = !busy, modifier = Modifier.testTag("receipt_discard")) {
+            onClick = onDiscard,
+            enabled = !busy,
+            modifier = Modifier.testTag(ReceiptDashboardTestTags.DISCARD)) {
               Text(discardLabel)
             }
       })
@@ -100,7 +95,7 @@ internal fun ReceiptSyncFeedback(
             Text(
                 stringResource(message),
                 Modifier.weight(1f).testTag(InventorySaveTestTags.STATUS),
-                color = ReceiptDesign.muted)
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (phase !in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING)) {
               TextButton(
                   onClick = onRetry, modifier = Modifier.testTag(InventorySaveTestTags.RETRY)) {
@@ -123,7 +118,8 @@ fun ReceiptProgress(completed: Int) {
               Modifier.weight(1f)
                   .height(5.dp)
                   .background(
-                      if (index < completed) ReceiptDesign.purple else ReceiptDesign.border,
+                      if (index < completed) MaterialTheme.colorScheme.primary
+                      else MaterialTheme.colorScheme.outlineVariant,
                       RoundedCornerShape(5.dp)))
         }
       }
@@ -134,20 +130,16 @@ fun ReceiptProgress(completed: Int) {
 fun ReceiptHeader(
     title: String,
     onBack: (() -> Unit)? = null,
-    backTag: String = "receipt_back",
+    backTag: String = ReceiptDashboardTestTags.BACK,
     actions: @Composable (() -> Unit)? = null,
 ) {
   Box(Modifier.fillMaxWidth().heightIn(min = 52.dp), contentAlignment = Alignment.Center) {
-    if (onBack != null)
-        TextButton(
-            onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).testTag(backTag)) {
-              Text("←", fontSize = 24.sp)
-            }
+    if (onBack != null) AppBackButton(onBack, backTag, Modifier.align(Alignment.CenterStart))
     Text(
         title,
         fontSize = 26.sp,
         fontWeight = FontWeight.Bold,
-        color = ReceiptDesign.ink,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier =
             if (onBack == null)
                 Modifier.align(Alignment.CenterStart).testTag(NavigationTestTags.PAGE_CONTENT)
@@ -168,8 +160,10 @@ internal fun ReceiptDashboard(
     onPurchase: (() -> Unit)?,
     balance: Long? = null,
 ) {
+  val colors = MaterialTheme.colorScheme
+  val status = ShareMateTheme.statusColors
   var filter by rememberSaveable { mutableIntStateOf(0) }
-  var limit by rememberSaveable { mutableIntStateOf(10) }
+  var limit by rememberSaveable { mutableIntStateOf(RECEIPT_PAGE_SIZE) }
   val ordered = receipts.sortedByDescending { it.details?.scannedAtMillis ?: 0L }
   val filtered =
       ordered.filter {
@@ -180,7 +174,9 @@ internal fun ReceiptDashboard(
         }
       }
   LazyColumn(
-      Modifier.fillMaxSize().background(ReceiptDesign.background).testTag("receipt_history_list"),
+      Modifier.fillMaxSize()
+          .background(colors.background)
+          .testTag(ReceiptDashboardTestTags.HISTORY_LIST),
       contentPadding = PaddingValues(16.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { ReceiptHeader(stringResource(R.string.receipts_title)) }
@@ -189,7 +185,8 @@ internal fun ReceiptDashboard(
               onClick = onScan,
               shape = RoundedCornerShape(14.dp),
               modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text("＋ ")
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.scan_receipt), fontWeight = FontWeight.Bold)
               }
         }
@@ -198,37 +195,35 @@ internal fun ReceiptDashboard(
               Surface(
                   onClick = onBalances,
                   shape = RoundedCornerShape(16.dp),
-                  color = Color.Transparent,
+                  color = colors.primaryContainer,
                   modifier = Modifier.fillMaxWidth().testTag(BalancesTestTags.ENTRY)) {
-                    Row(
-                        Modifier.background(
-                                Brush.linearGradient(listOf(Color(0xFFEEE7FA), Color(0xFFF7F2FF))))
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                          Column(Modifier.weight(1f)) {
-                            Text(
-                                if (balance == null)
-                                    stringResource(R.string.receipt_balance_loading)
-                                else
-                                    stringResource(
-                                        if (balance > 0L) R.string.receipt_balance_credit
-                                        else R.string.receipt_balance_owe,
-                                        java.math.BigDecimal.valueOf(balance, 2)
-                                            .abs()
-                                            .toPlainString()),
-                                fontWeight = FontWeight.Bold,
-                                color =
-                                    when {
-                                      balance != null && balance < 0L -> Color(0xFFB3261E)
-                                      balance != null && balance > 0L -> Color(0xFF276443)
-                                      else -> ReceiptDesign.ink
-                                    })
-                          }
-                          Text(
-                              stringResource(R.string.receipt_view_balances) + " →",
-                              color = ReceiptDesign.purple,
-                              fontSize = 12.sp)
-                        }
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                      Column(Modifier.weight(1f)) {
+                        Text(
+                            if (balance == null) stringResource(R.string.receipt_balance_loading)
+                            else if (balance == 0L) stringResource(R.string.receipt_balance_settled)
+                            else
+                                stringResource(
+                                    if (balance > 0L) R.string.receipt_balance_credit
+                                    else R.string.receipt_balance_owe,
+                                    java.math.BigDecimal.valueOf(balance, 2).abs().toPlainString()),
+                            fontWeight = FontWeight.Bold,
+                            color =
+                                when {
+                                  balance != null && balance < 0L -> colors.error
+                                  balance != null && balance > 0L -> status.fresh.content
+                                  else -> colors.onSurface
+                                })
+                      }
+                      Text(
+                          stringResource(R.string.receipt_view_balances),
+                          color = colors.primary,
+                          fontSize = 12.sp)
+                      Icon(
+                          Icons.AutoMirrored.Filled.ArrowForward,
+                          contentDescription = null,
+                          tint = colors.primary)
+                    }
                   }
             }
         item {
@@ -247,26 +242,28 @@ internal fun ReceiptDashboard(
                   Surface(
                       onClick = {
                         filter = index
-                        limit = 10
+                        limit = RECEIPT_PAGE_SIZE
                       },
                       modifier =
                           Modifier.weight(1f)
                               .semantics { selected = filter == index }
-                              .testTag("receipt_filter_$index"),
-                      color = if (filter == index) ReceiptDesign.lavender else Color.White,
+                              .testTag(ReceiptDashboardTestTags.filter(index)),
+                      color = if (filter == index) colors.primaryContainer else colors.surface,
                       shape = RoundedCornerShape(12.dp),
                       border =
                           BorderStroke(
                               1.dp,
-                              if (filter == index) ReceiptDesign.purple
-                              else ReceiptDesign.border)) {
+                              if (filter == index) colors.primary else colors.outlineVariant)) {
                         Column(Modifier.padding(12.dp)) {
                           Text(
                               count.toString(),
                               fontSize = 22.sp,
                               fontWeight = FontWeight.Bold,
-                              color = ReceiptDesign.ink)
-                          Text(stringResource(label), fontSize = 12.sp, color = ReceiptDesign.muted)
+                              color = colors.onSurface)
+                          Text(
+                              stringResource(label),
+                              fontSize = 12.sp,
+                              color = colors.onSurfaceVariant)
                         }
                       }
                 }
@@ -285,7 +282,7 @@ internal fun ReceiptDashboard(
                         2 -> R.string.receipt_empty_drafts
                         else -> R.string.receipt_empty_history
                       }),
-                  color = ReceiptDesign.muted,
+                  color = colors.onSurfaceVariant,
                   modifier = Modifier.padding(vertical = 24.dp))
             }
         filtered
@@ -301,7 +298,7 @@ internal fun ReceiptDashboard(
                 Text(
                     date,
                     fontWeight = FontWeight.Bold,
-                    color = ReceiptDesign.ink,
+                    color = colors.onSurface,
                     modifier = Modifier.padding(top = 12.dp))
               }
               items(rows, key = { it.submission.id }) { receipt ->
@@ -314,7 +311,7 @@ internal fun ReceiptDashboard(
                             Box(
                                 Modifier.width(2.dp).fillMaxHeight().drawBehind {
                                   drawLine(
-                                      ReceiptDesign.border,
+                                      colors.outlineVariant,
                                       Offset(size.width / 2, 0f),
                                       Offset(
                                           size.width / 2,
@@ -324,16 +321,16 @@ internal fun ReceiptDashboard(
                                 })
                             Box(
                                 Modifier.size(8.dp)
-                                    .background(ReceiptDesign.purple, RoundedCornerShape(50)))
+                                    .background(colors.primary, RoundedCornerShape(50)))
                           }
                       Surface(
                           onClick = { onOpen(receipt.submission.id) },
-                          color = Color.White,
+                          color = colors.surface,
                           shape = RoundedCornerShape(17.dp),
-                          border = BorderStroke(1.dp, ReceiptDesign.border),
+                          border = BorderStroke(1.dp, colors.outlineVariant),
                           modifier =
                               Modifier.weight(1f)
-                                  .testTag("receipt_card_${receipt.submission.id}")) {
+                                  .testTag(ReceiptDashboardTestTags.card(receipt.submission.id))) {
                             Column(Modifier.padding(14.dp)) {
                               Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
@@ -341,14 +338,14 @@ internal fun ReceiptDashboard(
                                       receipt.details?.title?.takeIf { it.isNotBlank() }
                                           ?: stringResource(R.string.receipt_untitled),
                                       fontWeight = FontWeight.Bold,
-                                      color = ReceiptDesign.ink,
+                                      color = colors.onSurface,
                                       maxLines = 2)
                                   Text(
                                       pluralStringResource(
                                           R.plurals.receipt_product_count,
                                           receipt.submission.items.size,
                                           receipt.submission.items.size),
-                                      color = ReceiptDesign.muted,
+                                      color = colors.onSurfaceVariant,
                                       fontSize = 12.sp)
                                 }
                                 val label =
@@ -363,9 +360,9 @@ internal fun ReceiptDashboard(
                                     color =
                                         when {
                                           receipt.phase == InventorySavePhase.CONFIRMED ->
-                                              Color(0xFF276443)
-                                          receipt.submission.draft -> Color(0xFF806000)
-                                          else -> ReceiptDesign.purple
+                                              status.fresh.content
+                                          receipt.submission.draft -> status.expiringSoon.content
+                                          else -> colors.primary
                                         },
                                     fontSize = 11.sp,
                                     modifier =
@@ -373,9 +370,10 @@ internal fun ReceiptDashboard(
                                             .background(
                                                 when {
                                                   receipt.phase == InventorySavePhase.CONFIRMED ->
-                                                      Color(0xFFE7F3EA)
-                                                  receipt.submission.draft -> Color(0xFFFFF5D6)
-                                                  else -> ReceiptDesign.lavender
+                                                      status.fresh.container
+                                                  receipt.submission.draft ->
+                                                      status.expiringSoon.container
+                                                  else -> colors.primaryContainer
                                                 },
                                                 RoundedCornerShape(50))
                                             .padding(horizontal = 9.dp, vertical = 5.dp))
@@ -389,7 +387,7 @@ internal fun ReceiptDashboard(
             item {
               TextButton(
                   onClick = { limit = nextReceiptLimit(limit, filtered.size) },
-                  modifier = Modifier.fillMaxWidth().testTag("receipt_view_more")) {
+                  modifier = Modifier.fillMaxWidth().testTag(ReceiptDashboardTestTags.VIEW_MORE)) {
                     Text(stringResource(R.string.receipt_view_more))
                   }
             }
