@@ -25,7 +25,8 @@ import org.robolectric.annotation.Config
 
 /** Same MainActivity wiring, with only the composition-root recipe source replaced. */
 class RecipeRequestTestActivity : MainActivity() {
-  override fun createRecipeRepository(): RecipeRepository = RecipeNavigationFixture.repository
+  override fun createRecipeRepository(userId: String, householdId: String): RecipeRepository =
+      RecipeNavigationFixture.repository
 }
 
 private object RecipeNavigationFixture {

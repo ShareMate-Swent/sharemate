@@ -104,24 +104,24 @@ class MainActivityTest : TestCase() {
   }
 
   @Test
-  fun suggestRecipesFromFridgeOpensTheExistingDestinationAndKeepsItsResult() = run {
+  fun emptyFridgeRecipeRequestOpensTheExistingDestinationAndKeepsItsResult() = run {
     step("Request suggestions from the fridge") {
       composeTestRule.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed().performClick()
       composeTestRule.onNodeWithTag(NavigationTestTags.RECIPES_TAB).assertIsSelected()
       composeTestRule.waitUntil(5_000) {
         composeTestRule
-            .onAllNodes(hasTestTag(RecipesTestTags.LIST))
+            .onAllNodes(hasTestTag(RecipesTestTags.EMPTY))
             .fetchSemanticsNodes()
             .isNotEmpty()
       }
-      composeTestRule.onNodeWithTag(RecipesTestTags.DEMO_NOTICE).assertIsDisplayed()
-      composeTestRule.onNodeWithTag(RecipesTestTags.LIST).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(RecipesTestTags.DEMO_NOTICE).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(RecipesTestTags.EMPTY).assertIsDisplayed()
     }
     step("Revisit Recipes without another button press") {
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
       composeTestRule.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed()
       composeTestRule.onNodeWithTag(NavigationTestTags.RECIPES_TAB).performClick()
-      composeTestRule.onNodeWithTag(RecipesTestTags.LIST).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(RecipesTestTags.EMPTY).assertIsDisplayed()
       composeTestRule.onNodeWithTag(RecipesTestTags.IDLE).assertDoesNotExist()
     }
   }

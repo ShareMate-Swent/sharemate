@@ -95,3 +95,46 @@ node --test functions/private-household.unit.test.js
 firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate-ci \
   "node --test functions/private-household.test.js"
 ```
+
+## Recipe service (#338)
+
+`suggestRecipes` is an authenticated v2 callable in `europe-west6`. It checks current
+household membership and accepts only `{ householdId, ingredients }`: 1–50 names,
+each at most 80 characters. Android reuses `RecipeIngredientProvider`; empty stock
+returns an empty list locally. Availability and expiry rules are not duplicated.
+
+The callable sends at most 10 results through Spoonacular `findByIngredients`,
+with an 8-second provider timeout inside the 15-second function timeout. It returns
+only `{ recipes: [{ id, title, imageUrl, matchingIngredientCount,
+missingIngredientCount }] }`. Images may be null. Provider diagnostics and credentials
+are never returned or logged. Quota errors use `resource-exhausted`, provider timeout
+uses `deadline-exceeded`, and other provider failures use safe `internal` errors.
+Android maps transport unavailability to `Offline`, other failures to `ServiceError`,
+and always preserves coroutine cancellation. Cancellation does not guarantee that an
+already executing backend request stops or avoids consuming provider quota.
+
+Deployment requires an authorized maintainer to create `SPOONACULAR_API_KEY` using
+Firebase Secret Manager and deploy `suggestRecipes`. This change does not configure
+any real secret or deploy anything. Never put the key in Android resources, BuildConfig,
+source control, test fixtures or CI. Missing configuration fails safely. Configure
+provider attribution according to the selected Spoonacular plan before release;
+quota is shared across the project. Authentication is not a per-user rate limiter.
+No persistent recipe cache, instructions, new matching algorithm or expiry ranking
+is included. Ingredient names are forwarded without translation.
+
+Deterministic tests need no Spoonacular account or real key:
+
+```sh
+node --test functions/recipes.unit.test.js
+# With local Auth and Firestore emulators (demo project only):
+node --test functions/recipes.test.js
+```
+
+The unit tests inject HTTP transport. The integration test verifies emulator-issued
+identity tokens and current Firestore membership against the service handler, using
+injected HTTP responses; it does not invoke a deployed function or Secret Manager.
+The empty-fridge Android navigation regression also needs no provider key.
+
+AI assistance: OpenAI Codex generated the service adapter, callable, tests and this
+section. Automated results are recorded in the delivery report; no personal human
+verification or manual emulator test is asserted here.
