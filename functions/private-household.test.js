@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { before, after, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { initializeApp, deleteApp } = require("firebase-admin/app");
@@ -115,8 +116,12 @@ test("leaves other households, other items, photos and personal receipts alone",
 
 test("deleting twice succeeds, and the second call removes the caller's own leftovers only", async () => {
   const id = `${owner.localId}:twice`;
-  await seedHousehold(id, owner);
-  await call({ householdId: id });
+  // Start with an absent household to isolate the callable's retry scope. Deleting a real
+  // household also starts the asynchronous household-wide receipt cleanup, which may
+  // legitimately remove another owner's seeded leftovers while this test is asserting them.
+  // The full-deletion test above covers deletion of an existing household.
+  assert.equal(await exists(`households/${id}`), false);
+  assert.deepEqual(await call({ householdId: id }), { result: { householdId: id } });
   await db.doc("items/twice-mine").set({ householdId: id, ownerId: owner.localId });
   await db.doc("receipts/twice-mine").set({ householdId: id, ownerId: owner.localId });
   await db.doc(`users/${owner.localId}/receiptBackups/twice-mine`).set({ householdId: id, ownerId: owner.localId });

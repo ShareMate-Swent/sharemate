@@ -104,7 +104,10 @@ class FridgeWiringTest {
       firebase.setHousehold("other-user", "other-home")
       firebase.setSession("other-user")
     }
-    compose.waitUntil { firebase.observedHouseholds == listOf("student-home", "other-home") }
+    // Drain main-thread work after IO activation before reading the observation recorded by the UI.
+    compose.waitUntil {
+      compose.runOnIdle { firebase.observedHouseholds == listOf("student-home", "other-home") }
+    }
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
     compose.onNodeWithText("Old inventory").assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
@@ -135,7 +138,10 @@ class FridgeWiringTest {
           .single()
           .refresh()
     }
-    compose.waitUntil { firebase.observedHouseholds.contains("replacement-home") }
+    // Reading the list alone does not drain Robolectric's main looper after IO activation.
+    compose.waitUntil {
+      compose.runOnIdle { firebase.observedHouseholds.contains("replacement-home") }
+    }
     compose.waitUntil { firebase.removedListeners.contains("student-home") }
     compose.onNodeWithText("Old inventory").assertDoesNotExist()
     emit("replacement-home", "Replacement inventory")
@@ -155,6 +161,10 @@ class FridgeWiringTest {
 
   private fun resolve(type: FridgeType = FridgeType.SHARED) {
     compose.runOnIdle { firebase.resolveInitialHousehold(type = type) }
+    // Household activation finishes on IO after the Firebase task resolves.
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(C.Tag.fridge_add_item).fetchSemanticsNodes().size == 1
+    }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
   }
 

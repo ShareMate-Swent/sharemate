@@ -30,6 +30,52 @@ import org.mockito.Mockito.*
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiptHistoryViewModelTest {
   @Test
+  fun householdInvalidationClearsVisibleHistoryAndRejectsDelayedRefresh() = runTest {
+    val memory = MemoryStore()
+    val invalidated = MutableSharedFlow<Unit>()
+    val store =
+        object : InventorySubmissionStore by memory {
+          override fun invalidations(householdId: String) = invalidated
+        }
+    memory.save(
+        InventorySubmission(
+            "00000000-0000-0000-0000-000000000099", "owner", "home", emptyList(), draft = true))
+    var cloudCancelled = false
+    val cloud =
+        object : com.android.sharemate.model.receipt.ReceiptCloudRepository {
+          override fun observe(ownerId: String, householdId: String) =
+              kotlinx.coroutines.flow.flow<
+                  List<com.android.sharemate.model.receipt.ReceiptCloudEntry>> {
+                try {
+                  kotlinx.coroutines.awaitCancellation()
+                } finally {
+                  cloudCancelled = true
+                }
+              }
+        }
+    val history =
+        ReceiptHistoryViewModel(
+            mock(ItemRepository::class.java),
+            store,
+            mock(ReceiptPhotoStore::class.java),
+            "owner",
+            "home",
+            mock(ExpenseSubmissionRepository::class.java),
+            ReceiptHistorySync(store, cloud, "owner", "home"),
+            { 0L })
+    owners += ViewModelStore().also { it.put("history", history) }
+    runCurrent()
+    assertEquals(1, history.receipts.value.size)
+    assertFalse(cloudCancelled)
+    invalidated.emit(Unit)
+    runCurrent()
+    assertTrue(history.receipts.value.isEmpty())
+    assertTrue(cloudCancelled)
+    history.refresh()
+    assertTrue(history.receipts.value.isEmpty())
+  }
+
+  @Test
   fun savedDeletionKeepsLocalDataOnServerFailureAndCanRetry() = runTest {
     val store = MemoryStore()
     val photos = mock(ReceiptPhotoStore::class.java)

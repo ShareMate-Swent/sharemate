@@ -18,6 +18,7 @@ import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.navigation.AddItemSheetTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.receipts.ReceiptDashboardTestTags
+import com.android.sharemate.ui.recipes.RecipesTestTags
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
@@ -81,11 +82,11 @@ class MainActivityTest : TestCase() {
         }
         if (testTag == NavigationTestTags.RECIPES_TAB) {
           composeTestRule
-              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_coming_soon))
+              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_idle))
               .assertExists()
         } else {
           composeTestRule
-              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_coming_soon))
+              .onNodeWithText(composeTestRule.activity.getString(R.string.recipes_idle))
               .assertDoesNotExist()
         }
       }
@@ -99,6 +100,29 @@ class MainActivityTest : TestCase() {
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertDoesNotExist()
       composeTestRule.onNodeWithTag(SettingsTestTags.BACK).performClick()
       composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
+    }
+  }
+
+  @Test
+  fun emptyFridgeRecipeRequestOpensTheExistingDestinationAndKeepsItsResult() = run {
+    step("Request suggestions from the fridge") {
+      composeTestRule.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed().performClick()
+      composeTestRule.onNodeWithTag(NavigationTestTags.RECIPES_TAB).assertIsSelected()
+      composeTestRule.waitUntil(5_000) {
+        composeTestRule
+            .onAllNodes(hasTestTag(RecipesTestTags.EMPTY))
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
+      composeTestRule.onNodeWithTag(RecipesTestTags.DEMO_NOTICE).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(RecipesTestTags.EMPTY).assertIsDisplayed()
+    }
+    step("Revisit Recipes without another button press") {
+      composeTestRule.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick()
+      composeTestRule.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(NavigationTestTags.RECIPES_TAB).performClick()
+      composeTestRule.onNodeWithTag(RecipesTestTags.EMPTY).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(RecipesTestTags.IDLE).assertDoesNotExist()
     }
   }
 

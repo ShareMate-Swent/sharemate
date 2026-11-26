@@ -27,6 +27,17 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseReceiptCloudRepositoryTest {
   @Test
+  fun departureUploadPreservesAnExistingPhotoWhenItsLocalDownloadFailed() =
+      runTest(dispatcher) {
+        `when`(existing.exists()).thenReturn(true)
+        `when`(existing.getBoolean("draft")).thenReturn(true)
+        `when`(existing.getBoolean("photoReady")).thenReturn(true)
+        repository.upload(ReceiptCloudEntry(receipt(), ReceiptDetails(id, "owner", "home", "", 1)))
+        verify(tx).set(eq(ref), argThat<Map<String, Any?>> { it["photoReady"] == true })
+        verifyNoInteractions(remote)
+      }
+
+  @Test
   fun permanentPhotoErrorsStayLocalAndNewSnapshotsCancelTheirRetries() =
       runTest(dispatcher) {
         val download = mock(FileDownloadTask::class.java)

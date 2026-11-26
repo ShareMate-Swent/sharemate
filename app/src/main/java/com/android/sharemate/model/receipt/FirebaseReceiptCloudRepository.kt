@@ -23,6 +23,7 @@ class FirebaseReceiptCloudRepository(
     private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ReceiptCloudRepository {
+  private val lifecycle = ReceiptCacheLifecycle(context)
   private val codec = AndroidInventorySubmissionStore(context, scheduleSync = false)
 
   override fun observeDeleted(ownerId: String, householdId: String): Flow<Set<String>> =
@@ -36,6 +37,7 @@ class FirebaseReceiptCloudRepository(
   /** Uploads one durable local snapshot. A deletion tombstone prevents stale resurrection. */
   suspend fun upload(entry: ReceiptCloudEntry) {
     val receipt = entry.submission
+    check(lifecycle.isCurrent(receipt.householdId))
     val details = entry.details
     if (!receipt.draft && receipt.expenseProgress != ExpenseProgress.CONFIRMED) return
     val photoPath = ReceiptCloudPaths.photo(receipt.householdId, receipt.ownerId, receipt.id)
@@ -61,7 +63,11 @@ class FirebaseReceiptCloudRepository(
           val existing = tx.get(ref)
           // Saved content is updated only by correctReceipt's atomic ledger transaction.
           if (!existing.exists() || existing.getBoolean(InventorySubmissionFields.DRAFT) == true)
-              tx.set(ref, payload)
+              tx.set(
+                  ref,
+                  payload +
+                      (ReceiptCloudPaths.PHOTO_READY to
+                          (existing.getBoolean(ReceiptCloudPaths.PHOTO_READY) == true)))
         }
         .await()
     if (details.photoUri.startsWith("file:")) {
@@ -113,6 +119,7 @@ class FirebaseReceiptCloudRepository(
                       var pending: File? = null
                       try {
                         val photo = photoFile(entry.submission.id)
+                        lifecycle.trackDownload(ownerId, householdId, entry.submission.id)
                         pending = File.createTempFile("receipt-download-", ".tmp", photo.parentFile)
                         val receipt = entry.submission
                         val download =
@@ -131,7 +138,9 @@ class FirebaseReceiptCloudRepository(
                           download.addOnCompleteListener({ it.run() }) { temporary.delete() }
                           throw cancelled
                         }
-                        check(pending.length() > 0 && pending.renameTo(photo))
+                        lifecycle.write(householdId) {
+                          check(pending.length() > 0 && pending.renameTo(photo))
+                        }
                         updates.withLock {
                           entries =
                               entries.toMutableList().also {

@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import coil.ImageLoader
 import coil.imageLoader
 import com.android.sharemate.R
+import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.theme.Dimens
 
 /**
@@ -50,9 +51,14 @@ fun RecipesContent(
         Text(
             stringResource(R.string.recipes_title),
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.semantics { heading() })
+            modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT).semantics { heading() })
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
           when (state) {
+            RecipesUiState.Idle ->
+                Text(
+                    stringResource(R.string.recipes_idle),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag(RecipesTestTags.IDLE))
             RecipesUiState.Loading ->
                 CircularProgressIndicator(
                     modifier =
@@ -102,6 +108,8 @@ fun RecipesContent(
 
 /** Stable status tags and ID-based tags for cards and their individual accessible elements. */
 object RecipesTestTags {
+  const val IDLE = "recipes_idle"
+  const val DEMO_NOTICE = "recipes_demo_notice"
   const val LOADING = "recipes_loading"
   const val EMPTY = "recipes_empty"
   const val ERROR = "recipes_error"

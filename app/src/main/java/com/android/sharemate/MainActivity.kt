@@ -31,10 +31,12 @@ import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -74,6 +76,9 @@ import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.FirebaseReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptCloudRepository
+import com.android.sharemate.model.recipes.FirebaseRecipeRepository
+import com.android.sharemate.model.recipes.RecipeIngredientProvider
+import com.android.sharemate.model.recipes.RecipeRepository
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -125,6 +130,7 @@ import com.android.sharemate.ui.profile.ProfilePhotoPicker
 import com.android.sharemate.ui.profile.profilePhotoCamera
 import com.android.sharemate.ui.receipts.ReceiptsScreen
 import com.android.sharemate.ui.recipes.RecipesScreen
+import com.android.sharemate.ui.recipes.RecipesViewModel
 import com.android.sharemate.ui.settings.NotificationSettingsScreen
 import com.android.sharemate.ui.settings.NotificationSettingsViewModel
 import com.android.sharemate.ui.settings.SettingsScreen
@@ -145,6 +151,10 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 
 open class MainActivity : ComponentActivity() {
@@ -174,8 +184,22 @@ open class MainActivity : ComponentActivity() {
         beforeSignOut = { fridgeImageCache.purgeAccount(it) })
   }
   private val householdRepository: HouseholdRepository by lazy {
-    HouseholdRepositoryFirestore(FirebaseFirestore.getInstance())
+    val lifecycle = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(applicationContext)
+    com.android.sharemate.model.receipt.ReceiptHouseholdRepository(
+        HouseholdRepositoryFirestore(FirebaseFirestore.getInstance()),
+        evict = { viewer, home ->
+          lifecycle.evict(viewer, home)
+          androidx.work.WorkManager.getInstance(applicationContext)
+              .cancelAllWorkByTag("receipt-household-$home")
+        },
+        activate = lifecycle::activate,
+        beforeLeave = { owner, home ->
+          com.android.sharemate.model.receipt.ReceiptDepartureSync.create(
+                  applicationContext, itemRepository)
+              .prepare(owner, home)
+        })
   }
+
   private val profileRepository: UserProfileRepository by lazy {
     FirestoreUserProfileRepository(FirebaseFirestore.getInstance())
   }
@@ -208,6 +232,31 @@ open class MainActivity : ComponentActivity() {
         FirebaseAuth.getInstance(),
         FirebaseFirestore.getInstance(),
         lazy { FirebaseMessaging.getInstance() })
+  }
+
+  /** Binds service requests to the same immutable context as the graph-owned ViewModel. */
+  protected open fun createRecipeRepository(userId: String, householdId: String): RecipeRepository =
+      FirebaseRecipeRepository(
+          { FirebaseFunctions.getInstance(FirebaseRecipeRepository.REGION) },
+          RecipeIngredientProvider(itemRepository),
+          householdId,
+          userId)
+
+  /** One request state across tabs, owned and cleared by this session's navigation graph. */
+  @Composable
+  private fun recipesViewModel(
+      navController: NavHostController,
+      entry: NavBackStackEntry,
+      session: AuthSession,
+      household: Household,
+  ): RecipesViewModel {
+    val owner = remember(entry) { navController.getBackStackEntry(navController.graph.id) }
+    return viewModel(
+        viewModelStoreOwner = owner,
+        factory =
+            viewModelFactory {
+              initializer { RecipesViewModel(createRecipeRepository(session.uid, household.id)) }
+            })
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -269,6 +318,22 @@ open class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    lifecycleScope.launch {
+      authRepository.session.collectLatest { session ->
+        if (session != null) {
+          val cache = com.android.sharemate.model.receipt.ReceiptCacheLifecycle(applicationContext)
+          com.android.sharemate.model.receipt
+              .ReceiptMembershipObserver(FirebaseFirestore.getInstance())
+              .observe(session.uid)
+              .onEach { homes -> cache.reconcile(session.uid, homes) }
+              .retryWhen { _, _ ->
+                delay(5_000)
+                true
+              }
+              .collect {}
+        }
+      }
+    }
     pendingDeepLinkIntent =
         if (savedInstanceState != null) {
           savedInstanceState.getString(PENDING_DEEP_LINK_URI)?.let {
@@ -377,8 +442,13 @@ open class MainActivity : ComponentActivity() {
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.FRIDGE)) { entry ->
                         val fridgeViewModel = fridgeViewModel(entry, session, household)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                          val recipes = recipesViewModel(navController, entry, session, household)
                           FridgeScreen(
                               viewModel = fridgeViewModel,
+                              onSuggestRecipes = {
+                                recipes.requestRecipes()
+                                navController.selectTab(TopLevelDestination.RECIPES)
+                              },
                               householdName = household.name,
                               headerTrailing = {
                                 ProfileEntry(
@@ -393,9 +463,9 @@ open class MainActivity : ComponentActivity() {
                       }
                   composable(
                       TopLevelDestination.RECIPES.route,
-                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) {
+                      deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) { entry ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          RecipesScreen()
+                          RecipesScreen(recipesViewModel(navController, entry, session, household))
                         }
                       }
                   composable(
@@ -684,6 +754,16 @@ internal fun clearFridgeNavigation(navController: NavHostController) {
       }
   if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
     fridgeEntry.viewModelStore.clear()
+  }
+  // Graph-owned requests must stop even if Navigation retains entries during a transition.
+  val graphEntry =
+      try {
+        navController.getBackStackEntry(navController.graph.id)
+      } catch (_: IllegalArgumentException) {
+        null
+      }
+  if (graphEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
+    graphEntry.viewModelStore.clear()
   }
   // Only the routes in the graph: a private fridge registers no chat route.
   TopLevelDestination.entries

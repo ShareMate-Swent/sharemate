@@ -1,5 +1,9 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <resources>
+    <string name="fridge_suggest_recipes">Suggest Recipes</string>
+    <string name="recipes_idle">Tap Suggest Recipes in your fridge to get started.</string>
+    <string name="recipes_demo_notice">Demo suggestions — not connected to your fridge yet.</string>
+    <string name="recipes_demo_title">Example vegetable soup</string>
     <string name="recipes_loading">Loading recipe suggestions</string>
     <string name="recipes_empty">No recipes found for these ingredients.</string>
     <string name="recipes_error">Recipes could not be loaded. Please try again.</string>

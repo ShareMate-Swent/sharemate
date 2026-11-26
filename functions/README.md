@@ -5,7 +5,7 @@ Run the backend tests from the repository root with Node.js 22 and Firebase CLI 
 
 ```sh
 npm --prefix functions install
-firebase emulators:exec --only auth,firestore,functions --project demo-sharemate "npm --prefix functions test"
+firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate "npm --prefix functions test"
 ```
 
 The callable runs in `europe-west6`. Create the Android adapter with a Firebase Functions
@@ -35,6 +35,19 @@ the full test command above also runs callable/Firestore emulator scenarios.
 The household join batch now submits the invite code with the private profile link.
 Deploy the rules in coordination with the Android update. An older client cannot add a
 new membership under the tightened rules because its join batch omits this field.
+
+`cleanupDeletedHouseholdReceipts` runs only after a household document is deleted. It removes
+the household's `receiptBackups`, legacy `receipts`, and `receiptPhotos/{householdId}/` files.
+Leaving a shared household does not trigger this function and keeps its history available to
+the remaining members. Cleanup is asynchronous and retries on failure; membership rules revoke
+access immediately. Deploy the new function alongside the Android update. This change does not
+alter whether the household feature permits leaving a private household.
+
+The Android client clears its receipt cache and photos after a successful departure. Before
+leaving a shared household it finishes uploading its own retained receipts; an upload failure
+keeps membership and local history intact. Server membership snapshots also reconcile local
+caches after a departure or deletion on another device. Offline snapshots never trigger eviction.
+Rejoining downloads the household history again through the existing receipt synchronization.
 
 Receipt backups are scoped by their immutable creator at
 `users/{ownerId}/receiptBackups/{receiptId}`. Deploy `firestore.indexes.json` with the rules and
@@ -82,3 +95,74 @@ node --test functions/private-household.unit.test.js
 firebase emulators:exec --only auth,firestore,storage,functions --project demo-sharemate-ci \
   "node --test functions/private-household.test.js"
 ```
+
+## Recipe service (#338)
+
+`suggestRecipes` is an authenticated v2 callable in `europe-west6`. It checks current
+household membership and accepts only `{ householdId, ingredients }`: 1–50 names,
+each at most 80 characters. Android reuses `RecipeIngredientProvider`; empty stock
+returns an empty list locally. Availability and expiry rules are not duplicated.
+
+The callable sends at most 10 results through Spoonacular `findByIngredients`,
+with an 8-second provider timeout inside the 15-second function timeout. It returns
+only `{ recipes: [{ id, title, imageUrl, matchingIngredientCount,
+missingIngredientCount }] }`. Images may be null. Provider diagnostics and credentials
+are never returned or logged. Quota errors use `resource-exhausted`, provider timeout
+uses `deadline-exceeded`, and other provider failures use safe `internal` errors.
+Android maps transport unavailability to `Offline`, other failures to `ServiceError`,
+and always preserves coroutine cancellation. Cancellation does not guarantee that an
+already executing backend request stops or avoids consuming provider quota.
+
+Deployment requires an authorized maintainer to create `SPOONACULAR_API_KEY` using
+Firebase Secret Manager and deploy `suggestRecipes`. This change does not configure
+any real secret or deploy anything. Never put the key in Android resources, BuildConfig,
+source control, test fixtures or CI. Missing configuration fails safely. Configure
+provider attribution according to the selected Spoonacular plan before release;
+quota is shared across the project. Server-side per-UID limits are described below.
+No persistent recipe cache, instructions, new matching algorithm or expiry ranking
+is included. Ingredient names are forwarded without translation.
+
+Deterministic tests need no Spoonacular account or real key:
+
+```sh
+node --test functions/recipes.unit.test.js
+# With local Auth and Firestore emulators (demo project only):
+node --test functions/recipes.test.js
+```
+
+The unit tests inject HTTP transport. The integration test verifies emulator-issued
+identity tokens and current Firestore membership against the service handler, using
+injected HTTP responses; it does not invoke a deployed function or Secret Manager.
+The empty-fridge Android navigation regression also needs no provider key.
+
+AI assistance: OpenAI Codex generated the service adapter, callable, tests and this
+section. Automated results are recorded in the delivery report; no personal human
+verification or manual emulator test is asserted here.
+
+### Server-side recipe request limits
+
+Before calling Spoonacular, the service reserves usage atomically in Firestore:
+
+- Maximum 10 accepted requests per Firebase Auth UID per UTC calendar day.
+- At least 30 seconds between accepted requests, including across midnight.
+- The UID comes from callable authentication, never from request data; changing
+  household or ingredients does not reset the budget. Different UIDs are independent.
+- Each transaction retry re-reads the trusted server clock. A new UTC day resets the
+  count, but preserves the previous timestamp for the cooldown; clock rollback cannot
+  reopen a previous allowance.
+- Authentication, input validation, membership and service-key configuration are
+  checked before reservation. Exceeding a limit returns a safe `resource-exhausted`.
+  A failed/corrupt Firestore reservation returns a safe `internal` and never invokes
+  Spoonacular. Provider failures and timeouts do not refund a committed reservation.
+
+`recipeRequestBudgets/{sha256(uid)}` stores only the UTC day, accepted count and last
+accepted server time in milliseconds. The existing Firestore rules grant no client
+access to this root collection. Emulator tests assert that owners, other users and
+unauthenticated clients cannot read, list, create, update or delete these records.
+Only the Admin SDK writes them. The limits do not alter the `suggestRecipes` request
+or success-response contract. Android already maps `RESOURCE_EXHAUSTED` to ServiceError.
+
+Tests require no real API key. Run all `*.unit.test.js` files for policy and failure
+cases, and `recipe-rate-limit.test.js` with local Auth/Firestore emulators for real
+transaction contention, UTC rollover, UID isolation and client-rule enforcement.
+Per-UID protection does not impose an overall project budget across multiple accounts.

@@ -27,6 +27,9 @@ enum class RecipesErrorReason {
 
 /** Explicit request states. [Success] with an empty list renders the empty state. */
 sealed interface RecipesUiState {
+  /** No request has been made; opening the Recipes tab alone must not fetch data. */
+  data object Idle : RecipesUiState
+
   data object Loading : RecipesUiState
 
   data class Success(val recipes: List<RecipeCardData>) : RecipesUiState

@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 const { onCall } = require("firebase-functions/v2/https");
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
 
 const SETTLEMENT_REGION = "europe-west6";
 /** Deleting a large household can take a while; the default 60 seconds is too short. */
@@ -47,9 +48,26 @@ exports.deleteReceipt = onCall({ region: SETTLEMENT_REGION }, (request) => {
     path => getStorage().bucket().file(path).delete({ ignoreNotFound: true }));
 });
 
+exports.cleanupDeletedHouseholdReceipts = onDocumentDeleted(
+  { document: "households/{householdId}", region: SETTLEMENT_REGION, retry: true },
+  async event => {
+    const firestore = database();
+    const { getStorage } = require("firebase-admin/storage");
+    await require("./household-receipt-cleanup").cleanupHouseholdReceipts(
+      firestore, getStorage().bucket(), event.params.householdId);
+  });
+
 exports.deletePrivateHousehold = onCall(
   { region: SETTLEMENT_REGION, timeoutSeconds: DELETE_HOUSEHOLD_TIMEOUT_SECONDS },
   (request) => {
     const { deletePrivateHousehold } = require("./private-household");
     return deletePrivateHousehold(database(), bucket(), request.auth?.uid, request.data);
   });
+
+// The key is bound only to this callable and never shipped with the Android application.
+const { defineSecret } = require("firebase-functions/params");
+const recipeApiKey = defineSecret("SPOONACULAR_API_KEY");
+exports.suggestRecipes = onCall(
+  { region: "europe-west6", secrets: [recipeApiKey], timeoutSeconds: 15 },
+  request => require("./recipes").suggestRecipes(
+    database(), request.auth?.uid, request.data, () => recipeApiKey.value()));
