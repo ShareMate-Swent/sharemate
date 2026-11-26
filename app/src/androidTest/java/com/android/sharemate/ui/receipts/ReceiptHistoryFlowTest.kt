@@ -183,7 +183,7 @@ class ReceiptHistoryFlowTest {
       }
     }
     compose
-        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_action), substring = true)
+        .onNodeWithText(compose.activity.getString(R.string.scan_receipt), substring = true)
         .performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
     compose.onNodeWithTag("receipt_back").performClick()
