@@ -74,7 +74,10 @@ class EditProfileScreenTest {
     show()
 
     composeTestRule.onNodeWithText(text(R.string.edit_profile_title)).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(EditProfileTestTags.BACK).performClick()
+    composeTestRule
+        .onNodeWithTag(EditProfileTestTags.BACK)
+        .assertContentDescriptionEquals(text(R.string.edit_profile_back))
+        .performClick()
 
     assertEquals(1, backs)
   }

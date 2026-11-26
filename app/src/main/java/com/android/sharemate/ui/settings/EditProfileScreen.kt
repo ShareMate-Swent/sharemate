@@ -119,6 +119,7 @@ fun EditProfileScreen(
             title = stringResource(R.string.edit_profile_title),
             onBack = onBack,
             backTestTag = EditProfileTestTags.BACK,
+            backContentDescription = stringResource(R.string.edit_profile_back),
         )
         PhotoSection(state, onChangePhoto, onRetryPhotoUpload)
         PseudoSection(state, onPseudoChanged, onRetryLoadPseudo)

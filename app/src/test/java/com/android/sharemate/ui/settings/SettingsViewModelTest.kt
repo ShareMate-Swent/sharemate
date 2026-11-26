@@ -382,6 +382,26 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun aPseudoReadThatEndsAfterAnAccountSwitchDoesNotReplaceTheNewUsersPseudo() = runTest {
+    pseudos.pseudosByUser["user-2"] = "Second user's pseudo"
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val gate = CompletableDeferred<Unit>()
+    pseudos.getGates["user-1"] = gate
+    pseudos.pseudosByUser["user-1"] = "Old pseudo"
+
+    viewModel.refreshPseudo()
+    advanceUntilIdle()
+    auth.sessionState.value =
+        AuthSession("user-2", "new@example.com", provider = SignInProvider.GOOGLE)
+    advanceUntilIdle()
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals("Second user's pseudo", viewModel.state.value.savedPseudo)
+  }
+
+  @Test
   fun refreshingThePseudoWithoutASessionDoesNothing() = runTest {
     auth = FakeAuthRepository(null)
     val viewModel = createViewModel()

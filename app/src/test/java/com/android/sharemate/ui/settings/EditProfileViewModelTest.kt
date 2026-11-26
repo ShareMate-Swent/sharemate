@@ -22,6 +22,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -337,14 +338,208 @@ class EditProfileViewModelTest {
     assertEquals(listOf("upload cancelled", "delete copy-a"), events)
   }
 
+  @Test
+  fun retryingTheLoadIsIgnoredWithoutALoadFailureAndWithoutASession() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val requests = pseudos.requestedUserIds.size
+
+    viewModel.retryLoadPseudo()
+    advanceUntilIdle()
+    assertEquals(requests, pseudos.requestedUserIds.size)
+
+    auth = FakeAuthRepository(null)
+    val signedOut = createViewModel()
+    advanceUntilIdle()
+    signedOut.retryLoadPseudo()
+    advanceUntilIdle()
+    assertEquals(requests, pseudos.requestedUserIds.size)
+  }
+
+  @Test
+  fun aSecondRetryWhileTheLoadRunsDoesNotStartAnotherRequest() = runTest {
+    pseudos.getFailure = IllegalStateException("offline")
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    pseudos.getFailure = null
+    val gate = CompletableDeferred<Unit>()
+    pseudos.getGates["user-1"] = gate
+    val requests = pseudos.requestedUserIds.size
+
+    viewModel.retryLoadPseudo()
+    viewModel.retryLoadPseudo()
+    advanceUntilIdle()
+    assertEquals(requests + 1, pseudos.requestedUserIds.size)
+    assertTrue(viewModel.state.value.isLoadingPseudo)
+
+    gate.complete(Unit)
+    advanceUntilIdle()
+    assertFalse(viewModel.state.value.isLoadingPseudo)
+  }
+
+  @Test
+  fun savingWithoutASessionDoesNothing() = runTest {
+    auth = FakeAuthRepository(null)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.updatePseudo("New pseudo")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals(0, pseudos.saveCount)
+    assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
+  fun aSaveRejectedForAnotherReasonShowsTheGenericSaveError() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    pseudos.setFailure = AuthException(AuthError.NETWORK)
+
+    viewModel.updatePseudo("New pseudo")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    assertEquals(EditProfilePseudoError.SAVE_FAILED, viewModel.state.value.pseudoError)
+    assertEquals("Inge", viewModel.state.value.savedPseudo)
+  }
+
+  @Test
+  fun aSaveThatEndsAfterAnAccountSwitchDoesNotTouchTheNewUsersPseudo() = runTest {
+    pseudos.pseudosByUser["user-2"] = "Second"
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val gate = CompletableDeferred<Unit>()
+    pseudos.setGate = gate
+    viewModel.updatePseudo("New pseudo")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+    assertTrue(viewModel.state.value.isSavingPseudo)
+
+    auth.sessionState.value =
+        AuthSession("user-2", "new@example.com", provider = SignInProvider.GOOGLE)
+    advanceUntilIdle()
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals("Second", viewModel.state.value.pseudo)
+    assertEquals("Second", viewModel.state.value.savedPseudo)
+    assertNull(viewModel.state.value.pseudoError)
+    assertFalse(viewModel.state.value.isSavingPseudo)
+  }
+
+  @Test
+  fun aFailedSaveThatEndsAfterAnAccountSwitchDoesNotShowAnErrorToTheNewUser() = runTest {
+    pseudos.pseudosByUser["user-2"] = "Second"
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val gate = CompletableDeferred<Unit>()
+    pseudos.setGate = gate
+    pseudos.setFailure = IllegalStateException("offline")
+    viewModel.updatePseudo("New pseudo")
+    viewModel.savePseudo()
+    advanceUntilIdle()
+
+    auth.sessionState.value =
+        AuthSession("user-2", "new@example.com", provider = SignInProvider.GOOGLE)
+    advanceUntilIdle()
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertNull(viewModel.state.value.pseudoError)
+  }
+
+  @Test
+  fun aSecondPhotoCopiedWhileTheFirstUploadsIsDeletedWithoutUploading() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+    val gate = CompletableDeferred<Unit>()
+    files.copyGate = gate
+    photos.next = { CompletableDeferred<Result<String>>().await() }
+
+    val first = launch { viewModel.changePhoto("content://a", fromCamera = false) }
+    val second = launch { viewModel.changePhoto("content://b", fromCamera = false) }
+    advanceUntilIdle()
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf("user-1" to File("copy-a")), photos.uploads)
+    assertEquals(listOf(File("copy-b")), files.deleted)
+    first.cancel()
+    second.cancel()
+  }
+
+  @Test
+  fun aPhotoCopiedAfterTheViewModelWasClearedIsDeletedAndNeverUploaded() = runTest {
+    val store = ViewModelStore()
+    val viewModel = createViewModel().also { store.put("edit_profile", it) }
+    advanceUntilIdle()
+    val gate = CompletableDeferred<Unit>()
+    files.copyGate = gate
+    launch { viewModel.changePhoto("content://a", fromCamera = false) }
+    advanceUntilIdle()
+
+    store.clear()
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf(File("copy-a")), files.deleted)
+    assertTrue(photos.uploads.isEmpty())
+  }
+
+  @Test
+  fun clearingWithoutAPendingPhotoDeletesNothing() = runTest {
+    val store = ViewModelStore()
+    createViewModel().also { store.put("edit_profile", it) }
+    advanceUntilIdle()
+
+    store.clear()
+    advanceUntilIdle()
+
+    assertTrue(files.deleted.isEmpty())
+    assertTrue(events.isEmpty())
+  }
+
+  @Test
+  fun retryingAnUploadWithoutAFailedPhotoDoesNothing() = runTest {
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.retryPhotoUpload()
+    advanceUntilIdle()
+
+    assertTrue(photos.uploads.isEmpty())
+    assertFalse(viewModel.state.value.isUploadingPhoto)
+  }
+
+  @Test
+  fun aPhotoPickedWithoutASessionIsCopiedButNotUploaded() = runTest {
+    auth = FakeAuthRepository(null)
+    val viewModel = createViewModel()
+    advanceUntilIdle()
+
+    viewModel.changePhoto("content://a", fromCamera = false)
+    advanceUntilIdle()
+    viewModel.retryPhotoUpload()
+    advanceUntilIdle()
+
+    assertEquals(1, files.copies.size)
+    assertTrue(photos.uploads.isEmpty())
+    assertFalse(viewModel.state.value.isUploadingPhoto)
+    assertNull(viewModel.state.value.photoError)
+  }
+
   /** Copies `scheme://name` to `copy-name`; deletions are recorded, never performed. */
   private inner class FakeFiles : PersonalPhotoFiles {
     val copies = mutableListOf<Pair<String, Boolean>>()
     val deleted = mutableListOf<File>()
     var failure: Exception? = null
+    var copyGate: CompletableDeferred<Unit>? = null
 
     override suspend fun copy(uri: String, fromCamera: Boolean): File {
       copies += uri to fromCamera
+      copyGate?.await()
       failure?.let { throw it }
       return File("copy-" + uri.substringAfter("://"))
     }
@@ -414,8 +609,11 @@ class EditProfileViewModelTest {
       return if (pseudosByUser.containsKey(userId)) pseudosByUser[userId] else stored
     }
 
+    var setGate: CompletableDeferred<Unit>? = null
+
     override suspend fun setPseudo(userId: String, pseudo: String) {
       saveCount++
+      setGate?.await()
       setFailure?.let { throw it }
       stored = pseudo.trim()
       pseudosByUser[userId] = stored
