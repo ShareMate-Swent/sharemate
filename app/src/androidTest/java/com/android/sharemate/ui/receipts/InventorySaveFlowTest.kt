@@ -629,7 +629,11 @@ class InventorySaveFlowTest {
         .onNodeWithText(context.getString(R.string.staging_title))
         .performScrollTo()
         .performClick()
-    compose.onNodeWithText("Corrected milk").assertExists()
+    // The fixed total leaves less room in this compact viewport; the item can start off-screen.
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag(StagingTestTags.item("milk")))
+    compose.onNodeWithText("Corrected milk").assertIsDisplayed()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
     compose.onNodeWithTag(StagingTestTags.LIST).performScrollToNode(hasTestTag(StagingTestTags.ADD))
     compose.onNodeWithTag(StagingTestTags.ADD).assertIsDisplayed().assertIsNotEnabled()
