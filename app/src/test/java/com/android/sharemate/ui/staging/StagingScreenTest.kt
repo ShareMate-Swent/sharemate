@@ -55,15 +55,15 @@ class StagingScreenTest {
         StagingContent(StagingUiState(), {}, {}, {}, {}, onDeleteReceipt = { deleted++ })
       }
     }
-    composeTestRule.onNodeWithTag("receipt_more").performClick()
-    composeTestRule.onNodeWithTag("receipt_delete").performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_MORE).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_DELETE).performClick()
     composeTestRule
         .onNode(hasText("Are you sure you want to delete this receipt?"))
         .assertIsDisplayed()
     composeTestRule.onNode(hasText("Cancel")).performClick()
     assertEquals(0, deleted)
-    composeTestRule.onNodeWithTag("receipt_more").performClick()
-    composeTestRule.onNodeWithTag("receipt_delete").performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_MORE).performClick()
+    composeTestRule.onNodeWithTag(StagingTestTags.RECEIPT_DELETE).performClick()
     composeTestRule.onNode(hasText("Delete", substring = false)).performClick()
     assertEquals(1, deleted)
   }
@@ -167,6 +167,12 @@ class StagingScreenTest {
             continueToSharing = true)
       }
     }
+    composeTestRule
+        .onNode(
+            hasText(
+                composeTestRule.activity.getString(R.string.staging_quantity, milk.quantity)) and
+                hasAnyAncestor(hasTestTag(StagingTestTags.item("milk"))))
+        .assertIsDisplayed()
     composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
     composeTestRule.runOnIdle {
       assertEquals("milk", vm.state.value.draft?.itemId)
@@ -207,7 +213,50 @@ class StagingScreenTest {
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     composeTestRule.onNodeWithTag("staging_share_a").assertIsDisplayed()
     composeTestRule.onNodeWithTag("staging_payer_b").assertIsNotEnabled()
-    composeTestRule.onNodeWithTag("staging_confirm_purchase").assertDoesNotExist()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE).assertDoesNotExist()
+  }
+
+  @Test
+  fun bothPurchaseLayoutsShareConfirmationGuards() {
+    val separate = mutableStateOf(false)
+    val enabled = mutableStateOf(true)
+    val hasCallback = mutableStateOf(true)
+    val vm = StagingViewModel(listOf(milk), PurchaseReview.forUser("a", mapOf("a" to "Alex")))
+    var submissions = 0
+    composeTestRule.setContent {
+      MaterialTheme {
+        StagingScreen(
+            vm,
+            {},
+            {},
+            actionsEnabled = enabled.value,
+            onConfirmPurchase =
+                if (hasCallback.value) {
+                  { submissions++ }
+                } else null,
+            separateSharingStep = separate.value)
+      }
+    }
+    for (separated in listOf(false, true)) {
+      composeTestRule.runOnIdle { separate.value = separated }
+      if (separated) composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+      val confirm = composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
+      confirm.performScrollTo().assertIsNotEnabled()
+      composeTestRule.runOnIdle { vm.toggleParticipant("a") }
+      confirm.assertIsEnabled().performClick()
+      composeTestRule.runOnIdle { enabled.value = false }
+      confirm.assertIsNotEnabled()
+      composeTestRule.runOnIdle {
+        enabled.value = true
+        hasCallback.value = false
+      }
+      confirm.assertIsNotEnabled()
+      composeTestRule.runOnIdle {
+        hasCallback.value = true
+        vm.toggleParticipant("a")
+      }
+    }
+    assertEquals(2, submissions)
   }
 
   @Test
@@ -225,7 +274,7 @@ class StagingScreenTest {
       }
     }
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    composeTestRule.onNodeWithTag("staging_confirm_purchase").assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE).assertIsNotEnabled()
     assertNull(confirmed)
     assertNull(purchase)
     composeTestRule.onNodeWithTag(StagingTestTags.BACK).performClick()
@@ -295,14 +344,14 @@ class StagingScreenTest {
     }
     composeTestRule.onNodeWithTag("staging_payer_b").performScrollTo().performClick()
     composeTestRule
-        .onNodeWithTag("staging_confirm_purchase")
+        .onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
     assertEquals("b", purchase?.paidBy)
     composeTestRule.onNodeWithTag("staging_payer_a").performScrollTo().performClick()
     composeTestRule
-        .onNodeWithTag("staging_confirm_purchase")
+        .onNodeWithTag(StagingTestTags.CONFIRM_PURCHASE)
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
@@ -351,7 +400,7 @@ class StagingScreenTest {
 
     composeTestRule.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
 
-    composeTestRule.onNodeWithTag("staging_missing_prices").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(StagingTestTags.MISSING_PRICES).assertIsDisplayed()
     assertNull(confirmed)
   }
 

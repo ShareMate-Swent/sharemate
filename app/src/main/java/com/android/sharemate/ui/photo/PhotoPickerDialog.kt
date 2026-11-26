@@ -15,7 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -31,7 +30,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.ActivityCompat
@@ -203,7 +201,7 @@ fun PhotoPickerDialog(
                     }
                     if (state.page != PhotoPage.CAMERA)
                         OutlinedButton(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = MaterialTheme.shapes.medium,
                             colors =
                                 ButtonDefaults.outlinedButtonColors(
                                     containerColor = MaterialTheme.colorScheme.surface),
@@ -223,7 +221,7 @@ fun PhotoPickerDialog(
                               else Text(stringResource(R.string.photo_picker_camera))
                             }
                     OutlinedButton(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = MaterialTheme.shapes.medium,
                         colors =
                             ButtonDefaults.outlinedButtonColors(
                                 containerColor = MaterialTheme.colorScheme.surface),
@@ -259,15 +257,16 @@ fun PhotoPickerDialog(
 @Composable
 private fun ReceiptSourceLabel(camera: Boolean) {
   Row(
-      Modifier.fillMaxWidth().padding(vertical = 10.dp),
+      Modifier.fillMaxWidth().padding(vertical = Dimens.spacingS),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      horizontalArrangement = Arrangement.spacedBy(Dimens.spacingS)) {
         Surface(
-            color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = MaterialTheme.shapes.small) {
               Icon(
                   if (camera) Icons.Outlined.CameraAlt else Icons.Outlined.PhotoLibrary,
                   null,
-                  Modifier.padding(10.dp).size(24.dp),
+                  Modifier.padding(Dimens.spacingS),
                   tint = MaterialTheme.colorScheme.primary)
             }
         Column {
@@ -279,7 +278,7 @@ private fun ReceiptSourceLabel(camera: Boolean) {
           Text(
               stringResource(
                   if (camera) R.string.receipt_camera_hint else R.string.receipt_gallery_hint),
-              fontSize = 12.sp,
+              style = MaterialTheme.typography.bodySmall,
               color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       }

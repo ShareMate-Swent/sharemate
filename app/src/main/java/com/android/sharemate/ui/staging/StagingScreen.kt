@@ -19,9 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -54,7 +54,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.android.sharemate.R
 import com.android.sharemate.model.staging.Prices
 import com.android.sharemate.model.staging.StagedItem
@@ -63,6 +62,7 @@ import com.android.sharemate.ui.receipts.ReceiptProgress
 import com.android.sharemate.ui.theme.Dimens
 
 private const val ITEM_NAME_MAX_LINES = 1
+private const val COMPACT_ITEM_NAME_MAX_LINES = 2
 
 object StagingTestTags {
   const val BACK = "staging_back"
@@ -71,6 +71,18 @@ object StagingTestTags {
   const val CONFIRM = "staging_confirm"
   const val ADD = "staging_add"
   const val TOTAL = "staging_total"
+  /** Confirms the reviewed payer and participant allocation. */
+  const val CONFIRM_PURCHASE = "staging_confirm_purchase"
+  /** Opens the receipt actions menu. */
+  const val RECEIPT_MORE = "receipt_more"
+  /** Requests receipt deletion, before confirmation. */
+  const val RECEIPT_DELETE = "receipt_delete"
+  /** Receipt actions popup surface. */
+  const val RECEIPT_MENU = "receipt_menu"
+  /** Receipt deletion confirmation surface. */
+  const val RECEIPT_DELETE_DIALOG = "receipt_delete_dialog"
+  /** Explains why items without prices cannot be confirmed. */
+  const val MISSING_PRICES = "staging_missing_prices"
 
   fun item(id: String) = "staging_item_$id"
 
@@ -98,6 +110,15 @@ fun StagingScreen(
   val state = viewModel.state.collectAsState().value
   var sharing by rememberSaveable { mutableStateOf(false) }
   val stagedPurchase = separateSharingStep && state.purchase != null
+  val canConfirmPurchase =
+      actionsEnabled &&
+          state.canConfirm &&
+          state.purchasePreview?.error == null &&
+          onConfirmPurchase != null
+  val confirmPurchase: () -> Unit = {
+    viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
+    Unit
+  }
   BackHandler(enabled = stagedPurchase && sharing) { sharing = false }
   if (stagedPurchase && sharing) {
     Column(
@@ -118,19 +139,10 @@ fun StagingScreen(
               viewModel::toggleParticipant,
               actionsEnabled)
           if (!savedPurchase)
-              Button(
-                  shape = RoundedCornerShape(14.dp),
-                  onClick = {
-                    viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
-                  },
-                  enabled =
-                      actionsEnabled &&
-                          state.canConfirm &&
-                          state.purchasePreview?.error == null &&
-                          onConfirmPurchase != null,
-                  modifier = Modifier.fillMaxWidth().testTag("staging_confirm_purchase")) {
-                    Text(stringResource(R.string.receipt_save_purchase))
-                  }
+              ConfirmPurchaseButton(
+                  canConfirmPurchase,
+                  confirmPurchase,
+                  stringResource(R.string.receipt_save_purchase))
           statusContent()
         }
   } else {
@@ -156,19 +168,8 @@ fun StagingScreen(
                     viewModel::toggleParticipant,
                     actionsEnabled,
                 )
-                Button(
-                    onClick = {
-                      viewModel.confirmedPurchase()?.let { onConfirmPurchase?.invoke(it) }
-                    },
-                    enabled =
-                        actionsEnabled &&
-                            state.canConfirm &&
-                            state.purchasePreview?.error == null &&
-                            onConfirmPurchase != null,
-                    modifier = Modifier.fillMaxWidth().testTag("staging_confirm_purchase"),
-                ) {
-                  Text(stringResource(R.string.purchase_confirm))
-                }
+                ConfirmPurchaseButton(
+                    canConfirmPurchase, confirmPurchase, stringResource(R.string.purchase_confirm))
               }
           statusContent()
         },
@@ -242,12 +243,11 @@ fun StagingContent(
             if (!continueToSharing)
                 item(key = DESCRIPTION_KEY) {
                   previewContent()
-                  if (!continueToSharing)
-                      Text(
-                          text = stringResource(R.string.staging_description),
-                          style = MaterialTheme.typography.bodyLarge,
-                          color = MaterialTheme.colorScheme.onSurfaceVariant,
-                      )
+                  Text(
+                      text = stringResource(R.string.staging_description),
+                      style = MaterialTheme.typography.bodyLarge,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
                   Spacer(Modifier.height(Dimens.spacingM))
                 }
             if (state.items.isEmpty()) {
@@ -278,56 +278,38 @@ fun StagingContent(
             if (!continueToSharing)
                 item(key = STATUS_KEY) {
                   if (onAddItem != null && !savedPurchase) {
-                    androidx.compose.material3.TextButton(
-                        onClick = onAddItem,
-                        enabled = actionsEnabled,
-                        modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
-                          Text("＋ " + stringResource(R.string.staging_add_item))
-                        }
+                    AddItemButton(onAddItem, actionsEnabled)
                   }
-                  state.purchasePreview
-                      ?.totalCents
-                      ?.takeUnless { continueToSharing }
-                      ?.let {
-                        Text(
-                            stringResource(R.string.purchase_total, Prices.format(it)),
-                            modifier = Modifier.padding(top = 24.dp, bottom = 12.dp),
-                            fontWeight = FontWeight.Bold)
-                      }
+                  state.purchasePreview?.totalCents?.let {
+                    PurchaseTotal(
+                        it, Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
+                  }
                   statusContent()
                 }
           }
         }
         if (continueToSharing) {
           if (onAddItem != null && !savedPurchase) {
-            androidx.compose.material3.TextButton(
-                onClick = onAddItem,
-                enabled = actionsEnabled,
-                modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
-                  Text("＋ " + stringResource(R.string.staging_add_item))
-                }
+            AddItemButton(onAddItem, actionsEnabled)
           }
           statusContent()
         }
-        Spacer(Modifier.height(if (continueToSharing) 24.dp else Dimens.spacingM))
+        Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))
         if (continueToSharing) {
           state.purchasePreview?.totalCents?.let {
-            Text(
-                stringResource(R.string.purchase_total, Prices.format(it)),
-                modifier = Modifier.padding(bottom = 8.dp).testTag(StagingTestTags.TOTAL),
-                fontWeight = FontWeight.Bold)
+            PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
           }
         }
         if (showMissingPrices) {
           Text(
               stringResource(R.string.staging_missing_prices),
               color = MaterialTheme.colorScheme.error,
-              modifier = Modifier.testTag("staging_missing_prices"),
+              modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
           )
         }
         if (!savedPurchase || continueToSharing)
             Button(
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.medium,
                 onClick = { if (state.hasMissingPrices) showMissingPrices = true else onConfirm() },
                 enabled =
                     (state.items.isNotEmpty() && state.draft == null && actionsEnabled) ||
@@ -344,20 +326,52 @@ fun StagingContent(
 }
 
 @Composable
+private fun AddItemButton(onClick: () -> Unit, enabled: Boolean) {
+  TextButton(
+      onClick = onClick,
+      enabled = enabled,
+      modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.ADD)) {
+        Icon(Icons.Default.Add, contentDescription = null)
+        Spacer(Modifier.width(Dimens.spacingXs))
+        Text(stringResource(R.string.staging_add_item))
+      }
+}
+
+@Composable
+private fun PurchaseTotal(totalCents: Long, modifier: Modifier = Modifier) {
+  Text(
+      stringResource(R.string.purchase_total, Prices.format(totalCents)),
+      modifier.testTag(StagingTestTags.TOTAL),
+      fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun ConfirmPurchaseButton(enabled: Boolean, onClick: () -> Unit, label: String) {
+  Button(
+      onClick = onClick,
+      enabled = enabled,
+      shape = MaterialTheme.shapes.medium,
+      modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.CONFIRM_PURCHASE)) {
+        Text(label)
+      }
+}
+
+@Composable
 private fun ReceiptDeleteActions(onDeleteReceipt: (() -> Unit)?) {
   if (onDeleteReceipt == null) return
   var menuOpen by rememberSaveable { mutableStateOf(false) }
   var confirmOpen by rememberSaveable { mutableStateOf(false) }
   Box {
-    IconButton(onClick = { menuOpen = true }, modifier = Modifier.testTag("receipt_more")) {
-      Icon(
-          Icons.Outlined.MoreVert,
-          contentDescription = stringResource(R.string.receipt_more_actions))
-    }
+    IconButton(
+        onClick = { menuOpen = true }, modifier = Modifier.testTag(StagingTestTags.RECEIPT_MORE)) {
+          Icon(
+              Icons.Outlined.MoreVert,
+              contentDescription = stringResource(R.string.receipt_more_actions))
+        }
     DropdownMenu(
         expanded = menuOpen,
         onDismissRequest = { menuOpen = false },
-        modifier = Modifier.background(androidx.compose.ui.graphics.Color.White)) {
+        modifier = Modifier.testTag(StagingTestTags.RECEIPT_MENU)) {
           DropdownMenuItem(
               text = {
                 Text(
@@ -368,12 +382,12 @@ private fun ReceiptDeleteActions(onDeleteReceipt: (() -> Unit)?) {
                 menuOpen = false
                 confirmOpen = true
               },
-              modifier = Modifier.testTag("receipt_delete"))
+              modifier = Modifier.testTag(StagingTestTags.RECEIPT_DELETE))
         }
   }
   if (confirmOpen)
       AlertDialog(
-          containerColor = androidx.compose.ui.graphics.Color.White,
+          modifier = Modifier.testTag(StagingTestTags.RECEIPT_DELETE_DIALOG),
           onDismissRequest = { confirmOpen = false },
           text = { Text(stringResource(R.string.receipt_delete_confirmation)) },
           confirmButton = {
@@ -415,17 +429,17 @@ private fun StagedItemRow(
             .clickable(enabled = enabled, onClick = onClick)
             .testTag(StagingTestTags.item(item.id))) {
           Row(
-              Modifier.fillMaxWidth().padding(vertical = 14.dp),
+              Modifier.fillMaxWidth().padding(vertical = Dimens.spacingM),
               verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     item.name,
                     Modifier.weight(1f),
-                    maxLines = 2,
+                    maxLines = COMPACT_ITEM_NAME_MAX_LINES,
                     style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "×${item.quantity}",
+                    stringResource(R.string.staging_quantity, item.quantity),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp))
+                    modifier = Modifier.padding(horizontal = Dimens.spacingXs))
                 Text(
                     item.priceCents?.let {
                       stringResource(R.string.staging_price, Prices.format(it))
@@ -495,8 +509,8 @@ private fun StagedItemCard(
       // unreadable.
       onClick = { if (enabled) onClick() },
       modifier = Modifier.fillMaxWidth().testTag(StagingTestTags.item(item.id)),
-      shape = RoundedCornerShape(12.dp),
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+      shape = MaterialTheme.shapes.large,
+      border = BorderStroke(Dimens.borderWidth, MaterialTheme.colorScheme.outlineVariant),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Row(
