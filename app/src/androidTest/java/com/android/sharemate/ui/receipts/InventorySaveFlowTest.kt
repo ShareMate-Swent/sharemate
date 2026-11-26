@@ -163,7 +163,8 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = repository)
+            profileRepository = repository,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose
@@ -239,7 +240,8 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose
@@ -363,7 +365,8 @@ class InventorySaveFlowTest {
             "member-retry-home",
             true,
             expenseRepository = expenses,
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose
@@ -378,10 +381,9 @@ class InventorySaveFlowTest {
   }
 
   @Test
-  fun unavailablePurchaseServicesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
+  fun unavailableProfilesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
     val shared = mutableStateOf(false)
     val profilesAvailable = mutableStateOf(false)
-    val expensesAvailable = mutableStateOf(false)
     val profiles =
         object : UserProfileRepository {
           override suspend fun savePublicProfile(profile: UserProfile) = Unit
@@ -401,17 +403,17 @@ class InventorySaveFlowTest {
             "services-owner",
             "services-home",
             shared.value,
-            expenseRepository = expenses.takeIf { expensesAvailable.value },
-            profileRepository = profiles.takeIf { profilesAvailable.value })
+            expenseRepository = expenses,
+            profileRepository = profiles.takeIf { profilesAvailable.value },
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     val app = compose.activity
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
-    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertDoesNotExist()
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertIsDisplayed()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { shared.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
-    compose.runOnIdle { expensesAvailable.value = true }
     compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertIsDisplayed()
     compose.onNodeWithText(app.getString(R.string.purchase_members_loading)).assertDoesNotExist()
     compose.runOnIdle { profilesAvailable.value = true }
@@ -614,9 +616,13 @@ class InventorySaveFlowTest {
         .performClick()
     compose.onNodeWithText("Corrected milk").assertExists()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(StagingTestTags.LIST).performScrollToNode(hasTestTag(StagingTestTags.ADD))
     compose.onNodeWithTag(StagingTestTags.ADD).assertIsDisplayed().assertIsNotEnabled()
     compose.runOnIdle { status.value = InventorySubmissionStatus.MISSING }
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag(StagingTestTags.item("milk")))
     compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
     // A pasted name longer than an item name may be is cut, so it can never be refused later.
     compose
@@ -718,15 +724,14 @@ class InventorySaveFlowTest {
           compose
               .onNodeWithTag(StagingTestTags.ADD)
               .assertIsDisplayed()
-              .assertTextEquals(context.getString(R.string.staging_add_item))
-      val titleBounds =
-          compose
-              .onNodeWithText(context.getString(R.string.staging_title))
-              .fetchSemanticsNode()
-              .boundsInRoot
+              .assertTextContains(context.getString(R.string.staging_add_item), substring = true)
+      val itemBounds =
+          compose.onNodeWithTag(StagingTestTags.item("0")).fetchSemanticsNode().boundsInRoot
       val addBounds = addButton.fetchSemanticsNode().boundsInRoot
-      assertTrue(addBounds.center.x > titleBounds.center.x)
-      assertTrue(addBounds.top < titleBounds.bottom && titleBounds.top < addBounds.bottom)
+      val continueBounds =
+          compose.onNodeWithTag(StagingTestTags.CONFIRM).fetchSemanticsNode().boundsInRoot
+      assertTrue(addBounds.top >= itemBounds.bottom)
+      assertTrue(addBounds.bottom <= continueBounds.top)
       addButton.performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Coffee")
       compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("2")

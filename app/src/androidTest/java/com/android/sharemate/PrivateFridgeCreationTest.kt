@@ -78,7 +78,7 @@ class PrivateFridgeCreationTest {
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
-        .assertTextEquals("Fridge type: Private")
+        .assertTextEquals("Private · My private fridge")
     compose.onNodeWithTag(NavigationTestTags.PROFILE_ENTRY).performClick()
     compose.onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD).performScrollTo().assertIsEnabled()
     // Before the dialog opens: a dialog is a second root, and the screenshot needs a single one.
@@ -93,13 +93,13 @@ class PrivateFridgeCreationTest {
     // Nothing is deleted: the test only checks the warning, then backs out.
     compose.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
     compose.onNodeWithTag(SettingsTestTags.BACK).performScrollTo().performClick()
-    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
+    compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Private · My private fridge")
     compose.activityRule.scenario.recreate()
     waitFor(C.Tag.fridge_type)
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
-        .assertTextEquals("Fridge type: Private")
+        .assertTextEquals("Private · My private fridge")
     screenshot("private-fridge-overview")
   }
 

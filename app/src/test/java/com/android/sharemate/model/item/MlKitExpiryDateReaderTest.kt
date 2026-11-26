@@ -1,20 +1,19 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.item
 
-import android.content.Context
 import android.net.Uri
 import android.os.Looper
+import com.android.sharemate.model.ocr.OnDeviceTextRecognizer
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
-import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.IOException
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -28,12 +27,10 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.mockStatic
 import org.mockito.Mockito.never
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
@@ -45,13 +42,20 @@ import org.robolectric.Shadows.shadowOf
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class MlKitExpiryDateReaderTest {
-  private val appContext = mock(Context::class.java)
-  private val context =
-      mock(Context::class.java).also { `when`(it.applicationContext).thenReturn(appContext) }
   private val image = mock(InputImage::class.java)
   private val client = mock(TextRecognizer::class.java)
   private val uri = "content://photos/expiry"
   private val date = LocalDate.of(2026, 10, 12)
+
+  private fun readerWithOcr(
+      dispatcher: CoroutineDispatcher,
+      factory: () -> TextRecognizer,
+      load: (Uri) -> InputImage,
+  ) =
+      MlKitExpiryDateReader(
+          OnDeviceTextRecognizer(dispatcher, factory, load),
+          dispatcher,
+      )
 
   private fun recognized(text: String) =
       mock(Text::class.java).also { `when`(it.text).thenReturn(text) }
@@ -71,11 +75,10 @@ class MlKitExpiryDateReaderTest {
   fun repairsObservedOctoberOcrTokenWithoutChangingThePureParser() = runTest {
     returnsText(client, "MFD 11/10/26\nEXP 12/10/26\nEXP 13.10.2026\nEXP 14 0CT 2026")
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { client },
-            { _, _ -> image },
+            { _ -> image },
         )
 
     assertEquals(
@@ -95,11 +98,10 @@ class MlKitExpiryDateReaderTest {
   fun repairsOctoberAtValidDayBoundariesWithSupportedSpacingAndYears() = runTest {
     returnsText(client, "EXP/1\t0ct.\u00a026\n31 0Ct 2026")
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { client },
-            { _, _ -> image },
+            { _ -> image },
         )
 
     assertEquals(listOf(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)), reader.read(uri))
@@ -127,11 +129,10 @@ class MlKitExpiryDateReaderTest {
             "1O/1O/26",
         )
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { client },
-            { _, _ -> image },
+            { _ -> image },
         )
     for (text in inputs) {
       returnsText(client, text)
@@ -143,30 +144,24 @@ class MlKitExpiryDateReaderTest {
   @Test
   fun readsAllStoryFormatsInTextOrderWithoutChoosingADate() = runTest {
     returnsText(client, "MFD 11/10/26\nEXP/12/10/26\n12.10.2026\n12 OCT 2026\n31/02/26")
-    var receivedContext: Context? = null
     var receivedUri: Uri? = null
     val reader: ExpiryDateReader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { client },
-            { suppliedContext, suppliedUri ->
-              receivedContext = suppliedContext
+            { suppliedUri ->
               receivedUri = suppliedUri
               image
             })
 
     assertEquals(listOf(LocalDate.of(2026, 10, 11), date), reader.read(uri))
-    assertSame(appContext, receivedContext)
     assertEquals(Uri.parse(uri), receivedUri)
     verify(client).close()
   }
 
   @Test
   fun emptyUnsupportedAndInvalidTextReturnNoCandidates() = runTest {
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     for (text in listOf("", "BEST BEFORE see lid", "31/02/2026", "12/2026")) {
       returnsText(client, text)
       assertEquals(emptyList<LocalDate>(), reader.read(uri))
@@ -178,24 +173,32 @@ class MlKitExpiryDateReaderTest {
   fun imageFailurePropagatesWithoutCreatingARecognizer() = runTest {
     val failure = IOException("unreadable image")
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { error("must not create recognizer") },
-            { _, _ -> throw failure })
+            { _ -> throw failure })
     assertFailure(failure, runCatching { reader.read(uri) }.exceptionOrNull())
     verifyNoInteractions(client)
   }
 
   @Test
-  fun remoteBlankAndRelativeUrisAreRejectedBeforeLoading() = runTest {
+  fun invalidImageUrisAreRejectedBeforeLoading() = runTest {
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { error("must not create recognizer") },
-            { _, _ -> error("must not load image") })
-    for (input in listOf("", "/tmp/image.png", "https://example.com/image", "ftp://host/image")) {
+            { _ -> error("must not load image") })
+    val invalidUris =
+        listOf(
+            "",
+            "/tmp/image.png",
+            "https://example.com/image",
+            "ftp://host/image",
+            "content:///image.png",
+            "file://host/image.png",
+            "file:relative.png",
+        )
+    for (input in invalidUris) {
       assertTrue(runCatching { reader.read(input) }.exceptionOrNull() is IllegalArgumentException)
     }
   }
@@ -204,17 +207,14 @@ class MlKitExpiryDateReaderTest {
   fun recognizerCreationFailurePropagates() = runTest {
     val failure = IllegalStateException("cannot initialize")
     val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { throw failure }, { _, _ -> image })
+        readerWithOcr(StandardTestDispatcher(testScheduler), { throw failure }, { _ -> image })
     assertFailure(failure, runCatching { reader.read(uri) }.exceptionOrNull())
   }
 
   @Test
   fun synchronousAndAsynchronousOcrFailuresCloseClient() = runTest {
     val failure = IllegalStateException("recognition failed")
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     `when`(client.process(image)).thenReturn(Tasks.forException(failure))
     assertFailure(failure, runCatching { reader.read(uri) }.exceptionOrNull())
     `when`(client.process(image)).thenThrow(failure)
@@ -229,11 +229,8 @@ class MlKitExpiryDateReaderTest {
     `when`(client.process(image)).thenReturn(Tasks.forException(IOException("failed")))
     returnsText(next, "12 OCT 2026")
     val reader =
-        MlKitExpiryDateReader(
-            context,
-            StandardTestDispatcher(testScheduler),
-            { clients.removeFirst() },
-            { _, _ -> image })
+        readerWithOcr(
+            StandardTestDispatcher(testScheduler), { clients.removeFirst() }, { _ -> image })
     assertTrue(runCatching { reader.read(uri) }.exceptionOrNull() is IOException)
     assertEquals(listOf(date), reader.read(uri))
     verify(client).close()
@@ -249,11 +246,8 @@ class MlKitExpiryDateReaderTest {
     `when`(client.process(image)).thenReturn(pending.task)
     `when`(next.process(image)).thenReturn(otherPending.task)
     val reader =
-        MlKitExpiryDateReader(
-            context,
-            StandardTestDispatcher(testScheduler),
-            { clients.removeFirst() },
-            { _, _ -> image })
+        readerWithOcr(
+            StandardTestDispatcher(testScheduler), { clients.removeFirst() }, { _ -> image })
     val first = async { reader.read(uri) }
     runCurrent()
     val second = async { reader.read(uri) }
@@ -271,9 +265,7 @@ class MlKitExpiryDateReaderTest {
   fun callerCancellationClosesClientAndLateResultIsIgnored() = runTest {
     val pending = TaskCompletionSource<Text>()
     `when`(client.process(image)).thenReturn(pending.task)
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     val read = async { reader.read(uri) }
     runCurrent()
     verify(client).process(image)
@@ -288,12 +280,10 @@ class MlKitExpiryDateReaderTest {
   @Test
   fun stalledRecognitionTimesOutAndClosesClient() = runTest {
     `when`(client.process(image)).thenReturn(TaskCompletionSource<Text>().task)
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     val read = async { runCatching { reader.read(uri) } }
     runCurrent()
-    advanceTimeBy(MlKitExpiryDateReader.RECOGNITION_TIMEOUT_MS - 1)
+    advanceTimeBy(OnDeviceTextRecognizer.RECOGNITION_TIMEOUT_MS - 1)
     assertFalse(read.isCompleted)
     advanceTimeBy(1)
     runCurrent()
@@ -304,9 +294,7 @@ class MlKitExpiryDateReaderTest {
   @Test
   fun cancelledMlKitTaskPropagatesFailureAndClosesClient() = runTest {
     `when`(client.process(image)).thenReturn(Tasks.forCanceled())
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     assertFailure(
         IOException("Text recognition was cancelled"),
         runCatching { reader.read(uri) }.exceptionOrNull())
@@ -322,11 +310,8 @@ class MlKitExpiryDateReaderTest {
     `when`(client.process(image)).thenReturn(pending.task)
     returnsText(next, "12 OCT 2026")
     val reader =
-        MlKitExpiryDateReader(
-            context,
-            StandardTestDispatcher(testScheduler),
-            { clients.removeFirst() },
-            { _, _ -> image })
+        readerWithOcr(
+            StandardTestDispatcher(testScheduler), { clients.removeFirst() }, { _ -> image })
     val read = async { runCatching { reader.read(uri) } }
     runCurrent()
     assertFalse(read.isCompleted)
@@ -345,9 +330,7 @@ class MlKitExpiryDateReaderTest {
   @Test
   fun shorterCallerTimeoutRemainsCancellationAndClosesClient() = runTest {
     `when`(client.process(image)).thenReturn(TaskCompletionSource<Text>().task)
-    val reader =
-        MlKitExpiryDateReader(
-            context, StandardTestDispatcher(testScheduler), { client }, { _, _ -> image })
+    val reader = readerWithOcr(StandardTestDispatcher(testScheduler), { client }, { _ -> image })
     val read = async { runCatching { withTimeout(1) { reader.read(uri) } } }
     runCurrent()
     advanceTimeBy(1)
@@ -362,40 +345,16 @@ class MlKitExpiryDateReaderTest {
     var loadThread: Thread? = null
     returnsText(client, "12 OCT 2026")
     val reader =
-        MlKitExpiryDateReader(
-            context,
+        readerWithOcr(
             kotlinx.coroutines.Dispatchers.IO,
             { client },
-            { suppliedContext, suppliedUri ->
-              assertSame(appContext, suppliedContext)
+            { suppliedUri ->
               assertEquals(Uri.parse("file:///local/expiry.png"), suppliedUri)
               loadThread = Thread.currentThread()
               image
             })
     assertEquals(listOf(date), runBlocking { reader.read("file:///local/expiry.png") })
     assertNotSame(caller, loadThread)
-    verify(client).close()
-  }
-
-  @Test
-  fun publicConstructorUsesFileLoaderAndLatinRecognizer() = runTest {
-    returnsText(client, "12 OCT 2026")
-    mockStatic(InputImage::class.java).use { images ->
-      mockStatic(TextRecognition::class.java).use { recognition ->
-        images
-            .`when`<InputImage> { InputImage.fromFilePath(appContext, Uri.parse(uri)) }
-            .thenReturn(image)
-        recognition
-            .`when`<TextRecognizer> {
-              TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-            }
-            .thenReturn(client)
-        assertEquals(
-            listOf(date),
-            MlKitExpiryDateReader(context, StandardTestDispatcher(testScheduler)).read(uri))
-        recognition.verify { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-      }
-    }
     verify(client).close()
   }
 }

@@ -9,14 +9,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,10 +39,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.item.ExpiryStatus
+import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemCategory
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.components.AppCard
+import com.android.sharemate.ui.components.SingleLineText
 import com.android.sharemate.ui.startup.LaunchStage
 import com.android.sharemate.ui.startup.LaunchStatus
 import com.android.sharemate.ui.startup.ReportLaunch
@@ -51,6 +61,7 @@ private const val SYNC_ERROR_DISPLAY_DURATION_MS = 8_000L
  * @param expiryStatuses how close each item, by id, is to its expiration date, already worked out;
  *   an item missing from it is shown as [ExpiryStatus.NORMAL].
  * @param headerTrailing Shown at the end of the header, such as the profile photo.
+ * @param householdName Name shown below the fridge title, when available.
  * @param onBarcodeScanOpened Called once the add-item form opened the barcode photo asked by
  *   [FridgeUiState.scanBarcodeOnOpen].
  */
@@ -85,43 +96,19 @@ fun FridgeScreen(
     onDismissRemovalSyncError: (FridgeRemovalSyncError) -> Unit = {},
     onBarcodeImageConfirmed: (suspend (String) -> Unit)? = null,
     personalPhotos: PersonalPhotoController? = null,
+    householdName: String? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
     onBarcodeScanOpened: () -> Unit = {},
 ) {
   val activeItems = uiState.items.filter { it.status == ItemStatus.ACTIVE }
+  val isShared = uiState.fridgeType == FridgeType.SHARED
   val screenModifier =
       modifier
           .fillMaxSize()
-          .background(MaterialTheme.colorScheme.surface)
+          .background(MaterialTheme.colorScheme.background)
           .testTag(C.Tag.fridge_screen_container)
   Column(modifier = screenModifier) {
-    Box(Modifier.fillMaxWidth()) {
-      Box(Modifier.align(Alignment.CenterEnd).padding(end = Dimens.spacingXs)) {
-        headerTrailing?.invoke()
-      }
-      Text(
-          text = stringResource(R.string.fridge_title),
-          modifier =
-              Modifier.align(Alignment.Center)
-                  .padding(vertical = FridgeLayout.headerVerticalPadding)
-                  .testTag(C.Tag.fridge_title),
-          style = MaterialTheme.typography.headlineSmall)
-    }
-
-    Text(
-        text =
-            stringResource(
-                R.string.fridge_type_label,
-                stringResource(
-                    if (uiState.fridgeType == FridgeType.PRIVATE) R.string.fridge_type_private
-                    else R.string.fridge_type_shared)),
-        modifier =
-            Modifier.align(Alignment.CenterHorizontally)
-                .padding(bottom = Dimens.spacingXs)
-                .testTag(C.Tag.fridge_type),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    FridgeHeader(uiState.fridgeType, householdName, headerTrailing)
 
     FridgeControls(
         sortOrder = sortOrder,
@@ -135,6 +122,7 @@ fun FridgeScreen(
         onAddItem = onAddItem,
         isSaving = uiState.isSaving,
         hasItems = activeItems.isNotEmpty(),
+        showOwnerFilter = isShared,
     )
 
     uiState.editSyncError?.let { error ->
@@ -199,68 +187,62 @@ fun FridgeScreen(
     }
     Box(
         modifier =
-            Modifier.fillMaxWidth()
-                .weight(1f)
-                .padding(
-                    horizontal = FridgeLayout.horizontalPadding,
-                    vertical = FridgeLayout.gridVerticalPadding),
-        contentAlignment = Alignment.Center) {
-          if (activeItems.isNotEmpty()) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(FridgeLayout.gridColumns),
-                modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list),
-                horizontalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing),
-                verticalArrangement = Arrangement.spacedBy(FridgeLayout.gridSpacing)) {
-                  items(activeItems, key = { it.id }) { item ->
-                    FridgeItem(
-                        item = item,
-                        ownership = uiState.ownershipFor(item),
-                        expiryStatus = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL,
-                        personalPhotos = personalPhotos,
-                        editEnabled =
-                            onEditItem != null &&
-                                !uiState.isSaving &&
-                                !uiState.isDeleting &&
-                                !uiState.isAddItemDialogOpen &&
-                                uiState.pendingRemovalItem == null &&
-                                item.id !in uiState.pendingDeletionIds &&
-                                item.id !in uiState.pendingStatusIds &&
-                                item.status == ItemStatus.ACTIVE,
-                        onEdit = { onEditItem?.invoke(item.id) },
-                        statusEnabled =
-                            onStatusChange != null &&
-                                !uiState.isSaving &&
-                                !uiState.isDeleting &&
-                                !uiState.isAddItemDialogOpen &&
-                                uiState.pendingRemovalItem == null &&
-                                item.id !in uiState.pendingDeletionIds &&
-                                item.id !in uiState.pendingStatusIds,
-                        onStatusChange = { onStatusChange?.invoke(item.id, it) },
-                        removalEnabled =
-                            onRemoveItem != null &&
-                                !uiState.isDeleting &&
-                                !uiState.isSaving &&
-                                !uiState.isAddItemDialogOpen &&
-                                uiState.pendingRemovalItem == null &&
-                                item.id !in uiState.pendingDeletionIds &&
-                                item.id !in uiState.pendingStatusIds,
-                        onRemove = { onRemoveItem?.invoke(item.id) })
-                  }
+            Modifier.fillMaxWidth().weight(1f).padding(horizontal = FridgeLayout.horizontalPadding),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+      when {
+        activeItems.isNotEmpty() -> {
+          val (useSoon, everythingElse) =
+              if (sortOrder == FridgeSortOrder.EXPIRATION_DATE) {
+                activeItems.partition { item ->
+                  val status = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL
+                  status != ExpiryStatus.NORMAL
                 }
-          } else if (uiState.isLoading) {
-            Text(stringResource(R.string.fridge_loading))
-          } else {
-            Text(
-                if (selectedCategory != null || selectedOwnerId != null) {
-                  stringResource(R.string.fridge_empty_filtered)
-                } else {
-                  stringResource(R.string.fridge_empty)
-                },
-                modifier = Modifier.testTag(C.Tag.fridge_empty),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge)
+              } else {
+                emptyList<Item>() to activeItems
+              }
+          val row: @Composable (Item) -> Unit = { item ->
+            val actionsEnabled =
+                !uiState.isSaving &&
+                    !uiState.isDeleting &&
+                    !uiState.isAddItemDialogOpen &&
+                    uiState.pendingRemovalItem == null &&
+                    item.id !in uiState.pendingDeletionIds &&
+                    item.id !in uiState.pendingStatusIds
+            FridgeItem(
+                item = item,
+                ownership = uiState.ownershipFor(item),
+                expiryStatus = expiryStatuses[item.id] ?: ExpiryStatus.NORMAL,
+                personalPhotos = personalPhotos,
+                showOwnership = isShared,
+                editEnabled = onEditItem != null && actionsEnabled,
+                onEdit = { onEditItem?.invoke(item.id) },
+                statusEnabled = onStatusChange != null && actionsEnabled,
+                onStatusChange = { onStatusChange?.invoke(item.id, it) },
+                removalEnabled = onRemoveItem != null && actionsEnabled,
+                onRemove = { onRemoveItem?.invoke(item.id) },
+            )
+          }
+          LazyColumn(modifier = Modifier.fillMaxSize().testTag(C.Tag.fridge_item_list)) {
+            fridgeSection(useSoon, R.string.fridge_use_soon, row)
+            fridgeSection(
+                everythingElse,
+                R.string.fridge_everything_else.takeIf { useSoon.isNotEmpty() },
+                row,
+            )
           }
         }
+        uiState.isLoading -> Text(stringResource(R.string.fridge_loading))
+        !uiState.loadFailed -> {
+          val canClearFilters = selectedCategory != null || (isShared && selectedOwnerId != null)
+          FridgeEmptyState(canClearFilters) {
+            if (selectedCategory != null) onCategoryFilterChange?.invoke(null)
+            if (isShared && selectedOwnerId != null) onOwnerFilterChange?.invoke(null)
+          }
+        }
+        else -> Unit
+      }
+    }
   }
   if (uiState.isAddItemDialogOpen) {
     AddItemDialog(
@@ -314,15 +296,116 @@ fun FridgeScreen(
   }
 }
 
+@Composable
+private fun FridgeHeader(
+    fridgeType: FridgeType,
+    householdName: String?,
+    trailing: (@Composable () -> Unit)?,
+) {
+  val type =
+      stringResource(
+          if (fridgeType == FridgeType.PRIVATE) R.string.fridge_type_private
+          else R.string.fridge_type_shared)
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .padding(
+                  horizontal = FridgeLayout.horizontalPadding,
+                  vertical = FridgeLayout.headerVerticalPadding,
+              ),
+      horizontalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(Modifier.weight(1f)) {
+      Text(
+          stringResource(R.string.fridge_title),
+          modifier = Modifier.testTag(C.Tag.fridge_title),
+          style = MaterialTheme.typography.headlineLarge,
+      )
+      SingleLineText(
+          text =
+              if (householdName.isNullOrBlank()) stringResource(R.string.fridge_type_label, type)
+              else stringResource(R.string.fridge_household_label, type, householdName),
+          modifier = Modifier.testTag(C.Tag.fridge_type),
+          style = MaterialTheme.typography.bodyMedium,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    trailing?.invoke()
+  }
+}
+
+private fun LazyListScope.fridgeSection(
+    items: List<Item>,
+    title: Int?,
+    row: @Composable (Item) -> Unit,
+) {
+  if (items.isEmpty()) return
+  if (title != null) {
+    item(key = title) {
+      Text(
+          stringResource(title),
+          modifier = Modifier.padding(top = Dimens.spacingXs, bottom = Dimens.spacingXs),
+          style = MaterialTheme.typography.titleSmall,
+      )
+    }
+  }
+  itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+    val corners = MaterialTheme.shapes.large
+    val firstCorner = if (index == 0) corners.topStart else CornerSize(0)
+    val lastCorner = if (index == items.lastIndex) corners.bottomStart else CornerSize(0)
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape =
+            corners.copy(
+                topStart = firstCorner,
+                topEnd = firstCorner,
+                bottomStart = lastCorner,
+                bottomEnd = lastCorner,
+            ),
+    ) {
+      Column {
+        row(item)
+        if (index != items.lastIndex) {
+          HorizontalDivider(Modifier.padding(horizontal = Dimens.spacingS))
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun FridgeEmptyState(filtered: Boolean, onClearFilters: () -> Unit) {
+  AppCard {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = Dimens.spacingL),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs),
+    ) {
+      if (filtered) Icon(Icons.Default.Search, contentDescription = null)
+      Text(
+          stringResource(if (filtered) R.string.fridge_empty_filtered else R.string.fridge_empty),
+          modifier = Modifier.testTag(C.Tag.fridge_empty),
+          style = MaterialTheme.typography.titleSmall,
+      )
+      if (filtered) {
+        TextButton(onClick = onClearFilters) { Text(stringResource(R.string.fridge_clear_filters)) }
+      }
+    }
+  }
+}
+
 /**
  * Connects the fridge presentation to its existing inventory ViewModel.
  *
  * @param headerTrailing Shown at the end of the header, such as the profile photo.
+ * @param householdName Name shown below the fridge title, when available.
  */
 @Composable
 fun FridgeScreen(
     viewModel: FridgeViewModel,
     modifier: Modifier = Modifier,
+    householdName: String? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
 ) {
   val screenState by viewModel.screenState.collectAsState()
@@ -370,6 +453,7 @@ fun FridgeScreen(
       onConfirmRemoval = viewModel::confirmRemoval,
       personalPhotos = viewModel.personalPhotos,
       headerTrailing = headerTrailing,
+      householdName = householdName,
       onBarcodeScanOpened = viewModel::barcodeScanOpened,
   )
 }
@@ -379,6 +463,8 @@ fun FridgeScreen(
 private fun FridgeScreenPreview() {
   ShareMateTheme {
     FridgeScreen(
-        uiState = FridgeUiState(fridgeType = FridgeType.SHARED), expiryStatuses = emptyMap())
+        uiState = FridgeUiState(fridgeType = FridgeType.SHARED),
+        expiryStatuses = emptyMap(),
+    )
   }
 }

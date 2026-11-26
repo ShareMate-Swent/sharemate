@@ -44,6 +44,84 @@ class PhotoPickerDialogTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
+  fun receiptSourcesUseBackWithoutRedundantCancel() {
+    val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
+    compose.setContent {
+      MaterialTheme {
+        PhotoPickerDialog(
+            vm, labels.copy(receiptProgress = true), onSaveDraft = { fail("No photo to save") })
+      }
+    }
+    compose.runOnIdle { vm.open() }
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+    compose.onNodeWithTag(PhotoPickerTestTags.CAMERA).assertIsDisplayed()
+    compose.onNodeWithTag(PhotoPickerTestTags.GALLERY).assertIsDisplayed()
+    compose.onNodeWithTag("receipt_back").performClick()
+    compose.runOnIdle { assertFalse(vm.state.value.visible) }
+    compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
+  }
+
+  @Test
+  fun receiptPhotoBackWaitsForExplicitDraftSaveAndRetainsPhotoOnFailure() {
+    val store = TestPhotoStore()
+    val vm = PhotoPickerViewModel(store, SavedStateHandle())
+    var attempts = 0
+    compose.setContent {
+      MaterialTheme {
+        PhotoPickerDialog(
+            vm,
+            labels.copy(receiptProgress = true),
+            onSaveDraft = {
+              assertEquals(store.uri, it.uri)
+              attempts++
+              if (attempts == 1) error("Disk full")
+            })
+      }
+    }
+    compose.runOnIdle {
+      vm.open()
+      vm.select("content://photo")
+    }
+    compose.onNodeWithTag("receipt_back").performClick()
+    compose.onNodeWithTag("receipt_save_draft").assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(0, attempts)
+      assertTrue(vm.state.value.visible)
+    }
+    compose.onNodeWithTag("receipt_save_draft").performClick()
+    compose.onNodeWithText("Could not finish. Try again.").assertIsDisplayed()
+    compose.runOnIdle { assertEquals(store.uri, vm.state.value.selection?.uri) }
+    compose.onNodeWithTag("receipt_save_draft").performClick()
+    compose.runOnIdle {
+      assertEquals(2, attempts)
+      assertFalse(vm.state.value.visible)
+    }
+  }
+
+  @Test
+  fun discardingSelectedReceiptPhotoDoesNotCreateDraft() {
+    val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())
+    compose.setContent {
+      MaterialTheme {
+        PhotoPickerDialog(
+            vm,
+            labels.copy(receiptProgress = true),
+            onSaveDraft = { fail("Discard must not save") })
+      }
+    }
+    compose.runOnIdle {
+      vm.open()
+      vm.select("content://photo")
+    }
+    compose.onNodeWithTag("receipt_back").performClick()
+    compose.onNodeWithTag("receipt_discard").performClick()
+    compose.runOnIdle {
+      assertNull(vm.state.value.selection)
+      assertFalse(vm.state.value.visible)
+    }
+  }
+
+  @Test
   fun deniedCameraKeepsGalleryAvailableAndRepeatedClicksWaitForCancellation() {
     shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(Manifest.permission.CAMERA)
     val vm = PhotoPickerViewModel(TestPhotoStore(), SavedStateHandle())

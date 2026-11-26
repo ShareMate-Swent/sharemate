@@ -51,6 +51,7 @@ import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
+import com.android.sharemate.model.receipt.ReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
@@ -85,6 +86,8 @@ import kotlinx.coroutines.launch
  * @param itemRepository Repository for submitting reviewed items and observing server confirmation.
  * @param userId ID of the signed-in user who owns the submission.
  * @param householdId ID of the current household.
+ * @param expenseRepository Authenticated purchase correction and deletion boundary.
+ * @param receiptCloudRepository Household receipt updates and explicit deletion markers.
  * @param sharedHousehold Whether the current household allows saving reviewed items to its fridge.
  * @param scanReceiptRequested Whether the add button of the bottom bar asked for a receipt scan,
  *   which this screen then starts like its own scan button.
@@ -101,10 +104,11 @@ fun ReceiptsScreen(
     sharedHousehold: Boolean,
     showBalances: Boolean = false,
     onOpenBalances: () -> Unit = {},
-    expenseRepository: ExpenseSubmissionRepository? = null,
+    expenseRepository: ExpenseSubmissionRepository,
     profileRepository: UserProfileRepository? = null,
     barcodeScanner: BarcodeScanner? = null,
     productCatalogRepository: ProductCatalogRepository? = null,
+    receiptCloudRepository: ReceiptCloudRepository,
     scanReceiptRequested: Boolean = false,
     onScanReceiptRequestHandled: () -> Unit = {},
     onScanReceiptCancelled: () -> Boolean = { false },
@@ -131,31 +135,36 @@ fun ReceiptsScreen(
           factory =
               viewModelFactory {
                 initializer {
+                  val store =
+                      AndroidInventorySubmissionStore(context, legacyActive = false)
+                          .forViewer(userId)
                   ReceiptHistoryViewModel(
                       itemRepository,
-                      AndroidInventorySubmissionStore(context, legacyActive = false),
+                      store,
                       AndroidReceiptPhotoStore(context),
                       userId,
-                      householdId)
+                      householdId,
+                      expenses = expenseRepository,
+                      synchronization =
+                          ReceiptHistorySync(store, receiptCloudRepository, userId, householdId),
+                      now = System::currentTimeMillis)
                 }
               })
-  val purchaseSave: InventorySaveViewModel? =
-      if (expenseRepository != null) {
-        viewModel(
-            key = "inventory-save_${userId}_$householdId",
-            factory =
-                viewModelFactory {
-                  initializer {
-                    InventorySaveViewModel(
-                        itemRepository,
-                        AndroidInventorySubmissionStore(context, legacyActive = true),
-                        userId,
-                        householdId,
-                        sharedHousehold,
-                        expenseRepository)
-                  }
-                })
-      } else null
+  val purchaseSave: InventorySaveViewModel =
+      viewModel(
+          key = "inventory-save_${userId}_$householdId",
+          factory =
+              viewModelFactory {
+                initializer {
+                  InventorySaveViewModel(
+                      itemRepository,
+                      AndroidInventorySubmissionStore(context, legacyActive = true),
+                      userId,
+                      householdId,
+                      sharedHousehold,
+                      expenseRepository)
+                }
+              })
   val memberModel: HouseholdMembersViewModel? =
       if (sharedHousehold && profileRepository != null) {
         viewModel(
@@ -204,7 +213,7 @@ fun ReceiptsScreen(
   }
   key(userId, householdId) {
     Box(Modifier.alpha(if (hiddenUnderAddButtonScan) 0f else 1f)) {
-      if (purchaseMode && purchaseSave != null) {
+      if (purchaseMode) {
         Column {
           Button(onClick = { purchaseMode = false }) {
             Text(stringResource(R.string.receipts_title))
@@ -245,10 +254,7 @@ fun ReceiptsScreen(
             sharedHousehold,
             showBalances,
             onOpenBalances,
-            onPurchase =
-                if (purchaseSave != null) {
-                  { purchaseMode = true }
-                } else null)
+            onPurchase = { purchaseMode = true })
       }
     }
   }
@@ -273,6 +279,7 @@ internal fun ReceiptHistoryFlow(
   DiscardPhotoOnDispose(photo)
   val receipts by history.receipts.collectAsStateWithLifecycle()
   val editFailed by history.error.collectAsStateWithLifecycle()
+  val syncFailed by history.syncError.collectAsStateWithLifecycle()
   val scan: ReceiptScanViewModel =
       viewModel(
           factory =
@@ -311,6 +318,10 @@ internal fun ReceiptHistoryFlow(
                     Text(stringResource(R.string.receipt_scan_purchase))
                   }
                 }
+                if (syncFailed)
+                    Text(
+                        stringResource(R.string.receipt_sync_failed),
+                        Modifier.testTag(ReceiptHistoryTestTags.SYNC_ERROR))
                 if (editFailed) {
                   Text(stringResource(R.string.receipt_edit_failed))
                   Button(onClick = history::reload) {
@@ -472,6 +483,8 @@ private fun InventorySavePhase.labelResource(): Int =
 
 /** Stable semantics for opening a retained receipt photo. */
 object ReceiptHistoryTestTags {
+  /** Household synchronization failure, displayed once above the receipt list. */
+  const val SYNC_ERROR = "receipt_sync_error"
   const val PHOTO_PREVIEW = "receipt_photo_preview"
   const val PHOTO_EXPANDED = "receipt_photo_expanded"
 }

@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.navigation
 
 import androidx.navigation.NavDeepLink
@@ -19,6 +20,10 @@ object AppDeepLinks {
 
   /** URI opening the given top-level destination. */
   fun uri(destination: TopLevelDestination): String = "$BASE/${destination.route}"
+
+  /** The top-level destination that [uri] opens, or null if it is not such a link. */
+  fun destinationOf(uri: String?): TopLevelDestination? =
+      TopLevelDestination.entries.firstOrNull { uri(it) == uri }
 
   /** Deep links to declare on the NavHost entry of [destination]. */
   fun navDeepLinks(destination: TopLevelDestination): List<NavDeepLink> =

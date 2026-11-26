@@ -3,6 +3,7 @@
 package com.android.sharemate.ui.navigation
 
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.finance.BALANCES_ROUTE
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,5 +74,22 @@ class TopLevelDestinationTest {
     // A screen that belongs to no tab has no bar until it is added to one.
     assertFalse(TopLevelDestination.showsBottomBar("new-screen"))
     assertFalse(TopLevelDestination.showsBottomBar(null))
+  }
+
+  @Test
+  fun aSharedFridgeShowsEveryBottomBarTab() {
+    assertEquals(TopLevelDestination.bottomBar, TopLevelDestination.bottomBarFor(FridgeType.SHARED))
+    TopLevelDestination.entries.forEach { assertTrue(it.isAvailableIn(FridgeType.SHARED)) }
+  }
+
+  @Test
+  fun aPrivateFridgeShowsEveryBottomBarTabButChatInOrder() {
+    assertEquals(
+        listOf(
+            TopLevelDestination.FRIDGE, TopLevelDestination.RECIPES, TopLevelDestination.RECEIPTS),
+        TopLevelDestination.bottomBarFor(FridgeType.PRIVATE))
+    assertFalse(TopLevelDestination.CHAT.isAvailableIn(FridgeType.PRIVATE))
+    // Settings is not in the bar but stays available, from the profile photo.
+    assertTrue(TopLevelDestination.SETTINGS.isAvailableIn(FridgeType.PRIVATE))
   }
 }

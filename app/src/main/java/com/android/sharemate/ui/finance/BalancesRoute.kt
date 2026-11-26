@@ -1,17 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.finance
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
 import com.android.sharemate.model.household.Household
@@ -52,8 +47,5 @@ fun BalancesRoute(
                 }
               })
   val state by model.state.collectAsStateWithLifecycle()
-  Column {
-    TextButton(onClick = onBack) { Text(stringResource(R.string.balances_back)) }
-    SettlementBalances(state, model::retryLoading, model::settle, model::retrySettlement)
-  }
+  SettlementBalances(state, model::retryLoading, model::settle, model::retrySettlement, onBack)
 }

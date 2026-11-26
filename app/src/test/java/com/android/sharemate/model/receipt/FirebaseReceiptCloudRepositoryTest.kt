@@ -27,6 +27,40 @@ import org.robolectric.RobolectricTestRunner
 @OptIn(ExperimentalCoroutinesApi::class)
 class FirebaseReceiptCloudRepositoryTest {
   @Test
+  fun permanentPhotoErrorsStayLocalAndNewSnapshotsCancelTheirRetries() =
+      runTest(dispatcher) {
+        val download = mock(FileDownloadTask::class.java)
+        `when`(download.isComplete).thenReturn(true)
+        `when`(download.exception)
+            .thenReturn(StorageException.fromExceptionAndHttpCode(IOException(), 403))
+        `when`(remote.getFile(any(File::class.java))).thenReturn(download)
+        val events = mutableListOf<List<ReceiptCloudEntry>>()
+        val job = backgroundScope.launch { repository.observe("owner", "home").toList(events) }
+        runCurrent()
+        emit(1, emptyList())
+        emit(0, listOf(document(receipt(), true), document(receipt(false, "peer"))))
+        runCurrent()
+        assertEquals(2, events.last().size)
+        assertTrue(job.isActive)
+        `when`(download.exception)
+            .thenReturn(StorageException.fromExceptionAndHttpCode(IOException(), 404))
+        advanceTimeBy(RECEIPT_INITIAL_RETRY_MILLIS)
+        runCurrent()
+        verify(remote, times(2)).getFile(any(File::class.java))
+        assertTrue(job.isActive)
+        emit(0, listOf(document(receipt(false, "peer"))))
+        runCurrent()
+        advanceTimeBy(RECEIPT_PHOTO_MAX_RETRY_MILLIS)
+        runCurrent()
+        assertEquals("peer", events.last().single().submission.ownerId)
+        verify(remote, times(2)).getFile(any(File::class.java))
+        assertTrue(
+            File(context.filesDir, "receipts").listFiles().orEmpty().none { it.extension == "tmp" })
+        job.cancelAndJoin()
+        verify(registration, times(2)).remove()
+      }
+
+  @Test
   fun malformedBackupsDoNotHideValidEntriesOrStopLaterSnapshots() =
       runTest(dispatcher) {
         val invalid = document(receipt())
@@ -113,7 +147,7 @@ class FirebaseReceiptCloudRepositoryTest {
           emit(1, emptyList())
           emit(0, listOf(document(receipt(), true)))
           runCurrent()
-          advanceTimeBy(1_000)
+          advanceTimeBy(RECEIPT_INITIAL_RETRY_MILLIS)
           runCurrent()
           assertEquals(receipt(), events.last().single().submission)
           assertEquals("", events.last().single().details.photoUri)
@@ -289,12 +323,12 @@ class FirebaseReceiptCloudRepositoryTest {
         runCurrent()
         assertFalse(photo.exists())
         `when`(download.exception).thenReturn(IOException("Offline"))
-        advanceTimeBy(1_000)
+        advanceTimeBy(RECEIPT_INITIAL_RETRY_MILLIS)
         runCurrent()
         assertEquals("", events.last().single().details.photoUri)
         `when`(download.exception).thenReturn(null)
         bytes = byteArrayOf(1, 2, 3)
-        advanceTimeBy(2_000)
+        advanceTimeBy(RECEIPT_INITIAL_RETRY_MILLIS * 2)
         runCurrent()
         assertArrayEquals(bytes, photo.readBytes())
         assertEquals(Uri.fromFile(photo).toString(), events.last().single().details.photoUri)
@@ -318,7 +352,9 @@ class FirebaseReceiptCloudRepositoryTest {
         val failure = async { runCatching { repository.observeDeleted("owner", "home").first() } }
         runCurrent()
         callbacks.last().onEvent(null, error)
-        assertSame(error, failure.await().exceptionOrNull())
+        val reported = failure.await().exceptionOrNull()
+        assertTrue(reported is ReceiptCloudPermanentException)
+        assertSame(error, reported?.cause)
         verify(registration, times(2)).remove()
       }
 }

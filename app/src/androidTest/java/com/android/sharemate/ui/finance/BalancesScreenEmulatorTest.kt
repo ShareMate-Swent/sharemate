@@ -42,9 +42,24 @@ class BalancesScreenEmulatorTest {
         mutableStateOf<BalancesUiState>(
             BalancesUiState.Ready("alice", summary, mapOf("bob" to "Bob")))
     var retries = 0
-    compose.setContent { ShareMateTheme { BalancesScreen(state, { retries++ }) } }
+    var backs = 0
+    var settled: Debt? = null
+    var darkTheme by mutableStateOf(false)
+    compose.setContent {
+      ShareMateTheme(darkTheme = darkTheme) {
+        BalancesScreen(state, { retries++ }, onSettle = { settled = it }, onBack = { backs++ })
+      }
+    }
     compose.onNodeWithText("You owe Bob", substring = true).assertIsDisplayed()
+    compose.onNodeWithTag(BalancesTestTags.BACK).performClick()
+    assertEquals(1, backs)
+    compose.onNodeWithText("Settle up", ignoreCase = true).performClick()
+    assertEquals(summary.debts.single(), settled)
     screenshot("balances-ready")
+    compose.runOnIdle { darkTheme = true }
+    compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertIsDisplayed()
+    screenshot("balances-ready-dark")
+    compose.runOnIdle { darkTheme = false }
     compose.runOnIdle { state = BalancesUiState.Error }
     compose.onNodeWithTag(BalancesTestTags.SUMMARY).assertDoesNotExist()
     compose.onNodeWithTag(BalancesTestTags.RETRY).performClick()

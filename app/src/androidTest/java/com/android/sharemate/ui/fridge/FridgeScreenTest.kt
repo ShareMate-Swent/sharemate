@@ -64,7 +64,7 @@ class FridgeScreenTest {
   private lateinit var viewModel: FridgeViewModel
 
   @Test
-  fun compactToolbarCreatesAnItemAndShowsItsQuantityInTheGrid() {
+  fun compactToolbarCreatesAnItemAndShowsItsQuantityInTheList() {
     showScreen(emptyList())
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput("Milk")
@@ -119,7 +119,7 @@ class FridgeScreenTest {
   @Test
   fun sortMenuChangesTheRenderedOrder() {
     showScreen()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_expiration_date)
     compose
         .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
         .assertIsSelected()
@@ -131,11 +131,11 @@ class FridgeScreenTest {
         .performClick()
     assertItemOrder("carrot", "banana", "apple")
 
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_expiration_date)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     assertItemOrder("apple", "banana", "carrot")
 
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    openSort(R.string.fridge_sort_name)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).assertIsSelected()
     compose
         .onNodeWithText(compose.activity.getString(R.string.fridge_sort_expiration_date))
@@ -166,7 +166,7 @@ class FridgeScreenTest {
   @Test
   fun ownerAndCategoryFiltersCombineAndShowAnEmptyResult() {
     showScreen()
-    filterChip("Owner").assertIsDisplayed().performClick()
+    filterChip("All owners").assertIsDisplayed().performClick()
     compose.onNodeWithTag(C.Tag.fridgeFilterOwner("alice")).performClick()
     item("banana").assertIsDisplayed()
     item("carrot").assertDoesNotExist()
@@ -182,12 +182,13 @@ class FridgeScreenTest {
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty_filtered))
     item("banana").assertDoesNotExist()
 
-    filterChip("Owner: Alice").assertIsDisplayed().performClick()
-    compose.onNodeWithTag(C.Tag.fridge_filter_owner_all).performClick()
-    item("carrot").assertIsDisplayed()
+    compose.onNodeWithText(compose.activity.getString(R.string.fridge_clear_filters)).performClick()
+    compose.runOnIdle {
+      assertEquals(null, viewModel.selectedCategory.value)
+      assertEquals(null, viewModel.selectedOwnerId.value)
+    }
+    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsSelected()
     compose.onNodeWithTag(C.Tag.fridge_empty).assertDoesNotExist()
-
-    compose.onNodeWithTag(C.Tag.fridge_filter_category_all).performScrollTo().performClick()
     assertItemOrder("carrot", "banana", "apple")
   }
 
@@ -199,10 +200,8 @@ class FridgeScreenTest {
         .assertIsDisplayed()
         .assertTextEquals(compose.activity.getString(R.string.fridge_empty))
     compose.onNodeWithTag(C.Tag.fridge_filter_category_all).assertIsNotEnabled().assertIsSelected()
-    filterChip("Owner").assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_yours)).assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_shared)).assertIsNotEnabled()
-    compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort)).performClick()
+    filterChip("All owners").assertIsNotEnabled()
+    openSort(R.string.fridge_sort_expiration_date)
     compose.onNodeWithText(compose.activity.getString(R.string.fridge_sort_name)).performClick()
     compose.runOnIdle { assertEquals(FridgeSortOrder.NAME, viewModel.sortOrder.value) }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled().performClick()
@@ -253,10 +252,21 @@ class FridgeScreenTest {
 
   private fun filterChip(label: String) = compose.onNode(hasText(label) and isSelectable())
 
+  private fun openSort(currentOption: Int) {
+    val activity = compose.activity
+    compose
+        .onNodeWithText(
+            activity.getString(R.string.fridge_sort_selected, activity.getString(currentOption)))
+        .performClick()
+  }
+
   private fun assertItemOrder(vararg ids: String) {
     val list = compose.onNodeWithTag(C.Tag.fridge_item_list)
-    ids.forEachIndexed { index, id ->
-      assertEquals(index, list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey](id))
+    val indexForKey = list.fetchSemanticsNode().config[SemanticsProperties.IndexForKey]
+    val indices = ids.map { indexForKey(it) }
+    assertTrue(indices.all { it >= 0 })
+    assertTrue(indices.zipWithNext().all { (first, second) -> first < second })
+    ids.zip(indices).forEach { (id, index) ->
       list.performScrollToIndex(index)
       item(id).assertIsDisplayed()
     }

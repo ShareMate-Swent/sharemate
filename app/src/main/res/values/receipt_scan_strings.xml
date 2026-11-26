@@ -1,5 +1,6 @@
 <resources>
-    <string name="scan_receipt">Scan Receipt</string>
+    <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
+    <string name="scan_receipt">Scan a receipt</string>
     <string name="receipt_scan_purchase">Scan purchase receipt</string>
     <string name="receipt_photo_choose">Take a clear photo of the entire receipt or choose one from your gallery.</string>
     <string name="receipt_photo_preview">Selected receipt photo</string>
@@ -11,4 +12,5 @@
     <string name="receipt_review_items">Review items</string>
     <string name="receipt_view_receipt">View receipt</string>
     <string name="receipt_edit_failed">Could not save receipt changes. Try again.</string>
+    <string name="receipt_sync_failed">Receipt updates are unavailable.</string>
 </resources>

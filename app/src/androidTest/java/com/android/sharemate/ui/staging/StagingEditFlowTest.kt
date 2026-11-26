@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.staging
@@ -71,7 +72,7 @@ class StagingEditFlowTest {
     compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertDoesNotExist()
     assertRowShows("bread", "Baguette")
     assertRowShows("bread", "Qty 3")
-    assertRowShows("bread", "CHF 2.40")
+    assertRowShows("bread", "2.40 CHF")
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
     assertEquals(listOf(milk, StagedItem("bread", "Baguette", 3, 240)), confirmed)
   }

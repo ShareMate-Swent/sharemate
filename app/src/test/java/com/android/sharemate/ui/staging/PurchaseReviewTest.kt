@@ -62,11 +62,11 @@ class PurchaseReviewTest {
       StagingViewModel(items, PurchaseReview.forUser("a", members))
 
   @Test
-  fun anotherPayerBlocksPurchaseButAllowsInventoryAndReselectingSelfRecovers() {
+  fun anotherPayerCanPayForSelectedParticipants() {
     val vm = model()
     vm.toggleParticipant("b")
     vm.selectPayer("b")
-    assertNull(vm.confirmedPurchase())
+    assertEquals("b", vm.confirmedPurchase()?.paidBy)
     assertNotNull(vm.confirmedItems())
     assertEquals("b", vm.state.value.purchase?.paidBy)
     vm.selectPayer("a")
@@ -81,6 +81,7 @@ class PurchaseReviewTest {
       vm.selectPayer("a")
       vm.toggleParticipant("b")
       assertNull(vm.confirmedPurchase())
+      assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
       assertNotNull(vm.confirmedItems())
     }
   }
@@ -147,10 +148,11 @@ class PurchaseReviewTest {
     val vm = model()
     vm.toggleParticipant("b")
     vm.selectPayer("c")
-    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertNull(vm.state.value.purchasePreview?.error)
+    assertEquals("c", vm.confirmedPurchase()?.paidBy)
     vm.selectPayer("outsider")
     vm.toggleParticipant("outsider")
-    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertNull(vm.state.value.purchasePreview?.error)
     assertEquals(setOf("b"), vm.state.value.purchase?.participants)
     assertEquals(
         PurchaseReviewError.INVALID_PAYER,
@@ -173,7 +175,7 @@ class PurchaseReviewTest {
     assertNull(vm.state.value.purchase?.paidBy)
     assertNull(vm.confirmedPurchase())
     vm.selectPayer("b")
-    assertEquals(PurchaseReviewError.PAYER_MUST_SUBMIT, vm.state.value.purchasePreview?.error)
+    assertEquals(PurchaseReviewError.SUBMITTER_NOT_MEMBER, vm.state.value.purchasePreview?.error)
   }
 
   @Test

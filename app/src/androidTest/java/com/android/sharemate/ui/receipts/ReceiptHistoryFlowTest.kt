@@ -22,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sharemate.R
 import com.android.sharemate.model.item.*
+import com.android.sharemate.model.receipt.*
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptDetails
@@ -33,6 +34,7 @@ import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -75,12 +77,26 @@ class ReceiptHistoryFlowTest {
             itemRepository = UnusedItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository =
+                object : ReceiptCloudRepository {
+                  override fun observe(
+                      ownerId: String,
+                      householdId: String
+                  ): Flow<List<ReceiptCloudEntry>> = flow {
+                    throw ReceiptCloudPermanentException(IllegalStateException("Access revoked"))
+                  }
+                })
       }
     }
 
     val review = compose.activity.getString(R.string.receipt_review_items)
     compose.waitUntil(5_000) { compose.onAllNodesWithText(review).fetchSemanticsNodes().size == 2 }
+    compose.onNodeWithTag(ReceiptHistoryTestTags.SYNC_ERROR).assertIsDisplayed()
+    compose
+        .onAllNodesWithText(compose.activity.getString(R.string.receipt_sync_failed))
+        .assertCountEquals(1)
     compose.onAllNodesWithText(review).assertCountEquals(2)
     compose.onAllNodesWithTag(ReceiptHistoryTestTags.PHOTO_PREVIEW)[0].performClick()
     compose.onNodeWithTag(ReceiptHistoryTestTags.PHOTO_EXPANDED).assertIsDisplayed()
@@ -125,7 +141,9 @@ class ReceiptHistoryFlowTest {
             itemRepository = pendingItems,
             userId = owner,
             householdId = household,
-            sharedHousehold = true)
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
 
@@ -155,7 +173,9 @@ class ReceiptHistoryFlowTest {
             householdId = household,
             sharedHousehold = true,
             showBalances = true,
-            onOpenBalances = { balancesOpened[0] = true })
+            onOpenBalances = { balancesOpened[0] = true },
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     compose.onNodeWithText(compose.activity.getString(R.string.scan_receipt)).performClick()
@@ -180,6 +200,8 @@ class ReceiptHistoryFlowTest {
             userId = owner,
             householdId = household,
             sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
             scanReceiptRequested = requested.value,
             onScanReceiptRequestHandled = {
               handled++
@@ -225,6 +247,8 @@ class ReceiptHistoryFlowTest {
             userId = owner,
             householdId = household,
             sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud,
             scanReceiptRequested = requested.value,
             onScanReceiptRequestHandled = { requested.value = false },
             onScanReceiptCancelled = {
@@ -266,7 +290,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     val review = compose.activity.getString(R.string.receipt_review_items)
     compose.waitUntil(5_000) {
@@ -304,7 +336,15 @@ class ReceiptHistoryFlowTest {
           }
         }
     compose.setContent {
-      MaterialTheme { ReceiptsScreen(repository, owner, household, sharedHousehold = true) }
+      MaterialTheme {
+        ReceiptsScreen(
+            repository,
+            owner,
+            household,
+            sharedHousehold = true,
+            expenseRepository = UnusedReceiptExpenses,
+            receiptCloudRepository = UnusedReceiptCloud)
+      }
     }
     val view = compose.activity.getString(R.string.receipt_view_receipt)
     compose.waitUntil(5_000) { compose.onAllNodesWithText(view).fetchSemanticsNodes().isNotEmpty() }

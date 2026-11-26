@@ -3,11 +3,13 @@ package com.android.sharemate.ui.receipts
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.receipt.ReceiptPhotoStore
+import com.android.sharemate.model.receipt.normalizeReceiptTitle
 import com.android.sharemate.model.staging.InventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptDetails
 import com.android.sharemate.model.staging.StagedItem
@@ -36,7 +38,9 @@ class ReceiptHistoryViewModel(
     private val photos: ReceiptPhotoStore,
     private val ownerId: String,
     private val householdId: String,
-    private val now: () -> Long = System::currentTimeMillis,
+    private val expenses: ExpenseSubmissionRepository,
+    private val synchronization: ReceiptHistorySync,
+    private val now: () -> Long,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
   /** Receipts belonging to this account and household, including pending and failed saves. */
@@ -47,6 +51,8 @@ class ReceiptHistoryViewModel(
   private val mutableError = MutableStateFlow(false)
   /** True when local history could not be read or edited; successful operations clear it. */
   val error = mutableError.asStateFlow()
+  /** Cloud/recovery failure; permanent failures remain visible until this screen is recreated. */
+  val syncError = synchronization.error
   private val mutableScanToReview = MutableStateFlow<String?>(null)
   /** Newly scanned receipt whose review has yet to be opened. */
   val scanToReview = mutableScanToReview.asStateFlow()
@@ -66,18 +72,40 @@ class ReceiptHistoryViewModel(
   }
 
   /** Persists draft rows without navigating; cancellation follows the ViewModel lifetime. */
-  fun updateDraft(id: String, items: List<StagedItem>) {
-    viewModelScope.launch { editDraft(id, items) }
+  fun updateDraft(id: String, items: List<StagedItem>, title: String? = null) {
+    viewModelScope.launch { editDraft(id, items, title) }
   }
+
+  /** Titles are presentation metadata and may be changed without replaying a saved purchase. */
+  suspend fun rename(id: String, title: String): Boolean =
+      try {
+        editMutex.withLock {
+          if (receipts.value.none { it.submission.id == id }) return@withLock false
+          val details =
+              (store.details(ownerId, householdId, id)
+                      ?: ReceiptDetails(id, ownerId, householdId, "", now()))
+                  .copy(title = normalizeReceiptTitle(title))
+          store.saveDetails(details)
+          mutableReceipts.value =
+              receipts.value.map { if (it.submission.id == id) it.copy(details = details) else it }
+          mutableError.value = false
+          true
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        mutableError.value = true
+        false
+      }
 
   /**
    * Saves edits and requests leaving this receipt only on success; failures keep the review open.
    */
-  fun saveAndLeave(id: String, items: List<StagedItem>) {
+  fun saveAndLeave(id: String, items: List<StagedItem>, title: String? = null) {
     val request = ++reviewRequest
     mutableSavedReview.value = null
     viewModelScope.launch {
-      if (editDraft(id, items) && request == reviewRequest) mutableSavedReview.value = id
+      if (editDraft(id, items, title) && request == reviewRequest) mutableSavedReview.value = id
     }
   }
 
@@ -86,6 +114,66 @@ class ReceiptHistoryViewModel(
     reviewRequest++
     mutableSavedReview.value = null
   }
+
+  /**
+   * Deletes a confirmed purchase, retaining remote acknowledgement before local cleanup. Returns
+   * false without [error] for absent, pending or actively edited receipts; I/O failure sets
+   * [error]. Cancellation propagates. A retry skips an acknowledged remote deletion.
+   */
+  suspend fun deleteReceipt(id: String): Boolean =
+      try {
+        editMutex.withLock {
+          mutableError.value = false
+          val current = store.loadById(ownerId, householdId, id) ?: return@withLock false
+          if (id in submissions ||
+              store.pendingCorrection(ownerId, householdId, id) != null ||
+              (!current.draft &&
+                  receipts.value.firstOrNull { it.submission.id == id }?.phase !=
+                      InventorySavePhase.CONFIRMED))
+              return@withLock false
+          if (!current.draft && !store.isDeletionAcknowledged(ownerId, householdId, id)) {
+            expenses.deleteReceipt(householdId, id)
+            store.acknowledgeDeletion(ownerId, householdId, id)
+          }
+          photos.delete(id)
+          store.deleteReceipt(ownerId, householdId, id)
+          observations.remove(id)?.cancel()
+          mutableReceipts.value = receipts.value.filterNot { it.submission.id == id }
+          mutableError.value = false
+          true
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        mutableError.value = true
+        false
+      }
+
+  /** Discards only an unsubmitted draft; a queued or saved purchase must never be removed here. */
+  suspend fun discardDraft(id: String): Boolean =
+      try {
+        editMutex.withLock {
+          val current = store.loadById(ownerId, householdId, id) ?: return@withLock false
+          if (!current.draft || id in submissions) return@withLock false
+          store.deleteDraft(ownerId, householdId, id)
+          observations.remove(id)?.cancel()
+          mutableReceipts.value = receipts.value.filterNot { it.submission.id == id }
+          withContext(NonCancellable) {
+            try {
+              photos.delete(id)
+            } catch (_: Exception) {
+              /* Unreferenced local photo only. */
+            }
+          }
+          mutableError.value = false
+          true
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        mutableError.value = true
+        false
+      }
 
   /**
    * Retains a scan before the picker releases its source; exposes failures and propagates them to
@@ -108,25 +196,31 @@ class ReceiptHistoryViewModel(
 
   init {
     viewModelScope.launch { refresh() }
+    synchronization.start(viewModelScope, ::refresh)
   }
 
   /** Loads local receipts and resumes server acknowledgement observations after process restart. */
   suspend fun refresh() {
     try {
       val entries =
-          store.list(ownerId, householdId).map { submission ->
-            val details = store.details(ownerId, householdId, submission.id)
+          (store.list(ownerId, householdId) + store.sharedReceipts(ownerId, householdId)).map {
+              submission ->
+            val details = store.details(submission.ownerId, householdId, submission.id)
             val prior = receipts.value.firstOrNull { it.submission.id == submission.id }
             RetainedReceipt(
                 submission,
                 details,
-                prior?.phase
-                    ?: if (submission.draft) InventorySavePhase.READY
-                    else if (details?.savedAtMillis != null) InventorySavePhase.CONFIRMED
-                    else InventorySavePhase.PENDING)
+                receiptHistoryPhase(
+                    submission,
+                    details,
+                    prior?.phase,
+                    store.pendingCorrection(submission.ownerId, householdId, submission.id) !=
+                        null))
           }
       mutableReceipts.value = entries
-      entries.filter { it.phase == InventorySavePhase.PENDING }.forEach { observe(it.submission) }
+      entries
+          .filter { it.phase == InventorySavePhase.PENDING && it.submission.expense == null }
+          .forEach { observe(it.submission) }
       mutableError.value = false
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -158,16 +252,37 @@ class ReceiptHistoryViewModel(
   }
 
   /** Persists edits for one draft without altering any other receipt. */
-  suspend fun editDraft(id: String, items: List<StagedItem>): Boolean =
+  suspend fun editDraft(
+      id: String,
+      items: List<StagedItem>,
+      title: String? = null,
+      draftPaidBy: String? = null,
+      draftParticipants: Set<String>? = null,
+  ): Boolean =
       try {
         editMutex.withLock {
           val current = receipts.value.firstOrNull { it.submission.id == id }
           if (current?.submission?.draft != true) return@withLock false
           val updated = InventorySubmission(id, ownerId, householdId, items, draft = true)
           store.save(updated)
+          val details =
+              if (title != null) {
+                val previous =
+                    store.details(ownerId, householdId, id)
+                        ?: ReceiptDetails(id, ownerId, householdId, "", now())
+                previous
+                    .copy(
+                        title = normalizeReceiptTitle(title),
+                        draftPaidBy =
+                            if (draftParticipants != null) draftPaidBy else previous.draftPaidBy,
+                        draftParticipants = draftParticipants ?: previous.draftParticipants,
+                    )
+                    .also { store.saveDetails(it) }
+              } else current.details
           mutableReceipts.value =
               receipts.value.map {
-                if (it.submission.id == id && it.submission.draft) it.copy(submission = updated)
+                if (it.submission.id == id && it.submission.draft)
+                    it.copy(submission = updated, details = details)
                 else it
               }
           mutableError.value = false

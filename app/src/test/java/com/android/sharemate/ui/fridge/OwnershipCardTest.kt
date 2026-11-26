@@ -26,7 +26,7 @@ class OwnershipCardTest {
   private fun owner(id: String) = compose.onNodeWithTag(C.Tag.fridge_owner_name_prefix + id)
 
   @Test
-  fun threeColumnCardsShowExplicitSharingAndEachOwnersName() {
+  fun sharedFridgeShowsSharingAndEachOwnersName() {
     compose.setContent {
       ShareMateTheme {
         FridgeScreen(
@@ -41,7 +41,7 @@ class OwnershipCardTest {
                     ownerNames = mapOf("alice" to "Alice", "bob" to "Robert Long Family Name")))
       }
     }
-    badge("mine").assertTextEquals("Personal")
+    badge("mine").assertTextEquals("Yours")
     badge("other").assertTextEquals("Personal")
     badge("shared").assertTextEquals("Shared")
     owner("mine").assertTextEquals("Owner: Alice (you)")
@@ -71,7 +71,7 @@ class OwnershipCardTest {
   }
 
   @Test
-  fun privateAndLegacyItemsUseSharingRatherThanHouseholdOrCurrentUser() {
+  fun privateFridgeHidesRedundantOwnershipControlsAndLabels() {
     compose.setContent {
       ShareMateTheme {
         FridgeScreen(
@@ -90,11 +90,12 @@ class OwnershipCardTest {
                                 sharing = ItemSharing.SHARED))))
       }
     }
-    badge("mine").assertTextEquals("Personal")
-    owner("mine").assertTextEquals("Owner: You")
-    badge("legacy").assertTextEquals("Shared")
-    owner("legacy").assertTextEquals("Owner: Unknown owner")
-    compose.onAllNodesWithText("email@example.com", substring = true).assertCountEquals(0)
+    badge("mine").assertDoesNotExist()
+    badge("legacy").assertDoesNotExist()
+    owner("mine").assertDoesNotExist()
+    owner("legacy").assertDoesNotExist()
+    compose.onNodeWithText("All owners").assertDoesNotExist()
+    compose.onNodeWithText("Milk").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Private")
   }
 }

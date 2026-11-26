@@ -1,12 +1,14 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.recipes
 
+import com.android.sharemate.model.item.ExpirationDates
 import com.android.sharemate.model.item.FakeItemRepository
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemStatus
 import java.io.IOException
+import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -142,6 +144,52 @@ class RecipeIngredientProviderTest {
     } catch (actual: CancellationException) {
       assertSame(cancellation, actual)
     }
+  }
+
+  @Test
+  fun availableEntriesPreserveIdsAndDatesBeforeNamesAreDeduplicated() = runTest {
+    val expiry = ExpirationDates.toDate(LocalDate.of(2026, 11, 23))
+    items.emitItems(
+        listOf(
+            item(" MILK ").copy(id = "old-milk", expirationDate = expiry),
+            item("milk").copy(id = "fresh-milk"),
+        ))
+    val available = provider.availableIngredients("home", "alice")
+    assertEquals(listOf("old-milk", "fresh-milk"), available.map { it.itemId })
+    assertEquals(listOf("milk", "milk"), available.map { it.name })
+    assertEquals(expiry, available[0].expirationDate)
+    assertNull(available[1].expirationDate)
+    assertNotSame(expiry, available[0].expirationDate)
+    available[0].expirationDate!!.time = 0
+    assertEquals(ExpirationDates.toDate(LocalDate.of(2026, 11, 23)), expiry)
+    assertEquals(listOf("milk"), provider.ingredients("home", "alice"))
+  }
+
+  @Test
+  fun availableEntriesUseTheSameVisibilityLifecycleQuantityAndNameRules() = runTest {
+    items.emitItems(
+        listOf(
+            item(" ＲＩＣＥ ").copy(id = "mine"),
+            item("milk").copy(id = "shared", ownerId = "bob", sharing = ItemSharing.SHARED),
+            item("private").copy(ownerId = "bob"),
+            item("eaten").copy(status = ItemStatus.EATEN),
+            item("discarded").copy(status = ItemStatus.DISCARDED),
+            item("empty").copy(quantity = 0),
+            item("negative").copy(quantity = -1),
+            item("\u00a0\t"),
+        ))
+    val available = provider.availableIngredients("home", "alice")
+    assertEquals(listOf("mine", "shared"), available.map { it.itemId })
+    assertEquals(listOf("rice", "milk"), available.map { it.name })
+    assertEquals(
+        available.map { it.name }.distinct().sorted(), provider.ingredients("home", "alice"))
+  }
+
+  @Test
+  fun blankScopeForAvailableEntriesDoesNotReadTheInventory() = runTest {
+    assertTrue(provider.availableIngredients("", "alice").isEmpty())
+    assertTrue(provider.availableIngredients("home", " ").isEmpty())
+    assertTrue(items.requestedHouseholdIds.isEmpty())
   }
 
   private fun item(name: String) = Item(name = name, ownerId = "alice", householdId = "home")

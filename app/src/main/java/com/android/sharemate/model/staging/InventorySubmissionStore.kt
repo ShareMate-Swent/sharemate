@@ -21,6 +21,9 @@ import org.json.JSONObject
  * Private durable receipt handoff. Persist before enqueueing; retain prices after inventory save.
  */
 interface InventorySubmissionStore {
+  /** Binds shared receipt reads and edits to this viewer without changing creator identities. */
+  fun forViewer(viewerId: String): InventorySubmissionStore = this
+
   /** Re-enqueues retained work after an interrupted process, without replacing running jobs. */
   suspend fun resumeSync(ownerId: String, householdId: String) {}
   /**
@@ -31,6 +34,9 @@ interface InventorySubmissionStore {
   suspend fun isDeleted(ownerId: String, householdId: String, id: String): Boolean = false
   /** Retains the tombstone but stops replaying a server-acknowledged deletion. */
   suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {}
+  /** Whether remote deletion already succeeded, even if local photo cleanup is still pending. */
+  suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String): Boolean =
+      false
   /** Cached household receipts visible to this viewer, excluding their own history. */
   suspend fun sharedReceipts(viewerId: String, householdId: String): List<InventorySubmission> =
       emptyList()
@@ -142,6 +148,10 @@ class AndroidInventorySubmissionStore(
   private val preferences
     get() = applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+  override fun forViewer(viewerId: String): InventorySubmissionStore =
+      AndroidInventorySubmissionStore(
+          applicationContext, dispatcher, legacyActive, scheduleSync, viewerId)
+
   override suspend fun resumeSync(ownerId: String, householdId: String) {
     if (!scheduleSync || legacyActive) return
     for (receipt in list(ownerId, householdId) + sharedReceipts(ownerId, householdId)) {
@@ -184,6 +194,11 @@ class AndroidInventorySubmissionStore(
                   .putBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", true)
                   .commit())
         }
+      }
+
+  override suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        preferences.getBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", false)
       }
 
   override suspend fun isDeleted(ownerId: String, householdId: String, id: String) =

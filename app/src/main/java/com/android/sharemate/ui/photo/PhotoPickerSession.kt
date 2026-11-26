@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,6 +27,7 @@ internal fun photoPickerViewModel(
     importPolicy: PhotoImportPolicy = PhotoImportPolicy.STANDARD,
     defaultLens: CameraLens = CameraLens.BACK,
     mirrorFrontCamera: Boolean = false,
+    restoreAfterProcessDeath: Boolean = true,
 ): PhotoPickerViewModel {
   val context = LocalContext.current.applicationContext
   return viewModel(
@@ -35,7 +37,7 @@ internal fun photoPickerViewModel(
             initializer {
               PhotoPickerViewModel(
                   AndroidTemporaryPhotoStore(context, importPolicy),
-                  createSavedStateHandle(),
+                  if (restoreAfterProcessDeath) createSavedStateHandle() else SavedStateHandle(),
                   defaultLens,
                   mirrorFrontCamera)
             }

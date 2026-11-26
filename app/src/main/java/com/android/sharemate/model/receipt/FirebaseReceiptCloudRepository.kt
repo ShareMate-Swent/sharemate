@@ -97,7 +97,7 @@ class FirebaseReceiptCloudRepository(
                   } catch (cancelled: CancellationException) {
                     throw cancelled
                   } catch (_: Exception) {
-                    android.util.Log.w("ReceiptSync", "Skipping invalid receipt backup")
+                    android.util.Log.w(RECEIPT_SYNC_TAG, "Skipping invalid receipt backup")
                     null
                   }
                 }
@@ -108,7 +108,7 @@ class FirebaseReceiptCloudRepository(
             decoded.forEachIndexed { index, (entry, ready) ->
               if (ready && entry.details.photoUri.isEmpty())
                   launch {
-                    var retryMillis = INITIAL_PHOTO_RETRY_MILLIS
+                    var retryMillis = RECEIPT_INITIAL_RETRY_MILLIS
                     while (true) {
                       var pending: File? = null
                       try {
@@ -146,14 +146,17 @@ class FirebaseReceiptCloudRepository(
                         break
                       } catch (cancelled: CancellationException) {
                         throw cancelled
-                      } catch (_: Exception) {
+                      } catch (failure: Exception) {
+                        android.util.Log.w(
+                            RECEIPT_SYNC_TAG,
+                            "Photo download failed (${failure.javaClass.simpleName})")
                         // Retry without requiring a new Firestore event, while observation is
                         // active.
                       } finally {
                         pending?.delete()
                       }
                       delay(retryMillis)
-                      retryMillis = (retryMillis * 2).coerceAtMost(MAX_PHOTO_RETRY_MILLIS)
+                      retryMillis = nextReceiptRetry(retryMillis, RECEIPT_PHOTO_MAX_RETRY_MILLIS)
                     }
                   }
             }
@@ -194,15 +197,10 @@ class FirebaseReceiptCloudRepository(
             document.getLong(ReceiptCloudPaths.REVISION) ?: 0))
   }
 
-  private companion object {
-    const val INITIAL_PHOTO_RETRY_MILLIS = 1_000L
-    const val MAX_PHOTO_RETRY_MILLIS = 300_000L
-  }
-
   private fun watch(query: Query): Flow<List<DocumentSnapshot>> = callbackFlow {
     val registration =
         query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-          if (error != null) close(error)
+          if (error != null) close(receiptCloudFailure(error))
           else if (snapshot != null &&
               !snapshot.metadata.isFromCache &&
               !snapshot.metadata.hasPendingWrites())
@@ -210,4 +208,18 @@ class FirebaseReceiptCloudRepository(
         }
     awaitClose { registration.remove() }
   }
+}
+
+/** Classifies Firestore listener failures without exposing Firebase types to the UI. */
+internal fun receiptCloudFailure(failure: FirebaseFirestoreException): Exception {
+  val permanent =
+      failure.code in
+          setOf(
+              FirebaseFirestoreException.Code.PERMISSION_DENIED,
+              FirebaseFirestoreException.Code.UNAUTHENTICATED,
+              FirebaseFirestoreException.Code.INVALID_ARGUMENT,
+              FirebaseFirestoreException.Code.FAILED_PRECONDITION,
+              FirebaseFirestoreException.Code.NOT_FOUND,
+              FirebaseFirestoreException.Code.UNIMPLEMENTED)
+  return if (permanent) ReceiptCloudPermanentException(failure) else failure
 }

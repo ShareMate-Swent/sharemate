@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.sharemate.model.ocr.OnDeviceTextRecognizer
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -79,7 +80,7 @@ class ExpiryDateOcrTest {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         try {
           val rawText =
-              withTimeout(MlKitExpiryDateReader.RECOGNITION_TIMEOUT_MS) {
+              withTimeout(OnDeviceTextRecognizer.RECOGNITION_TIMEOUT_MS) {
                 recognizer.process(InputImage.fromFilePath(context, uri)).await().text
               }
           throw AssertionError("Raw OCR text: $rawText", failure)
