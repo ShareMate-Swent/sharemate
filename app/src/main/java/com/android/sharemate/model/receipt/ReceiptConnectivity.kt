@@ -19,24 +19,36 @@ fun receiptConnectivity(context: Context): Flow<Boolean?> =
             close()
             return@callbackFlow
           }
-          fun publish() {
-            val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
-            trySend(
-                capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true)
+          val stateLock = Any()
+          var receivedCallback = false
+          fun publishCallback(connected: Boolean) {
+            synchronized(stateLock) {
+              receivedCallback = true
+              trySend(connected)
+            }
           }
           val callback =
               object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) = publish()
-
-                override fun onLost(network: Network) = publish()
+                override fun onLost(network: Network) = publishCallback(false)
 
                 override fun onCapabilitiesChanged(
                     network: Network,
                     capabilities: NetworkCapabilities
-                ) = publish()
+                ) =
+                    publishCallback(
+                        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
               }
           manager.registerDefaultNetworkCallback(callback)
-          publish()
+          // Seed the initial state only; callback arguments are authoritative after registration.
+          // onAvailable is followed by onCapabilitiesChanged, so it needs no synchronous query.
+          val capabilities = manager.getNetworkCapabilities(manager.activeNetwork)
+          synchronized(stateLock) {
+            // A callback may arrive while the initial snapshot is being read.
+            if (!receivedCallback) {
+              trySend(
+                  capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true)
+            }
+          }
           awaitClose { manager.unregisterNetworkCallback(callback) }
         }
         .distinctUntilChanged()
