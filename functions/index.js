@@ -63,3 +63,11 @@ exports.deletePrivateHousehold = onCall(
     const { deletePrivateHousehold } = require("./private-household");
     return deletePrivateHousehold(database(), bucket(), request.auth?.uid, request.data);
   });
+
+// The key is bound only to this callable and never shipped with the Android application.
+const { defineSecret } = require("firebase-functions/params");
+const recipeApiKey = defineSecret("SPOONACULAR_API_KEY");
+exports.suggestRecipes = onCall(
+  { region: "europe-west6", secrets: [recipeApiKey], timeoutSeconds: 15 },
+  request => require("./recipes").suggestRecipes(
+    database(), request.auth?.uid, request.data, () => recipeApiKey.value()));

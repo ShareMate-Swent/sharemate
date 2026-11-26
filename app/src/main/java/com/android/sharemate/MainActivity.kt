@@ -73,10 +73,9 @@ import com.android.sharemate.model.profile.ProfilePhotoRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.FirebaseReceiptCloudRepository
 import com.android.sharemate.model.receipt.ReceiptCloudRepository
-import com.android.sharemate.model.recipes.FakeRecipeRepository
+import com.android.sharemate.model.recipes.FirebaseRecipeRepository
+import com.android.sharemate.model.recipes.RecipeIngredientProvider
 import com.android.sharemate.model.recipes.RecipeRepository
-import com.android.sharemate.model.recipes.RecipeRequestResult
-import com.android.sharemate.model.recipes.RecipeSuggestion
 import com.android.sharemate.model.user.ExpirationPreferencesProvider
 import com.android.sharemate.model.user.ExpirationPreferencesRepository
 import com.android.sharemate.model.user.FirebaseExpirationPreferencesRepository
@@ -231,24 +230,29 @@ open class MainActivity : ComponentActivity() {
         lazy { FirebaseMessaging.getInstance() })
   }
 
-  /** Temporary source allowed by #341; #338 can replace it here without changing the UI. */
-  protected open fun createRecipeRepository(): RecipeRepository =
-      FakeRecipeRepository(
-          RecipeRequestResult.Success(
-              listOf(
-                  RecipeSuggestion(
-                      "demo-soup", getString(R.string.recipes_demo_title), null, 2, 1))))
+  /** Binds service requests to the same immutable context as the graph-owned ViewModel. */
+  protected open fun createRecipeRepository(userId: String, householdId: String): RecipeRepository =
+      FirebaseRecipeRepository(
+          { FirebaseFunctions.getInstance(FirebaseRecipeRepository.REGION) },
+          RecipeIngredientProvider(itemRepository),
+          householdId,
+          userId)
 
   /** One request state across tabs, owned and cleared by this session's navigation graph. */
   @Composable
   private fun recipesViewModel(
       navController: NavHostController,
-      entry: NavBackStackEntry
+      entry: NavBackStackEntry,
+      session: AuthSession,
+      household: Household,
   ): RecipesViewModel {
     val owner = remember(entry) { navController.getBackStackEntry(navController.graph.id) }
     return viewModel(
         viewModelStoreOwner = owner,
-        factory = viewModelFactory { initializer { RecipesViewModel(createRecipeRepository()) } })
+        factory =
+            viewModelFactory {
+              initializer { RecipesViewModel(createRecipeRepository(session.uid, household.id)) }
+            })
   }
 
   protected open fun createFoodImageSelector() = FoodImageSelector(CommonsFoodImageRepository())
@@ -424,7 +428,7 @@ open class MainActivity : ComponentActivity() {
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.FRIDGE)) { entry ->
                         val fridgeViewModel = fridgeViewModel(entry, session, household)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          val recipes = recipesViewModel(navController, entry)
+                          val recipes = recipesViewModel(navController, entry, session, household)
                           FridgeScreen(
                               viewModel = fridgeViewModel,
                               onSuggestRecipes = {
@@ -447,7 +451,7 @@ open class MainActivity : ComponentActivity() {
                       TopLevelDestination.RECIPES.route,
                       deepLinks = AppDeepLinks.navDeepLinks(TopLevelDestination.RECIPES)) { entry ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                          RecipesScreen(recipesViewModel(navController, entry), isDemo = true)
+                          RecipesScreen(recipesViewModel(navController, entry, session, household))
                         }
                       }
                   composable(
