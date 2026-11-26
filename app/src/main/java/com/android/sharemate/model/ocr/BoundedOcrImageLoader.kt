@@ -26,6 +26,7 @@ internal class BoundedOcrImageLoader(
 
   suspend fun load(uri: Uri): Bitmap =
       BoundedPhotoRead.run(
+          uri = uri,
           timeoutMessage = "OCR image loading timed out",
           busyMessage = "OCR image loader is busy",
           discard = Bitmap::recycle,

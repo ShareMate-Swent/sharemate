@@ -32,11 +32,13 @@ internal object BoundedPhotoRead {
   private const val WORKER_COUNT = 2
 
   suspend fun <T : Any> run(
+      uri: Uri,
       timeoutMessage: String,
       busyMessage: String,
       discard: (T) -> Unit,
       read: (CancellationSignal, checkActive: () -> Unit) -> T,
   ): T {
+    val workers = if (uri.scheme == ContentResolver.SCHEME_FILE) localWorkers else providerWorkers
     var completed: T? = null
     try {
       return withTimeoutOrNull(TIMEOUT_MS) {
@@ -86,7 +88,8 @@ internal object BoundedPhotoRead {
       )
 
   // Workers own their resources until blocked calls return. With no queue, further reads fail fast.
-  private val workers = pool("photo-loader")
+  private val providerWorkers = pool("provider-photo-loader")
+  private val localWorkers = pool("local-photo-loader")
   private val cancellationWorkers =
       pool("photo-cancellation").apply {
         rejectedExecutionHandler = ThreadPoolExecutor.DiscardPolicy()

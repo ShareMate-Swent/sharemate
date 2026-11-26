@@ -62,6 +62,7 @@ internal constructor(
     require(source.scheme == "content")
     val imported =
         BoundedPhotoRead.run(
+            uri = source,
             timeoutMessage = "Gallery image import timed out",
             busyMessage = "Photo loader is busy",
             discard = { file: File -> file.delete() },

@@ -4,6 +4,7 @@ package com.android.sharemate.model.image
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.android.sharemate.model.ocr.BoundedOcrImageLoader
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -68,11 +69,11 @@ class TemporaryPhotoStoreTest {
 
   @OptIn(ExperimentalCoroutinesApi::class)
   @Test
-  fun stalledGalleryReadReturnsAnErrorBeforeTheProviderUnblocks() = runTest {
-    val entered = CountDownLatch(1)
+  fun stalledGalleryReadsTimeOutAndLeaveCameraOcrAvailable() = runTest {
+    val entered = CountDownLatch(2)
     val release = CountDownLatch(1)
-    val signaled = CountDownLatch(1)
-    val closed = CountDownLatch(1)
+    val signaled = CountDownLatch(2)
+    val closed = CountDownLatch(2)
     val stalledStore =
         AndroidTemporaryPhotoStore(context, PhotoImportPolicy.STANDARD) { _, signal ->
           signal.setOnCancelListener { signaled.countDown() }
@@ -87,21 +88,38 @@ class TemporaryPhotoStoreTest {
           }
         }
 
+    val capture = store.createCapture()
+    val captureUri = Uri.parse(capture)
+    File(requireNotNull(captureUri.path)).writeBytes(png())
     try {
-      val result = async { runCatching { stalledStore.importImage("content://photos/stalled") } }
+      val imports =
+          List(2) { index ->
+            async { runCatching { stalledStore.importImage("content://photos/stalled/$index") } }
+          }
       runCurrent()
       assertTrue(entered.await(5, TimeUnit.SECONDS))
       advanceTimeBy(BoundedPhotoRead.TIMEOUT_MS - 1)
-      assertFalse(result.isCompleted)
+      assertTrue(imports.none { it.isCompleted })
       advanceTimeBy(1)
       runCurrent()
-      val failure = result.await().exceptionOrNull()
-      assertTrue(failure is IOException)
-      assertEquals("Gallery image import timed out", failure?.message)
+      for (result in imports) {
+        val failure = result.await().exceptionOrNull()
+        assertTrue(failure is IOException)
+        assertEquals("Gallery image import timed out", failure?.message)
+      }
       assertTrue(signaled.await(5, TimeUnit.SECONDS))
-      assertEquals(1L, closed.count)
+      val loader =
+          BoundedOcrImageLoader({ context.cacheDir }) { uri, _ ->
+            File(requireNotNull(uri.path)).inputStream()
+          }
+      val bitmap = withContext(Dispatchers.IO) { loader.load(captureUri) }
+      assertEquals(4, bitmap.width)
+      assertEquals(4, bitmap.height)
+      bitmap.recycle()
+      assertEquals(2L, closed.count)
     } finally {
       release.countDown()
+      store.delete(capture)
     }
 
     assertTrue(closed.await(5, TimeUnit.SECONDS))
