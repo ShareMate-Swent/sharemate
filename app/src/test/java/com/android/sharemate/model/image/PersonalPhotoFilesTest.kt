@@ -7,6 +7,7 @@ import android.net.Uri
 import java.io.File
 import java.io.RandomAccessFile
 import kotlin.random.Random
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -25,7 +26,7 @@ class PersonalPhotoFilesTest {
   private val privateDirectory = File(context.cacheDir, "personal-photo-drafts")
 
   @Test
-  fun galleryImagesRetainBytesDimensionsAndAlphaThroughThePrivateHandoff() = runTest {
+  fun galleryImagesRetainBytesDimensionsAndAlphaThroughThePrivateHandoff() = runBlocking {
     for (format in listOf(Bitmap.CompressFormat.PNG, Bitmap.CompressFormat.JPEG)) {
       val original = File.createTempFile("gallery-", ".photo", context.cacheDir)
       val image = Bitmap.createBitmap(1600, 8, Bitmap.Config.ARGB_8888)
@@ -36,7 +37,10 @@ class PersonalPhotoFilesTest {
       val bytes = original.readBytes()
       val selected = Uri.parse("content://gallery/transparent")
       shadowOf(context.contentResolver).registerInputStream(selected, bytes.inputStream())
-      val gallery = AndroidTemporaryPhotoStore(context)
+      val gallery =
+          AndroidTemporaryPhotoStore(context, PhotoImportPolicy.STANDARD) { uri, _ ->
+            context.contentResolver.openInputStream(uri)
+          }
       val imported = gallery.importImage(selected.toString())
       var draft: File? = null
       try {
@@ -66,7 +70,7 @@ class PersonalPhotoFilesTest {
   }
 
   @Test
-  fun oversizedGalleryHandoffIsRejectedWithoutKeepingAPartialDraft() = runTest {
+  fun oversizedGalleryHandoffIsRejectedWithoutKeepingAPartialDraft() = runBlocking {
     val original = File.createTempFile("gallery-large-", ".png", context.cacheDir)
     val image = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
     original.outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
@@ -75,7 +79,10 @@ class PersonalPhotoFilesTest {
     RandomAccessFile(original, "rw").use { it.setLength(size) }
     val selected = Uri.parse("content://gallery/large")
     shadowOf(context.contentResolver).registerInputStream(selected, original.inputStream())
-    val gallery = AndroidTemporaryPhotoStore(context)
+    val gallery =
+        AndroidTemporaryPhotoStore(context, PhotoImportPolicy.STANDARD) { uri, _ ->
+          context.contentResolver.openInputStream(uri)
+        }
     val imported = gallery.importImage(selected.toString())
     try {
       assertEquals(size, File(requireNotNull(Uri.parse(imported).path)).length())
