@@ -712,6 +712,16 @@ internal fun clearFridgeNavigation(navController: NavHostController) {
   if (fridgeEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
     fridgeEntry.viewModelStore.clear()
   }
+  // Graph-owned requests must stop even if Navigation retains entries during a transition.
+  val graphEntry =
+      try {
+        navController.getBackStackEntry(navController.graph.id)
+      } catch (_: IllegalArgumentException) {
+        null
+      }
+  if (graphEntry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.CREATED) == true) {
+    graphEntry.viewModelStore.clear()
+  }
   // Only the routes in the graph: a private fridge registers no chat route.
   TopLevelDestination.entries
       .filter { navController.graph.findNode(it.route) != null }

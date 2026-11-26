@@ -4,9 +4,11 @@ package com.android.sharemate
 import android.content.ComponentName
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelStoreOwner
 import com.android.sharemate.model.item.Item
 import com.android.sharemate.model.recipes.*
 import com.android.sharemate.resources.C
+import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.recipes.RecipesTestTags
 import kotlinx.coroutines.CancellationException
@@ -62,6 +64,14 @@ class RecipeRequestNavigationTest {
 
   private fun resolve() {
     compose.runOnIdle { firebase.resolveInitialHousehold() }
+    awaitFridge()
+  }
+
+  private fun awaitFridge() {
+    // Household activation now performs IO; Compose idleness alone does not await its result.
+    compose.waitUntil(timeoutMillis = 5_000) {
+      compose.onAllNodesWithTag(C.Tag.fridge_suggest_recipes).fetchSemanticsNodes().size == 1
+    }
     compose.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed()
   }
 
@@ -171,6 +181,60 @@ class RecipeRequestNavigationTest {
   }
 
   @Test
+  fun sameUserHouseholdSwitchCancelsOldRequestAndStartsIdle() {
+    resolve()
+    request()
+    compose.onNodeWithTag(RecipesTestTags.LOADING).assertIsDisplayed()
+    assertCalls(1)
+    compose.runOnIdle {
+      firebase.setHousehold("trusted-student-id", "other-home")
+      val activityStore = compose.activity.viewModelStore
+      val householdStore =
+          activityStore
+              .keys()
+              .mapNotNull { activityStore[it] }
+              .filterIsInstance<ViewModelStoreOwner>()
+              .single()
+              .viewModelStore
+      householdStore
+          .keys()
+          .mapNotNull { householdStore[it] }
+          .filterIsInstance<HouseholdGateViewModel>()
+          .single()
+          .refresh()
+    }
+    awaitFridge()
+    tab(NavigationTestTags.RECIPES_TAB)
+    compose.onNodeWithTag(RecipesTestTags.IDLE).assertIsDisplayed()
+    assertCalls(1)
+    compose.waitUntil(timeoutMillis = 5_000) { RecipeNavigationFixture.cancelled == 1 }
+    compose.runOnIdle {
+      assertEquals(1, RecipeNavigationFixture.cancelled)
+      assertEquals("other-home", firebase.observedHouseholds.last())
+    }
+  }
+
+  @Test
+  fun signOutCancelsPendingRequestAndSameUserSignsBackInIdle() {
+    resolve()
+    request()
+    compose.onNodeWithTag(RecipesTestTags.LOADING).assertIsDisplayed()
+    compose.runOnIdle { firebase.setSession(null) }
+    compose.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertDoesNotExist()
+    compose.onNodeWithTag(RecipesTestTags.LOADING).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(1, RecipeNavigationFixture.cancelled) }
+    compose.runOnIdle {
+      firebase.setHousehold("trusted-student-id", "student-home")
+      firebase.setSession("trusted-student-id")
+    }
+    awaitFridge()
+    tab(NavigationTestTags.RECIPES_TAB)
+    compose.onNodeWithTag(RecipesTestTags.IDLE).assertIsDisplayed()
+    assertCalls(1)
+    compose.runOnIdle { assertEquals(1, RecipeNavigationFixture.cancelled) }
+  }
+
+  @Test
   fun householdChangeCancelsOldRequestAndNewHouseholdStartsIdle() {
     resolve()
     request()
@@ -178,7 +242,7 @@ class RecipeRequestNavigationTest {
       firebase.setHousehold("other-user", "other-home")
       firebase.setSession("other-user")
     }
-    compose.onNodeWithTag(C.Tag.fridge_suggest_recipes).assertIsDisplayed()
+    awaitFridge()
     tab(NavigationTestTags.RECIPES_TAB)
     compose.onNodeWithTag(RecipesTestTags.IDLE).assertIsDisplayed()
     assertCalls(1)
