@@ -84,6 +84,28 @@ class FirebaseInventorySubmissionTest {
     assertNull(rows.last()[Fields.PRICE])
     assertEquals(2L, rows.first()[Fields.QUANTITY])
     verify(batch, times(1)).commit()
+    verify(firestore, never()).collection(FirestoreCollections.HOUSEHOLDS)
+    assertFalse(write.confirmation.isCompleted)
+    task.setResult(null)
+    assertTrue(write.confirmation.await().isSuccess)
+  }
+
+  @Test
+  fun privateHouseholdStoresPersonalItemsWithoutAnExpense() = runTest {
+    val repository = repository()
+    val refs =
+        submission.items.indices.map { index ->
+          mock(DocumentReference::class.java).also {
+            `when`(items.document(submission.itemId(index))).thenReturn(it)
+          }
+        }
+    val personal =
+        InventorySubmission(ID, "owner", "home", submission.items, sharing = ItemSharing.PERSONAL)
+    val write = repository.addItems(personal) as ItemWrite.Queued
+    val saved = ArgumentCaptor.forClass(Item::class.java)
+    refs.forEach { verify(batch).set(eq(it), saved.capture()) }
+    assertTrue(saved.allValues.all { it.sharing == ItemSharing.PERSONAL })
+    verify(firestore, never()).collection(FirestoreCollections.HOUSEHOLDS)
     assertFalse(write.confirmation.isCompleted)
     task.setResult(null)
     assertTrue(write.confirmation.await().isSuccess)

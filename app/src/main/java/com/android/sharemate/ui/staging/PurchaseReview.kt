@@ -11,7 +11,7 @@ enum class PurchaseReviewError {
   MEMBERSHIP_CHANGED,
   NONPOSITIVE_TOTAL,
   INVALID_PAYER,
-  PAYER_MUST_SUBMIT,
+  SUBMITTER_NOT_MEMBER,
   NO_PARTICIPANTS,
   INVALID_PARTICIPANTS,
 }
@@ -71,8 +71,8 @@ data class PurchaseReview(
           total > MAX_PURCHASE_CENTS -> PurchaseReviewError.TOTAL_TOO_LARGE
           total <= 0 -> PurchaseReviewError.NONPOSITIVE_TOTAL
           paidBy.isNullOrBlank() || paidBy !in members -> PurchaseReviewError.INVALID_PAYER
-          currentUserId.isNullOrBlank() || paidBy != currentUserId ->
-              PurchaseReviewError.PAYER_MUST_SUBMIT
+          currentUserId.isNullOrBlank() || currentUserId !in members ->
+              PurchaseReviewError.SUBMITTER_NOT_MEMBER
           participants.isEmpty() -> PurchaseReviewError.NO_PARTICIPANTS
           participants.any { it.isBlank() || it !in members } ->
               PurchaseReviewError.INVALID_PARTICIPANTS

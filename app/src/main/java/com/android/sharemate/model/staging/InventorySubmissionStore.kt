@@ -8,9 +8,12 @@ import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionFields as Fields
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
+import com.android.sharemate.model.receipt.ReceiptCacheLifecycle
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -21,12 +24,25 @@ import org.json.JSONObject
  * Private durable receipt handoff. Persist before enqueueing; retain prices after inventory save.
  */
 interface InventorySubmissionStore {
+  /** Signals that this store's household lease ended, including departure on another device. */
+  fun invalidations(householdId: String): kotlinx.coroutines.flow.Flow<Unit> =
+      kotlinx.coroutines.flow.emptyFlow()
+  /** Binds shared receipt reads and edits to this viewer without changing creator identities. */
+  fun forViewer(viewerId: String): InventorySubmissionStore = this
+
+  /** Re-enqueues retained work after an interrupted process, without replacing running jobs. */
+  suspend fun resumeSync(ownerId: String, householdId: String) {}
   /**
    * Applies explicit server deletion markers without interpreting missing snapshots as deletion.
    */
   suspend fun applyCloudDeletions(ownerId: String, householdId: String, ids: Set<String>) {}
   /** Locally discarded identities must not be restored by a delayed cloud snapshot. */
   suspend fun isDeleted(ownerId: String, householdId: String, id: String): Boolean = false
+  /** Retains the tombstone but stops replaying a server-acknowledged deletion. */
+  suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {}
+  /** Whether remote deletion already succeeded, even if local photo cleanup is still pending. */
+  suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String): Boolean =
+      false
   /** Cached household receipts visible to this viewer, excluding their own history. */
   suspend fun sharedReceipts(viewerId: String, householdId: String): List<InventorySubmission> =
       emptyList()
@@ -131,21 +147,87 @@ class AndroidInventorySubmissionStore(
     context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val legacyActive: Boolean = false,
+    private val scheduleSync: Boolean = false,
     private val viewerId: String? = null,
+    private val lifecycle: ReceiptCacheLifecycle = ReceiptCacheLifecycle(context),
 ) : InventorySubmissionStore {
   private val applicationContext = context.applicationContext
+
+  override fun invalidations(householdId: String): kotlinx.coroutines.flow.Flow<Unit> =
+      kotlinx.coroutines.flow.callbackFlow {
+        val listener =
+            android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+              if (!lifecycle.isCurrent(householdId)) trySend(Unit)
+            }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        if (!lifecycle.isCurrent(householdId)) trySend(Unit)
+        awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+      }
+
   private val preferences
     get() = applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+  private fun enqueue(
+      receipt: InventorySubmission,
+      delete: Boolean = false,
+      replace: Boolean = true
+  ) =
+      lifecycle.write(receipt.householdId) {
+        ReceiptSyncWorker.enqueue(applicationContext, receipt, delete, replace)
+      }
+
+  override fun forViewer(viewerId: String): InventorySubmissionStore =
+      AndroidInventorySubmissionStore(
+          applicationContext, dispatcher, legacyActive, scheduleSync, viewerId, lifecycle)
+
+  override suspend fun resumeSync(ownerId: String, householdId: String) {
+    if (!scheduleSync || legacyActive) return
+    for (receipt in list(ownerId, householdId) + sharedReceipts(ownerId, householdId)) {
+      if (receipt.ownerId == ownerId ||
+          pendingCorrection(receipt.ownerId, householdId, receipt.id) != null)
+          enqueue(receipt, replace = false)
+    }
+    withContext(dispatcher) {
+      val prefix = "deleted:${key(ownerId, householdId)}:"
+      for (entry in
+          preferences.all.filterKeys { it.startsWith(prefix) }.filterValues { it == true }) {
+        if (preferences.getBoolean(
+            "deleteAcked:${key(ownerId, householdId)}:${entry.key.removePrefix(prefix)}", false))
+            continue
+        val receipt =
+            InventorySubmission(
+                entry.key.removePrefix(prefix), ownerId, householdId, emptyList(), draft = true)
+        enqueue(receipt, delete = true, replace = false)
+      }
+    }
+  }
 
   override suspend fun applyCloudDeletions(ownerId: String, householdId: String, ids: Set<String>) {
     val cache = AndroidInventorySubmissionStore(applicationContext, dispatcher)
     for (id in ids) {
       cache.deleteReceipt(ownerId, householdId, id)
+      cache.acknowledgeDeletion(ownerId, householdId, id)
       com.android.sharemate.model.receipt
           .AndroidReceiptPhotoStore(applicationContext, dispatcher)
           .delete(id)
     }
   }
+
+  override suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        mutationMutex.withLock {
+          check(
+              preferences
+                  .edit()
+                  .putBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", true)
+                  .commit())
+        }
+      }
+
+  override suspend fun isDeletionAcknowledged(ownerId: String, householdId: String, id: String) =
+      withContext(dispatcher) {
+        preferences.getBoolean("deleteAcked:${ownerKey(ownerId, householdId)}:$id", false)
+      }
 
   override suspend fun isDeleted(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
@@ -164,7 +246,8 @@ class AndroidInventorySubmissionStore(
           val id = entry.getString("id")
           if (isDeleted(owner, householdId, id)) null
           else
-              AndroidInventorySubmissionStore(applicationContext, dispatcher, viewerId = viewerId)
+              AndroidInventorySubmissionStore(
+                      applicationContext, dispatcher, viewerId = viewerId, lifecycle = lifecycle)
                   .loadById(owner, householdId, id)
         }
       }
@@ -294,6 +377,7 @@ class AndroidInventorySubmissionStore(
               preferences.edit().putBoolean("deleted:${ownerKey(ownerId, householdId)}:$id", true)
           purge(editor, ownerId, householdId, id)
           check(commit(householdId, editor))
+          if (scheduleSync && submission != null) enqueue(submission, delete = true)
         }
       }
 
@@ -326,6 +410,8 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun saveDetails(details: ReceiptDetails) {
     saveDetailsLocally(details)
+    if (scheduleSync && !legacyActive)
+        loadById(details.ownerId, details.householdId, details.id)?.let { enqueue(it) }
   }
 
   private suspend fun saveDetailsLocally(details: ReceiptDetails) =
@@ -370,6 +456,9 @@ class AndroidInventorySubmissionStore(
 
   override suspend fun save(submission: InventorySubmission) {
     saveLocally(submission)
+    if (scheduleSync && !legacyActive) {
+      enqueue(submission)
+    }
   }
 
   private suspend fun saveLocally(submission: InventorySubmission) =
@@ -397,7 +486,7 @@ class AndroidInventorySubmissionStore(
                     .edit()
                     .putString(scope, json.toString())
                     .remove(archiveKey(submission))
-                    .commit()) {
+                    .let { lifecycle.commit(submission.householdId, it) }) {
                   "Could not retain the reviewed receipt"
                 }
             return@withLock
@@ -412,7 +501,9 @@ class AndroidInventorySubmissionStore(
                   .putString(receiptKey(scope, submission.id), json.toString())
                   .putString(indexKey(scope), JSONArray(ids).toString())
                   .remove(archiveKey(submission))
-          check(editor.commit()) { "Could not retain the reviewed receipt" }
+          check(editor.let { lifecycle.commit(submission.householdId, it) }) {
+            "Could not retain the reviewed receipt"
+          }
         }
       }
 
@@ -423,6 +514,7 @@ class AndroidInventorySubmissionStore(
             .put(Fields.OWNER, submission.ownerId)
             .put(Fields.HOUSEHOLD, submission.householdId)
             .put(Fields.DRAFT, submission.draft)
+            .put(Fields.SHARING, submission.sharing.name)
             .put(
                 Fields.ROWS,
                 JSONArray(
@@ -485,14 +577,18 @@ class AndroidInventorySubmissionStore(
                   .putString(
                       "correction:${key(original.ownerId, original.householdId)}:${original.id}",
                       json.toString())
-                  .commit())
+                  .let { lifecycle.commit(original.householdId, it) })
         }
+        if (scheduleSync) enqueue(correction.original)
       }
 
   override suspend fun clearCorrection(ownerId: String, householdId: String, id: String) =
       withContext(dispatcher) {
         mutationMutex.withLock {
-          check(preferences.edit().remove("correction:${key(ownerId, householdId)}:$id").commit())
+          check(
+              preferences.edit().remove("correction:${key(ownerId, householdId)}:$id").let {
+                lifecycle.commit(householdId, it)
+              })
         }
       }
 
@@ -522,8 +618,9 @@ class AndroidInventorySubmissionStore(
                     .put(REVISION, correction.originalRevision + 1)
                     .toString())
           }
-          check(editor.commit())
+          check(lifecycle.commit(original.householdId, editor))
         }
+        if (scheduleSync) enqueue(correction.replacement)
       }
 
   override suspend fun acknowledgeExpense(
@@ -565,7 +662,7 @@ class AndroidInventorySubmissionStore(
               current.expenseProgress == ExpenseProgress.CONFIRMED ||
               pendingCorrection(ownerId, householdId, id) != null)
               return@withLock null
-          enqueue(current)
+          lifecycle.write(householdId) { enqueue(current) }
         }
       }
 
@@ -619,7 +716,7 @@ class AndroidInventorySubmissionStore(
 
   private fun commit(home: String, editor: SharedPreferences.Editor): Boolean {
     require(home.isNotBlank())
-    return editor.commit()
+    return lifecycle.commit(home, editor)
   }
 
   private fun revisionKey(scope: String, id: String) = "$REVISION:$scope:$id"
@@ -662,7 +759,8 @@ class AndroidInventorySubmissionStore(
             else false,
             if (json.has(Fields.EXPENSE))
                 ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))
-            else ExpenseProgress.QUEUED)
+            else ExpenseProgress.QUEUED,
+            sharing = ItemSharing.valueOf(json.optString(Fields.SHARING, ItemSharing.SHARED.name)))
         .also { require(it.ownerId == ownerId && it.householdId == householdId) }
   }
 
@@ -683,7 +781,9 @@ class AndroidInventorySubmissionStore(
             val value = checkNotNull(preferences.getString(scope, null))
             check(decode(value, submission.ownerId, submission.householdId) == submission)
             check(
-                preferences.edit().putString(archiveKey(submission), value).remove(scope).commit())
+                preferences.edit().putString(archiveKey(submission), value).remove(scope).let {
+                  lifecycle.commit(submission.householdId, it)
+                })
             return@withLock
           }
           val value = checkNotNull(preferences.getString(receiptKey(scope, submission.id), null))
@@ -697,7 +797,7 @@ class AndroidInventorySubmissionStore(
                   .putString(archiveKey(submission), value)
                   .remove(receiptKey(scope, submission.id))
                   .putString(indexKey(scope), JSONArray(remaining).toString())
-                  .commit())
+                  .let { lifecycle.commit(submission.householdId, it) })
         }
       }
 

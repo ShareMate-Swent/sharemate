@@ -30,8 +30,14 @@ internal fun PurchaseReviewContent(
         stringResource(
             R.string.purchase_total,
             preview?.totalCents?.let(Prices::format) ?: stringResource(R.string.staging_no_price),
-        ))
-    Text(stringResource(R.string.purchase_paid_by), style = MaterialTheme.typography.titleSmall)
+        ),
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    Text(
+        stringResource(R.string.purchase_paid_by),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
     review.members.toSortedMap().forEach { (uid, name) ->
       Row(verticalAlignment = Alignment.CenterVertically) {
         RadioButton(
@@ -40,14 +46,14 @@ internal fun PurchaseReviewContent(
             enabled = enabled,
             modifier = Modifier.testTag("staging_payer_$uid"),
         )
-        Text(name.ifBlank { uid })
+        Text(name.ifBlank { uid }, color = MaterialTheme.colorScheme.onSurface)
       }
     }
     Text(
         stringResource(R.string.purchase_participants),
         style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
     )
-    Text(stringResource(R.string.purchase_rounding), style = MaterialTheme.typography.bodySmall)
     review.members.toSortedMap().forEach { (uid, name) ->
       Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
@@ -56,10 +62,15 @@ internal fun PurchaseReviewContent(
             enabled = enabled,
             modifier = Modifier.testTag("staging_participant_$uid"),
         )
-        Text(name.ifBlank { uid }, modifier = Modifier.weight(1f))
+        Text(
+            name.ifBlank { uid },
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
         preview?.shares?.get(uid)?.let {
           Text(
               stringResource(R.string.staging_price, Prices.format(it)),
+              color = MaterialTheme.colorScheme.onSurface,
               modifier = Modifier.testTag("staging_share_$uid"),
           )
         }
@@ -75,7 +86,7 @@ internal fun PurchaseReviewContent(
             PurchaseReviewError.TOTAL_OVERFLOW -> R.string.purchase_overflow
             PurchaseReviewError.NONPOSITIVE_TOTAL -> R.string.purchase_positive_total
             PurchaseReviewError.INVALID_PAYER -> R.string.purchase_invalid_payer
-            PurchaseReviewError.PAYER_MUST_SUBMIT -> R.string.purchase_payer_must_submit
+            PurchaseReviewError.SUBMITTER_NOT_MEMBER -> R.string.purchase_submitter_not_member
             PurchaseReviewError.NO_PARTICIPANTS -> R.string.purchase_no_participants
             PurchaseReviewError.INVALID_PARTICIPANTS -> R.string.purchase_invalid_participants
           }

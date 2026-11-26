@@ -26,9 +26,15 @@ import com.android.sharemate.ui.theme.Dimens
  * @param onBack Called when the button is tapped.
  * @param testTag Test tag of the button.
  * @param modifier Applied to the button.
+ * @param contentDescription Accessible label for the destination-specific back action.
  */
 @Composable
-fun AppBackButton(onBack: () -> Unit, testTag: String, modifier: Modifier = Modifier) {
+fun AppBackButton(
+    onBack: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    contentDescription: String = stringResource(R.string.back),
+) {
   Surface(
       onClick = onBack,
       shape = CircleShape,
@@ -43,7 +49,7 @@ fun AppBackButton(onBack: () -> Unit, testTag: String, modifier: Modifier = Modi
     ) {
       Icon(
           imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-          contentDescription = stringResource(R.string.back),
+          contentDescription = contentDescription,
           modifier = Modifier.size(ComponentLayout.backIconSize),
       )
     }

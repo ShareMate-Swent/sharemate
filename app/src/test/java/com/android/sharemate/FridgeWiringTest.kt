@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.compose.ui.test.*
@@ -49,6 +50,15 @@ class FridgeWiringTest {
   }
 
   @Test
+  fun privateFridgeHasNoChatTab() {
+    resolve(FridgeType.PRIVATE)
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.RECIPES_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).performClick().assertIsSelected()
+    compose.onNodeWithTag(ChatTestTags.SCREEN).assertDoesNotExist()
+  }
+
+  @Test
   fun noHouseholdShowsOnboardingWithoutObservingInventory() {
     compose.runOnIdle { firebase.resolveInitialHousehold(null) }
     compose.onNodeWithTag(HouseholdGateTestTags.SIGN_OUT).assertExists()
@@ -94,7 +104,10 @@ class FridgeWiringTest {
       firebase.setHousehold("other-user", "other-home")
       firebase.setSession("other-user")
     }
-    compose.waitUntil { firebase.observedHouseholds == listOf("student-home", "other-home") }
+    // Drain main-thread work after IO activation before reading the observation recorded by the UI.
+    compose.waitUntil {
+      compose.runOnIdle { firebase.observedHouseholds == listOf("student-home", "other-home") }
+    }
     compose.waitUntil { firebase.removedListeners == listOf("student-home") }
     compose.onNodeWithText("Old inventory").assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.fridge_type).assertTextEquals("Fridge type: Shared")
@@ -125,7 +138,10 @@ class FridgeWiringTest {
           .single()
           .refresh()
     }
-    compose.waitUntil { firebase.observedHouseholds.contains("replacement-home") }
+    // Reading the list alone does not drain Robolectric's main looper after IO activation.
+    compose.waitUntil {
+      compose.runOnIdle { firebase.observedHouseholds.contains("replacement-home") }
+    }
     compose.waitUntil { firebase.removedListeners.contains("student-home") }
     compose.onNodeWithText("Old inventory").assertDoesNotExist()
     emit("replacement-home", "Replacement inventory")
@@ -145,6 +161,10 @@ class FridgeWiringTest {
 
   private fun resolve(type: FridgeType = FridgeType.SHARED) {
     compose.runOnIdle { firebase.resolveInitialHousehold(type = type) }
+    // Household activation finishes on IO after the Firebase task resolves.
+    compose.waitUntil(5_000) {
+      compose.onAllNodesWithTag(C.Tag.fridge_add_item).fetchSemanticsNodes().size == 1
+    }
     compose.onNodeWithTag(C.Tag.fridge_add_item).assertIsEnabled()
   }
 

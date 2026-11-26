@@ -3,9 +3,11 @@ package com.android.sharemate.model.staging
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.*
 import com.android.sharemate.model.finance.SharedExpense
 import com.android.sharemate.model.item.*
 import com.android.sharemate.model.receipt.*
+import com.google.firebase.auth.FirebaseAuth
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.flow.first
@@ -14,6 +16,7 @@ import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.Mockito.*
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
@@ -59,6 +62,62 @@ class ReceiptJournalRecoveryTest {
     store.deleteReceipt("peer", "home", id)
     store.save(own)
     assertTrue(runCatching { store.deleteDraft("owner", "home", id) }.isFailure)
+  }
+
+  @Test
+  fun restartSchedulesOwnReceiptsPeerCorrectionsAndDeletionMarkers() = runTest {
+    val auth = mock(FirebaseAuth::class.java)
+    val manager = mock(WorkManager::class.java)
+    mockStatic(FirebaseAuth::class.java).use { a ->
+      mockStatic(WorkManager::class.java).use { w ->
+        a.`when`<FirebaseAuth> { FirebaseAuth.getInstance() }.thenReturn(auth)
+        w.`when`<WorkManager> { WorkManager.getInstance(context) }.thenReturn(manager)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val store =
+            AndroidInventorySubmissionStore(
+                context, dispatcher, scheduleSync = true, viewerId = "owner")
+        val own = receipt()
+        val peer = receipt("peer")
+        store.save(own)
+        store.saveDetails(
+            entry(own).details.copy(draftPaidBy = "owner", draftParticipants = setOf("owner")))
+        store.cacheShared("owner", "home", listOf(entry(peer)))
+        store.resumeSync("owner", "home")
+        store.saveCorrection(ReceiptCorrection("revision", peer, peer, "Updated"))
+        clearInvocations(manager)
+        store.resumeSync("owner", "home")
+        verify(manager)
+            .enqueueUniqueWork(
+                eq("receipt-sync-owner-$id"),
+                eq(ExistingWorkPolicy.KEEP),
+                any<OneTimeWorkRequest>())
+        verify(manager)
+            .enqueueUniqueWork(
+                eq("receipt-sync-peer-$id"), eq(ExistingWorkPolicy.KEEP), any<OneTimeWorkRequest>())
+        store.deleteReceipt("owner", "home", id)
+        clearInvocations(manager)
+        store.resumeSync("owner", "home")
+        val request = org.mockito.ArgumentCaptor.forClass(OneTimeWorkRequest::class.java)
+        verify(manager)
+            .enqueueUniqueWork(
+                eq("receipt-sync-owner-$id"), eq(ExistingWorkPolicy.KEEP), request.capture())
+        assertTrue(request.value.workSpec.input.getBoolean("delete", false))
+        store.acknowledgeDeletion("owner", "home", id)
+        clearInvocations(manager)
+        AndroidInventorySubmissionStore(
+                context, dispatcher, scheduleSync = true, viewerId = "owner")
+            .resumeSync("owner", "home")
+        verify(manager, never())
+            .enqueueUniqueWork(eq("receipt-sync-owner-$id"), any(), any<OneTimeWorkRequest>())
+        assertTrue(store.isDeleted("owner", "home", id))
+        clearInvocations(manager)
+        AndroidInventorySubmissionStore(context, dispatcher).resumeSync("owner", "home")
+        AndroidInventorySubmissionStore(
+                context, dispatcher, legacyActive = true, scheduleSync = true)
+            .resumeSync("owner", "home")
+        verifyNoInteractions(manager)
+      }
+    }
   }
 
   @Test

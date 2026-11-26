@@ -1,10 +1,12 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.sharemate
 
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavDestination
 import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import com.android.sharemate.ui.navigation.TopLevelDestination
@@ -49,14 +51,31 @@ class FridgeNavigationCleanupTest {
     verifyNavigationCleared()
   }
 
-  private fun prepareGraph() {
+  @Test
+  fun privateFridgeGraphWithoutChatSkipsTheChatRoute() {
+    prepareGraph(missing = TopLevelDestination.CHAT)
+    `when`(controller.getBackStackEntry(TopLevelDestination.FRIDGE.route))
+        .thenThrow(IllegalArgumentException("Fridge is no longer on the back stack"))
+
+    clearFridgeNavigation(controller)
+
+    verify(controller, never()).clearBackStack(TopLevelDestination.CHAT.route)
+    verifyNavigationCleared(missing = TopLevelDestination.CHAT)
+  }
+
+  private fun prepareGraph(missing: TopLevelDestination? = null) {
     val graph = mock(NavGraph::class.java)
     `when`(graph.id).thenReturn(42)
+    TopLevelDestination.entries
+        .filter { it != missing }
+        .forEach { `when`(graph.findNode(it.route)).thenReturn(mock(NavDestination::class.java)) }
     `when`(controller.graph).thenReturn(graph)
   }
 
-  private fun verifyNavigationCleared() {
-    TopLevelDestination.entries.forEach { verify(controller).clearBackStack(it.route) }
+  private fun verifyNavigationCleared(missing: TopLevelDestination? = null) {
+    TopLevelDestination.entries
+        .filter { it != missing }
+        .forEach { verify(controller).clearBackStack(it.route) }
     verify(controller).popBackStack(42, true)
   }
 

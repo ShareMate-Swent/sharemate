@@ -1,6 +1,9 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.startup
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import com.android.sharemate.ui.theme.ShareMateBrandColors
 
@@ -27,8 +30,24 @@ internal object LaunchLayout {
   const val firstStageProgress = 30
   const val readyProgress = 100
   const val fallbackProgress = 90
-  val nameDark = ShareMateBrandColors.darkName
+  val nameDark
+    @Composable
+    get() =
+        if (MaterialTheme.colorScheme.surface.luminance() < .5f) MaterialTheme.colorScheme.onSurface
+        else ShareMateBrandColors.darkName
+
   val nameMint = ShareMateBrandColors.mintName
-  val progressTrack = ShareMateBrandColors.progressTrack
-  val progressLabel = ShareMateBrandColors.progressLabel
+  val progressTrack
+    @Composable
+    get() =
+        if (MaterialTheme.colorScheme.surface.luminance() < .5f)
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        else ShareMateBrandColors.progressTrack
+
+  val progressLabel
+    @Composable
+    get() =
+        if (MaterialTheme.colorScheme.surface.luminance() < .5f)
+            MaterialTheme.colorScheme.onSurfaceVariant
+        else ShareMateBrandColors.progressLabel
 }

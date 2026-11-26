@@ -125,7 +125,10 @@ class BarcodePurchaseFlowTest {
       }
       compose.onNodeWithTag(StagingTestTags.ADD).performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextInput("Manual bread")
-      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsNotEnabled()
+      compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextInput("2.40")
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsEnabled().performClick()
+      compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertDoesNotExist()
       compose.onNodeWithText("Manual bread").assertExists()
       compose.onNodeWithText("Scanned milk").assertExists()
       assertEquals(4, lookups)

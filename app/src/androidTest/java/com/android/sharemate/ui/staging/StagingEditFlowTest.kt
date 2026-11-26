@@ -1,4 +1,6 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.staging
 
 import androidx.activity.ComponentActivity
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sharemate.model.staging.StagedItem
@@ -69,26 +72,38 @@ class StagingEditFlowTest {
     compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertDoesNotExist()
     assertRowShows("bread", "Baguette")
     assertRowShows("bread", "Qty 3")
-    assertRowShows("bread", "CHF 2.40")
+    assertRowShows("bread", "2.40 CHF")
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
     assertEquals(listOf(milk, StagedItem("bread", "Baguette", 3, 240)), confirmed)
   }
 
   @Test
-  fun invalidValuesKeepTheDialogOpenWithAnError() {
-    show(StagingViewModel(listOf(milk)))
+  fun invalidPricesDisableSaveAndInvalidQuantityStillShowsAnError() {
+    val viewModel = StagingViewModel(listOf(milk))
+    show(viewModel)
     compose.onNodeWithTag(StagingTestTags.item("milk")).performClick()
 
-    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("abc")
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+    for (price in listOf("abc", "")) {
+      compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement(price)
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsNotEnabled()
+      compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertIsDisplayed()
+      assertEquals(listOf(milk), viewModel.state.value.items)
+    }
 
+    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.40")
+    compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("0")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsEnabled().performClick()
     compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertIsDisplayed()
-    compose.onNodeWithTag(StagedItemEditTestTags.ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(StagedItemEditTestTags.ERROR).performScrollTo().assertIsDisplayed()
+    assertEquals(listOf(milk), viewModel.state.value.items)
 
-    compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("")
+    compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("2")
     compose.onNodeWithTag(StagedItemEditTestTags.ERROR).assertDoesNotExist()
-    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    assertRowShows("milk", "No price")
+    compose.onNodeWithTag(StagedItemEditTestTags.SAVE).assertIsEnabled().performClick()
+    compose.onNodeWithTag(StagedItemEditTestTags.DIALOG).assertDoesNotExist()
+    assertEquals(listOf(StagedItem("milk", "Milk", 2, 240)), viewModel.state.value.items)
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
+    assertEquals(viewModel.state.value.items, confirmed)
   }
 
   @Test

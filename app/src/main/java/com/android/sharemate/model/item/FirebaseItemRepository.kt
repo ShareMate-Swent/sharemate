@@ -11,6 +11,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
@@ -20,6 +21,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
@@ -33,7 +35,13 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
       if (householdId.isBlank() || userId.isBlank()) {
         flowOf(emptyList())
       } else {
-        observe(fridgeQuery(householdId, userId))
+        observe(fridgeQuery(householdId, userId)).catch { error ->
+          if (error is FirebaseFirestoreException &&
+              error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+            throw FridgeAccessDeniedException(error)
+          }
+          throw error
+        }
       }
 
   override fun observeFridgeSync(householdId: String, userId: String): Flow<FridgeSyncSnapshot> =
@@ -108,7 +116,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                   quantity = row.quantity,
                   ownerId = submission.ownerId,
                   householdId = submission.householdId,
-                  sharing = ItemSharing.SHARED,
+                  sharing = submission.sharing,
                   status = ItemStatus.ACTIVE)
           batch.set(items.document(item.id), item)
         }
@@ -263,10 +271,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
     }
   }
 
-  private fun observe(
-      query: Query,
-      transform: (List<Item>) -> List<Item> = { it },
-  ): Flow<List<Item>> =
+  private fun observe(query: Query): Flow<List<Item>> =
       callbackFlow {
             val registration =
                 query.addSnapshotListener { snapshot, error ->
@@ -281,7 +286,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                   // `orEmpty()` turns a null result (null snapshot) into an empty list,
                   // so we always end up with a non-null List<Item>.
                   val parsed = snapshot?.documents?.mapNotNull { it.toItemOrNull() }.orEmpty()
-                  trySend(transform(parsed))
+                  trySend(parsed)
                 }
             awaitClose { registration.remove() }
           }

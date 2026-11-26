@@ -64,21 +64,26 @@ internal object ProfileEntryTestTags {
 }
 
 /**
- * The app's bottom bar: the main tabs around a central add button. The add button does nothing yet;
- * it will offer the ways to add an item.
+ * The app's bottom bar: the main tabs around a central add button, which opens the ways to add an
+ * item ([AddItemSheet]).
  *
  * @param currentRoute The open screen, which decides the selected tab.
+ * @param tabs The tabs to show, in order: [TopLevelDestination.bottomBarFor] the household's fridge
+ *   type, so a private fridge has no chat tab.
  * @param onSelect Called with the tab the user tapped.
+ * @param onAdd Called when the user taps the add button.
  * @param modifier Applied to the bar.
  */
 @Composable
 internal fun AppBottomBar(
     currentRoute: String?,
+    tabs: List<TopLevelDestination>,
     onSelect: (TopLevelDestination) -> Unit,
+    onAdd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val items =
-      TopLevelDestination.bottomBar.map { destination ->
+      tabs.map { destination ->
         FloatingNavItem(
             label = stringResource(destination.labelRes),
             icon = destination.icon(),
@@ -92,7 +97,7 @@ internal fun AppBottomBar(
           FloatingNavAction(
               label = stringResource(R.string.nav_add_item),
               testTag = NavigationTestTags.ADD_BUTTON,
-              onClick = {}),
+              onClick = onAdd),
       modifier =
           modifier
               .navigationBarsPadding()

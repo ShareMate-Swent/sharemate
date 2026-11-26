@@ -48,7 +48,7 @@ class BarcodePurchaseJournalFlowTest {
       assertEquals(original.items, checkNotNull(journal.retained).items)
       compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Existing milk").assertExists()
-      compose.onNodeWithText("CHF 6.00").assertExists()
+      compose.onNodeWithText("6.00 CHF").assertExists()
     }
   }
 
@@ -118,7 +118,7 @@ class BarcodePurchaseJournalFlowTest {
       assertEquals(1000L, durable.items.single().priceCents)
       compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
       compose.onNodeWithText("Retained milk").assertExists()
-      compose.onNodeWithText("CHF 10.00").assertExists()
+      compose.onNodeWithText("10.00 CHF").assertExists()
     }
   }
 

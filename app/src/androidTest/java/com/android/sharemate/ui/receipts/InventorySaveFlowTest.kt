@@ -38,6 +38,7 @@ import com.android.sharemate.ui.photo.PhotoPickerViewModel
 import com.android.sharemate.ui.staging.PurchaseReview
 import com.android.sharemate.ui.staging.StagedItemEditTestTags
 import com.android.sharemate.ui.staging.StagingTestTags
+import com.android.sharemate.utils.FirebaseEmulator
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.flowOf
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,6 +55,34 @@ import org.junit.runner.RunWith
 class InventorySaveFlowTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val owner = ViewModelStore()
+
+  @Before
+  fun configureFirebaseBeforeOpeningHistory() {
+    FirebaseEmulator.auth
+    FirebaseEmulator.firestore
+  }
+
+  private fun seedHistory(submission: InventorySubmission) {
+    kotlinx.coroutines.runBlocking {
+      val store =
+          com.android.sharemate.model.staging.AndroidInventorySubmissionStore(compose.activity)
+      store.save(submission)
+      store.saveDetails(
+          com.android.sharemate.model.staging.ReceiptDetails(
+              submission.id,
+              submission.ownerId,
+              submission.householdId,
+              "",
+              System.currentTimeMillis()))
+    }
+  }
+
+  private fun openHistoryReceipt(id: String) {
+    compose.waitUntil(TIMEOUT) {
+      compose.onAllNodesWithTag("receipt_card_$id").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag("receipt_card_$id").performClick()
+  }
 
   @Test
   fun confirmingReviewedPurchaseRetainsSelectedSplitAndReturnsToReceipts() {
@@ -100,6 +130,7 @@ class InventorySaveFlowTest {
       }
     }
     compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
     compose.onNodeWithTag("staging_participant_owner").performScrollTo().performClick()
     compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
@@ -140,17 +171,7 @@ class InventorySaveFlowTest {
             "home",
             listOf(StagedItem("milk", "Milk", 2, 1000)),
             draft = true)
-    val store =
-        object : InventorySubmissionStore {
-          override suspend fun load(ownerId: String, householdId: String) = submission
-
-          override suspend fun save(submission: InventorySubmission) = Unit
-        }
-    compose.runOnIdle {
-      compose.activity.viewModelStore.put(
-          "inventory-save_owner_home",
-          InventorySaveViewModel(ControlledItems(), store, "owner", "home"))
-    }
+    seedHistory(submission)
     compose.setContent {
       MaterialTheme {
         ReceiptsScreen(
@@ -163,17 +184,15 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = repository)
+            profileRepository = repository,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
-        .performClick()
+    openHistoryReceipt(submission.id)
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     compose
         .onNodeWithText(compose.activity.getString(R.string.purchase_members_loading))
         .assertIsDisplayed()
-    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
-    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
     compose.runOnIdle {
       profiles.complete(
@@ -215,18 +234,8 @@ class InventorySaveFlowTest {
             "home",
             listOf(StagedItem("milk", "Milk", 2, 1000)),
             draft = true)
-    val store =
-        object : InventorySubmissionStore {
-          override suspend fun load(ownerId: String, householdId: String) = submission
-
-          override suspend fun save(submission: InventorySubmission) = Unit
-        }
-    compose.runOnIdle {
-      compose.activity.viewModelStore.put(
-          "inventory-save_owner_home",
-          InventorySaveViewModel(ControlledItems(), store, "owner", "home"))
-      updates.trySend(listOf(UserProfile("owner"), UserProfile("bob")))
-    }
+    seedHistory(submission)
+    updates.trySend(listOf(UserProfile("owner"), UserProfile("bob")))
     compose.setContent {
       MaterialTheme {
         ReceiptsScreen(
@@ -239,20 +248,19 @@ class InventorySaveFlowTest {
                   override suspend fun recordExpense(expense: SharedExpense): SharedExpense =
                       error("No submission")
                 },
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
-        .performClick()
-    compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
+    openHistoryReceipt(submission.id)
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     compose.onNodeWithTag("staging_participant_bob").performScrollTo().performClick()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsEnabled()
     compose.runOnIdle { updates.trySend(emptyList()) }
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
     compose.onNodeWithTag("staging_payer_owner").performScrollTo().assertIsSelected()
     compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
-    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("purchase_members_retry").performScrollTo().performClick()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
     compose.onNodeWithTag("staging_participant_bob").performScrollTo().assertIsOn()
     compose.runOnIdle { updates.trySend(listOf(UserProfile("owner"), UserProfile("bob"))) }
@@ -274,7 +282,7 @@ class InventorySaveFlowTest {
           review.value
         }
     compose.onNodeWithText(compose.activity.getString(R.string.staging_title)).performClick()
-    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsEnabled().performClick()
     compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().assertIsNotEnabled()
     compose.runOnIdle {
       review.value = PurchaseReview.forUser("owner", mapOf("owner" to "Alice", "bob" to "Bob"))
@@ -355,6 +363,14 @@ class InventorySaveFlowTest {
           override suspend fun recordExpense(expense: SharedExpense) =
               error("No submission expected")
         }
+    val submission =
+        InventorySubmission(
+            java.util.UUID.randomUUID().toString(),
+            "member-retry-owner",
+            "member-retry-home",
+            listOf(StagedItem("milk", "Milk", 1, 100)),
+            draft = true)
+    seedHistory(submission)
     compose.setContent {
       MaterialTheme {
         ReceiptsScreen(
@@ -363,25 +379,24 @@ class InventorySaveFlowTest {
             "member-retry-home",
             true,
             expenseRepository = expenses,
-            profileRepository = profiles)
+            profileRepository = profiles,
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.receipt_scan_purchase))
-        .performClick()
+    openHistoryReceipt(submission.id)
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
     compose.waitUntil(TIMEOUT) {
       compose.onAllNodesWithTag("purchase_members_retry").fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag("purchase_members_retry").performClick()
+    compose.onNodeWithTag("purchase_members_retry").performScrollTo().performClick()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { assertEquals(2, attempts) }
   }
 
   @Test
-  fun unavailablePurchaseServicesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
+  fun unavailableProfilesAndPrivateHouseholdsKeepInventoryEntryAvailable() {
     val shared = mutableStateOf(false)
     val profilesAvailable = mutableStateOf(false)
-    val expensesAvailable = mutableStateOf(false)
     val profiles =
         object : UserProfileRepository {
           override suspend fun savePublicProfile(profile: UserProfile) = Unit
@@ -401,8 +416,9 @@ class InventorySaveFlowTest {
             "services-owner",
             "services-home",
             shared.value,
-            expenseRepository = expenses.takeIf { expensesAvailable.value },
-            profileRepository = profiles.takeIf { profilesAvailable.value })
+            expenseRepository = expenses,
+            profileRepository = profiles.takeIf { profilesAvailable.value },
+            receiptCloudRepository = UnusedReceiptCloud)
       }
     }
     val app = compose.activity
@@ -411,14 +427,15 @@ class InventorySaveFlowTest {
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
     compose.runOnIdle { shared.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
-    compose.runOnIdle { expensesAvailable.value = true }
-    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertIsDisplayed()
+    compose
+        .onNodeWithContentDescription(app.getString(R.string.receipt_more_actions))
+        .assertDoesNotExist()
     compose.onNodeWithText(app.getString(R.string.purchase_members_loading)).assertDoesNotExist()
     compose.runOnIdle { profilesAvailable.value = true }
     compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
     compose.runOnIdle { shared.value = false }
-    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).performClick()
-    compose.onNodeWithText(app.getString(R.string.inventory_save_shared_only)).assertIsDisplayed()
+    compose.onNodeWithText(app.getString(R.string.scan_receipt)).assertIsEnabled()
+    compose.onNodeWithText(app.getString(R.string.receipt_scan_purchase)).assertDoesNotExist()
     compose.onNodeWithTag("purchase_members_retry").assertDoesNotExist()
   }
 
@@ -614,9 +631,13 @@ class InventorySaveFlowTest {
         .performClick()
     compose.onNodeWithText("Corrected milk").assertExists()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsNotEnabled()
+    compose.onNodeWithTag(StagingTestTags.LIST).performScrollToNode(hasTestTag(StagingTestTags.ADD))
     compose.onNodeWithTag(StagingTestTags.ADD).assertIsDisplayed().assertIsNotEnabled()
     compose.runOnIdle { status.value = InventorySubmissionStatus.MISSING }
     compose.onNodeWithTag(StagingTestTags.CONFIRM).assertIsDisplayed().assertIsEnabled()
+    compose
+        .onNodeWithTag(StagingTestTags.LIST)
+        .performScrollToNode(hasTestTag(StagingTestTags.item("milk")))
     compose.onNodeWithTag(StagingTestTags.item("milk")).performScrollTo().performClick()
     // A pasted name longer than an item name may be is cut, so it can never be refused later.
     compose
@@ -718,15 +739,14 @@ class InventorySaveFlowTest {
           compose
               .onNodeWithTag(StagingTestTags.ADD)
               .assertIsDisplayed()
-              .assertTextEquals(context.getString(R.string.staging_add_item))
-      val titleBounds =
-          compose
-              .onNodeWithText(context.getString(R.string.staging_title))
-              .fetchSemanticsNode()
-              .boundsInRoot
+              .assertTextContains(context.getString(R.string.staging_add_item), substring = true)
+      val itemBounds =
+          compose.onNodeWithTag(StagingTestTags.item("0")).fetchSemanticsNode().boundsInRoot
       val addBounds = addButton.fetchSemanticsNode().boundsInRoot
-      assertTrue(addBounds.center.x > titleBounds.center.x)
-      assertTrue(addBounds.top < titleBounds.bottom && titleBounds.top < addBounds.bottom)
+      val continueBounds =
+          compose.onNodeWithTag(StagingTestTags.CONFIRM).fetchSemanticsNode().boundsInRoot
+      assertTrue(addBounds.top >= itemBounds.bottom)
+      assertTrue(addBounds.bottom <= continueBounds.top)
       addButton.performClick()
       compose.onNodeWithTag(StagedItemEditTestTags.NAME).performTextReplacement("Coffee")
       compose.onNodeWithTag(StagedItemEditTestTags.QUANTITY).performTextReplacement("2")

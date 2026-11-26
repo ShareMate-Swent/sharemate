@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.staging
@@ -12,6 +13,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StagingViewModelTest {
+  @Test
+  fun restoredDraftSharingSurvivesInitialMemberLoading() {
+    val vm =
+        StagingViewModel(
+            emptyList(),
+            PurchaseReview(
+                members = emptyMap(),
+                paidBy = "bob",
+                participants = setOf("alice", "bob"),
+                currentUserId = "alice",
+                membersAvailable = false))
+    vm.updatePurchaseMembers(emptyMap(), false)
+    vm.updatePurchaseMembers(mapOf("alice" to "Alice", "bob" to "Bob"))
+    assertEquals("bob", vm.state.value.purchase?.paidBy)
+    assertEquals(setOf("alice", "bob"), vm.state.value.purchase?.participants)
+    vm.updatePurchaseMembers(mapOf("alice" to "Alice"))
+    assertNull(vm.state.value.purchase?.paidBy)
+    assertEquals(setOf("alice"), vm.state.value.purchase?.participants)
+  }
+
   private val milk = StagedItem("milk", "Milk", quantity = 2, priceCents = 189)
   private val bread = StagedItem("bread", "Bread")
 
@@ -23,7 +44,8 @@ class StagingViewModelTest {
 
     assertEquals(listOf(milk, bread), state.items)
     assertNull(state.draft)
-    assertTrue(state.canConfirm)
+    assertFalse(state.canConfirm)
+    assertTrue(state.hasMissingPrices)
   }
 
   @Test(expected = IllegalArgumentException::class)
@@ -67,14 +89,15 @@ class StagingViewModelTest {
   }
 
   @Test
-  fun clearingThePriceRemovesIt() {
+  fun clearingThePriceKeepsTheDraftOpen() {
     val viewModel = viewModel(milk)
     viewModel.startEditing("milk")
     viewModel.updateDraftPrice("")
 
     viewModel.saveDraft()
 
-    assertNull(viewModel.state.value.items.single().priceCents)
+    assertEquals(StagedItemError.INVALID_PRICE, viewModel.state.value.draft?.error)
+    assertEquals(189L, viewModel.state.value.items.single().priceCents)
   }
 
   @Test
@@ -122,10 +145,10 @@ class StagingViewModelTest {
     assertEquals(listOf(milk), viewModel.state.value.items)
     assertNull(viewModel.confirmedItems())
 
-    viewModel.updateDraftPrice("")
+    viewModel.updateDraftPrice("2.50")
     viewModel.saveDraft()
     val added = requireNotNull(viewModel.confirmedItems()).last()
-    assertEquals(StagedItem(added.id, "Bread", 2), added)
+    assertEquals(StagedItem(added.id, "Bread", 2, 250), added)
   }
 
   @Test
@@ -141,10 +164,11 @@ class StagingViewModelTest {
 
     viewModel.startAdding()
     viewModel.updateDraftName("Bread")
+    viewModel.updateDraftPrice("1.00")
     viewModel.saveDraft()
 
     val added = requireNotNull(viewModel.confirmedItems()).single()
-    assertEquals(StagedItem(added.id, "Bread", 1), added)
+    assertEquals(StagedItem(added.id, "Bread", 1, 100), added)
   }
 
   @Test

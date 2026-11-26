@@ -1,4 +1,4 @@
-// Co-authored-by: Codex
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.ui.receipts
 
 import android.graphics.Bitmap
@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.android.sharemate.R
+import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.image.TemporaryPhotoStore
 import com.android.sharemate.model.item.ItemRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
@@ -96,13 +97,19 @@ class ReceiptScanRecreationTest {
                     factory =
                         viewModelFactory {
                           initializer {
+                            val historyStore =
+                                AndroidInventorySubmissionStore(context, Dispatchers.Main.immediate)
                             ReceiptHistoryViewModel(
                                 itemRepository,
-                                AndroidInventorySubmissionStore(
-                                    context, Dispatchers.Main.immediate),
+                                historyStore,
                                 AndroidReceiptPhotoStore(context, Dispatchers.Main.immediate),
                                 "owner",
-                                "home")
+                                "home",
+                                expenses = mock(ExpenseSubmissionRepository::class.java),
+                                synchronization =
+                                    ReceiptHistorySync(
+                                        historyStore, EmptyReceiptCloud, "owner", "home"),
+                                now = { 0L })
                           }
                         })
             ReceiptHistoryFlow(
@@ -112,7 +119,12 @@ class ReceiptScanRecreationTest {
                 sharedHousehold = false,
                 showBalances = false,
                 onOpenBalances = {},
-                onPurchase = null)
+                onPurchase = null,
+                itemRepository = itemRepository,
+                expenseRepository = null,
+                userId = "owner",
+                householdId = "home",
+                purchaseReview = null)
           } else {
             ReceiptScanFlow(photo, reader = reader)
           }
@@ -158,11 +170,11 @@ class ReceiptScanRecreationTest {
           .onNodeWithText(compose.activity.getString(R.string.staging_price, "3.10"))
           .assertIsDisplayed()
       if (useHistory) {
-        val reviewButton = context.getString(R.string.receipt_review_items)
         compose.onNodeWithTag(StagingTestTags.BACK).performClick()
-        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.SAVE_DRAFT).performClick()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST).assertIsDisplayed()
         recreateActivity()
-        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST).assertIsDisplayed()
         compose.onNodeWithTag(StagingTestTags.LIST).assertDoesNotExist()
       }
       assertEquals(1, reads)

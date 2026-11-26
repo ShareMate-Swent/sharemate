@@ -24,6 +24,11 @@ class ReceiptSynchronizationTest {
             InventorySubmission(id, "alice", "home", rows, expense = expense)
         var correction: ReceiptCorrection? = null
         var metadata: ReceiptDetails? = null
+        var deletionAcknowledged = false
+
+        override suspend fun acknowledgeDeletion(ownerId: String, householdId: String, id: String) {
+          deletionAcknowledged = true
+        }
 
         override suspend fun details(ownerId: String, householdId: String, id: String) = metadata
 
@@ -211,7 +216,12 @@ class ReceiptSynchronizationTest {
   @Test
   fun deletedLocalReceiptStillDeletesCloudBackupAfterRestart() = runTest {
     store.receipt = null
+    `when`(expenses.deleteReceipt("home", id)).thenThrow(IllegalStateException("Offline"))
+    assertTrue(runCatching { sync.synchronize("alice", "home", id, "alice", true) }.isFailure)
+    assertFalse(store.deletionAcknowledged)
+    reset(expenses)
     assertTrue(sync.synchronize("alice", "home", id, "alice", true))
+    assertTrue(store.deletionAcknowledged)
     verify(expenses).deleteReceipt("home", id)
     verifyNoInteractions(items)
     assertTrue(uploaded.isEmpty())

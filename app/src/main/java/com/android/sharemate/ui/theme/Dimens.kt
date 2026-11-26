@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
 package com.android.sharemate.ui.theme
@@ -35,12 +36,8 @@ object Dimens {
   val progressSize = 20.dp
   val progressStrokeWidth = 2.dp
 
-  // Chat activity badges.
-  /** Icon size for the fridge action shown in a chat badge. */
-  val activityBadgeIconSize = 24.dp
-
-  /** Item thumbnail size for a fridge activity shown in chat. */
-  val activityBadgeImageSize = 48.dp
+  /** Size of the confirmed photo preview attached to an incident draft. */
+  val attachmentPreviewSize = 96.dp
 
   // Corner radii of the design system, used by the theme's shapes.
   /** Corner radius of the smallest elements, like badges. */

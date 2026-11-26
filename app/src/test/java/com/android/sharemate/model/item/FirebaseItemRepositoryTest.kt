@@ -32,6 +32,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -105,7 +106,7 @@ class FirebaseItemRepositoryTest {
 
   @Suppress("UNCHECKED_CAST")
   @Test
-  fun getFridgeItems_handlesError() =
+  fun getFridgeItems_onlyMapsPermissionDenialsToRevokedAccess() =
       runBlocking<Unit> {
         val query = mock(Query::class.java)
         `when`(collection.where(fridgeFilter("house-1", "user-1"))).thenReturn(query)
@@ -116,23 +117,31 @@ class FirebaseItemRepositoryTest {
         val registration = mock(ListenerRegistration::class.java)
         `when`(query.addSnapshotListener(listenerCaptor.capture())).thenReturn(registration)
 
-        var caughtError: Throwable? = null
-        val job =
-            launch(Dispatchers.Unconfined) {
-              try {
-                repository.getFridgeItems("house-1", "user-1").collect {}
-              } catch (e: Exception) {
-                caughtError = e
+        for (code in
+            listOf(
+                FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                FirebaseFirestoreException.Code.UNAVAILABLE)) {
+          var caughtError: Throwable? = null
+          val job =
+              launch(Dispatchers.Unconfined) {
+                try {
+                  repository.getFridgeItems("house-1", "user-1").collect {}
+                } catch (failure: Exception) {
+                  caughtError = failure
+                }
               }
-            }
 
-        val exception =
-            FirebaseFirestoreException("Error", FirebaseFirestoreException.Code.PERMISSION_DENIED)
-        listenerCaptor.value.onEvent(null, exception)
+          val exception = FirebaseFirestoreException("Error", code)
+          listenerCaptor.value.onEvent(null, exception)
+          job.join()
 
-        assertTrue(caughtError is FirebaseFirestoreException)
-
-        job.cancel()
+          if (code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+            assertTrue(caughtError is FridgeAccessDeniedException)
+            assertSame(exception, caughtError?.cause)
+          } else {
+            assertSame(exception, caughtError)
+          }
+        }
       }
 
   @Test

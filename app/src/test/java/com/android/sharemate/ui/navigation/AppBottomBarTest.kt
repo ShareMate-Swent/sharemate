@@ -6,6 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.android.sharemate.R
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.ui.theme.ShareMateTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -15,16 +16,23 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Checks the tabs of the bottom bar, its inactive add button and the profile photo entry. */
+/** Checks the tabs of the bottom bar, its add button and the profile photo entry. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w360dp-h640dp")
 class AppBottomBarTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val selected = mutableListOf<TopLevelDestination>()
+  private var added = 0
 
   private fun showBar(route: String?) =
       compose.setContent {
-        ShareMateTheme { AppBottomBar(currentRoute = route, onSelect = { selected += it }) }
+        ShareMateTheme {
+          AppBottomBar(
+              currentRoute = route,
+              tabs = TopLevelDestination.bottomBar,
+              onSelect = { selected += it },
+              onAdd = { added++ })
+        }
       }
 
   @Test
@@ -43,6 +51,28 @@ class AppBottomBarTest {
   }
 
   @Test
+  fun privateFridgeBarHasNoChatTab() {
+    compose.setContent {
+      ShareMateTheme {
+        AppBottomBar(
+            currentRoute = TopLevelDestination.FRIDGE.route,
+            tabs = TopLevelDestination.bottomBarFor(FridgeType.PRIVATE),
+            onSelect = { selected += it },
+            onAdd = { added++ })
+      }
+    }
+    val order =
+        listOf(
+                NavigationTestTags.FRIDGE_TAB,
+                NavigationTestTags.RECIPES_TAB,
+                NavigationTestTags.ADD_BUTTON,
+                NavigationTestTags.RECEIPTS_TAB)
+            .map { compose.onNodeWithTag(it).assertIsDisplayed().getUnclippedBoundsInRoot().left }
+    assertEquals(order.sortedBy { it.value }, order)
+    compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertDoesNotExist()
+  }
+
+  @Test
   fun tappingATabReportsItAndTheCurrentOneIsSelected() {
     showBar(TopLevelDestination.CHAT.route)
     compose.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsSelected()
@@ -51,13 +81,14 @@ class AppBottomBarTest {
   }
 
   @Test
-  fun addButtonIsAnnouncedAndDoesNothingYet() {
+  fun addButtonIsAnnouncedAndReportsATapWithoutChangingTab() {
     showBar(TopLevelDestination.FRIDGE.route)
     compose
         .onNodeWithTag(NavigationTestTags.ADD_BUTTON)
         .assertContentDescriptionEquals(compose.activity.getString(R.string.nav_add_item))
         .assertHasClickAction()
         .performClick()
+    assertEquals(1, added)
     assertEquals(emptyList<TopLevelDestination>(), selected)
     compose.onNodeWithTag(NavigationTestTags.FRIDGE_TAB).assertIsSelected()
   }

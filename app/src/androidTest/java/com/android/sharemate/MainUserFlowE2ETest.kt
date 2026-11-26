@@ -107,7 +107,7 @@ class MainUserFlowE2ETest {
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
-        .assertTextEquals("Fridge type: Shared")
+        .assertTextEquals("Shared · $householdName")
     compose.onNodeWithTag(C.Tag.fridge_add_item).performClick()
 
     compose.onNodeWithTag(C.Tag.fridge_name_input).performTextInput(itemName)
@@ -263,7 +263,7 @@ class MainUserFlowE2ETest {
     compose
         .onNodeWithTag(C.Tag.fridge_type)
         .assertIsDisplayed()
-        .assertTextEquals("Fridge type: Shared")
+        .assertTextEquals("Shared · $householdName")
   }
 
   /** Adds an item from the fridge screen, privately or shared with the household. */
