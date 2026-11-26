@@ -11,6 +11,7 @@ import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.receipt.normalizeReceiptTitle
 import com.android.sharemate.model.staging.InventorySubmissionStore
@@ -79,6 +80,7 @@ class InventorySaveViewModel(
     private val householdId: String,
     private val canSave: Boolean = true,
     private val expenses: ExpenseSubmissionRepository? = null,
+    private val itemSharing: ItemSharing = ItemSharing.SHARED,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(InventorySaveState())
   /** Current operation and its retained reviewed rows; server confirmation alone marks success. */
@@ -193,7 +195,8 @@ class InventorySaveViewModel(
                       householdId,
                       purchase.paidBy,
                       purchase.totalCents,
-                      purchase.shares))
+                      purchase.shares),
+              sharing = original.sharing)
         } catch (_: IllegalArgumentException) {
           return false
         }
@@ -257,7 +260,8 @@ class InventorySaveViewModel(
               expense =
                   purchase?.let {
                     SharedExpense(identity, householdId, it.paidBy, it.totalCents, it.shares)
-                  })
+                  },
+              sharing = itemSharing)
         } catch (_: IllegalArgumentException) {
           mutableState.value =
               state.value.copy(phase = InventorySavePhase.FAILED, invalidInput = true)
@@ -461,7 +465,13 @@ class InventorySaveViewModel(
   suspend fun beginNewScan(items: List<StagedItem>): Boolean {
     if (!state.value.canStartScan) return false
     val next =
-        InventorySubmission(UUID.randomUUID().toString(), userId, householdId, items, draft = true)
+        InventorySubmission(
+            UUID.randomUUID().toString(),
+            userId,
+            householdId,
+            items,
+            draft = true,
+            sharing = itemSharing)
     val token = ++generation
     observation?.cancel()
     submissionJob?.cancel()

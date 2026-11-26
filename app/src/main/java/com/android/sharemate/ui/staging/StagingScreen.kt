@@ -103,6 +103,7 @@ fun StagingScreen(
     onConfirmPurchase: ((ReviewedPurchase) -> Unit)? = null,
     separateSharingStep: Boolean = false,
     previewContent: @Composable () -> Unit = {},
+    itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     savedPreview: PurchasePreview? = null,
     onDeleteReceipt: (() -> Unit)? = null,
@@ -176,6 +177,7 @@ fun StagingScreen(
         onAddItem = viewModel::startAdding,
         continueToSharing = stagedPurchase,
         previewContent = previewContent,
+        itemActions = itemActions,
         savedPurchase = savedPurchase,
         onDeleteReceipt = onDeleteReceipt,
     )
@@ -207,6 +209,7 @@ fun StagingContent(
     onAddItem: (() -> Unit)? = null,
     continueToSharing: Boolean = false,
     previewContent: @Composable () -> Unit = {},
+    itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
@@ -280,6 +283,7 @@ fun StagingContent(
                   if (onAddItem != null && !savedPurchase) {
                     AddItemButton(onAddItem, actionsEnabled)
                   }
+                  itemActions()
                   state.purchasePreview?.totalCents?.let {
                     PurchaseTotal(
                         it, Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
@@ -292,6 +296,7 @@ fun StagingContent(
           if (onAddItem != null && !savedPurchase) {
             AddItemButton(onAddItem, actionsEnabled)
           }
+          itemActions()
           statusContent()
         }
         Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))

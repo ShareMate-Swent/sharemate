@@ -356,6 +356,9 @@ class ReceiptHistoryFlowTest {
       org.junit.Assert.assertEquals(rows, submitted.single().items)
       org.junit.Assert.assertEquals(id, submitted.single().id)
       org.junit.Assert.assertNull(submitted.single().expense)
+      assertEquals(
+          if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL,
+          submitted.single().sharing)
     }
     runBlocking { org.junit.Assert.assertFalse(store.list(owner, household).single().draft) }
   }
@@ -402,10 +405,64 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun realReceiptEditorAddsBarcodeProductAndKeepsItsEnteredPrice() {
+    var scans = 0
+    val fixture =
+        WorkflowFixture(
+            draft = true,
+            barcodeScanner =
+                com.android.sharemate.model.barcode.BarcodeScanner {
+                  scans++
+                  com.android.sharemate.model.barcode.BarcodeScanResult.Found("1234567890123")
+                },
+            catalog =
+                object : com.android.sharemate.model.product.ProductCatalogRepository {
+                  override suspend fun lookupByBarcode(barcode: String) =
+                      com.android.sharemate.model.product.ProductLookupResult.Found(
+                          com.android.sharemate.model.product.ProductDetails(
+                              barcode, "Barcode oats", null))
+                })
+    fixture.open()
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).performScrollTo().performClick()
+    compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
+    assertEquals(0, scans)
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).performScrollTo().performClick()
+    val input = File.createTempFile("barcode-review", ".png", compose.activity.cacheDir)
+    try {
+      val bitmap =
+          android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888)
+      input.outputStream().use {
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+      }
+      bitmap.recycle()
+      val photo =
+          androidx.lifecycle
+              .ViewModelProvider(compose.activity)[
+                  "receipt-barcode-photo_${fixture.owner}_${fixture.home}",
+                  com.android.sharemate.ui.photo.PhotoPickerViewModel::class.java]
+      compose.runOnIdle { photo.select(android.net.Uri.fromFile(input).toString()) }
+      compose.waitUntil(10_000) { photo.state.value.selection != null && !photo.state.value.busy }
+      compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
+      compose.waitUntil(10_000) { !photo.state.value.visible }
+      compose.onNodeWithText("Barcode oats").performClick()
+      compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
+      compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
+      fixture.backAndKeep()
+      val added = fixture.retained().items.single { it.name == "Barcode oats" }
+      assertEquals(250L, added.priceCents)
+      assertEquals(1, scans)
+      fixture.open()
+      compose.onNodeWithText("Barcode oats").assertIsDisplayed()
+    } finally {
+      input.delete()
+    }
+  }
+
+  @Test
   fun draftWithoutMetadataOrProfilesCanStillKeepLocalEdits() {
     val fixture = WorkflowFixture(draft = true, metadata = false, purchaseServices = false)
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Recovered draft")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Recovered draft")
     fixture.backAndKeep()
     assertEquals("Recovered draft", fixture.details().title)
     assertTrue(fixture.retained().draft)
@@ -456,12 +513,12 @@ class ReceiptHistoryFlowTest {
   fun editedDraftKeepsItsStatusUntilThePurchaseIsConfirmed() {
     val fixture = WorkflowFixture(draft = true)
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Weekend groceries")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Weekend groceries")
     fixture.backAndKeep()
     assertTrue(fixture.retained().draft)
     assertEquals("Weekend groceries", fixture.details().title)
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Discarded title")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Discarded title")
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     compose.onNodeWithTag("receipt_discard").performClick()
     fixture.awaitHistory()
@@ -490,7 +547,7 @@ class ReceiptHistoryFlowTest {
     fixture.awaitHistory()
     compose.onNodeWithTag("receipt_save_draft").assertDoesNotExist()
     fixture.open()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Renamed groceries")
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Renamed groceries")
     fixture.backAndKeep()
     assertEquals(1, fixture.corrected)
     assertEquals("Renamed groceries", fixture.details().title)
@@ -518,7 +575,9 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithText("Milk").performClick()
     compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("2.50")
     compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
-    compose.onNodeWithTag("receipt_title").performTextReplacement("Corrected groceries")
+    compose
+        .onNodeWithTag(ReceiptHistoryTestTags.TITLE)
+        .performTextReplacement("Corrected groceries")
     fixture.failFirstCorrection = true
     fixture.backAndKeep(waitForHistory = false)
     compose.waitUntil(10_000) { fixture.corrected == 1 }
@@ -657,7 +716,9 @@ class ReceiptHistoryFlowTest {
       draft: Boolean,
       seed: Boolean = true,
       metadata: Boolean = true,
-      purchaseServices: Boolean = true
+      purchaseServices: Boolean = true,
+      barcodeScanner: com.android.sharemate.model.barcode.BarcodeScanner? = null,
+      catalog: com.android.sharemate.model.product.ProductCatalogRepository? = null,
   ) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
@@ -729,6 +790,8 @@ class ReceiptHistoryFlowTest {
               owner,
               home,
               true,
+              barcodeScanner = barcodeScanner,
+              productCatalogRepository = catalog,
               expenseRepository = expenses,
               receiptCloudRepository = UnusedReceiptCloud,
               profileRepository = profiles.takeIf { purchaseServices })
@@ -744,7 +807,7 @@ class ReceiptHistoryFlowTest {
       awaitHistory()
       compose.onNodeWithTag("receipt_card_$id").performClick()
       compose.waitUntil(10_000) {
-        compose.onAllNodesWithTag("receipt_title").fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodesWithTag(ReceiptHistoryTestTags.TITLE).fetchSemanticsNodes().isNotEmpty()
       }
       compose.waitUntil(10_000) {
         compose

@@ -44,6 +44,7 @@ import com.android.sharemate.model.finance.HouseholdFinanceRepository
 import com.android.sharemate.model.item.ExpenseProgress
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.product.ProductCatalogRepository
 import com.android.sharemate.model.profile.UserProfileRepository
 import com.android.sharemate.model.receipt.AndroidReceiptPhotoStore
@@ -122,6 +123,21 @@ fun ReceiptsScreen(
   val context = LocalContext.current.applicationContext
   val reader = remember(context) { ReceiptPhotoReader(context) }
   val photo = photoPickerViewModel("receipt-photo_${userId}_$householdId")
+  val barcode: PurchaseBarcodeViewModel? =
+      if (barcodeScanner != null && productCatalogRepository != null) {
+        viewModel(
+            key = "receipt-barcode_${userId}_$householdId",
+            factory =
+                viewModelFactory {
+                  initializer {
+                    PurchaseBarcodeViewModel(
+                        barcodeScanner, productCatalogRepository, createSavedStateHandle())
+                  }
+                })
+      } else null
+  val barcodePhoto =
+      if (barcode != null) photoPickerViewModel("receipt-barcode-photo_${userId}_$householdId")
+      else null
   val history: ReceiptHistoryViewModel =
       viewModel(
           key = "receipt-history_${userId}_$householdId",
@@ -140,7 +156,9 @@ fun ReceiptsScreen(
                       expenses = expenseRepository,
                       synchronization =
                           ReceiptHistorySync(store, receiptCloudRepository, userId, householdId),
-                      now = System::currentTimeMillis)
+                      now = System::currentTimeMillis,
+                      itemSharing =
+                          if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL)
                 }
               })
   val memberModel: HouseholdMembersViewModel? =
@@ -209,7 +227,9 @@ fun ReceiptsScreen(
                                   !memberState.isLoading &&
                                   !memberState.hasError)
               else null,
-          onPurchase = null)
+          onPurchase = null,
+          barcode = barcode,
+          barcodePhoto = barcodePhoto)
     }
   }
 }
@@ -238,6 +258,8 @@ internal fun ReceiptHistoryFlow(
     balance: Long? = null,
     membersFailed: Boolean = false,
     onRetryMembers: () -> Unit = {},
+    barcode: PurchaseBarcodeViewModel? = null,
+    barcodePhoto: PhotoPickerViewModel? = null,
 ) {
   val context = LocalContext.current.applicationContext
   val nav = rememberNavController()
@@ -329,7 +351,9 @@ internal fun ReceiptHistoryFlow(
                               userId,
                               householdId,
                               sharedHousehold,
-                              expenseRepository)
+                              expenseRepository,
+                              itemSharing =
+                                  if (sharedHousehold) ItemSharing.SHARED else ItemSharing.PERSONAL)
                         }
                       })
             } else null
@@ -341,7 +365,7 @@ internal fun ReceiptHistoryFlow(
           if (purchaseState?.phase == InventorySavePhase.CONFIRMED) {
             history.refresh()
             if (submittedHere) {
-              kotlinx.coroutines.delay(900)
+              kotlinx.coroutines.delay(RECEIPT_SUCCESS_MESSAGE_MILLIS)
               nav.popBackStack(RECEIPTS_ROUTE, false)
             }
           }
@@ -409,6 +433,28 @@ internal fun ReceiptHistoryFlow(
           Unit
         }
         BackHandler(onBack = leaveReview)
+        val barcodePhotoState = barcodePhoto?.state?.collectAsStateWithLifecycle()?.value
+        val barcodeError = barcode?.error?.collectAsStateWithLifecycle()?.value
+        val reviewEditable =
+            !savingReview &&
+                !(submittedHere && purchaseState?.phase == InventorySavePhase.CONFIRMED) &&
+                purchaseState?.correctionPending != true &&
+                purchaseState?.phase !in
+                    setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING)
+        DisposableEffect(entry, barcode, barcodePhoto) {
+          onDispose {
+            barcode?.cancelScan()
+            barcodePhoto?.discard()
+          }
+        }
+        if (barcode != null && barcodePhoto != null) {
+          BarcodePhotoPicker(
+              barcodePhoto,
+              confirmationError = stringResource(barcodeError.messageResource()),
+              onImageConfirmed = { uri ->
+                barcode.read(uri)?.let { if (reviewEditable) staging.appendBarcode(it) }
+              })
+        }
         StagingScreen(
             staging,
             onConfirm = { items ->
@@ -468,12 +514,29 @@ internal fun ReceiptHistoryFlow(
                     Unit
                   }
                 },
-            actionsEnabled =
-                !savingReview &&
-                    !(submittedHere && purchaseState?.phase == InventorySavePhase.CONFIRMED) &&
-                    purchaseState?.correctionPending != true &&
-                    purchaseState?.phase !in
-                        setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING),
+            actionsEnabled = reviewEditable && barcodePhotoState?.busy != true,
+            itemActions = {
+              if (receipt.submission.draft && barcode != null && barcodePhoto != null) {
+                Text(stringResource(R.string.purchase_barcode_price_hint))
+                Button(
+                    enabled =
+                        reviewEditable &&
+                            stagingState.draft == null &&
+                            barcodePhotoState?.busy != true,
+                    modifier = Modifier.testTag(PurchaseBarcodeTestTags.ADD),
+                    onClick = {
+                      barcode.startScan()
+                      barcodePhoto.reset()
+                      barcodePhoto.open()
+                    }) {
+                      Text(stringResource(R.string.purchase_barcode_add))
+                    }
+                barcodeError?.let {
+                  Text(
+                      stringResource(it.messageResource()), color = MaterialTheme.colorScheme.error)
+                }
+              }
+            },
             previewContent = {
               Column {
                 OutlinedTextField(
@@ -484,7 +547,9 @@ internal fun ReceiptHistoryFlow(
                     singleLine = true,
                     readOnly = savingReview || purchaseState?.correctionPending == true,
                     modifier =
-                        Modifier.fillMaxWidth().padding(bottom = 12.dp).testTag("receipt_title"))
+                        Modifier.fillMaxWidth()
+                            .padding(bottom = Dimens.spacingS)
+                            .testTag(ReceiptHistoryTestTags.TITLE))
                 receipt.details?.photoUri?.let { uri ->
                   AsyncImage(
                       model = uri,
@@ -647,6 +712,9 @@ internal fun ReceiptHistoryFlow(
   }
 }
 
+/** Briefly shows the saved confirmation before returning to receipt history. */
+private const val RECEIPT_SUCCESS_MESSAGE_MILLIS = 900L
+
 /** Photo dimensions shared by retained receipt surfaces. */
 private object ReceiptLayout {
   val CardPhotoHeight = 72.dp
@@ -663,6 +731,8 @@ private fun InventorySavePhase.labelResource(): Int =
 
 /** Stable semantics for opening a retained receipt photo. */
 object ReceiptHistoryTestTags {
+  /** Editable title of the retained receipt. */
+  const val TITLE = "receipt_title"
   /** Household synchronization failure, displayed once above the receipt list. */
   const val SYNC_ERROR = "receipt_sync_error"
   const val PHOTO_PREVIEW = "receipt_photo_preview"

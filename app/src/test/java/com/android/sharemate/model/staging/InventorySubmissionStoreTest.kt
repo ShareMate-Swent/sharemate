@@ -25,6 +25,30 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun sharingModeSurvivesJournalRestartAndLegacySharedEntries() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    for (mode in com.android.sharemate.model.item.ItemSharing.entries) {
+      val receipt =
+          InventorySubmission(
+              java.util.UUID.randomUUID().toString(),
+              "alice",
+              "home",
+              listOf(StagedItem("milk", "Milk", 1, 100)),
+              sharing = mode)
+      store.save(receipt)
+      val restored =
+          AndroidInventorySubmissionStore(app, dispatcher).loadById("alice", "home", receipt.id)
+      assertEquals(receipt, restored)
+      val legacy = store.encode(receipt).apply { remove(Fields.SHARING) }
+      assertEquals(
+          com.android.sharemate.model.item.ItemSharing.SHARED,
+          store.decode(legacy.toString(), "alice", "home").sharing)
+    }
+  }
+
+  @Test
   fun sharedCacheSurvivesRestartAndNeverIncludesOtherUsersDrafts() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)

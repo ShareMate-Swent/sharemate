@@ -20,6 +20,8 @@ class InventorySubmission(
     val expense: SharedExpense? = null,
     val inventoryConfirmed: Boolean = false,
     val expenseProgress: ExpenseProgress = ExpenseProgress.QUEUED,
+    /** Selected from the household type and retained for offline replay. */
+    val sharing: ItemSharing = ItemSharing.SHARED,
 ) {
   val items: List<StagedItem> = Collections.unmodifiableList(ArrayList(items))
 
@@ -64,14 +66,25 @@ class InventorySubmission(
           draft == other.draft &&
           expense == other.expense &&
           inventoryConfirmed == other.inventoryConfirmed &&
-          expenseProgress == other.expenseProgress
+          expenseProgress == other.expenseProgress &&
+          sharing == other.sharing
 
   override fun hashCode(): Int =
-      listOf(id, ownerId, householdId, items, draft, expense, inventoryConfirmed, expenseProgress)
+      listOf(
+              id,
+              ownerId,
+              householdId,
+              items,
+              draft,
+              expense,
+              inventoryConfirmed,
+              expenseProgress,
+              sharing)
           .hashCode()
 
   fun withProgress(confirmed: Boolean, progress: ExpenseProgress = expenseProgress) =
-      InventorySubmission(id, ownerId, householdId, items, draft, expense, confirmed, progress)
+      InventorySubmission(
+          id, ownerId, householdId, items, draft, expense, confirmed, progress, sharing)
 
   companion object {
     /** Product policy keeps one atomic batch and its retained receipt comfortably bounded. */
@@ -106,6 +119,7 @@ object InventorySubmissionFields {
   const val QUANTITY = "quantity"
   const val PRICE = "priceCents"
   const val DRAFT = "draft"
+  const val SHARING = "sharing"
   const val EXPENSE = "expense"
   const val INVENTORY_CONFIRMED = "inventoryConfirmed"
   const val EXPENSE_PROGRESS = "expenseProgress"

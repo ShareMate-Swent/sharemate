@@ -7,6 +7,7 @@ import com.android.sharemate.model.finance.ExpenseSubmissionRepository
 import com.android.sharemate.model.item.InventorySubmission
 import com.android.sharemate.model.item.InventorySubmissionStatus
 import com.android.sharemate.model.item.ItemRepository
+import com.android.sharemate.model.item.ItemSharing
 import com.android.sharemate.model.item.ItemWrite
 import com.android.sharemate.model.receipt.ReceiptPhotoStore
 import com.android.sharemate.model.receipt.normalizeReceiptTitle
@@ -41,6 +42,7 @@ class ReceiptHistoryViewModel(
     private val expenses: ExpenseSubmissionRepository,
     private val synchronization: ReceiptHistorySync,
     private val now: () -> Long,
+    private val itemSharing: ItemSharing = ItemSharing.SHARED,
 ) : ViewModel() {
   private val mutableReceipts = MutableStateFlow<List<RetainedReceipt>>(emptyList())
   /** Receipts belonging to this account and household, including pending and failed saves. */
@@ -232,7 +234,8 @@ class ReceiptHistoryViewModel(
   /** Retains a new OCR result and its photo before publishing it to the history. */
   suspend fun addDraft(sourceUri: String, items: List<StagedItem>): String {
     val id = UUID.randomUUID().toString()
-    val submission = InventorySubmission(id, ownerId, householdId, items, draft = true)
+    val submission =
+        InventorySubmission(id, ownerId, householdId, items, draft = true, sharing = itemSharing)
     val photoUri = photos.retain(sourceUri, id)
     try {
       store.save(submission)
@@ -263,7 +266,9 @@ class ReceiptHistoryViewModel(
         editMutex.withLock {
           val current = receipts.value.firstOrNull { it.submission.id == id }
           if (current?.submission?.draft != true) return@withLock false
-          val updated = InventorySubmission(id, ownerId, householdId, items, draft = true)
+          val updated =
+              InventorySubmission(
+                  id, ownerId, householdId, items, draft = true, sharing = itemSharing)
           store.save(updated)
           val details =
               if (title != null) {
@@ -301,7 +306,7 @@ class ReceiptHistoryViewModel(
     if (!current.submission.draft || !submissions.add(id)) return
     val submission =
         try {
-          InventorySubmission(id, ownerId, householdId, items)
+          InventorySubmission(id, ownerId, householdId, items, sharing = itemSharing)
         } catch (_: IllegalArgumentException) {
           submissions.remove(id)
           setPhase(id, InventorySavePhase.FAILED)
