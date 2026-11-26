@@ -17,7 +17,7 @@ import com.android.sharemate.ui.chat.ChatTestTags
 import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.navigation.AddItemSheetTestTags
 import com.android.sharemate.ui.navigation.NavigationTestTags
-import com.android.sharemate.ui.photo.PhotoPickerTestTags
+import com.android.sharemate.ui.receipts.ReceiptDashboardTestTags
 import com.android.sharemate.ui.settings.SettingsTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import org.junit.Before
@@ -110,11 +110,11 @@ class MainActivityTest : TestCase() {
       composeTestRule
           .onNodeWithTag(AddItemSheetTestTags.option(AddItemMethod.RECEIPT))
           .performClick()
-      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertIsDisplayed()
     }
     step("Cancel the photo") {
-      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).performClick()
-      composeTestRule.onNodeWithTag(PhotoPickerTestTags.CANCEL).assertDoesNotExist()
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).performClick()
+      composeTestRule.onNodeWithTag(ReceiptDashboardTestTags.BACK).assertDoesNotExist()
       composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).assertIsSelected()
       composeTestRule.onNodeWithTag(ChatTestTags.SCREEN).assertIsDisplayed()
     }
