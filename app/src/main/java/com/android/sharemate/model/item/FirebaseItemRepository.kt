@@ -116,7 +116,7 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
                   quantity = row.quantity,
                   ownerId = submission.ownerId,
                   householdId = submission.householdId,
-                  sharing = ItemSharing.SHARED,
+                  sharing = submission.sharing,
                   status = ItemStatus.ACTIVE)
           batch.set(items.document(item.id), item)
         }

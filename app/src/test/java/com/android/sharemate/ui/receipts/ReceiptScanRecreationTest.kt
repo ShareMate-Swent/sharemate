@@ -119,7 +119,12 @@ class ReceiptScanRecreationTest {
                 sharedHousehold = false,
                 showBalances = false,
                 onOpenBalances = {},
-                onPurchase = null)
+                onPurchase = null,
+                itemRepository = itemRepository,
+                expenseRepository = null,
+                userId = "owner",
+                householdId = "home",
+                purchaseReview = null)
           } else {
             ReceiptScanFlow(photo, reader = reader)
           }
@@ -165,11 +170,11 @@ class ReceiptScanRecreationTest {
           .onNodeWithText(compose.activity.getString(R.string.staging_price, "3.10"))
           .assertIsDisplayed()
       if (useHistory) {
-        val reviewButton = context.getString(R.string.receipt_review_items)
         compose.onNodeWithTag(StagingTestTags.BACK).performClick()
-        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.SAVE_DRAFT).performClick()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST).assertIsDisplayed()
         recreateActivity()
-        compose.onNodeWithText(reviewButton).assertIsDisplayed()
+        compose.onNodeWithTag(ReceiptDashboardTestTags.HISTORY_LIST).assertIsDisplayed()
         compose.onNodeWithTag(StagingTestTags.LIST).assertDoesNotExist()
       }
       assertEquals(1, reads)
