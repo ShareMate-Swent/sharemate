@@ -16,8 +16,13 @@ function decodeRecipes(rows) {
     const imageUrl = row.image ?? null;
     if (imageUrl !== null && (typeof imageUrl !== "string" || imageUrl.length > 2048 ||
         new URL(imageUrl).protocol !== "https:")) throw new Error("Invalid image");
+    const missing = row.missedIngredients ?? [];
+    if (!Array.isArray(missing) || missing.length !== row.missedIngredientCount ||
+        !missing.every(item => item && typeof item.name === "string" &&
+          item.name.trim().length > 0 && item.name.length <= 200)) throw new Error("Invalid missing ingredients");
     return { id: String(row.id), title: row.title, imageUrl,
-      matchingIngredientCount: row.usedIngredientCount, missingIngredientCount: row.missedIngredientCount };
+      matchingIngredientCount: row.usedIngredientCount, missingIngredientCount: row.missedIngredientCount,
+      missingIngredients: missing.map(item => item.name.trim()) };
   });
   if (new Set(recipes.map(row => row.id)).size !== recipes.length) throw new Error("Duplicate recipes");
   return { recipes };

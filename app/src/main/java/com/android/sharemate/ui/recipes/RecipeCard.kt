@@ -79,6 +79,13 @@ fun RecipeCard(
                       data.missingIngredientCount),
                   style = MaterialTheme.typography.bodyMedium,
                   modifier = Modifier.testTag(RecipesTestTags.missing(data.id)))
+              if (data.missingIngredients.isNotEmpty()) {
+                Text(
+                    stringResource(
+                        R.string.recipes_missing_names, data.missingIngredients.joinToString(", ")),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag(RecipesTestTags.missingNames(data.id)))
+              }
             }
       }
 }

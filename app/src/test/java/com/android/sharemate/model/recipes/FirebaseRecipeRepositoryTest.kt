@@ -29,6 +29,31 @@ class FirebaseRecipeRepositoryTest {
       FirebaseRecipeRepository({ listOf("milk") }, { response })
 
   @Test
+  fun missingNamesAreDecodedWithoutReorderingOrRecomputingMatches() = runTest {
+    for (names in listOf(emptyList(), listOf("Salt"), listOf("Onion", "Salt", "Pepper"))) {
+      val wire =
+          row() + mapOf("missingIngredientCount" to names.size, "missingIngredients" to names)
+      val result =
+          repository(mapOf("recipes" to listOf(wire))).suggestRecipes()
+              as RecipeRequestResult.Success
+      assertEquals(names, result.recipes.single().missingIngredients)
+      assertEquals(names.size, result.recipes.single().missingIngredientCount)
+    }
+  }
+
+  @Test
+  fun malformedMissingNameListsReturnServiceError() = runTest {
+    for (names in
+        listOf(
+            null, "Salt", emptyList<String>(), listOf(12), listOf(""), listOf("Salt", "Onion"))) {
+      assertEquals(
+          RecipeRequestResult.ServiceError,
+          repository(mapOf("recipes" to listOf(row() + ("missingIngredients" to names))))
+              .suggestRecipes())
+    }
+  }
+
+  @Test
   fun successEmptyAndMissingOptionalImage() = runTest {
     val success =
         repository(mapOf("recipes" to listOf(row()))).suggestRecipes()

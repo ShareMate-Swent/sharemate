@@ -10,9 +10,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.lifecycle.ViewModelStore
 import com.android.sharemate.model.recipes.RecipeRepository
 import com.android.sharemate.model.recipes.RecipeRequestResult
+import com.android.sharemate.model.recipes.RecipeSuggestion
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -40,6 +42,36 @@ class RecipesScreenFlowTest {
   @After
   fun tearDown() {
     compose.runOnIdle { store.clear() }
+  }
+
+  @Test
+  fun realScreenUsesStableViewModelOrderAndDisplaysMissingNamesOnEachCard() {
+    val input =
+        listOf(
+            RecipeSuggestion("many", "Many", null, 1, 3, listOf("Salt", "Onion", "Pepper")),
+            RecipeSuggestion("full", "Full", null, 3, 0),
+            RecipeSuggestion("first-one", "First one", null, 2, 1, listOf("Milk")),
+            RecipeSuggestion("second-one", "Second one", null, 2, 1, listOf("Egg")))
+    compose.setContent { MaterialTheme { RecipesScreen(model) } }
+    compose.runOnIdle {
+      model.requestRecipes()
+      pending.complete(RecipeRequestResult.Success(input))
+    }
+    val expected = listOf(input[1], input[2], input[3], input[0])
+    expected.forEachIndexed { index, recipe ->
+      compose.onNodeWithTag(RecipesTestTags.LIST).performScrollToIndex(index)
+      compose
+          .onNodeWithTag(RecipesTestTags.title(recipe.id), true)
+          .assertIsDisplayed()
+          .assertTextEquals(recipe.title)
+      if (recipe.missingIngredients.isNotEmpty()) {
+        compose
+            .onNodeWithTag(RecipesTestTags.missingNames(recipe.id), true)
+            .assertIsDisplayed()
+            .assertTextEquals("Missing: " + recipe.missingIngredients.joinToString(", "))
+      }
+    }
+    compose.runOnIdle { assertEquals(1, calls) }
   }
 
   @Test

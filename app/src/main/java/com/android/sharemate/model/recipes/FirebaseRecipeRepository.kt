@@ -76,12 +76,20 @@ internal constructor(
                 require(URI(it).scheme == "https" && !URI(it).host.isNullOrBlank())
                 it
               }
+          val missingCount = count(row["missingIngredientCount"])
+          val missingNames =
+              if (!row.containsKey("missingIngredients")) emptyList()
+              else {
+                val names =
+                    row["missingIngredients"] as? List<*> ?: error("Invalid missing ingredients")
+                require(names.size == missingCount)
+                names.map {
+                  require(it is String && it.isNotBlank() && it.length <= 200)
+                  it
+                }
+              }
           RecipeSuggestion(
-              id,
-              title,
-              image,
-              count(row["matchingIngredientCount"]),
-              count(row["missingIngredientCount"]))
+              id, title, image, count(row["matchingIngredientCount"]), missingCount, missingNames)
         }
     require(recipes.map { it.id }.distinct().size == recipes.size)
     return recipes

@@ -85,6 +85,43 @@ class RecipesPresentationTest {
   }
 
   @Test
+  fun cardShowsActualMissingNamesForOneAndManyAndRemovesThemForFullMatches() {
+    state.value =
+        RecipesUiState.Success(
+            listOf(soup.copy(missingIngredientCount = 0, missingIngredients = emptyList())))
+    render()
+    compose
+        .onNodeWithTag(RecipesTestTags.missing(soup.id), true)
+        .assertTextEquals("0 missing ingredients")
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+    for (names in listOf(listOf("Salt"), listOf("Salt", "Onion", "Pepper"))) {
+      compose.runOnIdle {
+        state.value =
+            RecipesUiState.Success(
+                listOf(soup.copy(missingIngredientCount = names.size, missingIngredients = names)))
+      }
+      compose
+          .onNodeWithTag(RecipesTestTags.missingNames(soup.id), true)
+          .assertIsDisplayed()
+          .assertTextEquals("Missing: " + names.joinToString(", "))
+    }
+    compose.runOnIdle {
+      state.value = RecipesUiState.Success(listOf(soup.copy(missingIngredientCount = 0)))
+    }
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+  }
+
+  @Test
+  fun countOnlyLegacyCardDoesNotInventIngredientNames() {
+    state.value = RecipesUiState.Success(listOf(soup))
+    render()
+    compose
+        .onNodeWithTag(RecipesTestTags.missing(soup.id), true)
+        .assertTextEquals("1 missing ingredient")
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+  }
+
+  @Test
   fun loadingHasAnAccessibleIndeterminateProgressIndicator() {
     render()
     compose

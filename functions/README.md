@@ -106,7 +106,7 @@ returns an empty list locally. Availability and expiry rules are not duplicated.
 The callable sends at most 10 results through Spoonacular `findByIngredients`,
 with an 8-second provider timeout inside the 15-second function timeout. It returns
 only `{ recipes: [{ id, title, imageUrl, matchingIngredientCount,
-missingIngredientCount }] }`. Images may be null. Provider diagnostics and credentials
+missingIngredientCount, missingIngredients }] }`. Images may be null. Provider diagnostics and credentials
 are never returned or logged. Quota errors use `resource-exhausted`, provider timeout
 uses `deadline-exceeded`, and other provider failures use safe `internal` errors.
 Android maps transport unavailability to `Offline`, other failures to `ServiceError`,
@@ -166,3 +166,12 @@ Tests require no real API key. Run all `*.unit.test.js` files for policy and fai
 cases, and `recipe-rate-limit.test.js` with local Auth/Firestore emulators for real
 transaction contention, UTC rollover, UID isolation and client-rule enforcement.
 Per-UID protection does not impose an overall project budget across multiple accounts.
+
+### Recipe ordering and missing names (#343)
+The callable forwards `missedIngredients[].name` as `missingIngredients`, retaining
+provider order and validating consistency with `missingIngredientCount`. It does not
+recompute matches or rank recipes. Android performs a stable ascending sort by the
+provider count in `RecipesViewModel`: zero first, then one or more; ties retain the
+repository order. Cards display all supplied names without truncation. Older callable
+responses without the new field remain readable (counts only); deploy the updated
+callable to display actual missing names. No names are inferred from counts.

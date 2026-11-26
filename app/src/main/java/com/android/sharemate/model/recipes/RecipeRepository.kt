@@ -8,6 +8,8 @@ data class RecipeSuggestion(
     val imageUrl: String?,
     val matchingIngredientCount: Int,
     val missingIngredientCount: Int,
+    /** Provider names in their original order; empty when absent from a legacy response. */
+    val missingIngredients: List<String> = emptyList(),
 )
 
 /** Service failures are values; cancellation must propagate rather than become an error. */

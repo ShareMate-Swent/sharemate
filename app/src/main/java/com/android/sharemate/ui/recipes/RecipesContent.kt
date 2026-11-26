@@ -124,6 +124,9 @@ object RecipesTestTags {
 
   fun missing(id: String) = "recipe_missing_$id"
 
+  /** Names displayed directly on the card, separate from its missing-ingredient count. */
+  fun missingNames(id: String) = "recipe_missing_names_$id"
+
   fun image(id: String) = "recipe_image_$id"
 
   fun placeholder(id: String) = "recipe_placeholder_$id"
