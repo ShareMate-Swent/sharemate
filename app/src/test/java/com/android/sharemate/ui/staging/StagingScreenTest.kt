@@ -171,7 +171,8 @@ class StagingScreenTest {
         .onNode(
             hasText(
                 composeTestRule.activity.getString(R.string.staging_quantity, milk.quantity)) and
-                hasAnyAncestor(hasTestTag(StagingTestTags.item("milk"))))
+                hasAnyAncestor(hasTestTag(StagingTestTags.item("milk"))),
+            useUnmergedTree = true)
         .assertIsDisplayed()
     composeTestRule.onNodeWithTag(StagingTestTags.item("milk")).performClick()
     composeTestRule.runOnIdle {
