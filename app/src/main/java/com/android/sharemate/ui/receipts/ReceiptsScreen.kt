@@ -359,7 +359,8 @@ internal fun ReceiptHistoryFlow(
             } else null
         val purchaseState = purchaseSave?.state?.collectAsStateWithLifecycle()?.value
         var submittedHere by rememberSaveable { mutableStateOf(false) }
-        LaunchedEffect(purchaseState?.phase) {
+        // A fast correction can finish between two frames without exposing SUBMITTING to Compose.
+        LaunchedEffect(purchaseState?.phase, purchaseState?.correctionPending, submittedHere) {
           if (purchaseState?.correctionPending == true) submittedHere = true
           if (purchaseState?.phase == InventorySavePhase.PENDING) history.refresh()
           if (purchaseState?.phase == InventorySavePhase.CONFIRMED) {

@@ -427,7 +427,11 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     assertEquals(0, scans)
     compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
-    val input = File.createTempFile("barcode-review", ".png", compose.activity.cacheDir)
+    val directory = File(compose.activity.cacheDir, "test-fixtures").apply { mkdirs() }
+    val input = File.createTempFile("barcode-review", ".png", directory)
+    val sourceUri =
+        androidx.core.content.FileProvider.getUriForFile(
+            compose.activity, "${compose.activity.packageName}.test-fixtures", input)
     try {
       val bitmap =
           android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888)
@@ -440,8 +444,12 @@ class ReceiptHistoryFlowTest {
               .ViewModelProvider(compose.activity)[
                   "receipt-barcode-photo_${fixture.owner}_${fixture.home}",
                   com.android.sharemate.ui.photo.PhotoPickerViewModel::class.java]
-      compose.runOnIdle { photo.select(android.net.Uri.fromFile(input).toString()) }
-      compose.waitUntil(10_000) { photo.state.value.selection != null && !photo.state.value.busy }
+      compose.runOnIdle { photo.select(sourceUri.toString()) }
+      compose.waitUntil(10_000) {
+        !photo.state.value.busy && (photo.state.value.selection != null || photo.state.value.failed)
+      }
+      org.junit.Assert.assertFalse("Barcode photo import failed", photo.state.value.failed)
+      org.junit.Assert.assertNotNull(photo.state.value.selection)
       compose.onNodeWithTag(PhotoPickerTestTags.CONFIRM).performScrollTo().performClick()
       compose.waitUntil(10_000) { !photo.state.value.visible }
       compose.onNodeWithText("Barcode oats").performClick()
@@ -604,7 +612,17 @@ class ReceiptHistoryFlowTest {
     compose.onNodeWithTag(StagedItemEditTestTags.PRICE).performTextReplacement("3.00")
     compose.onNodeWithTag(StagedItemEditTestTags.SAVE).performClick()
     compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
-    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo().performClick()
+    // Finish the correction between frames: Compose can observe CONFIRMED both before and after it.
+    compose.onNodeWithTag("staging_confirm_purchase").performScrollTo()
+    compose.mainClock.autoAdvance = false
+    try {
+      compose.onNodeWithTag("staging_confirm_purchase").performClick()
+      compose.waitUntil(10_000) {
+        fixture.corrected == 1 && fixture.retained().expense?.totalAmountCents == 300L
+      }
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
     fixture.awaitHistory()
     assertEquals(1, fixture.corrected)
     assertEquals(300L, fixture.retained().expense?.totalAmountCents)
