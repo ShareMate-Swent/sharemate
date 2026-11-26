@@ -423,10 +423,10 @@ class ReceiptHistoryFlowTest {
                               barcode, "Barcode oats", null))
                 })
     fixture.open()
-    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).performScrollTo().performClick()
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
     compose.onNodeWithTag(PhotoPickerTestTags.CANCEL).performScrollTo().performClick()
     assertEquals(0, scans)
-    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).performScrollTo().performClick()
+    compose.onNodeWithTag(PurchaseBarcodeTestTags.ADD).assertIsDisplayed().performClick()
     val input = File.createTempFile("barcode-review", ".png", compose.activity.cacheDir)
     try {
       val bitmap =
