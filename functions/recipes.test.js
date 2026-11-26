@@ -6,6 +6,7 @@ const { initializeApp, deleteApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 const { suggestRecipes } = require("./recipes");
+const { recipeBudgetDocument } = require("./recipe-rate-limit");
 const projectId = process.env.GCLOUD_PROJECT || "demo-sharemate";
 assert.ok(projectId.startsWith("demo-") && process.env.FIRESTORE_EMULATOR_HOST &&
   process.env.FIREBASE_AUTH_EMULATOR_HOST, "Run with local Auth and Firestore emulators");
@@ -25,6 +26,7 @@ before(async () => {
 });
 after(async () => {
   await home.delete();
+  if (member) await recipeBudgetDocument(db, member).delete();
   await Promise.all([member, outsider].filter(Boolean).map(uid => getAuth(app).deleteUser(uid)));
   await deleteApp(app);
 });

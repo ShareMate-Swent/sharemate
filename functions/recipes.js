@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 const { HttpsError } = require("firebase-functions/v2/https");
 const { isId } = require("./finance-common");
+const { reserveRecipeRequest } = require("./recipe-rate-limit");
 const RESULT_LIMIT = 10;
 const MAX_INGREDIENTS = 50;
 const TIMEOUT_MILLIS = 8000;
@@ -46,6 +47,7 @@ async function suggestRecipes(db, uid, data, key, transport = fetch, timeoutMill
     const apiKey = key();
     if (typeof apiKey !== "string" || !apiKey.trim())
       throw new HttpsError("failed-precondition", "Recipe service is not configured.");
+    await reserveRecipeRequest(db, uid);
     const url = new URL("https://api.spoonacular.com/recipes/findByIngredients");
     url.searchParams.set("ingredients", data.ingredients.join(","));
     url.searchParams.set("number", String(RESULT_LIMIT));
