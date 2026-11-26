@@ -182,13 +182,23 @@ class MlKitExpiryDateReaderTest {
   }
 
   @Test
-  fun remoteBlankAndRelativeUrisAreRejectedBeforeLoading() = runTest {
+  fun invalidImageUrisAreRejectedBeforeLoading() = runTest {
     val reader =
         readerWithOcr(
             StandardTestDispatcher(testScheduler),
             { error("must not create recognizer") },
             { _ -> error("must not load image") })
-    for (input in listOf("", "/tmp/image.png", "https://example.com/image", "ftp://host/image")) {
+    val invalidUris =
+        listOf(
+            "",
+            "/tmp/image.png",
+            "https://example.com/image",
+            "ftp://host/image",
+            "content:///image.png",
+            "file://host/image.png",
+            "file:relative.png",
+        )
+    for (input in invalidUris) {
       assertTrue(runCatching { reader.read(input) }.exceptionOrNull() is IllegalArgumentException)
     }
   }

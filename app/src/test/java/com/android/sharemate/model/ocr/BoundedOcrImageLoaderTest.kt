@@ -80,14 +80,50 @@ class BoundedOcrImageLoaderTest {
   }
 
   @Test
-  fun appliesExifReflectionToThePixels() = runBlocking {
-    val source = jpeg(64, 64, ExifInterface.ORIENTATION_FLIP_HORIZONTAL)
-    val loader = BoundedOcrImageLoader({ temp.root }) { _, _ -> source.inputStream() }
-    val bitmap = loader.load(uri)
-    val left = bitmap.getPixel(8, 32)
-    val right = bitmap.getPixel(56, 32)
-    assertTrue(Color.blue(left) > Color.red(left))
-    assertTrue(Color.red(right) > Color.blue(right))
+  fun appliesAllExifOrientationsToThePixels() = runBlocking {
+    val red = Color.RED
+    val green = Color.GREEN
+    val blue = Color.BLUE
+    val white = Color.WHITE
+    val expectedCorners =
+        mapOf(
+            ExifInterface.ORIENTATION_NORMAL to listOf(red, green, blue, white),
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL to listOf(green, red, white, blue),
+            ExifInterface.ORIENTATION_ROTATE_180 to listOf(white, blue, green, red),
+            ExifInterface.ORIENTATION_FLIP_VERTICAL to listOf(blue, white, red, green),
+            ExifInterface.ORIENTATION_TRANSPOSE to listOf(red, blue, green, white),
+            ExifInterface.ORIENTATION_ROTATE_90 to listOf(blue, red, white, green),
+            ExifInterface.ORIENTATION_TRANSVERSE to listOf(white, green, blue, red),
+            ExifInterface.ORIENTATION_ROTATE_270 to listOf(green, white, red, blue),
+        )
+    for ((orientation, corners) in expectedCorners) {
+      val source = jpeg(64, 48, orientation)
+      val loader = BoundedOcrImageLoader({ temp.root }) { _, _ -> source.inputStream() }
+      val bitmap = loader.load(uri)
+      try {
+        val swapsAxes =
+            orientation in ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
+        assertEquals(if (swapsAxes) 48 else 64, bitmap.width)
+        assertEquals(if (swapsAxes) 64 else 48, bitmap.height)
+        val right = bitmap.width - 8
+        val bottom = bitmap.height - 8
+        val actualCorners =
+            listOf(
+                bitmap.getPixel(8, 8),
+                bitmap.getPixel(right, 8),
+                bitmap.getPixel(8, bottom),
+                bitmap.getPixel(right, bottom),
+            )
+        for ((expected, actual) in corners.zip(actualCorners)) {
+          val label = "EXIF orientation $orientation"
+          assertEquals(label, Color.red(expected).toDouble(), Color.red(actual).toDouble(), 8.0)
+          assertEquals(label, Color.green(expected).toDouble(), Color.green(actual).toDouble(), 8.0)
+          assertEquals(label, Color.blue(expected).toDouble(), Color.blue(actual).toDouble(), 8.0)
+        }
+      } finally {
+        bitmap.recycle()
+      }
+    }
   }
 
   @Test
@@ -160,9 +196,17 @@ class BoundedOcrImageLoaderTest {
   private fun jpeg(width: Int, height: Int, orientation: Int): File {
     val source = temp.newFile()
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    bitmap.eraseColor(Color.BLUE)
-    Canvas(bitmap)
-        .drawRect(0f, 0f, width / 2f, height.toFloat(), Paint().apply { color = Color.RED })
+    bitmap.eraseColor(Color.WHITE)
+    val canvas = Canvas(bitmap)
+    val paint = Paint()
+    val middleX = width / 2f
+    val middleY = height / 2f
+    paint.color = Color.RED
+    canvas.drawRect(0f, 0f, middleX, middleY, paint)
+    paint.color = Color.GREEN
+    canvas.drawRect(middleX, 0f, width.toFloat(), middleY, paint)
+    paint.color = Color.BLUE
+    canvas.drawRect(0f, middleY, middleX, height.toFloat(), paint)
     source.outputStream().use { assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it)) }
     bitmap.recycle()
     ExifInterface(source.path).apply {
