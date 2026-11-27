@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.settings
 
 import androidx.compose.foundation.BorderStroke
@@ -113,10 +114,11 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * Settings of the signed-in user: their profile, their account and their household.
  *
  * @param state Profile, account and household shown on the screen.
- * @param leaveState State of the leave confirmation.
+ * @param leaveState State of the leave confirmation. For a private household, leaving deletes it
+ *   and everything in it, and the confirmation says so.
  * @param onLeaveHousehold Requests to leave the current household.
  * @param onCancelLeave Closes the leave confirmation.
- * @param onConfirmLeave Confirms the requested household departure.
+ * @param onConfirmLeave Confirms the requested household departure (or deletion).
  * @param onLeft Called once after the user has left the household.
  * @param onShowMembers Opens the household members list.
  * @param onSwitchGoogleAccount Opens the Google account picker; shown only for Google accounts.
@@ -492,8 +494,8 @@ private fun NotificationSettingsEntry(onClick: () -> Unit) {
 
 /**
  * The household's name, member count and invite code, with Leave household. Tapping the name and
- * member count opens the members list. Private households cannot be joined by anyone else or left,
- * so their invite code is not shown.
+ * member count opens the members list. Private households cannot be joined by anyone else, so their
+ * invite code is not shown. Leaving a private household deletes it.
  */
 @Composable
 private fun HouseholdCard(
@@ -577,7 +579,6 @@ private fun HouseholdCard(
           }
           OutlinedButton(
               onClick = onLeaveHousehold,
-              enabled = state.fridgeType != FridgeType.PRIVATE,
               colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.error),
               border = BorderStroke(Dimens.borderWidth, colors.error),
               modifier =
@@ -586,13 +587,6 @@ private fun HouseholdCard(
                       .testTag(SettingsTestTags.LEAVE_HOUSEHOLD),
           ) {
             Text(stringResource(R.string.leave_household))
-          }
-          if (state.fridgeType == FridgeType.PRIVATE) {
-            Text(
-                stringResource(R.string.leave_private_household_blocked),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant,
-            )
           }
         }
   }
@@ -652,7 +646,7 @@ private fun LeaveHouseholdDialog(
     onConfirm: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
-  val leaveBlocked = privateFridge || state.error == LeaveHouseholdError.PRIVATE_HOUSEHOLD
+  val leaveBlocked = state.error == LeaveHouseholdError.PRIVATE_HOUSEHOLD
   AlertDialog(
       modifier = Modifier.testTag(SettingsTestTags.LEAVE_DIALOG),
       onDismissRequest = { if (!state.isLeaving) onCancel() },
@@ -661,6 +655,8 @@ private fun LeaveHouseholdDialog(
         Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingM)) {
           Text(
               if (leaveBlocked) stringResource(R.string.leave_private_household_blocked)
+              else if (privateFridge)
+                  stringResource(R.string.delete_private_household_message, householdName)
               else stringResource(R.string.leave_household_message, householdName))
           state.error
               ?.takeUnless { leaveBlocked }
@@ -684,6 +680,8 @@ private fun LeaveHouseholdDialog(
                                 LeaveHouseholdError.PRIVATE_HOUSEHOLD ->
                                     R.string.leave_private_household_blocked
                                 LeaveHouseholdError.LEAVE_FAILED -> R.string.leave_household_failed
+                                LeaveHouseholdError.DELETE_FAILED ->
+                                    R.string.delete_household_failed
                               }),
                       style = MaterialTheme.typography.labelLarge,
                       color = colors.error,
@@ -709,7 +707,11 @@ private fun LeaveHouseholdDialog(
           ) {
             Text(
                 stringResource(
-                    if (state.error != null) R.string.household_retry else R.string.leave))
+                    when {
+                      state.error != null -> R.string.household_retry
+                      privateFridge -> R.string.delete_household_confirm
+                      else -> R.string.leave
+                    }))
           }
         }
       },

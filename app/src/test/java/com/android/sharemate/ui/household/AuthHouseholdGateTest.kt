@@ -1,6 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import com.android.sharemate.model.auth.AuthSession
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
+import com.android.sharemate.model.household.InMemoryDeletedHouseholdStore
 import com.android.sharemate.model.household.InMemoryHouseholdRepository
 import com.android.sharemate.model.profile.InMemoryUserProfileRepository
 import com.android.sharemate.model.profile.ProfilePhotoRepository
@@ -32,6 +34,7 @@ import com.android.sharemate.ui.theme.ShareMateTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -45,6 +48,7 @@ class AuthHouseholdGateTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val auth = SessionRepository()
   private val households = MembershipRepository()
+  private val deletedHouseholds = InMemoryDeletedHouseholdStore()
   private val profiles = InMemoryUserProfileRepository()
   private val profilePhotos =
       object : ProfilePhotoRepository {
@@ -202,6 +206,33 @@ class AuthHouseholdGateTest {
   }
 
   @Test
+  fun aDeletedHouseholdIsNotReopenedWhenTheLookupStillReturnsItFromTheCache() {
+    households.memberships["student"] = Household(id = "old-home")
+    compose.setContent { GateContent() }
+    compose.onNodeWithTag("private_app_household").assertTextEquals("old-home")
+
+    // The membership is left in place: the lookup keeps answering with the deleted household.
+    compose.onNodeWithTag("private_app_deleted").performClick()
+
+    compose.onNodeWithTag("private_app").assertDoesNotExist()
+    compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
+    assertEquals(listOf("student", "student"), households.lookups)
+  }
+
+  @Test
+  fun aHouseholdDeletedBeforeAnOfflineRestartStaysOnTheHouseholdChoice() {
+    // The server deleted the household and the app was closed. Started again offline, the lookup
+    // still returns it from the cache, but the device remembers the deletion.
+    households.memberships["student"] = Household(id = "old-home")
+    runBlocking { deletedHouseholds.markDeleted("student", "old-home") }
+
+    compose.setContent { GateContent() }
+
+    compose.onNodeWithTag("private_app").assertDoesNotExist()
+    compose.onNodeWithTag(HouseholdChoiceTestTags.CREATE).assertIsDisplayed()
+  }
+
+  @Test
   fun retryAndAccountChangeCancelOldLookupWithoutRevealingOldHousehold() {
     households.failure = IllegalStateException("Offline")
     compose.setContent { GateContent() }
@@ -242,7 +273,12 @@ class AuthHouseholdGateTest {
           households,
           profiles,
           profilePhotos,
-          googleTokenProvider = { null }) { session, household, onMembershipChanged ->
+          deletedHouseholds,
+          googleTokenProvider = { null }) {
+              session,
+              household,
+              onMembershipChanged,
+              onHouseholdDeleted ->
             Text("Private application", Modifier.testTag("private_app"))
             Text(household.id, Modifier.testTag("private_app_household"))
             Text(session.uid, Modifier.testTag("private_app_user"))
@@ -253,6 +289,13 @@ class AuthHouseholdGateTest {
                 },
                 modifier = Modifier.testTag("private_app_leave")) {
                   Text("Leave")
+                }
+            // The server confirmed the deletion, but a lookup can still return the cached
+            // household.
+            TextButton(
+                onClick = { onHouseholdDeleted(household.id) },
+                modifier = Modifier.testTag("private_app_deleted")) {
+                  Text("Deleted")
                 }
           }
     }

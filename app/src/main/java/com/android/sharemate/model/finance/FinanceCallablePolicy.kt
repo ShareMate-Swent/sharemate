@@ -1,11 +1,13 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.finance
 
+import com.android.sharemate.model.CloudFunctions
 import com.google.firebase.functions.FirebaseFunctionsException.Code
 
 /** Shared callable region and conclusive rejection classification. */
 internal object FinanceCallablePolicy {
-  const val REGION = "europe-west6"
+  const val REGION = CloudFunctions.REGION
 
   fun rejectionReason(code: Code): ExpenseRejectionReason? =
       when (code) {
