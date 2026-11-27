@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="incident_report_action">Report an incident</string>
+    <string name="incident_report_title">Report an incident</string>
+    <string name="incident_report_hint">Add a photo of the problem and describe it for your flatmates.</string>
+    <string name="incident_report_description">Description</string>
+    <string name="incident_report_description_too_long">Too long: %1$d/%2$d characters</string>
+    <string name="incident_report_send">Send report</string>
+    <string name="incident_report_back">Back to the chat</string>
+</resources>

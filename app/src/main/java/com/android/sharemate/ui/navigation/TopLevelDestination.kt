@@ -49,6 +49,9 @@ object ChildRoutes {
   /** The notification settings sub-page of Settings. */
   const val NOTIFICATION_SETTINGS = "settings/notifications"
 
+  /** The "Report an incident" form opened from the chat. */
+  const val INCIDENT_REPORT = "chat/incident"
+
   /** Key scoping the notification settings ViewModel to one user. */
   fun notificationSettingsViewModelKey(userId: String) = "notification_settings_$userId"
 }
