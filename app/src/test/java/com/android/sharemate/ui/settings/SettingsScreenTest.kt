@@ -288,7 +288,7 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun privateHouseholdDisablesLeavingAndExplainsWhy() {
+  fun privateHouseholdCanBeLeftAndHasNoInviteCode() {
     showSettings(settings = googleState.copy(fridgeType = FridgeType.PRIVATE, memberCount = 1))
 
     composeTestRule
@@ -300,31 +300,64 @@ class SettingsScreenTest {
     composeTestRule
         .onNodeWithTag(SettingsTestTags.LEAVE_HOUSEHOLD)
         .performScrollTo()
-        .assertIsNotEnabled()
+        .assertIsEnabled()
         .performClick()
-    composeTestRule
-        .onNode(
-            hasText(composeTestRule.activity.getString(R.string.leave_private_household_blocked)))
-        .performScrollTo()
-        .assertIsDisplayed()
 
-    assertEquals(0, leaveRequests)
+    assertEquals(1, leaveRequests)
   }
 
   @Test
-  fun privateConfirmationExplainsRestrictionAndHasNoLeaveAction() {
+  fun privateConfirmationWarnsThatEverythingIsDeletedAndOffersDelete() {
     showSettings(
         LeaveHouseholdUiState(isConfirming = true),
         settings = googleState.copy(fridgeType = FridgeType.PRIVATE))
-    composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM).assertDoesNotExist()
+
     composeTestRule
         .onNode(
-            hasText(composeTestRule.activity.getString(R.string.leave_private_household_blocked))
+            hasText(
+                    composeTestRule.activity.getString(
+                        R.string.delete_private_household_message, "Rue de Lausanne flat"))
                 .and(hasAnyAncestor(hasTestTag(SettingsTestTags.LEAVE_DIALOG))))
         .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.delete_household_confirm))
+        .performClick()
     composeTestRule.onNodeWithTag(SettingsTestTags.LEAVE_CANCEL).performClick()
+    assertEquals(1, confirms)
     assertEquals(1, cancels)
-    assertEquals(0, confirms)
+  }
+
+  @Test
+  fun privateDeletionFailureShowsItsOwnMessageAndOffersToTryAgain() {
+    showSettings(
+        LeaveHouseholdUiState(isConfirming = true, error = LeaveHouseholdError.DELETE_FAILED),
+        settings = googleState.copy(fridgeType = FridgeType.PRIVATE))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_ERROR)
+        .assertIsDisplayed()
+        .assertTextEquals(composeTestRule.activity.getString(R.string.delete_household_failed))
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.household_retry))
+        .performClick()
+    assertEquals(1, confirms)
+  }
+
+  @Test
+  fun sharedConfirmationStillOffersLeaveAndNeverMentionsDeletion() {
+    showSettings(LeaveHouseholdUiState(isConfirming = true))
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.LEAVE_CONFIRM)
+        .assertTextEquals(composeTestRule.activity.getString(R.string.leave))
+    composeTestRule
+        .onNode(
+            hasText(
+                composeTestRule.activity.getString(
+                    R.string.delete_private_household_message, "Rue de Lausanne flat")))
+        .assertDoesNotExist()
   }
 
   @Test

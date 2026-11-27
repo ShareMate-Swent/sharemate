@@ -55,9 +55,13 @@ import com.android.sharemate.model.finance.FirebaseExpenseSubmissionRepository
 import com.android.sharemate.model.finance.FirebaseSettlementRepository
 import com.android.sharemate.model.finance.FirestoreHouseholdFinanceRepository
 import com.android.sharemate.model.finance.HouseholdFinanceRepository
+import com.android.sharemate.model.household.AndroidDeletedHouseholdStore
+import com.android.sharemate.model.household.FirebasePrivateHouseholdDeletionRepository
+import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.household.HouseholdRepositoryFirestore
+import com.android.sharemate.model.household.PrivateHouseholdDeletionRepository
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
 import com.android.sharemate.model.image.CommonsFoodImageRepository
 import com.android.sharemate.model.image.FirebasePersonalPhotoRepository
@@ -105,6 +109,7 @@ import com.android.sharemate.ui.fridge.AddItemHost
 import com.android.sharemate.ui.fridge.FridgeScreen
 import com.android.sharemate.ui.fridge.FridgeViewModel
 import com.android.sharemate.ui.household.AuthHouseholdGate
+import com.android.sharemate.ui.household.DeletePrivateHouseholdViewModel
 import com.android.sharemate.ui.household.HouseholdMembersScreen
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
@@ -267,6 +272,18 @@ open class MainActivity : ComponentActivity() {
               FirebaseFunctions.getInstance(FirebaseSettlementRepository.REGION)))
 
   private val financeRepository by lazy { createHouseholdFinanceRepository() }
+  /** Creates the repository that deletes a private household on the server. */
+  protected open fun createPrivateHouseholdDeletionRepository():
+      PrivateHouseholdDeletionRepository = FirebasePrivateHouseholdDeletionRepository {
+    FirebaseFunctions.getInstance(FirebasePrivateHouseholdDeletionRepository.REGION)
+  }
+
+  private val deletedHouseholdStore by lazy {
+    AndroidDeletedHouseholdStore(applicationContext, Dispatchers.IO)
+  }
+  private val privateHouseholdDeletionRepository by lazy {
+    createPrivateHouseholdDeletionRepository()
+  }
   private val expenseRepository by lazy {
     FirebaseExpenseSubmissionRepository(
         FirebaseFunctions.getInstance(FirebaseExpenseSubmissionRepository.REGION))
@@ -342,12 +359,14 @@ open class MainActivity : ComponentActivity() {
             householdRepository,
             profileRepository,
             profilePhotoRepository,
+            deletedHouseholdStore,
             googleTokenProvider = { googleSignIn.getIdToken(this@MainActivity) },
             modifier =
                 Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container }) {
                 session,
                 household,
-                onMembershipChanged ->
+                onMembershipChanged,
+                onHouseholdDeleted ->
               val navController = rememberNavController()
               val deepLinkIntent = pendingDeepLinkIntent
               LaunchedEffect(navController, deepLinkIntent) {
@@ -465,8 +484,7 @@ open class MainActivity : ComponentActivity() {
                               itemRepository,
                               session.uid,
                               household.id,
-                              household.type ==
-                                  com.android.sharemate.model.household.FridgeType.SHARED,
+                              household.type == FridgeType.SHARED,
                               showBalances = household.canViewBalances(session.uid),
                               onOpenBalances = { navController.navigate(BALANCES_ROUTE) },
                               expenseRepository = expenseRepository,
@@ -538,7 +556,22 @@ open class MainActivity : ComponentActivity() {
                                             }
                                       }
                                     })
+                        val deleteViewModel: DeletePrivateHouseholdViewModel =
+                            viewModel(
+                                key = "delete_private_household_${household.id}",
+                                factory =
+                                    viewModelFactory {
+                                      initializer {
+                                        DeletePrivateHouseholdViewModel(
+                                            household.id,
+                                            privateHouseholdDeletionRepository,
+                                            authRepository)
+                                      }
+                                    })
                         val leaveState by leaveViewModel.state.collectAsStateWithLifecycle()
+                        val deleteState by deleteViewModel.state.collectAsStateWithLifecycle()
+                        // Leaving a private household deletes it; a shared one is only left.
+                        val deletesOnLeave = household.type == FridgeType.PRIVATE
                         val settingsViewModel: SettingsViewModel =
                             viewModel(
                                 key = "settings_${session.uid}_${household.id}",
@@ -561,11 +594,22 @@ open class MainActivity : ComponentActivity() {
                         }
                         SettingsScreen(
                             state = settingsState,
-                            leaveState = leaveState,
-                            onLeaveHousehold = leaveViewModel::requestLeave,
-                            onCancelLeave = leaveViewModel::cancel,
-                            onConfirmLeave = leaveViewModel::confirmLeave,
-                            onLeft = onMembershipChanged,
+                            leaveState = if (deletesOnLeave) deleteState else leaveState,
+                            onLeaveHousehold =
+                                if (deletesOnLeave) deleteViewModel::requestDelete
+                                else leaveViewModel::requestLeave,
+                            onCancelLeave =
+                                if (deletesOnLeave) deleteViewModel::cancel
+                                else leaveViewModel::cancel,
+                            onConfirmLeave =
+                                if (deletesOnLeave) deleteViewModel::confirmDelete
+                                else leaveViewModel::confirmLeave,
+                            onLeft =
+                                if (deletesOnLeave) {
+                                  { onHouseholdDeleted(household.id) }
+                                } else {
+                                  onMembershipChanged
+                                },
                             onShowMembers = {
                               navController.navigate(ChildRoutes.HOUSEHOLD_MEMBERS) {
                                 launchSingleTop = true

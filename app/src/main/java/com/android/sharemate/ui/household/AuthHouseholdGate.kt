@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.household
 
 import android.app.Activity
@@ -37,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import com.android.sharemate.R
 import com.android.sharemate.model.auth.AuthRepository
 import com.android.sharemate.model.auth.AuthSession
+import com.android.sharemate.model.household.DeletedHouseholdStore
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
 import com.android.sharemate.model.image.AndroidPersonalPhotoFiles
@@ -56,9 +58,13 @@ import com.android.sharemate.ui.startup.ReportLaunch
  * just signed up by email first sees the optional profile photo step.
  *
  * @param profilePhotoRepository Uploads the photo picked in the profile photo step.
+ * @param deletedHouseholds Remembers the households the server confirmed deleted, so a cached
+ *   lookup never reopens one, also after the app is restarted offline.
  * @param content The application, shown once the user belongs to a household. It receives that
- *   session, household and a callback to invoke when membership may have changed (e.g. after
- *   leaving), so the gate looks it up again and shows onboarding if needed.
+ *   session, household and two callbacks: one to invoke when membership may have changed (e.g.
+ *   after leaving), so the gate looks it up again and shows onboarding if needed, and one to invoke
+ *   with the household ID once the server confirmed that it was deleted, so the gate never shows
+ *   that household again, even if a lookup returns it from the local cache.
  */
 @Composable
 fun AuthHouseholdGate(
@@ -67,11 +73,17 @@ fun AuthHouseholdGate(
     householdRepository: HouseholdRepository,
     profileRepository: UserProfileRepository,
     profilePhotoRepository: ProfilePhotoRepository,
+    deletedHouseholds: DeletedHouseholdStore,
     googleTokenProvider: suspend () -> String?,
     modifier: Modifier = Modifier,
     content:
         @Composable
-        (session: AuthSession, household: Household, onMembershipChanged: () -> Unit) -> Unit,
+        (
+            session: AuthSession,
+            household: Household,
+            onMembershipChanged: () -> Unit,
+            onHouseholdDeleted: (householdId: String) -> Unit,
+        ) -> Unit,
 ) {
   AuthGate(authViewModel, modifier, googleTokenProvider) { session ->
     key(session.uid) {
@@ -87,7 +99,10 @@ fun AuthHouseholdGate(
       }
       CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
         val factory = viewModelFactory {
-          initializer { HouseholdGateViewModel(householdRepository, profileRepository, session) }
+          initializer {
+            HouseholdGateViewModel(
+                householdRepository, profileRepository, deletedHouseholds, session)
+          }
           initializer {
             CreateHouseholdViewModel(householdRepository, authRepository, createSavedStateHandle())
           }
@@ -148,7 +163,10 @@ fun AuthHouseholdGate(
                     onCreateHousehold = { navController.navigate(HouseholdRoutes.CREATE) },
                     onJoinHousehold = { navController.navigate(HouseholdRoutes.JOIN) },
                 ) { household ->
-                  key(household.id) { content(session, household, gateViewModel::refresh) }
+                  key(household.id) {
+                    content(
+                        session, household, gateViewModel::refresh, gateViewModel::householdDeleted)
+                  }
                 }
               }
               if (state !is HouseholdGateState.Ready) {

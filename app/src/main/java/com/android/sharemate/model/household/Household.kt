@@ -1,5 +1,6 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Co-authored-by: OpenAI Codex
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.model.household
 
 import java.util.Date
@@ -33,4 +34,11 @@ internal object HouseholdFields {
   const val MEMBER_IDS = "memberIds"
   const val TYPE = "type"
   const val CREATED_BY = "createdBy"
+  /** Name of the household identifier in a callable payload. */
+  const val HOUSEHOLD_ID = "householdId"
+}
+
+/** Names of the household callables; keep in sync with `functions/index.js`. */
+internal object HouseholdFunctions {
+  const val DELETE_PRIVATE_HOUSEHOLD = "deletePrivateHousehold"
 }
