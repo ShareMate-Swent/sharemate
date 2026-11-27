@@ -1,5 +1,9 @@
 <!-- Co-authored-by: OpenAI Codex <noreply@openai.com> -->
 <resources>
+    <string name="recipes_sort_label">Sort recipes</string>
+    <string name="recipes_sort_title_ascending">Title A–Z</string>
+    <string name="recipes_sort_title_descending">Title Z–A</string>
+    <string name="recipes_clear_options">Clear sorting</string>
     <string name="fridge_suggest_recipes">Suggest Recipes</string>
     <string name="recipes_idle">Tap Suggest Recipes in your fridge to get started.</string>
     <string name="recipes_demo_notice">Demo suggestions — not connected to your fridge yet.</string>

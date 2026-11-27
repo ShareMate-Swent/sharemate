@@ -40,6 +40,8 @@ fun RecipesContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     imageLoader: ImageLoader = LocalContext.current.imageLoader,
+    selectedOption: RecipePresentationOption? = null,
+    onOptionSelected: (RecipePresentationOption?) -> Unit = {},
 ) {
   val loadingDescription = stringResource(R.string.recipes_loading)
   Column(
@@ -52,6 +54,9 @@ fun RecipesContent(
             stringResource(R.string.recipes_title),
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.testTag(NavigationTestTags.PAGE_CONTENT).semantics { heading() })
+        if (state is RecipesUiState.Success) {
+          RecipeOptionsBar(selectedOption, onOptionSelected)
+        }
         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
           when (state) {
             RecipesUiState.Idle ->
