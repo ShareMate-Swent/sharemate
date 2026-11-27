@@ -75,7 +75,7 @@ class StagingViewModelTest {
 
   @Test
   fun savingAValidDraftUpdatesOnlyThatItem() {
-    val viewModel = viewModel(milk, bread)
+    val viewModel = viewModel(milk.copy(includedInExpense = false), bread)
     viewModel.startEditing("milk")
     viewModel.updateDraftName("  Oat milk ")
     viewModel.updateDraftQuantity(" 3 ")
@@ -84,7 +84,9 @@ class StagingViewModelTest {
     viewModel.saveDraft()
 
     val state = viewModel.state.value
-    assertEquals(listOf(StagedItem("milk", "Oat milk", 3, 240), bread), state.items)
+    assertEquals(
+        listOf(StagedItem("milk", "Oat milk", 3, 240, includedInExpense = false), bread),
+        state.items)
     assertNull(state.draft)
   }
 

@@ -25,6 +25,37 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class InventorySubmissionStoreTest {
   @Test
+  fun rowCostSharingSurvivesDraftAndPendingSubmissionRecreation() = runTest {
+    val app = RuntimeEnvironment.getApplication()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val store = AndroidInventorySubmissionStore(app, dispatcher)
+    val id = java.util.UUID.randomUUID().toString()
+    val items =
+        listOf(
+            StagedItem("milk", "Milk", priceCents = 100),
+            StagedItem("bread", "Bread", includedInExpense = false))
+    val draft = InventorySubmission(id, "alice", "home", items, draft = true)
+    store.save(draft)
+    val restored = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(draft, restored.loadById("alice", "home", id))
+    assertNull(restored.loadById("bob", "home", id))
+    assertNull(restored.loadById("alice", "other", id))
+
+    val pending = InventorySubmission(id, "alice", "home", items)
+    restored.save(pending)
+    assertEquals(
+        pending, AndroidInventorySubmissionStore(app, dispatcher).loadById("alice", "home", id))
+
+    val payload = store.encode(pending)
+    val rows = payload.getJSONArray(Fields.ROWS)
+    assertFalse(rows.getJSONObject(0).has(Fields.INCLUDED_IN_EXPENSE))
+    val excluded = rows.getJSONObject(1)
+    assertEquals(false, excluded.get(Fields.INCLUDED_IN_EXPENSE))
+    excluded.put(Fields.INCLUDED_IN_EXPENSE, "false")
+    assertTrue(runCatching { store.decode(payload.toString(), "alice", "home") }.isFailure)
+  }
+
+  @Test
   fun sharingModeSurvivesJournalRestartAndLegacySharedEntries() = runTest {
     val app = RuntimeEnvironment.getApplication()
     val dispatcher = StandardTestDispatcher(testScheduler)

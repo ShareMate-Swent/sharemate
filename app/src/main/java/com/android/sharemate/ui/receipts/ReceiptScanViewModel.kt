@@ -63,6 +63,7 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
             items.map {
               bundleOf(ID to it.id, NAME to it.name, QUANTITY to it.quantity).apply {
                 it.priceCents?.let { cents -> putLong(PRICE, cents) }
+                putBoolean(INCLUDED_IN_EXPENSE, it.includedInExpense)
               }
             })
   }
@@ -72,7 +73,8 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
           getString(ID)!!,
           getString(NAME)!!,
           getInt(QUANTITY),
-          if (containsKey(PRICE)) getLong(PRICE) else null)
+          if (containsKey(PRICE)) getLong(PRICE) else null,
+          includedInExpense = getBoolean(INCLUDED_IN_EXPENSE, true))
 
   private companion object {
     const val ITEMS = "receiptItems"
@@ -82,5 +84,6 @@ class ReceiptScanViewModel(private val reader: ReceiptReader, private val saved:
     const val NAME = "name"
     const val QUANTITY = "quantity"
     const val PRICE = "price"
+    const val INCLUDED_IN_EXPENSE = "includedInExpense"
   }
 }

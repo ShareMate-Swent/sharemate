@@ -4,24 +4,38 @@ const { createHash } = require("node:crypto");
 const { parseExpense, sameExpense } = require("./expenses");
 const { isId } = require("./finance-common");
 
+const LEGACY_ROW_KEYS = "id,name,priceCents,quantity";
+const EXPENSE_ROW_KEYS = "id,includedInExpense,name,priceCents,quantity";
+function hasRowFields(row) {
+  if (!row) return false;
+  const keys = Object.keys(row).sort().join();
+  return keys === LEGACY_ROW_KEYS ||
+    (keys === EXPENSE_ROW_KEYS && typeof row.includedInExpense === "boolean");
+}
+
 function rows(input) {
   if (!Array.isArray(input) || input.length < 1 || input.length > 100) return null;
   const ids = new Set();
   const result = [];
   for (const row of input) {
-    if (!row || Object.keys(row).sort().join() !== "id,name,priceCents,quantity" ||
+    if (!hasRowFields(row) ||
         !isId(row.id) || row.id.length > 1000 || ids.has(row.id) ||
         typeof row.name !== "string" || !row.name.trim() || [...row.name].length > 80 ||
         !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 9999 ||
         (row.priceCents !== null && (typeof row.priceCents !== "string" || !/^(0|[1-9][0-9]{0,8})$/.test(row.priceCents)))) return null;
     ids.add(row.id);
-    result.push({ ...row, quantity: BigInt(row.quantity), priceCents: row.priceCents === null ? null : BigInt(row.priceCents) });
+    const { includedInExpense, ...fields } = row;
+    result.push({
+      ...fields, quantity: BigInt(row.quantity), priceCents: row.priceCents === null ? null : BigInt(row.priceCents),
+      ...(includedInExpense === false ? { includedInExpense } : {}),
+    });
   }
   return result;
 }
 const sameRows = (a, b) => Array.isArray(a) && a.length === b.length && a.every((r, i) =>
-  Object.keys(r).sort().join() === "id,name,priceCents,quantity" &&
-  r.id === b[i].id && r.name === b[i].name && r.quantity === b[i].quantity && r.priceCents === b[i].priceCents);
+  hasRowFields(r) && r.id === b[i].id && r.name === b[i].name &&
+  r.quantity === b[i].quantity && r.priceCents === b[i].priceCents &&
+  (r.includedInExpense ?? true) === (b[i].includedInExpense ?? true));
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === "object"
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, stable(value[k])])) : value;
 

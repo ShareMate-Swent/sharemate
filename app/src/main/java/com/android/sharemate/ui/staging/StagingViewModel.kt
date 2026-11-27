@@ -197,12 +197,14 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
             else -> null
           }
       if (error != null) return@update state.copy(draft = draft.copy(error = error))
+      val original = state.items.firstOrNull { it.id == draft.itemId }
       val updated =
           StagedItem(
               id = draft.itemId ?: UUID.randomUUID().toString(),
               name = name,
               quantity = checkNotNull(quantity),
               priceCents = (price as? PriceInput.Valid)?.cents,
+              includedInExpense = original?.includedInExpense ?: true,
           )
       val items =
           if (draft.itemId == null) state.items + updated

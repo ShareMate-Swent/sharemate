@@ -524,6 +524,9 @@ class AndroidInventorySubmissionStore(
                           .put(Fields.NAME, row.name)
                           .put(Fields.QUANTITY, row.quantity)
                           .put(Fields.PRICE, row.priceCents ?: JSONObject.NULL)
+                          .apply {
+                            if (!row.includedInExpense) put(Fields.INCLUDED_IN_EXPENSE, false)
+                          }
                     }))
     submission.expense?.let { expense ->
       json
@@ -741,7 +744,12 @@ class AndroidInventorySubmissionStore(
                   row.requiredString(Fields.ID),
                   row.requiredString(Fields.NAME),
                   (quantity as Number).toInt(),
-                  (price as? Number)?.toLong())
+                  (price as? Number)?.toLong(),
+                  includedInExpense =
+                      if (row.has(Fields.INCLUDED_IN_EXPENSE)) {
+                        row.get(Fields.INCLUDED_IN_EXPENSE) as? Boolean
+                            ?: error("Invalid receipt row cost-sharing choice")
+                      } else true)
             },
             draft,
             if (json.has(Fields.EXPENSE))

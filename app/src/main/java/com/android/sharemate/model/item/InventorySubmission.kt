@@ -118,6 +118,7 @@ object InventorySubmissionFields {
   const val NAME = "name"
   const val QUANTITY = "quantity"
   const val PRICE = "priceCents"
+  const val INCLUDED_IN_EXPENSE = "includedInExpense"
   const val DRAFT = "draft"
   const val SHARING = "sharing"
   const val EXPENSE = "expense"

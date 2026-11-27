@@ -55,14 +55,21 @@ class FirebaseInventorySubmissionTest {
   @Test
   fun batchKeepsCorrectedRowsAndPricesWithoutMultiplyingThemAndAwaitsServer() = runTest {
     val repository = repository()
+    val mixed =
+        InventorySubmission(
+            submission.id,
+            submission.ownerId,
+            submission.householdId,
+            listOf(
+                submission.items.first(), submission.items.last().copy(includedInExpense = false)))
     val refs =
-        submission.items.indices.map { index ->
+        mixed.items.indices.map { index ->
           mock(DocumentReference::class.java).also {
             `when`(items.document(submission.itemId(index))).thenReturn(it)
           }
         }
-    val write = repository.addItems(submission) as ItemWrite.Queued
-    submission.items.forEachIndexed { index, row ->
+    val write = repository.addItems(mixed) as ItemWrite.Queued
+    mixed.items.forEachIndexed { index, row ->
       verify(batch)
           .set(
               refs[index],
@@ -83,6 +90,8 @@ class FirebaseInventorySubmissionTest {
     assertEquals(480L, rows.first()[Fields.PRICE])
     assertNull(rows.last()[Fields.PRICE])
     assertEquals(2L, rows.first()[Fields.QUANTITY])
+    assertFalse(rows.first().containsKey(Fields.INCLUDED_IN_EXPENSE))
+    assertEquals(false, rows.last()[Fields.INCLUDED_IN_EXPENSE])
     verify(batch, times(1)).commit()
     verify(firestore, never()).collection(FirestoreCollections.HOUSEHOLDS)
     assertFalse(write.confirmation.isCompleted)

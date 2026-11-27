@@ -6,6 +6,8 @@ import com.android.sharemate.model.finance.FinanceFields.ID
 import com.android.sharemate.model.finance.FinanceFields.PAID_BY
 import com.android.sharemate.model.finance.FinanceFields.SHARES
 import com.android.sharemate.model.finance.FinanceFields.TOTAL_AMOUNT_CENTS
+import com.android.sharemate.model.item.InventorySubmission
+import com.android.sharemate.model.item.InventorySubmissionFields as RowFields
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.tasks.await
@@ -33,13 +35,18 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
             PAID_BY to value.paidBy,
             TOTAL_AMOUNT_CENTS to value.totalAmountCents.toString(),
             SHARES to value.shares.mapValues { it.value.toString() })
-    fun rows(value: com.android.sharemate.model.item.InventorySubmission) =
+    fun rows(value: InventorySubmission) =
         value.items.map {
           mapOf(
-              "id" to it.id,
-              "name" to it.name,
-              "quantity" to it.quantity,
-              "priceCents" to it.priceCents?.toString())
+                  RowFields.ID to it.id,
+                  RowFields.NAME to it.name,
+                  RowFields.QUANTITY to it.quantity,
+                  RowFields.PRICE to it.priceCents?.toString())
+              .let { fields ->
+                // Keep the original payload for retries of corrections created by older clients.
+                if (it.includedInExpense) fields
+                else fields + (RowFields.INCLUDED_IN_EXPENSE to false)
+              }
         }
     val payload =
         mapOf(

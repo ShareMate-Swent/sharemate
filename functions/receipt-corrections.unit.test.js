@@ -86,6 +86,41 @@ test("rejects outsiders, forged original rows and participants without partial w
   await assert.rejects(correctReceipt(db, "bob", request), { code: "failed-precondition" });
 });
 
+test("preserves the row cost-sharing choice in the inventory marker and receipt backup", async () => {
+  const { db, records, request } = fixture();
+  const marker = "users/alice/inventorySubmissions/receipt";
+  const backup = "users/alice/receiptBackups/receipt";
+  records.set(backup, { ownerId: "alice", householdId: "home", draft: false });
+  const edit = {
+    ...request,
+    originalRows: request.originalRows.map(row => ({ ...row, includedInExpense: true })),
+    rows: request.rows.map((row, i) => ({ ...row, includedInExpense: i !== 0 })),
+  };
+  await correctReceipt(db, "alice", edit);
+  await correctReceipt(db, "alice", edit);
+  assert.equal(records.get(marker).rows[0].includedInExpense, false);
+  assert.equal(Object.hasOwn(records.get(marker).rows[1], "includedInExpense"), false);
+  assert.equal(JSON.parse(records.get(backup).submission).rows[0].includedInExpense, false);
+  assert.equal(records.get("items/receipt_0").sharing, "SHARED");
+
+  const followUp = {
+    ...edit, operationId: "next", originalRevision: 1, originalTitle: edit.title,
+    originalRows: edit.rows, originalExpense: edit.expense,
+  };
+  const before = structuredClone(records);
+  await assert.rejects(correctReceipt(db, "alice", {
+    ...followUp,
+    originalRows: edit.rows.map(({ includedInExpense, ...row }) => row),
+  }), { code: "failed-precondition" });
+  await assert.rejects(correctReceipt(db, "alice", {
+    ...followUp,
+    rows: edit.rows.map(row => ({ ...row, includedInExpense: "false" })),
+  }), { code: "invalid-argument" });
+  assert.deepEqual(records, before);
+  await correctReceipt(db, "alice", followUp);
+  assert.equal(records.get(marker).rows[0].includedInExpense, false);
+});
+
 test("keeps consumed quantities and resolves an inventory-confirmed purchase with no expense yet", async () => {
   const { db, records, request } = fixture();
   records.get("items/receipt_0").quantity = 1n;

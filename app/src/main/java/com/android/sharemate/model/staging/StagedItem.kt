@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.android.sharemate.model.staging
 
 /**
@@ -9,12 +10,14 @@ package com.android.sharemate.model.staging
  * @property name Product name shown to the user; never blank.
  * @property quantity Number of units; at least one.
  * @property priceCents Total price in cents, or null when the scan found no price.
+ * @property includedInExpense The row's cost-sharing choice, independent of fridge visibility.
  */
 data class StagedItem(
     val id: String,
     val name: String,
     val quantity: Int = 1,
     val priceCents: Long? = null,
+    val includedInExpense: Boolean = true,
 ) {
   init {
     require(name.isNotBlank()) { "A staged item needs a name" }
