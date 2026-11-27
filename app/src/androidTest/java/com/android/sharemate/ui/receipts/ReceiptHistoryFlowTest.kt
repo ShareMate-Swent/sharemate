@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -361,6 +362,37 @@ class ReceiptHistoryFlowTest {
           submitted.single().sharing)
     }
     runBlocking { org.junit.Assert.assertFalse(store.list(owner, household).single().draft) }
+  }
+
+  @Test
+  fun allExcludedSharedDraftSavesWithoutOpeningExpenseSharing() {
+    val fixture = WorkflowFixture(draft = true, allExcluded = true)
+    fixture.open()
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    fixture.awaitHistory()
+    val saved = fixture.retained()
+    assertEquals(fixture.id, saved.id)
+    assertTrue(saved.allRowsExcluded)
+    assertNull(saved.expense)
+    assertEquals(0, fixture.recorded)
+  }
+
+  @Test
+  fun allExcludedSavedReceiptCanBeCorrectedFromBothSaveActions() {
+    val fixture = WorkflowFixture(draft = false, allExcluded = true)
+    fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("First correction")
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    fixture.awaitHistory()
+    assertEquals(1, fixture.corrected)
+    assertEquals("First correction", fixture.details().title)
+    fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Second correction")
+    fixture.backAndKeep()
+    assertEquals(2, fixture.corrected)
+    assertEquals("Second correction", fixture.details().title)
+    assertTrue(fixture.retained().allRowsExcluded)
+    assertNull(fixture.retained().expense)
   }
 
   @Test
@@ -747,6 +779,7 @@ class ReceiptHistoryFlowTest {
       purchaseServices: Boolean = true,
       barcodeScanner: com.android.sharemate.model.barcode.BarcodeScanner? = null,
       catalog: com.android.sharemate.model.product.ProductCatalogRepository? = null,
+      allExcluded: Boolean = false,
   ) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
@@ -762,17 +795,18 @@ class ReceiptHistoryFlowTest {
       if (seed)
           runBlocking {
             val expense =
-                if (draft) null else SharedExpense(id, home, owner, 100, mapOf(owner to 100L))
+                if (draft || allExcluded) null
+                else SharedExpense(id, home, owner, 100, mapOf(owner to 100L))
             store.save(
                 InventorySubmission(
                     id,
                     owner,
                     home,
-                    listOf(StagedItem("milk", "Milk", 1, 100)),
+                    listOf(StagedItem("milk", "Milk", 1, 100, includedInExpense = !allExcluded)),
                     draft,
                     expense,
                     !draft,
-                    if (draft) ExpenseProgress.QUEUED else ExpenseProgress.CONFIRMED))
+                    if (expense == null) ExpenseProgress.QUEUED else ExpenseProgress.CONFIRMED))
             if (metadata)
                 store.saveDetails(
                     ReceiptDetails(
