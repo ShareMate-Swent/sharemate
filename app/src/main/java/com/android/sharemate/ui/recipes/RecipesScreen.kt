@@ -24,6 +24,7 @@ fun RecipesScreen(
     isDemo: Boolean = false,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val selectedOption by viewModel.selectedOption.collectAsStateWithLifecycle()
   Column(modifier.fillMaxSize()) {
     if (isDemo) {
       Text(
@@ -34,6 +35,12 @@ fun RecipesScreen(
                       horizontal = Dimens.screenHorizontalPadding, vertical = Dimens.spacingXs)
                   .testTag(RecipesTestTags.DEMO_NOTICE))
     }
-    Box(Modifier.weight(1f)) { RecipesContent(state = state, onRetry = viewModel::requestRecipes) }
+    Box(Modifier.weight(1f)) {
+      RecipesContent(
+          state = state,
+          onRetry = viewModel::requestRecipes,
+          selectedOption = selectedOption,
+          onOptionSelected = viewModel::selectOption)
+    }
   }
 }

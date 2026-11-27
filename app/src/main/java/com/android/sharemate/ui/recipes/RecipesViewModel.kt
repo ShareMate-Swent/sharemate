@@ -18,6 +18,22 @@ class RecipesViewModel(private val repository: RecipeRepository) : ViewModel() {
   private val mutableState = MutableStateFlow<RecipesUiState>(RecipesUiState.Idle)
   val uiState = mutableState.asStateFlow()
   private var request: Job? = null
+  private val mutableSelectedOption = MutableStateFlow<RecipePresentationOption?>(null)
+  /** Presentation choice retained with this graph-scoped ViewModel across configuration changes. */
+  val selectedOption = mutableSelectedOption.asStateFlow()
+  private var defaultRecipes: List<RecipeCardData> = emptyList()
+
+  /** Changes local presentation only; null restores the untouched default presentation order. */
+  fun selectOption(option: RecipePresentationOption?) {
+    if (mutableSelectedOption.value == option) return
+    mutableSelectedOption.value = option
+    if (mutableState.value is RecipesUiState.Success) {
+      mutableState.value = RecipesUiState.Success(present(defaultRecipes))
+    }
+  }
+
+  private fun present(recipes: List<RecipeCardData>) =
+      mutableSelectedOption.value?.apply(recipes) ?: recipes
 
   /** A new press replaces an older request; an obsolete response cannot overwrite its result. */
   fun requestRecipes() {
@@ -28,7 +44,7 @@ class RecipesViewModel(private val repository: RecipeRepository) : ViewModel() {
           try {
             val result = repository.suggestRecipes()
             ensureActive()
-            mutableState.value =
+            val responseState =
                 when (result) {
                   is RecipeRequestResult.Success ->
                       RecipesUiState.Success(
@@ -44,6 +60,13 @@ class RecipesViewModel(private val repository: RecipeRepository) : ViewModel() {
                   RecipeRequestResult.ServiceError ->
                       RecipesUiState.Error(RecipesErrorReason.SERVICE)
                 }
+            // Capture the default presentation after mapping/ranking (including #343), never
+            // the raw repository order. Clearing an option restores this exact list.
+            mutableState.value =
+                if (responseState is RecipesUiState.Success) {
+                  defaultRecipes = responseState.recipes
+                  responseState.copy(recipes = present(defaultRecipes))
+                } else responseState
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {

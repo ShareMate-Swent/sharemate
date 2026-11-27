@@ -10,6 +10,8 @@ import com.android.sharemate.model.recipes.*
 import com.android.sharemate.resources.C
 import com.android.sharemate.ui.household.HouseholdGateViewModel
 import com.android.sharemate.ui.navigation.NavigationTestTags
+import com.android.sharemate.ui.recipes.RecipeOptionsTestTags
+import com.android.sharemate.ui.recipes.RecipePresentationOption
 import com.android.sharemate.ui.recipes.RecipesTestTags
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -125,6 +127,24 @@ class RecipeRequestNavigationTest {
     assertCalls(1)
     assertEquals(listOf("student-home"), firebase.observedHouseholds)
     assertTrue(firebase.removedListeners.isEmpty())
+  }
+
+  @Test
+  fun presentationChoiceSurvivesRecreationAndTabReturnWithoutAnotherRequest() {
+    resolve()
+    request()
+    complete(RecipeRequestResult.Success(listOf(soup)))
+    val selected = RecipeOptionsTestTags.option(RecipePresentationOption.TITLE_ASCENDING)
+    compose.onNodeWithTag(selected).performClick().assertIsSelected()
+    compose.activityRule.scenario.recreate()
+    compose.onNodeWithTag(selected).assertIsSelected()
+    assertCalls(1)
+    tab(NavigationTestTags.FRIDGE_TAB)
+    tab(NavigationTestTags.RECIPES_TAB)
+    compose.onNodeWithTag(selected).assertIsSelected()
+    compose.onNodeWithTag(RecipeOptionsTestTags.CLEAR).performClick()
+    compose.onNodeWithTag(selected).assertIsNotSelected()
+    assertCalls(1)
   }
 
   @Test
