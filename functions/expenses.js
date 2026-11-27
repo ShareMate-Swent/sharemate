@@ -88,7 +88,8 @@ async function recordExpense(db, uid, request) {
         throw new HttpsError("permission-denied", "Payer and participants must be current members.");
       }
       const receipt = (await transaction.get(user.collection("inventorySubmissions").doc(expense.id))).data();
-      if (Array.isArray(receipt?.rows) && receipt.rows.some(row => row?.includedInExpense === false) &&
+      if (Array.isArray(receipt?.rows) &&
+          receipt.rows.some(row => row && Object.hasOwn(row, "includedInExpense")) &&
           (receipt.ownerId !== uid || receipt.householdId !== expense.householdId ||
            sharedSubtotal(receipt.rows) !== expense.totalAmountCents))
         throw new HttpsError("failed-precondition", "Expense does not match the shared receipt rows.");

@@ -64,6 +64,9 @@ test("receipt-backed expenses match the priced included rows", async () => {
   records.set("users/author/inventorySubmissions/operation", receipt);
   const fullPrice = { ...payload, totalAmountCents: "1500", shares: { author: "750", payer: "750" } };
   await assert.rejects(recordExpense(db, "author", fullPrice), { code: "failed-precondition" });
+  receipt.rows[1].includedInExpense = "false";
+  await assert.rejects(recordExpense(db, "author", fullPrice), { code: "failed-precondition" });
+  receipt.rows[1].includedInExpense = false;
   receipt.rows[0].priceCents = null;
   await assert.rejects(recordExpense(db, "author", payload), { code: "failed-precondition" });
   receipt.rows[0].priceCents = 1000n;
