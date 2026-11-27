@@ -26,6 +26,125 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseSaveViewModelTest {
+  @Test
+  fun privateCorrectionCannotReplaceAMissingReceiptOrAnUnsavedDraft() = runTest {
+    assertFalse(model(sharing = ItemSharing.PERSONAL).correctPrivateReceipt(rows, "Missing"))
+    val draft =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            draft = true,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = draft
+    val vm = model(sharing = ItemSharing.PERSONAL)
+    assertFalse(vm.correctPrivateReceipt(rows + StagedItem("bread", "Bread", 1, 300), "Edited"))
+    runCurrent()
+    assertEquals(draft, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionPreservesReceiptWhenSavingIsDisabled() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = original
+    inventory.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model(canSave = false, sharing = ItemSharing.PERSONAL)
+    assertFalse(vm.correctPrivateReceipt(rows, "Not allowed"))
+    runCurrent()
+    assertEquals(original, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionRequiresBackendEvenAfterInventoryConfirmation() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = original
+    inventory.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model(sharing = ItemSharing.PERSONAL, correctionRepository = null)
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertFalse(vm.correctPrivateReceipt(rows, "No backend"))
+    runCurrent()
+    assertEquals(original, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionSurvivesRestartWithoutCreatingAnExpenseOrDuplicateItems() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = original
+    store.metadata =
+        com.android.sharemate.model.staging.ReceiptDetails(
+            original.id, "alice", "home", "photo", 1, title = "Private", revision = 2)
+    inventory.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model(sharing = ItemSharing.PERSONAL)
+    val revised = rows + StagedItem("bread", "Bread", 1, 300)
+    expenses.correctionFailure = IOException("Lost response")
+    assertTrue(vm.correctPrivateReceipt(revised, "Private edited"))
+    assertFalse(vm.correctPrivateReceipt(revised, "Duplicate tap"))
+    runCurrent()
+    val pending = store.correction!!
+    assertEquals(original, pending.original)
+    assertNull(pending.replacement.expense)
+    assertEquals(InventorySavePhase.FAILED, vm.state.value.phase)
+    owners.last().clear()
+    expenses.correctionFailure = null
+    val restored = model(sharing = ItemSharing.PERSONAL)
+    assertEquals(InventorySavePhase.CONFIRMED, restored.state.value.phase)
+    assertEquals(listOf(pending, pending), expenses.corrections)
+    assertEquals(revised, store.saved?.items)
+    assertEquals("Private edited", store.metadata?.title)
+    assertEquals(3L, store.metadata?.revision)
+    assertNull(store.correction)
+    assertTrue(inventory.calls.isEmpty())
+    assertTrue(expenses.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionRejectsPendingSharedAndUnpricedReceipts() = runTest {
+    store.saved =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    val vm = model(sharing = ItemSharing.PERSONAL)
+    assertFalse(vm.correctPrivateReceipt(rows, "Pending"))
+    confirmInventory()
+    assertFalse(vm.correctPrivateReceipt(listOf(rows[0].copy(priceCents = null)), "No price"))
+    assertFalse(vm.correctPrivateReceipt(emptyList(), "Empty"))
+    assertFalse(model().correctPrivateReceipt(rows, "Wrong scope"))
+    store.saved = savedOriginal()
+    assertFalse(model(sharing = ItemSharing.PERSONAL).correctPrivateReceipt(rows, "Shared"))
+    assertTrue(expenses.corrections.isEmpty())
+  }
+
   private fun savedOriginal() =
       InventorySubmission(
           "12345678-1234-1234-1234-123456789abc",
@@ -257,15 +376,18 @@ class PurchaseSaveViewModelTest {
   private fun TestScope.model(
       canSave: Boolean = true,
       uid: String = "alice",
-      home: String = "home"
+      home: String = "home",
+      sharing: ItemSharing = ItemSharing.SHARED,
+      correctionRepository: ExpenseSubmissionRepository? = expenses,
   ) =
-      InventorySaveViewModel(inventory, store, uid, home, canSave, expenses).also { vm ->
-        ViewModelStore().also {
-          owners += it
-          it.put("save", vm)
-        }
-        runCurrent()
-      }
+      InventorySaveViewModel(inventory, store, uid, home, canSave, correctionRepository, sharing)
+          .also { vm ->
+            ViewModelStore().also {
+              owners += it
+              it.put("save", vm)
+            }
+            runCurrent()
+          }
 
   private fun TestScope.submit() =
       model().also {
@@ -719,7 +841,7 @@ class PurchaseSaveViewModelTest {
 
     override suspend fun acknowledgeCorrection(correction: ReceiptCorrection) {
       if (this.correction?.operationId != correction.operationId) return
-      save(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
+      save(correction.confirmedReplacement)
       metadata =
           metadata?.copy(title = correction.title, revision = correction.originalRevision + 1)
       this.correction = null

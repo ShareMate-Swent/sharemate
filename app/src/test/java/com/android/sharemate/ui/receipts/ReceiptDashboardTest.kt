@@ -2,6 +2,7 @@
 package com.android.sharemate.ui.receipts
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.*
@@ -26,6 +27,51 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class ReceiptDashboardTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+  @Test
+  @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+  fun statusBadgesStayCompactAcrossConnectionChanges() {
+    val online = mutableStateOf<Boolean?>(false)
+    val phase = mutableStateOf(InventorySavePhase.PENDING)
+    compose.setContent {
+      ShareMateTheme(darkTheme = true) {
+        androidx.compose.foundation.layout.Box(
+            androidx.compose.ui.Modifier.then(
+                androidx.compose.ui.Modifier.width(androidx.compose.ui.unit.Dp(320f)))) {
+              ReceiptDashboard(
+                  listOf(receipt(0, false).copy(phase = phase.value)),
+                  false,
+                  false,
+                  {},
+                  {},
+                  {},
+                  {},
+                  null,
+                  online = online.value)
+            }
+      }
+    }
+    fun assertCompact(text: String) {
+      val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+      compose
+          .onNodeWithText(text, useUnmergedTree = true)
+          .assertIsDisplayed()
+          .performSemanticsAction(
+              androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {
+                it(layouts)
+              }
+      org.junit.Assert.assertTrue(layouts.isNotEmpty())
+      org.junit.Assert.assertTrue(
+          "$text: ${layouts.map { "${it.lineCount} lines, ${it.size}, overflow=${it.hasVisualOverflow}" }}",
+          layouts.all { it.lineCount <= 2 && !it.hasVisualOverflow })
+    }
+    assertCompact("Waiting to sync")
+    compose.runOnIdle { online.value = true }
+    assertCompact("Awaiting confirmation")
+    compose.runOnIdle { phase.value = InventorySavePhase.FAILED }
+    assertCompact("Save failed")
+    compose.onNodeWithText("%1\$d", substring = true).assertDoesNotExist()
+  }
 
   @Test
   @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)

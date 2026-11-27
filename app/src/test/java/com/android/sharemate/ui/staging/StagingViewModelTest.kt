@@ -14,6 +14,24 @@ import org.junit.Test
 
 class StagingViewModelTest {
   @Test
+  fun privateReceiptTotalTracksEditsWithoutSharingAndDoesNotMultiplyRowPrices() {
+    val vm =
+        StagingViewModel(
+            listOf(StagedItem("drinks", "Drinks", 2, 760), StagedItem("curry", "Curry", 1, 1750)))
+    assertNull(vm.state.value.purchase)
+    assertEquals(2510L, vm.state.value.totalCents)
+    vm.startAdding()
+    vm.updateDraftName("Rolls")
+    vm.updateDraftPrice("9.80")
+    vm.saveDraft()
+    assertEquals(3490L, vm.state.value.totalCents)
+    vm.deleteItem("drinks")
+    assertEquals(2730L, vm.state.value.totalCents)
+    assertNull(StagingUiState(listOf(StagedItem("unknown", "Unknown"))).totalCents)
+    assertNull(StagingUiState().totalCents)
+  }
+
+  @Test
   fun restoredDraftSharingSurvivesInitialMemberLoading() {
     val vm =
         StagingViewModel(

@@ -168,9 +168,11 @@ class ReceiptHistoryFlowTest {
     }
 
     val saved = compose.activity.getString(R.string.receipt_status_saved)
-    val pending = compose.activity.getString(R.string.inventory_save_pending)
+    val pending = compose.activity.getString(R.string.receipt_badge_pending)
+    val offline = compose.activity.getString(R.string.receipt_badge_offline)
     historyCard(savedId, 2).assert(hasText(saved))
-    historyCard(pendingId, 2).assert(hasText(pending)).performClick()
+    // Connectivity varies on the emulator; either compact pending badge must remain unsaved.
+    historyCard(pendingId, 2).assert(hasText(pending) or hasText(offline)).performClick()
     compose.onNodeWithText("Bread").assertIsDisplayed()
     compose.onNodeWithTag(StagingTestTags.BACK).performClick()
     historyCard(savedId, 2).performClick()

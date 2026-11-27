@@ -308,11 +308,6 @@ fun StagingContent(
                               AddItemButton(onAddItem, actionsEnabled)
                             }
                             itemActions()
-                            state.purchasePreview?.totalCents?.let {
-                              PurchaseTotal(
-                                  it,
-                                  Modifier.padding(top = Dimens.spacingL, bottom = Dimens.spacingS))
-                            }
                             statusContent()
                           }
                     }
@@ -326,10 +321,8 @@ fun StagingContent(
                   statusContent()
                 }
                 Spacer(Modifier.height(if (continueToSharing) Dimens.spacingL else Dimens.spacingM))
-                if (continueToSharing) {
-                  state.purchasePreview?.totalCents?.let {
-                    PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
-                  }
+                state.totalCents?.let {
+                  PurchaseTotal(it, Modifier.padding(bottom = Dimens.spacingXs))
                 }
                 if (showMissingPrices) {
                   Text(

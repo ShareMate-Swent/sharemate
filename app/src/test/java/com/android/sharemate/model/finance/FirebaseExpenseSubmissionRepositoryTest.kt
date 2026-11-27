@@ -20,6 +20,32 @@ import org.mockito.Mockito.*
 
 class FirebaseExpenseSubmissionRepositoryTest {
   @Test
+  fun privateCorrectionSendsReceiptIdentityWithoutInventingAnExpense() = runTest {
+    val receipt =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "author",
+            "home",
+            listOf(StagedItem("row", "Milk", 1, 200)),
+            sharing = com.android.sharemate.model.item.ItemSharing.PERSONAL)
+    `when`(functions.getHttpsCallable("correctReceipt")).thenReturn(callable)
+    val result =
+        HttpsCallableResult::class
+            .java
+            .getConstructor(Any::class.java)
+            .newInstance(mapOf("operationId" to "private-edit"))
+    `when`(callable.call(any())).thenReturn(Tasks.forResult(result))
+    repository.correctReceipt(
+        ReceiptCorrection("private-edit", receipt, receipt, "Private", originalRevision = 3))
+    val sent = org.mockito.ArgumentCaptor.forClass(Map::class.java)
+    verify(callable).call(sent.capture())
+    assertEquals(mapOf("id" to receipt.id, "householdId" to "home"), sent.value["receipt"])
+    assertEquals(null, sent.value["expense"])
+    assertEquals(null, sent.value["originalExpense"])
+    assertEquals(3L, sent.value["originalRevision"])
+  }
+
+  @Test
   fun deletionRequiresMatchingAcknowledgementAndPreservesTransportFailure() = runTest {
     val wire = mapOf("householdId" to "home", "id" to "receipt")
     `when`(functions.getHttpsCallable("deleteReceipt")).thenReturn(callable)

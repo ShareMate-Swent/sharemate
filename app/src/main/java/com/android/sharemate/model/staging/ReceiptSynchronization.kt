@@ -47,7 +47,11 @@ internal class ReceiptSynchronization(
         is ItemWrite.Queued -> write.confirmation.await().getOrThrow()
       }
     }
-    val expense = receipt.expense ?: return true
+    val expense = receipt.expense
+    if (expense == null) {
+      upload(receipt)
+      return true
+    }
     if (receipt.expenseProgress != ExpenseProgress.CONFIRMED) {
       expenses.recordExpense(expense)
       store.acknowledgeExpense(owner, home, id, expense)

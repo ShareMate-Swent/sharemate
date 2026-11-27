@@ -606,8 +606,7 @@ class AndroidInventorySubmissionStore(
                   .edit()
                   .putString(
                       receiptKey(scope, original.id),
-                      encode(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
-                          .toString())
+                      encode(correction.confirmedReplacement).toString())
                   .remove("correction:$scope:${original.id}")
                   .putLong(revisionKey(scope, original.id), correction.originalRevision + 1)
           preferences.getString(detailsKey(scope, original.id), null)?.let {

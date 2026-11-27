@@ -159,6 +159,7 @@ internal fun ReceiptDashboard(
     onOpen: (String) -> Unit,
     onPurchase: (() -> Unit)?,
     balance: Long? = null,
+    online: Boolean? = null,
 ) {
   val colors = MaterialTheme.colorScheme
   val status = ShareMateTheme.statusColors
@@ -348,15 +349,13 @@ internal fun ReceiptDashboard(
                                       color = colors.onSurfaceVariant,
                                       fontSize = 12.sp)
                                 }
-                                val label =
-                                    when (receipt.phase) {
-                                      InventorySavePhase.CONFIRMED -> R.string.receipt_status_saved
-                                      InventorySavePhase.READY -> R.string.receipt_status_draft
-                                      InventorySavePhase.FAILED -> R.string.inventory_save_failed
-                                      else -> R.string.inventory_save_pending
-                                    }
+                                val label = receiptBadgeLabel(receipt, online)
                                 Text(
                                     stringResource(label),
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color =
                                         when {
                                           receipt.phase == InventorySavePhase.CONFIRMED ->
@@ -366,7 +365,7 @@ internal fun ReceiptDashboard(
                                         },
                                     fontSize = 11.sp,
                                     modifier =
-                                        Modifier.widthIn(max = 110.dp)
+                                        Modifier.width(110.dp)
                                             .background(
                                                 when {
                                                   receipt.phase == InventorySavePhase.CONFIRMED ->
