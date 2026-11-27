@@ -13,6 +13,7 @@
     <string name="recipes_image_unavailable">No image available for %1$s</string>
     <string name="recipes_image_retry">Retry image</string>
     <string name="recipes_image_retry_description">Retry image for %1$s</string>
+    <string name="recipes_all_ingredients_available">Ready to cook with your available ingredients</string>
     <string name="recipes_missing_names">Missing: %1$s</string>
     <plurals name="recipes_matching_ingredients">
         <item quantity="one">%d matching ingredient</item>

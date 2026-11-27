@@ -92,7 +92,7 @@ class RecipesPresentationTest {
     render()
     compose
         .onNodeWithTag(RecipesTestTags.missing(soup.id), true)
-        .assertTextEquals("0 missing ingredients")
+        .assertTextEquals("Ready to cook with your available ingredients")
     compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
     for (names in listOf(listOf("Salt"), listOf("Salt", "Onion", "Pepper"))) {
       compose.runOnIdle {
@@ -193,7 +193,7 @@ class RecipesPresentationTest {
         .assertTextEquals("1 matching ingredient")
     compose
         .onNodeWithTag(RecipesTestTags.missing("a"), true)
-        .assertTextEquals("0 missing ingredients")
+        .assertTextEquals("Ready to cook with your available ingredients")
     val firstBounds =
         compose.onNodeWithTag(RecipesTestTags.card("z")).fetchSemanticsNode().boundsInRoot
     val secondBounds =

@@ -73,10 +73,13 @@ fun RecipeCard(
                   style = MaterialTheme.typography.bodyMedium,
                   modifier = Modifier.testTag(RecipesTestTags.matching(data.id)))
               Text(
-                  pluralStringResource(
-                      R.plurals.recipes_missing_ingredients,
-                      data.missingIngredientCount,
-                      data.missingIngredientCount),
+                  if (data.missingIngredientCount == 0)
+                      stringResource(R.string.recipes_all_ingredients_available)
+                  else
+                      pluralStringResource(
+                          R.plurals.recipes_missing_ingredients,
+                          data.missingIngredientCount,
+                          data.missingIngredientCount),
                   style = MaterialTheme.typography.bodyMedium,
                   modifier = Modifier.testTag(RecipesTestTags.missing(data.id)))
               if (data.missingIngredients.isNotEmpty()) {
