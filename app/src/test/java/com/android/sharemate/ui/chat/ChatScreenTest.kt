@@ -81,6 +81,26 @@ class ChatScreenTest {
       }
 
   @Test
+  fun reportIncidentButtonOpensTheForm() {
+    var opened = 0
+    composeTestRule.setContent {
+      ChatContent(ChatUiState(isLoading = false), "me", {}, {}, onReportIncident = { opened++ })
+    }
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(R.string.incident_report_action))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatTestTags.REPORT_INCIDENT).performClick()
+    assertEquals(1, opened)
+  }
+
+  @Test
+  fun reportIncidentButtonIsHiddenWithoutAnAction() {
+    show(ChatUiState(isLoading = false))
+    composeTestRule.onAllNodesWithTag(ChatTestTags.REPORT_INCIDENT).assertCountEquals(0)
+  }
+
+  @Test
   fun showsLoading() {
     show(ChatUiState())
     composeTestRule.onNodeWithTag(ChatTestTags.LOADING).assertIsDisplayed()

@@ -69,6 +69,9 @@ object ChatTestTags {
   /** Tag for the send button. */
   const val SEND = "chat_send"
 
+  /** Tag for the button opening the "Report an incident" form. */
+  const val REPORT_INCIDENT = "chat_report_incident"
+
   /** Tag for messages sent by the current user. */
   const val OWN_MESSAGE = "chat_message_own"
 
@@ -95,6 +98,7 @@ object ChatTestTags {
  * @param modifier Modifier applied to the screen.
  * @param householdName Name of the household, shown under the title.
  * @param memberCount Number of household members, shown under the title when positive.
+ * @param onReportIncident Opens the "Report an incident" form; null hides its button.
  */
 @Composable
 fun ChatScreen(
@@ -102,6 +106,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     householdName: String = "",
     memberCount: Int = 0,
+    onReportIncident: (() -> Unit)? = null,
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   ChatContent(
@@ -111,7 +116,8 @@ fun ChatScreen(
       onSend = viewModel::send,
       modifier = modifier,
       householdName = householdName,
-      memberCount = memberCount)
+      memberCount = memberCount,
+      onReportIncident = onReportIncident)
 }
 
 /**
@@ -125,6 +131,7 @@ fun ChatScreen(
  * @param householdName Name of the household, shown under the title.
  * @param memberCount Number of household members, shown under the title when positive.
  * @param clock Current local date and time zone; read again when the date or the zone changes.
+ * @param onReportIncident Opens the "Report an incident" form; null hides its button.
  */
 @Composable
 fun ChatContent(
@@ -136,6 +143,7 @@ fun ChatContent(
     householdName: String = "",
     memberCount: Int = 0,
     clock: () -> ZonedDateTime = { ZonedDateTime.now() },
+    onReportIncident: (() -> Unit)? = null,
 ) {
   ResizeWindowForKeyboard()
   val defaultName = stringResource(R.string.chat_default_sender_name)
@@ -190,7 +198,8 @@ fun ChatContent(
         draft = state.draft,
         canSend = state.canSend,
         onDraftChange = onDraftChange,
-        onSend = onSend)
+        onSend = onSend,
+        onReportIncident = onReportIncident)
   }
 }
 

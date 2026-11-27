@@ -112,6 +112,7 @@ import com.android.sharemate.ui.household.DeletePrivateHouseholdViewModel
 import com.android.sharemate.ui.household.HouseholdMembersScreen
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
 import com.android.sharemate.ui.household.LeaveHouseholdViewModel
+import com.android.sharemate.ui.incident.IncidentReportRoute
 import com.android.sharemate.ui.navigation.AddItemMenuViewModel
 import com.android.sharemate.ui.navigation.AddItemMethod
 import com.android.sharemate.ui.navigation.AddItemSheet
@@ -535,8 +536,16 @@ open class MainActivity : ComponentActivity() {
                           ChatScreen(
                               chatViewModel,
                               householdName = household.name,
-                              memberCount = household.memberIds.size)
+                              memberCount = household.memberIds.size,
+                              onReportIncident = {
+                                navController.navigate(ChildRoutes.INCIDENT_REPORT)
+                              })
                         }
+                    composable(ChildRoutes.INCIDENT_REPORT) {
+                      // Sending the report (upload, then post with retry) is issue #362.
+                      IncidentReportRoute(
+                          onBack = { navController.popBackStack() }, onSend = { _, _ -> })
+                    }
                   }
                   composable(
                       TopLevelDestination.SETTINGS.route,

@@ -19,8 +19,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.ReportProblem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -319,13 +321,17 @@ internal fun ActivityChip(message: Message, own: Boolean, senderLabel: String) {
       }
 }
 
-/** The message field and the accent send button, enabled only when [canSend]. */
+/**
+ * The message field and the accent send button, enabled only when [canSend]. A "Report an incident"
+ * button comes first when [onReportIncident] is not null.
+ */
 @Composable
 internal fun ChatComposer(
     draft: String,
     canSend: Boolean,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    onReportIncident: (() -> Unit)? = null,
 ) {
   Surface(
       Modifier.fillMaxWidth().padding(Dimens.spacingXs),
@@ -334,6 +340,15 @@ internal fun ChatComposer(
         Row(
             Modifier.padding(end = Dimens.spacingXs),
             verticalAlignment = Alignment.CenterVertically) {
+              onReportIncident?.let {
+                IconButton(
+                    onClick = it, modifier = Modifier.testTag(ChatTestTags.REPORT_INCIDENT)) {
+                      Icon(
+                          Icons.Outlined.ReportProblem,
+                          contentDescription = stringResource(R.string.incident_report_action),
+                          tint = MaterialTheme.colorScheme.error)
+                    }
+              }
               TextField(
                   value = draft,
                   onValueChange = onDraftChange,
