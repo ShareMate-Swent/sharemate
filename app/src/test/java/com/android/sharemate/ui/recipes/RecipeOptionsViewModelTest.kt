@@ -18,10 +18,11 @@ import org.junit.Test
 class RecipeOptionsViewModelTest {
   private val dispatcher = StandardTestDispatcher()
   private val store = ViewModelStore()
+  // Equal missing counts isolate option behavior from the independent default-ranking policy.
   private val input =
       listOf(
-          RecipeSuggestion("z", "Zucchini", null, 2, 0),
-          RecipeSuggestion("a", "apple", null, 1, 2),
+          RecipeSuggestion("z", "Zucchini", null, 2, 1),
+          RecipeSuggestion("a", "apple", null, 1, 1),
           RecipeSuggestion("a2", "APPLE", null, 3, 1))
   private var calls = 0
   private var response: RecipeRequestResult = RecipeRequestResult.Success(input)
@@ -65,6 +66,27 @@ class RecipeOptionsViewModelTest {
     assertNull(vm.selectedOption.value)
     assertEquals(listOf("z", "a", "a2"), ids(vm))
     assertEquals(listOf("z", "a", "a2"), input.map { it.id })
+    assertEquals(1, calls)
+  }
+
+  @Test
+  fun clearingRestoresFullMatchDefaultPresentationInsteadOfAlphabeticalOrder() = runTest {
+    val default =
+        listOf(
+            RecipeSuggestion("z", "Zucchini", null, 2, 0),
+            RecipeSuggestion("b", "Beans", null, 2, 0),
+            RecipeSuggestion("a", "Apple", null, 2, 1),
+            RecipeSuggestion("c", "Carrot", null, 2, 2))
+    response = RecipeRequestResult.Success(default)
+    val vm = model()
+    vm.requestRecipes()
+    assertEquals(listOf("z", "b", "a", "c"), ids(vm))
+    vm.selectOption(RecipePresentationOption.TITLE_ASCENDING)
+    assertEquals(listOf("a", "b", "c", "z"), ids(vm))
+    vm.selectOption(RecipePresentationOption.TITLE_DESCENDING)
+    assertEquals(listOf("z", "c", "b", "a"), ids(vm))
+    vm.selectOption(null)
+    assertEquals(listOf("z", "b", "a", "c"), ids(vm))
     assertEquals(1, calls)
   }
 
