@@ -53,6 +53,17 @@ class InventorySubmissionStoreTest {
     assertEquals(false, excluded.get(Fields.INCLUDED_IN_EXPENSE))
     excluded.put(Fields.INCLUDED_IN_EXPENSE, "false")
     assertTrue(runCatching { store.decode(payload.toString(), "alice", "home") }.isFailure)
+
+    val inventoryOnly =
+        InventorySubmission(id, "alice", "home", items.map { it.copy(includedInExpense = false) })
+    val correction = ReceiptCorrection("operation", pending, inventoryOnly, "Updated receipt")
+    restored.saveCorrection(correction)
+    val reopened = AndroidInventorySubmissionStore(app, dispatcher)
+    assertEquals(correction, reopened.pendingCorrection("alice", "home", id))
+    reopened.acknowledgeCorrection(correction)
+    assertEquals(
+        correction.confirmedReplacement(),
+        AndroidInventorySubmissionStore(app, dispatcher).loadById("alice", "home", id))
   }
 
   @Test

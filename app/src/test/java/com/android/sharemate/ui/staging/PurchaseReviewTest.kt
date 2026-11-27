@@ -7,6 +7,30 @@ import org.junit.Test
 
 class PurchaseReviewTest {
   @Test
+  fun onlyIncludedPricesContributeToThePurchaseAndRemainder() {
+    val shared = item(1801)
+    val privateRow = item(null, "personal").copy(includedInExpense = false)
+    val vm = model(listOf(shared, privateRow))
+    vm.toggleParticipant("b")
+    vm.toggleParticipant("a")
+
+    val purchase = checkNotNull(vm.confirmedPurchase())
+    assertEquals(1801L, purchase.totalCents)
+    assertEquals(mapOf("a" to 901L, "b" to 900L), purchase.shares)
+    assertEquals(listOf(shared, privateRow), purchase.items)
+    assertNull(model(listOf(shared.copy(priceCents = null), privateRow)).confirmedPurchase())
+
+    vm.startEditing("personal")
+    vm.updateDraftName("Personal food")
+    vm.saveDraft()
+    assertEquals(privateRow.copy(name = "Personal food"), vm.confirmedItems()?.last())
+    vm.deleteItem(shared.id)
+    assertFalse(vm.state.value.hasSharedCost)
+    assertNotNull(vm.confirmedItems())
+    assertNull(vm.confirmedPurchase())
+  }
+
+  @Test
   fun unavailableMembersPreserveDraftAndBlockOnlyPurchaseUntilFreshSnapshot() {
     val vm = model()
     vm.toggleParticipant("b")

@@ -53,6 +53,7 @@ import com.android.sharemate.model.receipt.ReceiptPhotoReader
 import com.android.sharemate.model.receipt.ReceiptReader
 import com.android.sharemate.model.staging.AndroidInventorySubmissionStore
 import com.android.sharemate.model.staging.ReceiptSubmissionStore
+import com.android.sharemate.model.staging.StagedItem
 import com.android.sharemate.ui.barcode.BarcodePhotoPicker
 import com.android.sharemate.ui.finance.BalancesTestTags
 import com.android.sharemate.ui.household.HouseholdMembersViewModel
@@ -409,6 +410,13 @@ internal fun ReceiptHistoryFlow(
           purchaseReview?.let { staging.updatePurchaseMembers(it.members, it.membersAvailable) }
         }
         val stagingState by staging.state.collectAsStateWithLifecycle()
+        val correctInventoryOnly: (List<StagedItem>) -> Boolean = { items ->
+          purchaseReview
+              ?.takeIf { it.membersAvailable }
+              ?.let { review ->
+                purchaseSave?.correctInventoryOnly(items, review.members, title)
+              } == true
+        }
         val savedChanges =
             (title.trim() != initialTitle ||
                 stagingState.items != initialItems ||
@@ -471,6 +479,8 @@ internal fun ReceiptHistoryFlow(
                     savingReview = false
                   }
                 }
+              } else if (!savingReview && correctInventoryOnly(items)) {
+                submittedHere = true
               }
             },
             onBack = leaveReview,
@@ -626,14 +636,17 @@ internal fun ReceiptHistoryFlow(
                                   currentPurchase?.participants.orEmpty() != initialParticipants)
                           if (purchaseChanged || title.trim() != initialTitle) {
                             val accepted =
-                                currentPurchase
-                                    ?.takeIf { it.membersAvailable }
-                                    ?.let { review ->
-                                      staging.confirmedPurchase()?.let { purchase ->
-                                        purchaseSave?.correctPurchase(
-                                            purchase, review.members, title) == true
-                                      }
-                                    } == true
+                                if (!staging.state.value.hasSharedCost) {
+                                  correctInventoryOnly(currentItems)
+                                } else
+                                    currentPurchase
+                                        ?.takeIf { it.membersAvailable }
+                                        ?.let { review ->
+                                          staging.confirmedPurchase()?.let { purchase ->
+                                            purchaseSave?.correctPurchase(
+                                                purchase, review.members, title) == true
+                                          }
+                                        } == true
                             if (accepted) {
                               submittedHere = true
                               showExitChoice = false

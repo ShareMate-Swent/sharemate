@@ -59,10 +59,12 @@ class PurchaseRecoveryEmulatorTest {
         db.disableNetwork().await()
         val reviewed =
             ReviewedPurchase(
-                listOf(StagedItem("milk", "Edited milk", 2, 1000)),
+                listOf(
+                    StagedItem("milk", "Edited milk", 2, 1800),
+                    StagedItem("personal", "Excluded item", 1, 1200, includedInExpense = false)),
                 alice,
-                1000,
-                mapOf(alice to 500L, bob to 500L))
+                1800,
+                mapOf(alice to 900L, bob to 900L))
         withContext(Dispatchers.Main) {
           assertTrue(first.confirmPurchase(reviewed, mapOf(alice to "Alice", bob to "Bob")))
           assertFalse(first.confirmPurchase(reviewed, mapOf(alice to "Alice", bob to "Bob")))
@@ -77,13 +79,16 @@ class PurchaseRecoveryEmulatorTest {
         val confirmed =
             recovered.state.first { it.phase == InventorySavePhase.CONFIRMED }.submission!!
         assertEquals(pending.id, confirmed.id)
+        assertEquals(reviewed.items, confirmed.items)
         assertEquals(confirmed.expense, expenses.recordExpense(confirmed.expense!!))
         withContext(Dispatchers.Main) { owner.clear() }
         FirebaseEmulator.signInAs("purchase-bob")
-        val inventory = items.getFridgeItems(home.id, bob).first { it.isNotEmpty() }
-        assertEquals(listOf(confirmed.itemId(0)), inventory.map { it.id })
-        assertEquals("Edited milk", inventory.single().name)
-        assertEquals(2, inventory.single().quantity)
+        val inventory =
+            items.getFridgeItems(home.id, bob).first { it.size >= 2 }.associateBy { it.id }
+        assertEquals(setOf(confirmed.itemId(0), confirmed.itemId(1)), inventory.keys)
+        assertEquals("Edited milk", inventory[confirmed.itemId(0)]?.name)
+        assertEquals(2, inventory[confirmed.itemId(0)]?.quantity)
+        assertEquals("Excluded item", inventory[confirmed.itemId(1)]?.name)
         val settlements = FirebaseSettlementRepository(functions)
         val ledger = FirestoreHouseholdFinanceRepository(db, settlements)
         val snapshot =
@@ -92,9 +97,9 @@ class PurchaseRecoveryEmulatorTest {
             }
         assertEquals(listOf(confirmed.expense), snapshot.expenses)
         assertEquals(
-            -500L, BalanceCalculator.calculate(snapshot, listOf(alice, bob)).netBalancesCents[bob])
+            -900L, BalanceCalculator.calculate(snapshot, listOf(alice, bob)).netBalancesCents[bob])
         settlements.recordSettlement(
-            Settlement(UUID.randomUUID().toString(), home.id, bob, alice, 500))
+            Settlement(UUID.randomUUID().toString(), home.id, bob, alice, 900))
         val settled =
             ledger.observeHouseholdFinances(home.id).first {
               it.isSynced && it.settlements.isNotEmpty()

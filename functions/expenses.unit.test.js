@@ -55,6 +55,26 @@ test("a member can record another member as payer without transferring retry own
   await assert.rejects(recordExpense(db, "payer", purchase), { code: "already-exists" });
 });
 
+test("receipt-backed expenses match the priced included rows", async () => {
+  const { db, records, payload } = fixture();
+  const receipt = {
+    ownerId: "author", householdId: "home",
+    rows: [{ priceCents: 1000n }, { priceCents: 500n, includedInExpense: false }],
+  };
+  records.set("users/author/inventorySubmissions/operation", receipt);
+  const fullPrice = { ...payload, totalAmountCents: "1500", shares: { author: "750", payer: "750" } };
+  await assert.rejects(recordExpense(db, "author", fullPrice), { code: "failed-precondition" });
+  receipt.rows[0].priceCents = null;
+  await assert.rejects(recordExpense(db, "author", payload), { code: "failed-precondition" });
+  receipt.rows[0].priceCents = 1000n;
+  receipt.rows[0].includedInExpense = false;
+  await assert.rejects(recordExpense(db, "author", payload), { code: "failed-precondition" });
+  receipt.rows[0].includedInExpense = true;
+  receipt.rows[1].priceCents = null;
+  await recordExpense(db, "author", payload);
+  assert.equal(records.get("households/home/expenses/operation").totalAmountCents, 1000n);
+});
+
 test("rejects malformed payloads and does not write on validation failure", async () => {
   const { db, records, payload } = fixture();
   const cases = [null, [], {}, { ...payload, extra: "forged" },

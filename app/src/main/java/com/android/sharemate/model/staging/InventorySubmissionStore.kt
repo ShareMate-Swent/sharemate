@@ -536,9 +536,10 @@ class AndroidInventorySubmissionStore(
                   .put(FinanceFields.PAID_BY, expense.paidBy)
                   .put(FinanceFields.TOTAL_AMOUNT_CENTS, expense.totalAmountCents)
                   .put(FinanceFields.SHARES, JSONObject(expense.shares)))
-          .put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
           .put(Fields.EXPENSE_PROGRESS, submission.expenseProgress.name)
     }
+    if (submission.expense != null || submission.inventoryConfirmed)
+        json.put(Fields.INVENTORY_CONFIRMED, submission.inventoryConfirmed)
     return json
   }
 
@@ -609,8 +610,7 @@ class AndroidInventorySubmissionStore(
                   .edit()
                   .putString(
                       receiptKey(scope, original.id),
-                      encode(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
-                          .toString())
+                      encode(correction.confirmedReplacement()).toString())
                   .remove("correction:$scope:${original.id}")
                   .putLong(revisionKey(scope, original.id), correction.originalRevision + 1)
           preferences.getString(detailsKey(scope, original.id), null)?.let {
@@ -763,7 +763,8 @@ class AndroidInventorySubmissionStore(
                       shares.keys().asSequence().associateWith { shares.requiredLong(it) })
                 }
             else null,
-            if (json.has(Fields.EXPENSE)) json.get(Fields.INVENTORY_CONFIRMED) as Boolean
+            if (json.has(Fields.EXPENSE) || json.has(Fields.INVENTORY_CONFIRMED))
+                json.get(Fields.INVENTORY_CONFIRMED) as Boolean
             else false,
             if (json.has(Fields.EXPENSE))
                 ExpenseProgress.valueOf(json.requiredString(Fields.EXPENSE_PROGRESS))

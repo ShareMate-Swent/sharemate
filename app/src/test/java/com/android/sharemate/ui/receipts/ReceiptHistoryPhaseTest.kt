@@ -16,6 +16,21 @@ class ReceiptHistoryPhaseTest {
   private val savedDetails = ReceiptDetails(id, "owner", "home", "", 1, savedAtMillis = 2)
 
   @Test
+  fun acknowledgedInventoryOnlyCorrectionStaysConfirmedWithoutSavedMetadata() {
+    val receipt =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows.map { it.copy(includedInExpense = false) },
+            inventoryConfirmed = true)
+    assertEquals(
+        InventorySavePhase.CONFIRMED,
+        receiptHistoryPhase(receipt, null, InventorySavePhase.PENDING, false))
+    assertEquals(InventorySavePhase.PENDING, receiptHistoryPhase(receipt, null, null, true))
+  }
+
+  @Test
   fun pendingCorrectionsAndUnconfirmedExpensesOverrideOldSavedMetadata() {
     for (progress in ExpenseProgress.entries) {
       val receipt =

@@ -42,6 +42,18 @@ function sameExpense(existing, expense) {
       Object.hasOwn(existing.shares, key) && existing.shares[key] === amount);
 }
 
+function sharedSubtotal(rows) {
+  let total = 0n;
+  for (const row of rows) {
+    if (!row || (Object.hasOwn(row, "includedInExpense") && typeof row.includedInExpense !== "boolean"))
+      return null;
+    if (row.includedInExpense === false) continue;
+    if (typeof row.priceCents !== "bigint" || row.priceCents < 0n) return null;
+    total += row.priceCents;
+  }
+  return total;
+}
+
 async function recordExpense(db, uid, request) {
   if (!uid) throw new HttpsError("unauthenticated", "Sign in to record an expense.");
   const expense = parseExpense(request);
@@ -49,7 +61,8 @@ async function recordExpense(db, uid, request) {
   const household = db.collection(HOUSEHOLDS).doc(expense.householdId);
   const document = household.collection(EXPENSES).doc(expense.id);
   // Bind one submitter's stable operation to one household, including across scope switches.
-  const operation = db.collection("users").doc(uid).collection(OPERATIONS).doc(expense.id);
+  const user = db.collection("users").doc(uid);
+  const operation = user.collection(OPERATIONS).doc(expense.id);
   const revision = household.collection(FINANCE_METADATA).doc(SETTLEMENT_REVISION);
   const rejection = await db.runTransaction(async (transaction) => {
     try {
@@ -59,7 +72,7 @@ async function recordExpense(db, uid, request) {
         throw new HttpsError("permission-denied", "Shared household membership is required.");
       }
       const previous = (await transaction.get(operation)).data();
-      if ((await transaction.get(db.collection("users").doc(uid).collection("receiptDeletions").doc(expense.id))).exists)
+      if ((await transaction.get(user.collection("receiptDeletions").doc(expense.id))).exists)
         throw new HttpsError("failed-precondition", "Receipt was deleted.");
       const existing = (await transaction.get(document)).data();
       if (previous || existing) {
@@ -74,6 +87,11 @@ async function recordExpense(db, uid, request) {
         parent.memberIds.includes(id))) {
         throw new HttpsError("permission-denied", "Payer and participants must be current members.");
       }
+      const receipt = (await transaction.get(user.collection("inventorySubmissions").doc(expense.id))).data();
+      if (Array.isArray(receipt?.rows) && receipt.rows.some(row => row?.includedInExpense === false) &&
+          (receipt.ownerId !== uid || receipt.householdId !== expense.householdId ||
+           sharedSubtotal(receipt.rows) !== expense.totalAmountCents))
+        throw new HttpsError("failed-precondition", "Expense does not match the shared receipt rows.");
       // Share settlement's contention document so concurrent new expenses/payments serialize.
       await transaction.get(revision);
       transaction.create(document, expense);
@@ -89,4 +107,4 @@ async function recordExpense(db, uid, request) {
   return request;
 }
 
-module.exports = { recordExpense, parseExpense, sameExpense };
+module.exports = { recordExpense, parseExpense, sameExpense, sharedSubtotal };

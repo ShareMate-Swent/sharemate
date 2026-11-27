@@ -2,6 +2,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { correctReceipt } = require("./receipt-corrections");
+const { recordExpense } = require("./expenses");
 
 function fixture() {
   const originalRows = [{ id: "milk", name: "Milk", quantity: 2, priceCents: "400" }, { id: "bread", name: "Bread", quantity: 1, priceCents: "200" }];
@@ -95,6 +96,7 @@ test("preserves the row cost-sharing choice in the inventory marker and receipt 
     ...request,
     originalRows: request.originalRows.map(row => ({ ...row, includedInExpense: true })),
     rows: request.rows.map((row, i) => ({ ...row, includedInExpense: i !== 0 })),
+    expense: { ...request.expense, totalAmountCents: "150", shares: { alice: "75", bob: "75" } },
   };
   await correctReceipt(db, "alice", edit);
   await correctReceipt(db, "alice", edit);
@@ -119,6 +121,40 @@ test("preserves the row cost-sharing choice in the inventory marker and receipt 
   assert.deepEqual(records, before);
   await correctReceipt(db, "alice", followUp);
   assert.equal(records.get(marker).rows[0].includedInExpense, false);
+});
+
+test("inventory-only correction removes the charge once and blocks stale expense replays", async () => {
+  const { db, records, request } = fixture();
+  const backup = "users/alice/receiptBackups/receipt";
+  const ledger = "households/home/expenses/receipt";
+  records.set(backup, { ownerId: "alice", householdId: "home", draft: false });
+  const excluded = request.originalRows.map(row => ({ ...row, priceCents: null, includedInExpense: false }));
+  const edit = {
+    ...request, ownerId: "alice", rows: excluded, expense: null,
+    receipt: { id: "receipt", householdId: "home" },
+  };
+  const before = structuredClone(records);
+  await assert.rejects(correctReceipt(db, "outsider", edit), { code: "permission-denied" });
+  await assert.rejects(correctReceipt(db, "bob", { ...edit, rows: request.originalRows }),
+    { code: "invalid-argument" });
+  assert.deepEqual(records, before);
+  await correctReceipt(db, "bob", edit);
+  await correctReceipt(db, "bob", edit);
+  assert.equal(records.has(ledger), false);
+  assert.equal(records.get("items/receipt_0").name, "Milk");
+  assert.equal(records.get("items/receipt_1").name, "Bread");
+  const saved = JSON.parse(records.get(backup).submission);
+  assert.equal(saved.inventoryConfirmed, true);
+  assert.equal(Object.hasOwn(saved, "expense"), false);
+  assert.equal(records.get(backup).revision, 1);
+  await assert.rejects(recordExpense(db, "alice", request.originalExpense), { code: "already-exists" });
+
+  await correctReceipt(db, "bob", {
+    ...request, ownerId: "alice", operationId: "restore", originalTitle: edit.title,
+    originalRevision: 1, originalRows: excluded, originalExpense: null,
+  });
+  assert.equal(records.get(ledger).totalAmountCents, 600n);
+  assert.equal(records.get(backup).revision, 2);
 });
 
 test("keeps consumed quantities and resolves an inventory-confirmed purchase with no expense yet", async () => {

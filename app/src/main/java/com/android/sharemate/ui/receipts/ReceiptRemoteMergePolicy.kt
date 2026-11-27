@@ -22,7 +22,10 @@ class ReceiptRemoteMergePolicy {
     if (locallyDeleted || correctionPending || entry.details.revision < 0) return false
     if (local == null) return true
     if (entry.submission.draft && !local.draft) return false
-    if (local.draft || local.expenseProgress != ExpenseProgress.CONFIRMED) return false
+    val confirmedInventoryOnly = local.expense == null && local.inventoryConfirmed
+    if (local.draft ||
+        (!confirmedInventoryOnly && local.expenseProgress != ExpenseProgress.CONFIRMED))
+        return false
     return localDetails == null || entry.details.revision > localDetails.revision
   }
 }

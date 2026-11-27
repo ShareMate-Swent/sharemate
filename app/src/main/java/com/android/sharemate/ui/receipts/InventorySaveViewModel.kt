@@ -166,14 +166,6 @@ class InventorySaveViewModel(
       members: Map<String, String>,
       title: String
   ): Boolean {
-    val current = state.value
-    val original = current.submission ?: return false
-    if (expenses == null ||
-        !canSave ||
-        original.draft ||
-        current.correctionPending ||
-        current.phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING))
-        return false
     val preview =
         PurchaseReview.forUser(userId, members)
             .copy(paidBy = purchase.paidBy, participants = purchase.shares.keys)
@@ -182,20 +174,43 @@ class InventorySaveViewModel(
         preview.totalCents != purchase.totalCents ||
         preview.shares != purchase.shares)
         return false
+    return correctRows(purchase.items, purchase, title)
+  }
+
+  /** Corrects an all-excluded receipt under its existing ID, removing any associated expense. */
+  fun correctInventoryOnly(
+      items: List<StagedItem>,
+      members: Map<String, String>,
+      title: String,
+  ): Boolean {
+    if (userId !in members || items.isEmpty() || items.any { it.includedInExpense }) return false
+    return correctRows(items, null, title)
+  }
+
+  private fun correctRows(
+      items: List<StagedItem>,
+      purchase: ReviewedPurchase?,
+      title: String,
+  ): Boolean {
+    val current = state.value
+    val original = current.submission ?: return false
+    if (expenses == null ||
+        !canSave ||
+        original.draft ||
+        current.correctionPending ||
+        current.phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING))
+        return false
     val replacement =
         try {
           InventorySubmission(
               original.id,
               original.ownerId,
               householdId,
-              purchase.items,
+              items,
               expense =
-                  SharedExpense(
-                      original.id,
-                      householdId,
-                      purchase.paidBy,
-                      purchase.totalCents,
-                      purchase.shares),
+                  purchase?.let {
+                    SharedExpense(original.id, householdId, it.paidBy, it.totalCents, it.shares)
+                  },
               sharing = original.sharing)
         } catch (_: IllegalArgumentException) {
           return false
@@ -227,7 +242,7 @@ class InventorySaveViewModel(
             previousJobs.forEach { it.join() }
             store.saveCorrection(correction)
             checkNotNull(expenses).correctReceipt(correction)
-            val confirmed = correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED)
+            val confirmed = correction.confirmedReplacement()
             store.acknowledgeCorrection(correction)
             activeCorrection = null
             if (token == generation) {

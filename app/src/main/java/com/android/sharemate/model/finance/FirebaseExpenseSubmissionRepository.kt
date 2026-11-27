@@ -50,15 +50,24 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
         }
     val payload =
         mapOf(
-            "operationId" to correction.operationId,
-            "ownerId" to correction.original.ownerId,
-            "originalRows" to rows(correction.original),
-            "originalTitle" to correction.originalTitle,
-            "originalRevision" to correction.originalRevision,
-            "rows" to rows(correction.replacement),
-            "originalExpense" to correction.original.expense?.let(::expense),
-            "expense" to expense(checkNotNull(correction.replacement.expense)),
-            "title" to correction.title)
+                "operationId" to correction.operationId,
+                "ownerId" to correction.original.ownerId,
+                "originalRows" to rows(correction.original),
+                "originalTitle" to correction.originalTitle,
+                "originalRevision" to correction.originalRevision,
+                "rows" to rows(correction.replacement),
+                "originalExpense" to correction.original.expense?.let(::expense),
+                "expense" to correction.replacement.expense?.let(::expense),
+                "title" to correction.title)
+            .let { fields ->
+              if (correction.replacement.expense != null) fields
+              else
+                  fields +
+                      ("receipt" to
+                          mapOf(
+                              ID to correction.original.id,
+                              HOUSEHOLD_ID to correction.original.householdId))
+            }
     val response = functions.getHttpsCallable("correctReceipt").call(payload).await().data
     check(response == mapOf("operationId" to correction.operationId)) {
       "Unexpected correction response"

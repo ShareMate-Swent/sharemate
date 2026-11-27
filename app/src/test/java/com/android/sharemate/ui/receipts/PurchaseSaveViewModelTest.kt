@@ -26,6 +26,62 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseSaveViewModelTest {
+  @Test
+  fun excludesPersonalRowsFromExpenseButSavesThemUnderTheSamePurchase() = runTest {
+    val vm = model()
+    val reviewed =
+        purchase.copy(items = rows + StagedItem("personal", "Personal", includedInExpense = false))
+    assertTrue(vm.confirmPurchase(reviewed, members))
+    runCurrent()
+    assertEquals(reviewed.items, inventory.calls.single().items)
+    assertTrue(expenses.calls.isEmpty())
+    confirmInventory()
+    assertEquals(reviewed.totalCents, expenses.calls.single().totalAmountCents)
+  }
+
+  @Test
+  fun allExcludedPurchaseSavesInventoryWithoutAChargeAfterRestart() = runTest {
+    val vm = model()
+    val excluded = rows.map { it.copy(priceCents = null, includedInExpense = false) }
+    assertTrue(vm.confirm(excluded))
+    assertFalse(vm.confirm(excluded))
+    runCurrent()
+    val submitted = inventory.calls.single()
+    assertEquals(excluded, submitted.items)
+    assertNull(submitted.expense)
+    val restored = restart()
+    confirmInventory()
+    assertEquals(submitted, restored.state.value.submission)
+    assertEquals(InventorySavePhase.CONFIRMED, restored.state.value.phase)
+    assertEquals(1, inventory.calls.size)
+    assertTrue(expenses.calls.isEmpty())
+  }
+
+  @Test
+  fun allExcludedCorrectionRetainsRowsAndReplaysWithoutAnInventoryInsert() = runTest {
+    val original = savedOriginal()
+    store.saved = original
+    val vm = model()
+    val excluded = rows.map { it.copy(priceCents = null, includedInExpense = false) }
+    assertFalse(vm.correctInventoryOnly(excluded, members - "alice", "Groceries"))
+    assertFalse(vm.correctInventoryOnly(rows, members, "Groceries"))
+    expenses.correctionFailure = IOException("Offline")
+    assertTrue(vm.correctInventoryOnly(excluded, members, "Groceries"))
+    runCurrent()
+    val correction = checkNotNull(store.correction)
+    assertEquals(original.id, correction.replacement.id)
+    assertEquals(excluded, correction.replacement.items)
+    assertNull(correction.replacement.expense)
+    expenses.correctionFailure = null
+    val restored = restart()
+    runCurrent()
+    assertEquals(listOf(correction, correction), expenses.corrections)
+    assertEquals(correction.confirmedReplacement(), restored.state.value.submission)
+    assertEquals(InventorySavePhase.CONFIRMED, restored.state.value.phase)
+    assertTrue(inventory.calls.isEmpty())
+    assertTrue(expenses.calls.isEmpty())
+  }
+
   private fun savedOriginal() =
       InventorySubmission(
           "12345678-1234-1234-1234-123456789abc",
@@ -719,7 +775,7 @@ class PurchaseSaveViewModelTest {
 
     override suspend fun acknowledgeCorrection(correction: ReceiptCorrection) {
       if (this.correction?.operationId != correction.operationId) return
-      save(correction.replacement.withProgress(true, ExpenseProgress.CONFIRMED))
+      save(correction.confirmedReplacement())
       metadata =
           metadata?.copy(title = correction.title, revision = correction.originalRevision + 1)
       this.correction = null

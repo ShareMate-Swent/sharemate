@@ -25,12 +25,17 @@ class InventorySubmission(
 ) {
   val items: List<StagedItem> = Collections.unmodifiableList(ArrayList(items))
 
+  /** True for a nonempty receipt whose rows were all excluded from cost sharing. */
+  val allRowsExcluded: Boolean
+    get() = items.isNotEmpty() && items.none { it.includedInExpense }
+
   init {
     require(expenseProgress == ExpenseProgress.QUEUED || inventoryConfirmed)
     expense?.let {
       require(it.totalAmountCents <= 100_000_000L)
       var remaining = it.totalAmountCents
       items.forEach { row ->
+        if (!row.includedInExpense) return@forEach
         val cents = requireNotNull(row.priceCents)
         require(cents in 0..remaining)
         remaining -= cents
@@ -38,7 +43,8 @@ class InventorySubmission(
       require(remaining == 0L)
     }
     require(expense == null || (!draft && expense.id == id && expense.householdId == householdId))
-    require(expense != null || (!inventoryConfirmed && expenseProgress == ExpenseProgress.QUEUED))
+    require(expense != null || expenseProgress == ExpenseProgress.QUEUED)
+    require(expense != null || !inventoryConfirmed || (!draft && allRowsExcluded))
     require(UUID.fromString(id).toString() == id)
     require(ownerId.isNotBlank() && '/' !in ownerId)
     require(householdId.isNotBlank() && '/' !in householdId)

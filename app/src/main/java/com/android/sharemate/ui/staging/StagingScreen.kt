@@ -116,7 +116,8 @@ fun StagingScreen(
 ) {
   val state = viewModel.state.collectAsState().value
   var sharing by rememberSaveable { mutableStateOf(false) }
-  val stagedPurchase = separateSharingStep && state.purchase != null
+  val showSharing = state.purchase != null && (state.items.isEmpty() || state.hasSharedCost)
+  val stagedPurchase = separateSharingStep && showSharing
   val canConfirmPurchase =
       actionsEnabled &&
           state.canConfirm &&
@@ -166,7 +167,7 @@ fun StagingScreen(
         actionsEnabled = actionsEnabled,
         statusContent = {
           state.purchase
-              ?.takeUnless { stagedPurchase }
+              ?.takeIf { showSharing && !stagedPurchase }
               ?.let {
                 PurchaseReviewContent(
                     state.purchasePreview,
