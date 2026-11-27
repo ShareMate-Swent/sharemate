@@ -27,6 +27,68 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PurchaseSaveViewModelTest {
   @Test
+  fun privateCorrectionCannotReplaceAMissingReceiptOrAnUnsavedDraft() = runTest {
+    assertFalse(model(sharing = ItemSharing.PERSONAL).correctPrivateReceipt(rows, "Missing"))
+    val draft =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            draft = true,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = draft
+    val vm = model(sharing = ItemSharing.PERSONAL)
+    assertFalse(vm.correctPrivateReceipt(rows + StagedItem("bread", "Bread", 1, 300), "Edited"))
+    runCurrent()
+    assertEquals(draft, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionPreservesReceiptWhenSavingIsDisabled() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = original
+    inventory.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model(canSave = false, sharing = ItemSharing.PERSONAL)
+    assertFalse(vm.correctPrivateReceipt(rows, "Not allowed"))
+    runCurrent()
+    assertEquals(original, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
+  fun privateCorrectionRequiresBackendEvenAfterInventoryConfirmation() = runTest {
+    val original =
+        InventorySubmission(
+            "12345678-1234-1234-1234-123456789abc",
+            "alice",
+            "home",
+            rows,
+            sharing = ItemSharing.PERSONAL)
+    store.saved = original
+    inventory.status.value = InventorySubmissionStatus.CONFIRMED
+    val vm = model(sharing = ItemSharing.PERSONAL, correctionRepository = null)
+    assertEquals(InventorySavePhase.CONFIRMED, vm.state.value.phase)
+    assertFalse(vm.correctPrivateReceipt(rows, "No backend"))
+    runCurrent()
+    assertEquals(original, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+    assertTrue(inventory.calls.isEmpty())
+  }
+
+  @Test
   fun privateCorrectionSurvivesRestartWithoutCreatingAnExpenseOrDuplicateItems() = runTest {
     val original =
         InventorySubmission(
@@ -316,14 +378,16 @@ class PurchaseSaveViewModelTest {
       uid: String = "alice",
       home: String = "home",
       sharing: ItemSharing = ItemSharing.SHARED,
+      correctionRepository: ExpenseSubmissionRepository? = expenses,
   ) =
-      InventorySaveViewModel(inventory, store, uid, home, canSave, expenses, sharing).also { vm ->
-        ViewModelStore().also {
-          owners += it
-          it.put("save", vm)
-        }
-        runCurrent()
-      }
+      InventorySaveViewModel(inventory, store, uid, home, canSave, correctionRepository, sharing)
+          .also { vm ->
+            ViewModelStore().also {
+              owners += it
+              it.put("save", vm)
+            }
+            runCurrent()
+          }
 
   private fun TestScope.submit() =
       model().also {
