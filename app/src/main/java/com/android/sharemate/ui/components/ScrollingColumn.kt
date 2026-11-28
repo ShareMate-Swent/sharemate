@@ -17,6 +17,10 @@ import androidx.compose.ui.Modifier
  * A column that fills the screen and scrolls when its content is taller, for example on a small
  * phone or with a large system font, so the last action can always be reached.
  *
+ * It must be placed in a parent with a bounded height, such as a screen or a `Box` of a fixed size.
+ * Inside another vertical scroller, `verticalScroll` would be measured with an infinite height and
+ * fail.
+ *
  * @param verticalArrangement How the children are placed vertically, such as with a fixed gap.
  * @param content The column's content.
  */

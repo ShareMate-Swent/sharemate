@@ -50,7 +50,7 @@ class AppBannerTest {
   }
 
   @Test
-  fun isAPoliteLiveRegionSoScreenReadersAnnounceIt() {
+  fun exposesPoliteLiveRegionSemantics() {
     show(AppBannerTone.ERROR)
 
     composeTestRule

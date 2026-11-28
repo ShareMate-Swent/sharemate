@@ -94,5 +94,5 @@ private fun AppBannerTone.look(colors: ColorScheme): BannerLook =
           BannerLook(
               colors.tertiaryContainer, colors.onTertiaryContainer, Icons.Outlined.WarningAmber)
       AppBannerTone.ERROR ->
-          BannerLook(colors.errorContainer, colors.error, Icons.Outlined.ErrorOutline)
+          BannerLook(colors.errorContainer, colors.onErrorContainer, Icons.Outlined.ErrorOutline)
     }
