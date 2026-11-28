@@ -34,11 +34,13 @@ test("real authenticated membership authorizes mapping; revocation and outsiders
   const data = { householdId: home.id, ingredients: ["milk"] };
   let calls = 0;
   const transport = async () => { calls++; return { ok: true, status: 200, text: async () => JSON.stringify([
-    { id: 12, title: "Soup", usedIngredientCount: 1, missedIngredientCount: 0 }]) }; };
+    { id: 12, title: "Soup", usedIngredientCount: 1, missedIngredientCount: 1, missedIngredients: [{ name: "Salt" }] }]) }; };
   await assert.rejects(suggestRecipes(db, null, data, () => "test-key", transport), { code: "unauthenticated" });
   await assert.rejects(suggestRecipes(db, outsider, data, () => "test-key", transport), { code: "permission-denied" });
   const result = await suggestRecipes(db, member, data, () => "test-key", transport);
   assert.equal(result.recipes[0].title, "Soup");
+  assert.deepEqual(result.recipes[0].missingIngredients, ["Salt"]);
+  assert.equal(result.recipes[0].missingIngredientCount, 1);
   await home.update({ memberIds: [] });
   await assert.rejects(suggestRecipes(db, member, data, () => "test-key", transport), { code: "permission-denied" });
   assert.equal(calls, 1);

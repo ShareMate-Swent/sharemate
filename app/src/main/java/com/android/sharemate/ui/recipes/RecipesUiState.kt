@@ -11,6 +11,8 @@ data class RecipeCardData(
     val imageUrl: String?,
     val matchingIngredientCount: Int,
     val missingIngredientCount: Int,
+    /** Provider names in their original order; empty when absent from a legacy response. */
+    val missingIngredients: List<String> = emptyList(),
 ) {
   init {
     require(matchingIngredientCount >= 0 && missingIngredientCount >= 0) {

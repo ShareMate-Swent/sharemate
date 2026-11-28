@@ -106,7 +106,7 @@ returns an empty list locally. Availability and expiry rules are not duplicated.
 The callable sends at most 10 results through Spoonacular `findByIngredients`,
 with an 8-second provider timeout inside the 15-second function timeout. It returns
 only `{ recipes: [{ id, title, imageUrl, matchingIngredientCount,
-missingIngredientCount }] }`. Images may be null. Provider diagnostics and credentials
+missingIngredientCount, missingIngredients }] }`. Images may be null. Provider diagnostics and credentials
 are never returned or logged. Quota errors use `resource-exhausted`, provider timeout
 uses `deadline-exceeded`, and other provider failures use safe `internal` errors.
 Android maps transport unavailability to `Offline`, other failures to `ServiceError`,
@@ -166,3 +166,32 @@ Tests require no real API key. Run all `*.unit.test.js` files for policy and fai
 cases, and `recipe-rate-limit.test.js` with local Auth/Firestore emulators for real
 transaction contention, UTC rollover, UID isolation and client-rule enforcement.
 Per-UID protection does not impose an overall project budget across multiple accounts.
+
+### Recipe ordering and missing names (#343)
+The callable forwards `missedIngredients[].name` as `missingIngredients`, retaining
+provider order and validating consistency with `missingIngredientCount`. It does not
+recompute matches or rank recipes. Android performs a stable ascending sort by the
+provider count in `RecipesViewModel`: zero first, then one or more; ties retain the
+repository order. Cards display all supplied names without truncation. Older callable
+responses without the new field remain readable (counts only); deploy the updated
+callable to display actual missing names. No names are inferred from counts.
+
+### #493 review decisions
+
+The provider request explicitly uses `ranking=2` (minimize missing ingredients), as documented
+at https://spoonacular.com/food-api/docs#search-recipes-by-ingredients. This selects a result
+pool consistent with full matches first; it is still a bounded ten-result search, not an
+exhaustive guarantee that every possible complete match will be returned. Android applies
+`fullMatchesFirst` once per response; ties preserve repository order, with no extra matched
+count or title tie-breaker.
+
+Malformed present missing-name lists still reject the response through the existing safe
+service error contract. Silently substituting an empty list would hide invalid/incomplete
+metadata and conflict with the count-consistency rule. Only absent legacy fields mean unknown
+names. Both decoders accept raw names up to 200 characters and trim their output.
+
+All missing names remain readable: no arbitrary ingredient-count limit or UI ellipsis is
+introduced, because #343 requires listing what is missing. Spoonacular does not document a
+per-recipe missing-name maximum in this endpoint. The existing one-million-character response bound,
+ten-recipe limit and per-name length validation remain; very large cards can require scrolling.
+The separator is localized, and a Compose regression covers a long list with double font size.

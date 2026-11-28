@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { suggestRecipes } = require("./recipes");
 const secret = "test-secret-not-a-real-key";
 const data = { householdId: "home", ingredients: ["milk", "apple"] };
-const row = { id: 12, title: "Soup", image: "https://example.org/soup.jpg", usedIngredientCount: 2, missedIngredientCount: 1 };
+const row = { id: 12, title: "Soup", image: "https://example.org/soup.jpg", usedIngredientCount: 2, missedIngredientCount: 1, missedIngredients: [{ name: "salt" }] };
 const db = (members = ["alice"]) => {
   const budgets = new Map();
   return {
@@ -54,13 +54,14 @@ test("maps only the application contract and keeps the key out of URLs and respo
     assert.equal(url.pathname, "/recipes/findByIngredients");
     assert.equal(url.searchParams.get("ingredients"), "milk,apple");
     assert.equal(url.searchParams.get("number"), "10");
+    assert.equal(url.searchParams.get("ranking"), "2");
     assert.equal(options.headers["x-api-key"], secret);
     assert.equal(options.redirect, "error");
     assert.equal(url.toString().includes(secret), false);
     return response([{ ...row, providerSecret: secret }]);
   });
   assert.deepEqual(result, { recipes: [{ id: "12", title: "Soup", imageUrl: row.image,
-    matchingIngredientCount: 2, missingIngredientCount: 1 }] });
+    matchingIngredientCount: 2, missingIngredientCount: 1, missingIngredients: ["salt"] }] });
   assert.equal(JSON.stringify(result).includes(secret), false);
   assert.deepEqual(await call(async () => response([])), { recipes: [] });
   assert.equal((await call(async () => response([{ ...row, image: undefined }]))).recipes[0].imageUrl, null);
@@ -146,4 +147,34 @@ test("provider failures and timeouts never refund a committed reservation", asyn
     await assert.rejects(suggestRecipes(store, "alice", data, () => secret, http, 10), { code: "resource-exhausted" });
     assert.equal(calls, 1);
   }
+});
+
+test("missing ingredient names are forwarded in provider order for zero, one and many", async () => {
+  for (const names of [[], ["salt"], ["salt", "onion", "pepper"]]) {
+    const result = await call(async () => response([{ ...row, missedIngredientCount: names.length,
+      missedIngredients: names.map(name => ({ name, unusedProviderField: secret })) }]));
+    assert.deepEqual(result.recipes[0].missingIngredients, names);
+    assert.equal(JSON.stringify(result).includes(secret), false);
+  }
+});
+
+test("missing ingredient lists must match the provider count and contain valid names", async () => {
+  for (const missing of [null, "salt", [], [{ name: "" }], [{ name: 12 }], [{}], [{ name: "x".repeat(201) }]]) {
+    await assert.rejects(call(async () => response([{ ...row, missedIngredients: missing }])), { code: "internal" });
+  }
+});
+
+
+test("ingredient name boundary accepts 200, trims padding and rejects malformed present names", async () => {
+  for (const [raw, expected] of [["x".repeat(200), "x".repeat(200)], [" salt ", "salt"]]) {
+    const result = await call(async () => response([{ ...row, missedIngredientCount: 1, missedIngredients: [{ name: raw }] }]));
+    assert.deepEqual(result.recipes[0].missingIngredients, [expected]);
+  }
+  for (const entry of [{ name: "x".repeat(201) }, { name: "   " }, null]) {
+    await assert.rejects(call(async () => response([{ ...row, missedIngredientCount: 1, missedIngredients: [entry] }])), { code: "internal" });
+  }
+});
+
+test("one inconsistent missing list rejects the batch rather than inventing partial metadata", async () => {
+  await assert.rejects(call(async () => response([row, { ...row, id: 13, missedIngredients: [null] }])), { code: "internal" });
 });

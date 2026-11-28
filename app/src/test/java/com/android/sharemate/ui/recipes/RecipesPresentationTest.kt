@@ -85,6 +85,72 @@ class RecipesPresentationTest {
   }
 
   @Test
+  fun cardShowsActualMissingNamesForOneAndManyAndRemovesThemForFullMatches() {
+    state.value =
+        RecipesUiState.Success(
+            listOf(soup.copy(missingIngredientCount = 0, missingIngredients = emptyList())))
+    render()
+    compose
+        .onNodeWithTag(RecipesTestTags.missing(soup.id), true)
+        .assertTextEquals("Ready to cook with your available ingredients")
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+    for (names in listOf(listOf("Salt"), listOf("Salt", "Onion", "Pepper"))) {
+      compose.runOnIdle {
+        state.value =
+            RecipesUiState.Success(
+                listOf(soup.copy(missingIngredientCount = names.size, missingIngredients = names)))
+      }
+      compose
+          .onNodeWithTag(RecipesTestTags.missingNames(soup.id), true)
+          .assertIsDisplayed()
+          .assertTextEquals("Missing: " + names.joinToString(", "))
+    }
+    compose.runOnIdle {
+      state.value = RecipesUiState.Success(listOf(soup.copy(missingIngredientCount = 0)))
+    }
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+  }
+
+  @Test
+  fun localizedSeparatorAndLongMissingNamesRemainCompleteAndWrapAtDoubleFontSize() {
+    val names = (1..20).map { "Ingredient $it " + "seasonal vegetables ".repeat(5) }
+    compose.setContent {
+      val density = LocalDensity.current
+      CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+        MaterialTheme {
+          Column(Modifier.verticalScroll(rememberScrollState())) {
+            RecipeCard(
+                soup.copy(missingIngredientCount = names.size, missingIngredients = names),
+                imageLoader = loader)
+          }
+        }
+      }
+    }
+    val app = RuntimeEnvironment.getApplication()
+    val expected =
+        app.getString(
+            com.android.sharemate.R.string.recipes_missing_names,
+            names.joinToString(
+                app.getString(com.android.sharemate.R.string.recipes_missing_names_separator)))
+    val node = compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true)
+    node.assertTextEquals(expected).performScrollTo().assertIsDisplayed()
+    val card =
+        compose.onNodeWithTag(RecipesTestTags.card(soup.id)).fetchSemanticsNode().boundsInRoot
+    val text = node.fetchSemanticsNode().boundsInRoot
+    assertTrue(text.left >= card.left && text.right <= card.right)
+  }
+
+  @Test
+  fun countOnlyLegacyCardDoesNotInventIngredientNames() {
+    state.value = RecipesUiState.Success(listOf(soup))
+    render()
+    compose
+        .onNodeWithTag(RecipesTestTags.missing(soup.id), true)
+        .assertTextEquals("1 missing ingredient")
+    compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true).assertDoesNotExist()
+  }
+
+  @Test
   fun loadingHasAnAccessibleIndeterminateProgressIndicator() {
     render()
     compose
@@ -156,7 +222,7 @@ class RecipesPresentationTest {
         .assertTextEquals("1 matching ingredient")
     compose
         .onNodeWithTag(RecipesTestTags.missing("a"), true)
-        .assertTextEquals("0 missing ingredients")
+        .assertTextEquals("Ready to cook with your available ingredients")
     val firstBounds =
         compose.onNodeWithTag(RecipesTestTags.card("z")).fetchSemanticsNode().boundsInRoot
     val secondBounds =

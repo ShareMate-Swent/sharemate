@@ -3,6 +3,8 @@ const { HttpsError } = require("firebase-functions/v2/https");
 const { isId } = require("./finance-common");
 const { reserveRecipeRequest } = require("./recipe-rate-limit");
 const RESULT_LIMIT = 10;
+// Shared ceiling for recipe titles and missing-ingredient names in the application contract.
+const MAX_RECIPE_TEXT_LENGTH = 200;
 const MAX_INGREDIENTS = 50;
 const TIMEOUT_MILLIS = 8000;
 
@@ -10,14 +12,19 @@ function decodeRecipes(rows) {
   if (!Array.isArray(rows) || rows.length > RESULT_LIMIT) throw new Error("Invalid recipes");
   const recipes = rows.map(row => {
     if (!row || !Number.isSafeInteger(row.id) || row.id <= 0 ||
-        typeof row.title !== "string" || !row.title.trim() || row.title.length > 200 ||
+        typeof row.title !== "string" || !row.title.trim() || row.title.length > MAX_RECIPE_TEXT_LENGTH ||
         ![row.usedIngredientCount, row.missedIngredientCount].every(n =>
           Number.isInteger(n) && n >= 0 && n <= 2147483647)) throw new Error("Invalid recipe");
     const imageUrl = row.image ?? null;
     if (imageUrl !== null && (typeof imageUrl !== "string" || imageUrl.length > 2048 ||
         new URL(imageUrl).protocol !== "https:")) throw new Error("Invalid image");
+    const missing = row.missedIngredients ?? [];
+    if (!Array.isArray(missing) || missing.length !== row.missedIngredientCount ||
+        !missing.every(item => item && typeof item.name === "string" &&
+          item.name.trim().length > 0 && item.name.length <= MAX_RECIPE_TEXT_LENGTH)) throw new Error("Invalid missing ingredients");
     return { id: String(row.id), title: row.title, imageUrl,
-      matchingIngredientCount: row.usedIngredientCount, missingIngredientCount: row.missedIngredientCount };
+      matchingIngredientCount: row.usedIngredientCount, missingIngredientCount: row.missedIngredientCount,
+      missingIngredients: missing.map(item => item.name.trim()) };
   });
   if (new Set(recipes.map(row => row.id)).size !== recipes.length) throw new Error("Duplicate recipes");
   return { recipes };
@@ -51,6 +58,8 @@ async function suggestRecipes(db, uid, data, key, transport = fetch, timeoutMill
     const url = new URL("https://api.spoonacular.com/recipes/findByIngredients");
     url.searchParams.set("ingredients", data.ingredients.join(","));
     url.searchParams.set("number", String(RESULT_LIMIT));
+    // Rank the bounded provider result pool by missing ingredients before Android's stable sort.
+    url.searchParams.set("ranking", "2");
     return await Promise.race([
       (async () => {
         const response = await transport(url, { headers: { "x-api-key": apiKey }, signal: controller.signal, redirect: "error" });

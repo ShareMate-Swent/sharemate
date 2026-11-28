@@ -28,6 +28,56 @@ class RecipesViewModelTest {
       RecipesViewModel(repository).also { store.put("recipes", it) }
 
   @Test
+  fun fullMatchesFirstThenMissingCountAscendingWithStableTies() = runTest {
+    fun recipe(id: String, missing: Int) =
+        RecipeSuggestion(id, id, null, 2, missing, List(missing) { "Ingredient $it" })
+    val input =
+        listOf(
+            recipe("many-first", 3),
+            recipe("one-first", 1),
+            recipe("full-first", 0),
+            recipe("two", 2),
+            recipe("one-second", 1),
+            recipe("full-second", 0),
+            recipe("many-second", 3))
+    val originalOrder = input.map { it.id }
+    val vm = model(FakeRecipeRepository(RecipeRequestResult.Success(input), delayMillis = 0))
+    vm.requestRecipes()
+    val actual = (vm.uiState.value as RecipesUiState.Success).recipes
+    assertEquals(
+        listOf(
+            "full-first",
+            "full-second",
+            "one-first",
+            "one-second",
+            "two",
+            "many-first",
+            "many-second"),
+        actual.map { it.id })
+    assertEquals(originalOrder, input.map { it.id })
+    actual.forEach { result ->
+      assertEquals(
+          input.single { it.id == result.id }.missingIngredients, result.missingIngredients)
+    }
+  }
+
+  @Test
+  fun emptyAndSingleRecipeListsKeepTheirMeaning() = runTest {
+    for (count in listOf(0, 1, 4)) {
+      val recipe = RecipeSuggestion("single", "Soup", null, 1, count)
+      val vm =
+          model(FakeRecipeRepository(RecipeRequestResult.Success(listOf(recipe)), delayMillis = 0))
+      vm.requestRecipes()
+      val actual = (vm.uiState.value as RecipesUiState.Success).recipes
+      assertEquals(listOf("single"), actual.map { it.id })
+      assertEquals(count, actual.single().missingIngredientCount)
+    }
+    val empty = model(FakeRecipeRepository(delayMillis = 0))
+    empty.requestRecipes()
+    assertEquals(RecipesUiState.Success(emptyList()), empty.uiState.value)
+  }
+
+  @Test
   fun noRequestUntilExplicitActionAndLoadingUntilCompletion() = runTest {
     var calls = 0
     val pending = CompletableDeferred<RecipeRequestResult>()
