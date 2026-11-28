@@ -175,3 +175,23 @@ provider count in `RecipesViewModel`: zero first, then one or more; ties retain 
 repository order. Cards display all supplied names without truncation. Older callable
 responses without the new field remain readable (counts only); deploy the updated
 callable to display actual missing names. No names are inferred from counts.
+
+### #493 review decisions
+
+The provider request explicitly uses `ranking=2` (minimize missing ingredients), as documented
+at https://spoonacular.com/food-api/docs#search-recipes-by-ingredients. This selects a result
+pool consistent with full matches first; it is still a bounded ten-result search, not an
+exhaustive guarantee that every possible complete match will be returned. Android applies
+`fullMatchesFirst` once per response; ties preserve repository order, with no extra matched
+count or title tie-breaker.
+
+Malformed present missing-name lists still reject the response through the existing safe
+service error contract. Silently substituting an empty list would hide invalid/incomplete
+metadata and conflict with the count-consistency rule. Only absent legacy fields mean unknown
+names. Both decoders accept raw names up to 200 characters and trim their output.
+
+All missing names remain readable: no arbitrary ingredient-count limit or UI ellipsis is
+introduced, because #343 requires listing what is missing. Spoonacular does not document a
+per-recipe missing-name maximum in this endpoint. The existing one-million-character response bound,
+ten-recipe limit and per-name length validation remain; very large cards can require scrolling.
+The separator is localized, and a Compose regression covers a long list with double font size.

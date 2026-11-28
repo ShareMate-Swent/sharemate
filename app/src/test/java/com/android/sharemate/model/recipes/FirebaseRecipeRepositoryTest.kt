@@ -48,8 +48,42 @@ class FirebaseRecipeRepositoryTest {
             null, "Salt", emptyList<String>(), listOf(12), listOf(""), listOf("Salt", "Onion"))) {
       assertEquals(
           RecipeRequestResult.ServiceError,
-          repository(mapOf("recipes" to listOf(row() + ("missingIngredients" to names))))
+          repository(
+                  mapOf(
+                      "recipes" to
+                          listOf(
+                              row() +
+                                  mapOf(
+                                      "missingIngredientCount" to 1,
+                                      "missingIngredients" to names))))
               .suggestRecipes())
+    }
+  }
+
+  @Test
+  fun legacyAbsentMissingNamesWithPositiveCountRemainsCountOnly() = runTest {
+    val wire = row() + ("missingIngredientCount" to 3)
+    val actual =
+        repository(mapOf("recipes" to listOf(wire))).suggestRecipes() as RecipeRequestResult.Success
+    assertEquals(3, actual.recipes.single().missingIngredientCount)
+    assertTrue(actual.recipes.single().missingIngredients.isEmpty())
+  }
+
+  @Test
+  fun missingNameBoundariesAndPaddingFollowTheBackendContract() = runTest {
+    for ((raw, expected) in listOf("x".repeat(200) to "x".repeat(200), " salt " to "salt")) {
+      val wire = row() + mapOf("missingIngredientCount" to 1, "missingIngredients" to listOf(raw))
+      val actual =
+          repository(mapOf("recipes" to listOf(wire))).suggestRecipes()
+              as RecipeRequestResult.Success
+      assertEquals(listOf(expected), actual.recipes.single().missingIngredients)
+    }
+    for (invalid in listOf("x".repeat(201), "   ", null)) {
+      val wire =
+          row() + mapOf("missingIngredientCount" to 1, "missingIngredients" to listOf(invalid))
+      assertEquals(
+          RecipeRequestResult.ServiceError,
+          repository(mapOf("recipes" to listOf(wire))).suggestRecipes())
     }
   }
 

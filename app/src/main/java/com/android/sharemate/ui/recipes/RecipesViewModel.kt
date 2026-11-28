@@ -32,19 +32,15 @@ class RecipesViewModel(private val repository: RecipeRepository) : ViewModel() {
                 when (result) {
                   is RecipeRequestResult.Success ->
                       RecipesUiState.Success(
-                          // sortedBy is stable: complete matches first, then fewer missing;
-                          // equal counts preserve the repository's original relative order.
-                          result.recipes
-                              .sortedBy { it.missingIngredientCount }
-                              .map {
-                                RecipeCardData(
-                                    it.id,
-                                    it.title,
-                                    it.imageUrl,
-                                    it.matchingIngredientCount,
-                                    it.missingIngredientCount,
-                                    it.missingIngredients)
-                              })
+                          fullMatchesFirst(result.recipes).map {
+                            RecipeCardData(
+                                it.id,
+                                it.title,
+                                it.imageUrl,
+                                it.matchingIngredientCount,
+                                it.missingIngredientCount,
+                                it.missingIngredients)
+                          })
                   RecipeRequestResult.Offline -> RecipesUiState.Error(RecipesErrorReason.OFFLINE)
                   RecipeRequestResult.ServiceError ->
                       RecipesUiState.Error(RecipesErrorReason.SERVICE)

@@ -112,6 +112,35 @@ class RecipesPresentationTest {
   }
 
   @Test
+  fun localizedSeparatorAndLongMissingNamesRemainCompleteAndWrapAtDoubleFontSize() {
+    val names = (1..20).map { "Ingredient $it " + "seasonal vegetables ".repeat(5) }
+    compose.setContent {
+      val density = LocalDensity.current
+      CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+        MaterialTheme {
+          Column(Modifier.verticalScroll(rememberScrollState())) {
+            RecipeCard(
+                soup.copy(missingIngredientCount = names.size, missingIngredients = names),
+                imageLoader = loader)
+          }
+        }
+      }
+    }
+    val app = RuntimeEnvironment.getApplication()
+    val expected =
+        app.getString(
+            com.android.sharemate.R.string.recipes_missing_names,
+            names.joinToString(
+                app.getString(com.android.sharemate.R.string.recipes_missing_names_separator)))
+    val node = compose.onNodeWithTag(RecipesTestTags.missingNames(soup.id), true)
+    node.assertTextEquals(expected).performScrollTo().assertIsDisplayed()
+    val card =
+        compose.onNodeWithTag(RecipesTestTags.card(soup.id)).fetchSemanticsNode().boundsInRoot
+    val text = node.fetchSemanticsNode().boundsInRoot
+    assertTrue(text.left >= card.left && text.right <= card.right)
+  }
+
+  @Test
   fun countOnlyLegacyCardDoesNotInventIngredientNames() {
     state.value = RecipesUiState.Success(listOf(soup))
     render()

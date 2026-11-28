@@ -85,7 +85,9 @@ fun RecipeCard(
               if (data.missingIngredients.isNotEmpty()) {
                 Text(
                     stringResource(
-                        R.string.recipes_missing_names, data.missingIngredients.joinToString(", ")),
+                        R.string.recipes_missing_names,
+                        data.missingIngredients.joinToString(
+                            stringResource(R.string.recipes_missing_names_separator))),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.testTag(RecipesTestTags.missingNames(data.id)))
               }

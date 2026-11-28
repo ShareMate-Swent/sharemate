@@ -12,6 +12,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
+/** Shared ceiling for recipe titles and ingredient names in the callable contract. */
+private const val MAX_RECIPE_TEXT_LENGTH = 200
+
 /** One immutable user/household context; provider credentials never enter the Android client. */
 class FirebaseRecipeRepository
 internal constructor(
@@ -69,7 +72,11 @@ internal constructor(
           val row = value as? Map<*, *> ?: error("Invalid recipe")
           val id = row["id"] as? String ?: error("Missing recipe ID")
           val title = row["title"] as? String ?: error("Missing title")
-          require(id.isNotBlank() && id.length <= 128 && title.isNotBlank() && title.length <= 200)
+          require(
+              id.isNotBlank() &&
+                  id.length <= 128 &&
+                  title.isNotBlank() &&
+                  title.length <= MAX_RECIPE_TEXT_LENGTH)
           val image =
               row["imageUrl"]?.let {
                 require(it is String && it.length <= 2048)
@@ -77,22 +84,23 @@ internal constructor(
                 it
               }
           val missingCount = count(row["missingIngredientCount"])
-          val missingNames =
-              if (!row.containsKey("missingIngredients")) emptyList()
-              else {
-                val names =
-                    row["missingIngredients"] as? List<*> ?: error("Invalid missing ingredients")
-                require(names.size == missingCount)
-                names.map {
-                  require(it is String && it.isNotBlank() && it.length <= 200)
-                  it
-                }
-              }
+          val missingNames = decodeMissingNames(row, missingCount)
           RecipeSuggestion(
               id, title, image, count(row["matchingIngredientCount"]), missingCount, missingNames)
         }
     require(recipes.map { it.id }.distinct().size == recipes.size)
     return recipes
+  }
+
+  /** Absent means legacy count-only; a present list must be complete and internally consistent. */
+  private fun decodeMissingNames(row: Map<*, *>, missingCount: Int): List<String> {
+    if (!row.containsKey("missingIngredients")) return emptyList()
+    val names = row["missingIngredients"] as? List<*> ?: error("Invalid missing ingredients")
+    require(names.size == missingCount)
+    return names.map { name ->
+      require(name is String && name.length <= MAX_RECIPE_TEXT_LENGTH)
+      name.trim().also { require(it.isNotEmpty()) }
+    }
   }
 
   private fun count(value: Any?): Int {
