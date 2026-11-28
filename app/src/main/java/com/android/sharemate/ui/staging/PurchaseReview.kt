@@ -57,6 +57,7 @@ data class PurchaseReview(
   fun preview(items: List<StagedItem>): PurchasePreview {
     var total = 0L
     for (item in items) {
+      if (!item.includedInExpense) continue
       val cents =
           item.priceCents ?: return PurchasePreview(null, error = PurchaseReviewError.MISSING_PRICE)
       // priceCents is already the row total, regardless of quantity.

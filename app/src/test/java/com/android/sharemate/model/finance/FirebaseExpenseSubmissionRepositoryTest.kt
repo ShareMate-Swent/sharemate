@@ -53,7 +53,9 @@ class FirebaseExpenseSubmissionRepositoryTest {
             id,
             "author",
             "home",
-            listOf(StagedItem("row", "Milk", 1, 200)),
+            listOf(
+                StagedItem("row", "Milk", 1, 200),
+                StagedItem("extra", "Bread", includedInExpense = false)),
             expense = SharedExpense(id, "home", "author", 200, mapOf("author" to 200L)))
     `when`(functions.getHttpsCallable("correctReceipt")).thenReturn(callable)
     val result =
@@ -78,12 +80,29 @@ class FirebaseExpenseSubmissionRepositoryTest {
     assertEquals(
         listOf(mapOf("id" to "row", "name" to "Milk", "quantity" to 1, "priceCents" to "100")),
         sent.value["originalRows"])
+    assertEquals(
+        listOf(
+            mapOf("id" to "row", "name" to "Milk", "quantity" to 1, "priceCents" to "200"),
+            mapOf(
+                "id" to "extra",
+                "name" to "Bread",
+                "quantity" to 1,
+                "priceCents" to null,
+                "includedInExpense" to false)),
+        sent.value["rows"])
     val unknown = InventorySubmission(id, "author", "home", listOf(StagedItem("row", "Milk")))
     repository.correctReceipt(ReceiptCorrection("revision", unknown, revised, "Groceries"))
     verify(callable, times(2)).call(sent.capture())
     assertEquals(
         listOf(mapOf("id" to "row", "name" to "Milk", "quantity" to 1, "priceCents" to null)),
         sent.value["originalRows"])
+    val inventoryOnly =
+        InventorySubmission(
+            id, "author", "home", revised.items.map { it.copy(includedInExpense = false) })
+    repository.correctReceipt(ReceiptCorrection("revision", original, inventoryOnly, "Groceries"))
+    verify(callable, times(3)).call(sent.capture())
+    assertEquals(null, sent.value["expense"])
+    assertEquals(mapOf("id" to id, "householdId" to "home"), sent.value["receipt"])
   }
 
   @Test

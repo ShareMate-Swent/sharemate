@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.receipts
 
+import androidx.core.os.bundleOf
 import androidx.lifecycle.SavedStateHandle
 import com.android.sharemate.model.receipt.ReceiptItem
 import com.android.sharemate.model.receipt.ReceiptLine
@@ -73,7 +74,7 @@ class ReceiptScanViewModelTest {
     assertTrue(model.needsReview.value)
     model.reviewOpened()
     assertFalse(model.needsReview.value)
-    val edited = listOf(StagedItem("0", "Oat milk", 2, null))
+    val edited = listOf(StagedItem("0", "Oat milk", 2, null, includedInExpense = false))
     model.confirm(edited)
     val restored =
         ReceiptScanViewModel(
@@ -81,6 +82,16 @@ class ReceiptScanViewModelTest {
             SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) }))
     assertEquals(edited, restored.currentItems())
     assertTrue(restored.reviewed.value)
+  }
+
+  @Test
+  fun legacySavedStateDefaultsToIncludingRows() {
+    val row = bundleOf("id" to "0", "name" to "Milk", "quantity" to 1, "price" to 240L)
+    val model =
+        ReceiptScanViewModel(
+            ReceiptReader { error("Not needed") },
+            SavedStateHandle(mapOf("receiptItems" to arrayListOf(row))))
+    assertEquals(listOf(StagedItem("0", "Milk", priceCents = 240)), model.currentItems())
   }
 
   @Test

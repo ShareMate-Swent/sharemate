@@ -27,6 +27,21 @@ class ReceiptRemoteMergePolicyTest {
       ReceiptDetails(id, "owner", "home", "photo", 1, title = "Local", revision = 2)
 
   @Test
+  fun newerFinancialRevisionCanFollowAnAcknowledgedInventoryOnlyCorrection() {
+    val inventoryOnly =
+        InventorySubmission(
+            id,
+            "owner",
+            "home",
+            rows.map { it.copy(includedInExpense = false) },
+            inventoryConfirmed = true)
+    val entry = ReceiptCloudEntry(saved, details.copy(revision = 3))
+    assertTrue(policy.shouldApplyRemote(inventoryOnly, details, entry, false, false))
+    assertFalse(
+        policy.shouldApplyRemote(inventoryOnly.withProgress(false), details, entry, false, false))
+  }
+
+  @Test
   fun onlyNewerRevisionMayReplaceExistingLocalContent() {
     for (revision in listOf(1L, 2L, 3L)) {
       val entry = ReceiptCloudEntry(saved, details.copy(title = "Remote", revision = revision))

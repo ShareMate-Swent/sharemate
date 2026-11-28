@@ -55,6 +55,40 @@ test("a member can record another member as payer without transferring retry own
   await assert.rejects(recordExpense(db, "payer", purchase), { code: "already-exists" });
 });
 
+test("receipt-backed expenses match the priced included rows", async () => {
+  const { db, records, payload } = fixture();
+  const receipt = {
+    ownerId: "author", householdId: "home",
+    rows: [{ priceCents: 1000n }, { priceCents: 500n, includedInExpense: false }],
+  };
+  records.set("users/author/inventorySubmissions/operation", receipt);
+  const fullPrice = { ...payload, totalAmountCents: "1500", shares: { author: "750", payer: "750" } };
+  await assert.rejects(recordExpense(db, "author", fullPrice), { code: "failed-precondition" });
+  receipt.rows[1].includedInExpense = "false";
+  await assert.rejects(recordExpense(db, "author", fullPrice), { code: "failed-precondition" });
+  receipt.rows[1].includedInExpense = false;
+  receipt.rows[0].priceCents = null;
+  await assert.rejects(recordExpense(db, "author", payload), { code: "failed-precondition" });
+  receipt.rows[0].priceCents = 1000n;
+  receipt.rows[0].includedInExpense = false;
+  await assert.rejects(recordExpense(db, "author", payload), { code: "failed-precondition" });
+  receipt.rows[0].includedInExpense = true;
+  receipt.rows[1].priceCents = null;
+  await recordExpense(db, "author", payload);
+  assert.equal(records.get("households/home/expenses/operation").totalAmountCents, 1000n);
+});
+
+test("checks the subtotal of legacy receipt rows without cost-sharing flags", async () => {
+  const { db, records, payload } = fixture();
+  records.set("users/author/inventorySubmissions/operation", {
+    ownerId: "author", householdId: "home", rows: [{ priceCents: 400n }, { priceCents: 600n }],
+  });
+  const wrongTotal = { ...payload, totalAmountCents: "1200", shares: { author: "600", payer: "600" } };
+  await assert.rejects(recordExpense(db, "author", wrongTotal), { code: "failed-precondition" });
+  assert.equal(records.has("households/home/expenses/operation"), false);
+  assert.equal(await recordExpense(db, "author", payload), payload);
+});
+
 test("rejects malformed payloads and does not write on validation failure", async () => {
   const { db, records, payload } = fixture();
   const cases = [null, [], {}, { ...payload, extra: "forged" },

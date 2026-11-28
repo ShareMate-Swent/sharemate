@@ -43,10 +43,14 @@ data class StagingUiState(
 
   /** The list can be confirmed when it has items and no item dialog is open. */
   val canConfirm: Boolean
-    get() = items.isNotEmpty() && draft == null && items.all { it.priceCents != null }
+    get() = items.isNotEmpty() && draft == null && !hasMissingPrices
+
+  /** Whether at least one row is included in the shared expense. */
+  val hasSharedCost: Boolean
+    get() = items.any { it.includedInExpense }
 
   val hasMissingPrices: Boolean
-    get() = items.any { it.priceCents == null }
+    get() = items.any { it.includedInExpense && it.priceCents == null }
 }
 
 /**
@@ -189,11 +193,14 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
       val name = draft.name.trim()
       val quantity = ItemQuantity.parse(draft.quantity)
       val price = Prices.parse(draft.price)
+      val original = state.items.firstOrNull { it.id == draft.itemId }
+      val includedInExpense = original?.includedInExpense ?: true
       val error =
           when {
             name.isEmpty() -> StagedItemError.NAME_REQUIRED
             quantity == null -> StagedItemError.INVALID_QUANTITY
-            price !is PriceInput.Valid -> StagedItemError.INVALID_PRICE
+            price !is PriceInput.Valid && (includedInExpense || price != PriceInput.Empty) ->
+                StagedItemError.INVALID_PRICE
             else -> null
           }
       if (error != null) return@update state.copy(draft = draft.copy(error = error))
@@ -203,6 +210,7 @@ class StagingViewModel(initialItems: List<StagedItem>, purchaseReview: PurchaseR
               name = name,
               quantity = checkNotNull(quantity),
               priceCents = (price as? PriceInput.Valid)?.cents,
+              includedInExpense = includedInExpense,
           )
       val items =
           if (draft.itemId == null) state.items + updated

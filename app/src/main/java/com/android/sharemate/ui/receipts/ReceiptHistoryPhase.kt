@@ -19,6 +19,7 @@ internal fun receiptHistoryPhase(
       submission.expense != null ->
           if (submission.expenseProgress == ExpenseProgress.CONFIRMED) InventorySavePhase.CONFIRMED
           else InventorySavePhase.PENDING
+      submission.inventoryConfirmed -> InventorySavePhase.CONFIRMED
       prior != null -> prior
       submission.draft -> InventorySavePhase.READY
       details?.savedAtMillis != null -> InventorySavePhase.CONFIRMED

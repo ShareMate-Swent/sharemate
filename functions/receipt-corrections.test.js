@@ -145,3 +145,21 @@ test("namespaced backups prevent a peer draft from blocking correction or deleti
   assert.deepEqual((await db.doc(backupPath(other.localId)).get()).data(), peerDraft);
   await db.doc(backupPath(other.localId)).delete();
 });
+
+test("only the receipt owner can turn a saved purchase into inventory only", async () => {
+  const payload = await seed("remove-charge");
+  const { id, householdId } = payload.originalExpense;
+  const ledger = home.collection("expenses").doc(id);
+  const correction = {
+    ...payload,
+    ownerId: author.localId,
+    receipt: { id, householdId },
+    expense: null,
+    rows: payload.originalRows.map(row => ({ ...row, includedInExpense: false })),
+  };
+
+  assert.equal((await call(correction, other)).error?.status, "PERMISSION_DENIED");
+  assert.deepEqual((await ledger.get()).data(), decodeExpense(payload.originalExpense));
+  assert.deepEqual((await call(correction)).result, { operationId: payload.operationId });
+  assert.equal((await ledger.get()).exists, false);
+});

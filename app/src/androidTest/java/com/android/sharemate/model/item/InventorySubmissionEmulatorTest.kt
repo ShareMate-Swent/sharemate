@@ -242,7 +242,12 @@ class InventorySubmissionEmulatorTest {
     try {
       auth.signInWithEmailAndPassword("$OWNER_ALIAS@example.com", PASSWORD).await()
       val home = HouseholdRepositoryFirestore(db).createHousehold("Restart", owner)
-      val submitted = submission(home.id)
+      val submitted =
+          InventorySubmission(
+              UUID.randomUUID().toString(),
+              owner,
+              home.id,
+              listOf(rows.first(), rows.last().copy(includedInExpense = false)))
       db.disableNetwork().await()
       FirebaseItemRepository(db).addItems(submitted)
       awaitLocalItem(db.collection(FirestoreCollections.ITEMS).document(submitted.itemId(0)))
@@ -274,6 +279,8 @@ class InventorySubmissionEmulatorTest {
       assertEquals(
           submitted.items.indices.map(submitted::itemId).toSet(),
           saved.documents.map { it.id }.toSet())
+      val retained = marker(submitted).get(Source.SERVER).await().get(Fields.ROWS) as List<*>
+      assertEquals(false, (retained.last() as Map<*, *>)[Fields.INCLUDED_IN_EXPENSE])
     } finally {
       db.enableNetwork().await()
       withTimeout(TIMEOUT) { db.waitForPendingWrites().await() }

@@ -132,10 +132,14 @@ class FirebaseItemRepository(private val firestore: FirebaseFirestore) : ItemRep
           InventorySubmissionFields.ROWS to
               items.map { row ->
                 mapOf(
-                    InventorySubmissionFields.ID to row.id,
-                    InventorySubmissionFields.NAME to row.name,
-                    InventorySubmissionFields.QUANTITY to row.quantity.toLong(),
-                    InventorySubmissionFields.PRICE to row.priceCents)
+                        InventorySubmissionFields.ID to row.id,
+                        InventorySubmissionFields.NAME to row.name,
+                        InventorySubmissionFields.QUANTITY to row.quantity.toLong(),
+                        InventorySubmissionFields.PRICE to row.priceCents)
+                    .let { fields ->
+                      if (row.includedInExpense) fields
+                      else fields + (InventorySubmissionFields.INCLUDED_IN_EXPENSE to false)
+                    }
               })
 
   override fun observeSubmission(submission: InventorySubmission): Flow<InventorySubmissionStatus> =

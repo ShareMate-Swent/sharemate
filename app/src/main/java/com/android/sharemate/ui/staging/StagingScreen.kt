@@ -112,11 +112,13 @@ fun StagingScreen(
     itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     savedPreview: PurchasePreview? = null,
+    confirmationError: String? = null,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
   val state = viewModel.state.collectAsState().value
   var sharing by rememberSaveable { mutableStateOf(false) }
-  val stagedPurchase = separateSharingStep && state.purchase != null
+  val showSharing = state.purchase != null && (state.items.isEmpty() || state.hasSharedCost)
+  val stagedPurchase = separateSharingStep && showSharing
   val canConfirmPurchase =
       actionsEnabled &&
           state.canConfirm &&
@@ -166,7 +168,7 @@ fun StagingScreen(
         actionsEnabled = actionsEnabled,
         statusContent = {
           state.purchase
-              ?.takeUnless { stagedPurchase }
+              ?.takeIf { showSharing && !stagedPurchase }
               ?.let {
                 PurchaseReviewContent(
                     state.purchasePreview,
@@ -185,6 +187,7 @@ fun StagingScreen(
         previewContent = previewContent,
         itemActions = itemActions,
         savedPurchase = savedPurchase,
+        confirmationError = confirmationError,
         onDeleteReceipt = onDeleteReceipt,
     )
   }
@@ -217,6 +220,7 @@ fun StagingContent(
     previewContent: @Composable () -> Unit = {},
     itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
+    confirmationError: String? = null,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
   var showMissingPrices by remember { mutableStateOf(false) }
@@ -337,6 +341,9 @@ fun StagingContent(
                       color = MaterialTheme.colorScheme.error,
                       modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
                   )
+                }
+                if (!continueToSharing && confirmationError != null) {
+                  Text(confirmationError, color = MaterialTheme.colorScheme.error)
                 }
                 if (!savedPurchase || continueToSharing)
                     Button(
