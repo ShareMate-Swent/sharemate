@@ -177,7 +177,7 @@ class InventorySaveViewModel(
     return correctRows(purchase.items, purchase, title)
   }
 
-  /** Corrects an all-excluded receipt under its existing ID, removing any associated expense. */
+  /** Corrects an all-excluded receipt. Only its owner can remove an existing shared expense. */
   fun correctInventoryOnly(
       items: List<StagedItem>,
       members: Map<String, String>,
@@ -197,6 +197,7 @@ class InventorySaveViewModel(
     if (expenses == null ||
         !canSave ||
         original.draft ||
+        (purchase == null && original.expense != null && original.ownerId != userId) ||
         current.correctionPending ||
         current.phase in setOf(InventorySavePhase.LOADING, InventorySavePhase.SUBMITTING))
         return false

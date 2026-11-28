@@ -82,6 +82,20 @@ class PurchaseSaveViewModelTest {
     assertTrue(expenses.calls.isEmpty())
   }
 
+  @Test
+  fun peerCannotQueueACorrectionThatRemovesTheSharedCharge() = runTest {
+    val original = savedOriginal()
+    store.saved = original
+    val vm = model(uid = "bob")
+    val excluded = rows.map { it.copy(includedInExpense = false) }
+
+    assertFalse(vm.correctInventoryOnly(excluded, members, "Groceries"))
+    runCurrent()
+    assertEquals(original, store.saved)
+    assertNull(store.correction)
+    assertTrue(expenses.corrections.isEmpty())
+  }
+
   private fun savedOriginal() =
       InventorySubmission(
           "12345678-1234-1234-1234-123456789abc",

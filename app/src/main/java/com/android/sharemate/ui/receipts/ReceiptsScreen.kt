@@ -319,6 +319,7 @@ internal fun ReceiptHistoryFlow(
       } else {
         var title by rememberSaveable(id) { mutableStateOf(receipt.details?.title.orEmpty()) }
         var savingReview by remember { mutableStateOf(false) }
+        var correctionRefused by rememberSaveable(id) { mutableStateOf(false) }
         var showExitChoice by rememberSaveable(id) { mutableStateOf(false) }
         val initialItems = remember(id) { receipt.submission.items }
         val initialTitle = remember(id) { receipt.details?.title.orEmpty() }
@@ -411,11 +412,14 @@ internal fun ReceiptHistoryFlow(
         }
         val stagingState by staging.state.collectAsStateWithLifecycle()
         val correctInventoryOnly: (List<StagedItem>) -> Boolean = { items ->
-          purchaseReview
-              ?.takeIf { it.membersAvailable }
-              ?.let { review ->
-                purchaseSave?.correctInventoryOnly(items, review.members, title)
-              } == true
+          val accepted =
+              purchaseReview
+                  ?.takeIf { it.membersAvailable }
+                  ?.let { review ->
+                    purchaseSave?.correctInventoryOnly(items, review.members, title)
+                  } == true
+          correctionRefused = !accepted
+          accepted
         }
         val savedChanges =
             (title.trim() != initialTitle ||
@@ -483,6 +487,9 @@ internal fun ReceiptHistoryFlow(
                 submittedHere = true
               }
             },
+            confirmationError =
+                if (correctionRefused) stringResource(R.string.receipt_save_changes_failed)
+                else null,
             onBack = leaveReview,
             onDeleteReceipt =
                 if (receipt.submission.ownerId != userId) null
@@ -507,6 +514,7 @@ internal fun ReceiptHistoryFlow(
                 purchaseReview?.let { review ->
                   { purchase ->
                     if (!savingReview && review.membersAvailable) {
+                      correctionRefused = false
                       savingReview = true
                       reviewScope.launch {
                         try {
@@ -602,7 +610,7 @@ internal fun ReceiptHistoryFlow(
         if (showExitChoice) {
           ReceiptExitDialog(
               busy = savingReview,
-              failed = editFailed,
+              failed = editFailed || correctionRefused,
               title =
                   if (receipt.submission.draft && freshScan)
                       stringResource(R.string.receipt_exit_title)
@@ -616,6 +624,7 @@ internal fun ReceiptHistoryFlow(
                       stringResource(R.string.receipt_discard)
                   else stringResource(R.string.receipt_discard_changes),
               onSaveDraft = {
+                correctionRefused = false
                 savingReview = true
                 reviewScope.launch {
                   try {

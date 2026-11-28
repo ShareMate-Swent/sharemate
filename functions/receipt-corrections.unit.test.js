@@ -123,7 +123,7 @@ test("preserves the row cost-sharing choice in the inventory marker and receipt 
   assert.equal(records.get(marker).rows[0].includedInExpense, false);
 });
 
-test("inventory-only correction removes the charge once and blocks stale expense replays", async () => {
+test("only the receipt owner can remove a charge; stale expense replays stay blocked", async () => {
   const { db, records, request } = fixture();
   const backup = "users/alice/receiptBackups/receipt";
   const ledger = "households/home/expenses/receipt";
@@ -137,9 +137,10 @@ test("inventory-only correction removes the charge once and blocks stale expense
   await assert.rejects(correctReceipt(db, "outsider", edit), { code: "permission-denied" });
   await assert.rejects(correctReceipt(db, "bob", { ...edit, rows: request.originalRows }),
     { code: "invalid-argument" });
+  await assert.rejects(correctReceipt(db, "bob", edit), { code: "permission-denied" });
   assert.deepEqual(records, before);
-  await correctReceipt(db, "bob", edit);
-  await correctReceipt(db, "bob", edit);
+  await correctReceipt(db, "alice", edit);
+  await correctReceipt(db, "alice", edit);
   assert.equal(records.has(ledger), false);
   assert.equal(records.get("items/receipt_0").name, "Milk");
   assert.equal(records.get("items/receipt_1").name, "Bread");

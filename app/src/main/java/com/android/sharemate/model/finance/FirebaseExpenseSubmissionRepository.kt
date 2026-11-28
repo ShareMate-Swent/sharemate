@@ -4,6 +4,7 @@ package com.android.sharemate.model.finance
 import com.android.sharemate.model.finance.FinanceFields.HOUSEHOLD_ID
 import com.android.sharemate.model.finance.FinanceFields.ID
 import com.android.sharemate.model.finance.FinanceFields.PAID_BY
+import com.android.sharemate.model.finance.FinanceFields.RECEIPT
 import com.android.sharemate.model.finance.FinanceFields.SHARES
 import com.android.sharemate.model.finance.FinanceFields.TOTAL_AMOUNT_CENTS
 import com.android.sharemate.model.item.InventorySubmission
@@ -63,7 +64,7 @@ class FirebaseExpenseSubmissionRepository(private val functions: FirebaseFunctio
               if (correction.replacement.expense != null) fields
               else
                   fields +
-                      ("receipt" to
+                      (RECEIPT to
                           mapOf(
                               ID to correction.original.id,
                               HOUSEHOLD_ID to correction.original.householdId))

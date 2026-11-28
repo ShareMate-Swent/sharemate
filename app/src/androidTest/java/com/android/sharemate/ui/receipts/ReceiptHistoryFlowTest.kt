@@ -396,6 +396,25 @@ class ReceiptHistoryFlowTest {
   }
 
   @Test
+  fun allExcludedCorrectionShowsFailureWhileMembersAreUnavailable() {
+    val fixture = WorkflowFixture(draft = false, allExcluded = true, membersAvailable = false)
+    fixture.open()
+    compose.onNodeWithTag(ReceiptHistoryTestTags.TITLE).performTextReplacement("Unsaved change")
+    compose.onNodeWithTag(StagingTestTags.CONFIRM).performClick()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_save_changes_failed))
+        .assertIsDisplayed()
+    assertEquals(0, fixture.corrected)
+    assertEquals("Groceries", fixture.details().title)
+
+    fixture.backAndKeep(waitForHistory = false)
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.receipt_exit_failed))
+        .assertIsDisplayed()
+    assertEquals(0, fixture.corrected)
+  }
+
+  @Test
   fun rejectedReceiptCanBeRetriedFromReview() {
     val owner = UUID.randomUUID().toString()
     val household = UUID.randomUUID().toString()
@@ -780,6 +799,7 @@ class ReceiptHistoryFlowTest {
       barcodeScanner: com.android.sharemate.model.barcode.BarcodeScanner? = null,
       catalog: com.android.sharemate.model.product.ProductCatalogRepository? = null,
       allExcluded: Boolean = false,
+      membersAvailable: Boolean = true,
   ) {
     val owner = UUID.randomUUID().toString()
     val home = UUID.randomUUID().toString()
@@ -843,7 +863,8 @@ class ReceiptHistoryFlowTest {
             override suspend fun savePublicProfile(profile: UserProfile) = Unit
 
             override fun observeMembers(householdId: String) =
-                kotlinx.coroutines.flow.flowOf(listOf(UserProfile(owner, "Alex")))
+                if (membersAvailable) flowOf(listOf(UserProfile(owner, "Alex")))
+                else flow { kotlinx.coroutines.awaitCancellation() }
           }
       compose.setContent {
         MaterialTheme {

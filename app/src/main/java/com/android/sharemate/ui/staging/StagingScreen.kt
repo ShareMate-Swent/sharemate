@@ -112,6 +112,7 @@ fun StagingScreen(
     itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
     savedPreview: PurchasePreview? = null,
+    confirmationError: String? = null,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
   val state = viewModel.state.collectAsState().value
@@ -186,6 +187,7 @@ fun StagingScreen(
         previewContent = previewContent,
         itemActions = itemActions,
         savedPurchase = savedPurchase,
+        confirmationError = confirmationError,
         onDeleteReceipt = onDeleteReceipt,
     )
   }
@@ -218,6 +220,7 @@ fun StagingContent(
     previewContent: @Composable () -> Unit = {},
     itemActions: @Composable () -> Unit = {},
     savedPurchase: Boolean = false,
+    confirmationError: String? = null,
     onDeleteReceipt: (() -> Unit)? = null,
 ) {
   var showMissingPrices by remember { mutableStateOf(false) }
@@ -338,6 +341,9 @@ fun StagingContent(
                       color = MaterialTheme.colorScheme.error,
                       modifier = Modifier.testTag(StagingTestTags.MISSING_PRICES),
                   )
+                }
+                if (!continueToSharing && confirmationError != null) {
+                  Text(confirmationError, color = MaterialTheme.colorScheme.error)
                 }
                 if (!savedPurchase || continueToSharing)
                     Button(

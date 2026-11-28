@@ -3,7 +3,8 @@ const { HttpsError } = require("firebase-functions/v2/https");
 
 const FIELDS = ["id", "householdId", "paidBy", "totalAmountCents", "shares"];
 const MAX_EXPENSE_CENTS = 100_000_000n;
-const { HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE, isId } = require("./finance-common");
+const { HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE,
+  INVENTORY_SUBMISSIONS, INCLUDED_IN_EXPENSE, isId } = require("./finance-common");
 const EXPENSES = "expenses";
 const OPERATIONS = "expenseSubmissions";
 
@@ -45,9 +46,9 @@ function sameExpense(existing, expense) {
 function sharedSubtotal(rows) {
   let total = 0n;
   for (const row of rows) {
-    if (!row || (Object.hasOwn(row, "includedInExpense") && typeof row.includedInExpense !== "boolean"))
+    if (!row || (Object.hasOwn(row, INCLUDED_IN_EXPENSE) && typeof row[INCLUDED_IN_EXPENSE] !== "boolean"))
       return null;
-    if (row.includedInExpense === false) continue;
+    if (row[INCLUDED_IN_EXPENSE] === false) continue;
     if (typeof row.priceCents !== "bigint" || row.priceCents < 0n) return null;
     total += row.priceCents;
   }
@@ -87,9 +88,9 @@ async function recordExpense(db, uid, request) {
         parent.memberIds.includes(id))) {
         throw new HttpsError("permission-denied", "Payer and participants must be current members.");
       }
-      const receipt = (await transaction.get(user.collection("inventorySubmissions").doc(expense.id))).data();
-      if (Array.isArray(receipt?.rows) &&
-          receipt.rows.some(row => row && Object.hasOwn(row, "includedInExpense")) &&
+      const receipt = (await transaction.get(user.collection(INVENTORY_SUBMISSIONS).doc(expense.id))).data();
+      // The client writes the marker, so this only checks consistency with the saved rows.
+      if (Array.isArray(receipt?.rows) && receipt.rows.length > 0 &&
           (receipt.ownerId !== uid || receipt.householdId !== expense.householdId ||
            sharedSubtotal(receipt.rows) !== expense.totalAmountCents))
         throw new HttpsError("failed-precondition", "Expense does not match the shared receipt rows.");

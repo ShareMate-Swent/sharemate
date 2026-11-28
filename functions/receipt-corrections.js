@@ -2,15 +2,15 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const { createHash } = require("node:crypto");
 const { parseExpense, sameExpense, sharedSubtotal } = require("./expenses");
-const { isId } = require("./finance-common");
+const { INVENTORY_SUBMISSIONS, INCLUDED_IN_EXPENSE, isId } = require("./finance-common");
 
 const LEGACY_ROW_KEYS = "id,name,priceCents,quantity";
-const EXPENSE_ROW_KEYS = "id,includedInExpense,name,priceCents,quantity";
+const EXPENSE_ROW_KEYS = `id,${INCLUDED_IN_EXPENSE},name,priceCents,quantity`;
 function hasRowFields(row) {
   if (!row) return false;
   const keys = Object.keys(row).sort().join();
   return keys === LEGACY_ROW_KEYS ||
-    (keys === EXPENSE_ROW_KEYS && typeof row.includedInExpense === "boolean");
+    (keys === EXPENSE_ROW_KEYS && typeof row[INCLUDED_IN_EXPENSE] === "boolean");
 }
 
 function rows(input) {
@@ -24,10 +24,10 @@ function rows(input) {
         !Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 9999 ||
         (row.priceCents !== null && (typeof row.priceCents !== "string" || !/^(0|[1-9][0-9]{0,8})$/.test(row.priceCents)))) return null;
     ids.add(row.id);
-    const { includedInExpense, ...fields } = row;
+    const { [INCLUDED_IN_EXPENSE]: includedInExpense, ...fields } = row;
     result.push({
       ...fields, quantity: BigInt(row.quantity), priceCents: row.priceCents === null ? null : BigInt(row.priceCents),
-      ...(includedInExpense === false ? { includedInExpense } : {}),
+      ...(includedInExpense === false ? { [INCLUDED_IN_EXPENSE]: false } : {}),
     });
   }
   return result;
@@ -35,7 +35,7 @@ function rows(input) {
 const sameRows = (a, b) => Array.isArray(a) && a.length === b.length && a.every((r, i) =>
   hasRowFields(r) && r.id === b[i].id && r.name === b[i].name &&
   r.quantity === b[i].quantity && r.priceCents === b[i].priceCents &&
-  (r.includedInExpense ?? true) === (b[i].includedInExpense ?? true));
+  (r[INCLUDED_IN_EXPENSE] ?? true) === (b[i][INCLUDED_IN_EXPENSE] ?? true));
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === "object"
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, stable(value[k])])) : value;
 
@@ -62,14 +62,14 @@ async function correctReceipt(db, uid, request) {
       (inventoryOnly && Object.keys(identity).sort().join() !== "householdId,id") ||
       (request.originalExpense !== null && !originalExpense) ||
       (originalExpense && (originalExpense.id !== id || originalExpense.householdId !== householdId)) ||
-      (inventoryOnly ? revised.some(r => r.includedInExpense !== false)
+      (inventoryOnly ? revised.some(r => r[INCLUDED_IN_EXPENSE] !== false)
         : sharedSubtotal(revised) !== expense.totalAmountCents))
     throw new HttpsError("invalid-argument", "Invalid correction.");
   const hash = createHash("sha256").update(JSON.stringify(stable(request))).digest("hex");
   const home = db.collection("households").doc(householdId);
   const user = db.collection("users").doc(ownerId);
   const operation = db.collection("users").doc(uid).collection("receiptCorrections").doc(request.operationId);
-  const marker = user.collection("inventorySubmissions").doc(id);
+  const marker = user.collection(INVENTORY_SUBMISSIONS).doc(id);
   const linksRef = user.collection("receiptItemLinks").doc(id);
   const expenseRef = home.collection("expenses").doc(id);
   const expenseMarker = user.collection("expenseSubmissions").doc(id);
@@ -95,13 +95,15 @@ async function correctReceipt(db, uid, request) {
         throw new HttpsError('permission-denied', 'Receipt ownership mismatch.');
       const removedExpense = ownership?.householdId === householdId && ownership.inventoryOnly === true;
       const sharedInventoryOnly = removedExpense && backup?.draft === false &&
-        original.every(r => r.includedInExpense === false);
+        original.every(r => r[INCLUDED_IN_EXPENSE] === false);
       if (!current || current.ownerId !== ownerId || current.householdId !== householdId || current.id !== id ||
           (ownerId !== uid && (!ledger || !ownership) && !sharedInventoryOnly) ||
           !sameRows(current.rows, original) ||
           (ledger && (!originalExpense || !sameExpense(ledger, originalExpense) || ownership?.householdId !== householdId)) ||
           (!ledger && ownership && (!removedExpense || originalExpense)))
         throw new HttpsError("failed-precondition", "Receipt changed or is still syncing. Refresh and retry.");
+      if (inventoryOnly && (ledger || originalExpense) && uid !== current.ownerId)
+        throw new HttpsError("permission-denied", "Only the receipt owner can remove its shared expense.");
       const storedReceipt = (await tx.get(linksRef)).data();
       const storedLinks = storedReceipt?.links;
       const oldLinks = new Map(original.map((row, i) => [row.id, storedLinks && Object.hasOwn(storedLinks, row.id) ? storedLinks[row.id] : `${id}_${i}`]));

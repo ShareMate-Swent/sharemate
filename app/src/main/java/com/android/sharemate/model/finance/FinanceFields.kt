@@ -4,6 +4,7 @@ package com.android.sharemate.model.finance
 /** Shared wire names for ledger documents and financial callable payloads. */
 internal object FinanceFields {
   const val ID = "id"
+  const val RECEIPT = "receipt"
   const val HOUSEHOLD_ID = "householdId"
   const val PAID_BY = "paidBy"
   const val TOTAL_AMOUNT_CENTS = "totalAmountCents"

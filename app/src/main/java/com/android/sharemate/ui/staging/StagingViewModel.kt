@@ -45,6 +45,7 @@ data class StagingUiState(
   val canConfirm: Boolean
     get() = items.isNotEmpty() && draft == null && !hasMissingPrices
 
+  /** Whether at least one row is included in the shared expense. */
   val hasSharedCost: Boolean
     get() = items.any { it.includedInExpense }
 

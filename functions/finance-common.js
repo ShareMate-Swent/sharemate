@@ -1,5 +1,7 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
+const INVENTORY_SUBMISSIONS = "inventorySubmissions";
+const INCLUDED_IN_EXPENSE = "includedInExpense";
 const HOUSEHOLDS = "households";
 const FINANCE_METADATA = "financeMetadata";
 const SETTLEMENT_REVISION = "settlementRevision";
@@ -14,4 +16,4 @@ function isId(value) {
     !/^__.*__$/.test(value) && Buffer.byteLength(value) <= MAX_DOCUMENT_ID_BYTES;
 }
 
-module.exports = { HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE, PRIVATE_FRIDGE_TYPE, MAX_CENTS, isId };
+module.exports = { INVENTORY_SUBMISSIONS, INCLUDED_IN_EXPENSE, HOUSEHOLDS, FINANCE_METADATA, SETTLEMENT_REVISION, SHARED_FRIDGE_TYPE, PRIVATE_FRIDGE_TYPE, MAX_CENTS, isId };
