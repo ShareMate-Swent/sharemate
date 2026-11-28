@@ -57,6 +57,7 @@ class SettingsScreenTest {
   private var editedPseudo = ""
   private var memberListOpens = 0
   private var notificationSettingsOpens = 0
+  private var editProfileOpens = 0
   private var photoChanges = 0
   private var photoRetries = 0
   private var backs = 0
@@ -94,12 +95,25 @@ class SettingsScreenTest {
             onSavePseudo = { pseudoSaves++ },
             onRetryLoadPseudo = { pseudoRetries++ },
             onOpenNotificationSettings = { notificationSettingsOpens++ },
+            onEditProfile = { editProfileOpens++ },
             onSignOut = { signOuts++ },
             onBack = { backs++ },
             onChangePhoto = { photoChanges++ },
             onRetryPhotoUpload = { photoRetries++ })
       }
     }
+  }
+
+  @Test
+  fun editProfileOpensThePageWhereThePseudoAndThePhotoAreChanged() {
+    showSettings()
+
+    composeTestRule
+        .onNodeWithTag(SettingsTestTags.EDIT_PROFILE)
+        .assertTextEquals(text(R.string.edit_profile_title))
+        .performClick()
+
+    assertEquals(1, editProfileOpens)
   }
 
   @Test
@@ -376,6 +390,7 @@ class SettingsScreenTest {
             onPseudoChanged = {},
             onSavePseudo = {},
             onRetryLoadPseudo = {},
+            onEditProfile = {},
             onSignOut = {},
             onBack = {})
       }

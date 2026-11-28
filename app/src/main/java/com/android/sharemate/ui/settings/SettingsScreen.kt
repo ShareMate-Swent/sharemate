@@ -77,6 +77,9 @@ object SettingsTestTags {
   const val PROFILE_PLACEHOLDER = "settings_profile_placeholder"
   const val PROFILE_NAME = "settings_profile_name"
   const val PROFILE_EMAIL = "settings_profile_email"
+
+  /** Opens the Edit profile page, where the pseudo and the profile photo are changed. */
+  const val EDIT_PROFILE = "settings_edit_profile"
   const val CHANGE_PHOTO = "settings_change_photo"
   const val PHOTO_UPLOADING = "settings_photo_uploading"
   const val PHOTO_ERROR = "settings_photo_error"
@@ -128,6 +131,7 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * @param onSignOut Signs out the current user.
  * @param onBack Leaves Settings from the back arrow, the only way back since it has no bottom bar.
  * @param onOpenNotificationSettings Opens the notification settings.
+ * @param onEditProfile Opens the Edit profile page to change the pseudo and the profile photo.
  * @param onChangePhoto Opens the camera/gallery dialog to change the profile photo.
  * @param onRetryPhotoUpload Uploads the photo of a failed upload again.
  */
@@ -147,6 +151,7 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     onBack: () -> Unit,
     onOpenNotificationSettings: () -> Unit = {},
+    onEditProfile: () -> Unit,
     onChangePhoto: () -> Unit = {},
     onRetryPhotoUpload: () -> Unit = {},
 ) {
@@ -175,7 +180,7 @@ fun SettingsScreen(
       )
     }
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
-    ProfileHeader(state, onChangePhoto, onRetryPhotoUpload)
+    ProfileHeader(state, onChangePhoto, onRetryPhotoUpload, onEditProfile)
     Spacer(Modifier.height(Dimens.spacingL))
     PseudoCard(state, onPseudoChanged, onSavePseudo, onRetryLoadPseudo)
     Spacer(Modifier.height(Dimens.spacingL))
@@ -287,6 +292,7 @@ private fun ProfileHeader(
     state: SettingsUiState,
     onChangePhoto: () -> Unit,
     onRetryPhotoUpload: () -> Unit,
+    onEditProfile: () -> Unit,
 ) {
   val profileName = state.savedPseudo?.takeIf { it.isNotBlank() } ?: state.displayName
   val changePhoto = stringResource(R.string.settings_change_photo)
@@ -343,6 +349,9 @@ private fun ProfileHeader(
         textAlign = TextAlign.Center,
         modifier = Modifier.testTag(SettingsTestTags.PROFILE_EMAIL),
     )
+  }
+  TextButton(onClick = onEditProfile, modifier = Modifier.testTag(SettingsTestTags.EDIT_PROFILE)) {
+    Text(stringResource(R.string.edit_profile_title))
   }
 }
 
