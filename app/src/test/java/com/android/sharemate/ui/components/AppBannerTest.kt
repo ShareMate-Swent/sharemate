@@ -1,7 +1,8 @@
 // Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
-package com.android.sharemate.ui.household
+package com.android.sharemate.ui.components
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -16,28 +17,42 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Checks the error banner shown by the household forms. */
+/** Checks the banner used by the forms and pages that report a state to the user. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
-class HouseholdErrorBannerTest {
+class AppBannerTest {
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
-  @Test
-  fun showsTheMessageWithItsTag() {
+  private fun show(tone: AppBannerTone) {
     composeTestRule.setContent {
-      MaterialTheme { HouseholdErrorBanner(message = "It failed", testTag = "banner_message") }
+      MaterialTheme { AppBanner(message = "Something happened", tone = tone, testTag = "message") }
     }
-    composeTestRule
-        .onNodeWithTag("banner_message")
-        .assertIsDisplayed()
-        .assertTextEquals("It failed")
   }
 
   @Test
-  fun isAPoliteLiveRegionSoScreenReadersAnnounceIt() {
+  fun everyToneShowsItsMessageWithTheTag() {
     composeTestRule.setContent {
-      MaterialTheme { HouseholdErrorBanner(message = "It failed", testTag = "banner_message") }
+      MaterialTheme {
+        Column {
+          AppBannerTone.values().forEach { tone ->
+            AppBanner(message = "Message of ${tone.name}", tone = tone, testTag = tone.name)
+          }
+        }
+      }
     }
+
+    AppBannerTone.values().forEach { tone ->
+      composeTestRule
+          .onNodeWithTag(tone.name)
+          .assertIsDisplayed()
+          .assertTextEquals("Message of ${tone.name}")
+    }
+  }
+
+  @Test
+  fun exposesPoliteLiveRegionSemantics() {
+    show(AppBannerTone.ERROR)
+
     composeTestRule
         .onNode(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
         .assertIsDisplayed()

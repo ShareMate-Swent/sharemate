@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>
 package com.android.sharemate.ui.settings
 
 import androidx.lifecycle.ViewModel
@@ -12,19 +13,9 @@ import com.android.sharemate.model.auth.SignInProvider
 import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.household.Household
 import com.android.sharemate.model.household.HouseholdRepository
-import com.android.sharemate.model.image.PersonalPhotoFiles
-import com.android.sharemate.model.profile.ProfilePhotoRepository
-import com.android.sharemate.model.user.MAX_PSEUDO_LENGTH
 import com.android.sharemate.model.user.PseudoRepository
-import com.android.sharemate.model.user.trimPseudoPadding
-import com.android.sharemate.model.user.validatePseudo
-import com.android.sharemate.ui.profile.ProfilePhotoError
-import java.io.File
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -33,21 +24,12 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Why switching to another Google account failed. */
 enum class SettingsAccountError {
   GOOGLE_UNAVAILABLE,
   NETWORK,
   SWITCH_FAILED
-}
-
-/** Why the pseudo could not be loaded or saved; a load failure blocks saving until retried. */
-enum class SettingsPseudoError {
-  LOAD_FAILED,
-  SAVE_FAILED,
-  /** The pseudo is already claimed by another user. */
-  PSEUDO_TAKEN
 }
 
 /**
@@ -63,14 +45,8 @@ enum class SettingsPseudoError {
  * @property fridgeType Whether the household is private (no one else can join) or shared.
  * @property isSwitchingAccount Whether a Google account switch is in progress.
  * @property accountError The last account switch failure, cleared by the next attempt.
- * @property pseudo The editable public pseudo.
- * @property savedPseudo The last pseudo successfully loaded or saved.
- * @property isLoadingPseudo Whether the public pseudo is being loaded.
- * @property isSavingPseudo Whether a pseudo update is in progress.
- * @property pseudoError The last pseudo load or save failure.
- * @property isUploadingPhoto Whether a new profile photo is being uploaded.
- * @property photoError The last profile photo failure, cleared by the next attempt.
- * @property canSavePseudo Whether the current pseudo can be saved.
+ * @property savedPseudo The user's public pseudo, if it could be loaded; the header shows it in
+ *   place of the account name. Null while loading or when it could not be read.
  */
 data class SettingsUiState(
     val email: String? = null,
@@ -83,49 +59,29 @@ data class SettingsUiState(
     val fridgeType: FridgeType = FridgeType.SHARED,
     val isSwitchingAccount: Boolean = false,
     val accountError: SettingsAccountError? = null,
-    val pseudo: String = "",
     val savedPseudo: String? = null,
-    val isLoadingPseudo: Boolean = false,
-    val isSavingPseudo: Boolean = false,
-    val pseudoError: SettingsPseudoError? = null,
-    val isUploadingPhoto: Boolean = false,
-    val photoError: ProfilePhotoError? = null,
-) {
-  /** Whether the current pseudo can be saved. */
-  val canSavePseudo: Boolean
-    get() =
-        validatePseudo(pseudo) == null &&
-            !isLoadingPseudo &&
-            pseudoError != SettingsPseudoError.LOAD_FAILED &&
-            !isSavingPseudo &&
-            pseudo.trimPseudoPadding() != savedPseudo
-}
+)
 
 /**
  * Combines the current session, household and public pseudo into one [SettingsUiState].
  *
  * The [household] loaded by the household gate is shown at once, then fetched again so the member
  * count includes users who joined or left since. If that fetch fails, the loaded household stays.
- * The pseudo is loaded and saved through [PseudoRepository].
- *
- * A new profile photo is copied into a private file, then uploaded with [ProfilePhotoRepository]. A
- * failed upload keeps the copy so it can be retried; the copy is deleted once uploaded, replaced or
- * when this ViewModel is cleared.
+ * The pseudo is only read, through [PseudoRepository], and read again by [refreshPseudo] when the
+ * user comes back from the Edit profile page. A pseudo that cannot be read is not an error here:
+ * the header then shows the account name. Editing the pseudo and the photo is done by
+ * [EditProfileViewModel].
  *
  * @param authRepository Provides the current authenticated session.
  * @param householdRepository Reads the current household.
- * @param pseudoRepository Reads and updates the signed-in user's public pseudo.
+ * @param pseudoRepository Reads the signed-in user's public pseudo.
  * @param household The household already loaded by the household gate.
- * @param profilePhotoRepository Uploads a new profile photo and makes it the account photo.
- * @param photoFiles Copies the picked image into a private JPEG/PNG file of at most 5 MiB.
  */
 class SettingsViewModel(
     private val authRepository: AuthRepository,
     private val householdRepository: HouseholdRepository,
     private val pseudoRepository: PseudoRepository,
     household: Household,
-    private val profilePhotoRepository: ProfilePhotoRepository,
-    private val photoFiles: PersonalPhotoFiles,
 ) : ViewModel() {
   private val householdId = household.id
   private val mutableState = MutableStateFlow(SettingsUiState().withHousehold(household))
@@ -133,10 +89,8 @@ class SettingsViewModel(
   val state = mutableState.asStateFlow()
 
   private var refreshJob: Job? = null
+  private var pseudoJob: Job? = null
   private var currentUserId: String? = null
-  private var pendingPhoto: File? = null
-  private var photoUpload: Job? = null
-  private var cleared = false
 
   init {
     // A signed-out session keeps the last profile until the auth gate leaves the screen.
@@ -152,14 +106,7 @@ class SettingsViewModel(
           .distinctUntilChanged()
           .collectLatest { userId ->
             currentUserId = userId
-            mutableState.update {
-              it.copy(
-                  pseudo = "",
-                  savedPseudo = null,
-                  isLoadingPseudo = true,
-                  isSavingPseudo = false,
-                  pseudoError = null)
-            }
+            mutableState.update { it.copy(savedPseudo = null) }
             loadPseudo(userId)
           }
     }
@@ -224,155 +171,23 @@ class SettingsViewModel(
         }
   }
 
-  /** Updates the pseudo being edited without saving it yet; input past the maximum is dropped. */
-  fun updatePseudo(pseudo: String) {
-    mutableState.update {
-      it.copy(
-          pseudo = pseudo.takeCodePoints(MAX_PSEUDO_LENGTH),
-          pseudoError = it.pseudoError.takeIf { error -> error == SettingsPseudoError.LOAD_FAILED })
-    }
-  }
-
-  /** Loads the saved pseudo again after a failure; saving stays blocked until it succeeds. */
-  fun retryLoadPseudo() {
-    val userId = currentUserId ?: return
-    if (state.value.isLoadingPseudo || state.value.pseudoError != SettingsPseudoError.LOAD_FAILED) {
-      return
-    }
-    mutableState.update { it.copy(isLoadingPseudo = true, pseudoError = null) }
-    viewModelScope.launch { loadPseudo(userId) }
-  }
-
-  /** Saves the edited pseudo as the public profile name for the current signed-in user. */
-  fun savePseudo() {
-    val userId = currentUserId ?: return
-    val pseudo = state.value.pseudo.trimPseudoPadding()
-    if (!state.value.canSavePseudo) return
-    mutableState.update { it.copy(isSavingPseudo = true, pseudoError = null) }
-    viewModelScope.launch {
-      try {
-        pseudoRepository.setPseudo(userId, pseudo)
-        if (currentUserId == userId) {
-          mutableState.update { it.copy(pseudo = pseudo, savedPseudo = pseudo, pseudoError = null) }
-        }
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (failure: AuthException) {
-        if (currentUserId == userId) {
-          val error =
-              if (failure.error == AuthError.PSEUDO_TAKEN) SettingsPseudoError.PSEUDO_TAKEN
-              else SettingsPseudoError.SAVE_FAILED
-          mutableState.update { it.copy(pseudoError = error) }
-        }
-      } catch (_: Exception) {
-        if (currentUserId == userId) {
-          mutableState.update { it.copy(pseudoError = SettingsPseudoError.SAVE_FAILED) }
-        }
-      } finally {
-        if (currentUserId == userId) {
-          mutableState.update { it.copy(isSavingPseudo = false) }
-        }
-      }
-    }
-  }
-
   /**
-   * Copies the photo confirmed in the camera/gallery dialog, then uploads it as the new profile
-   * photo. The header shows it once the session is refreshed. An unreadable photo shows
-   * [ProfilePhotoError.INVALID_PHOTO]; a failed upload keeps the old photo and shows
-   * [ProfilePhotoError.UPLOAD_FAILED]. Ignored while uploading.
-   *
-   * @param fromCamera True for a camera capture, which is downscaled and encoded as JPEG.
+   * Reads the pseudo again, without starting duplicate requests; a failure keeps the last value.
    */
-  suspend fun changePhoto(uri: String, fromCamera: Boolean) {
-    if (state.value.isUploadingPhoto) return
-    val copy =
-        try {
-          photoFiles.copy(uri, fromCamera)
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (_: Exception) {
-          mutableState.update { it.copy(photoError = ProfilePhotoError.INVALID_PHOTO) }
-          return
-        }
-    if (cleared || state.value.isUploadingPhoto) {
-      withContext(NonCancellable) { photoFiles.delete(copy) }
-      return
-    }
-    val previous = pendingPhoto
-    pendingPhoto = copy
-    previous?.let { withContext(NonCancellable) { photoFiles.delete(it) } }
-    uploadPhoto()
-  }
-
-  /** Uploads the photo of the last failed upload again. */
-  fun retryPhotoUpload() {
-    if (!state.value.isUploadingPhoto) uploadPhoto()
-  }
-
-  private fun uploadPhoto() {
-    val photo = pendingPhoto ?: return
+  fun refreshPseudo() {
     val userId = currentUserId ?: return
-    mutableState.update { it.copy(isUploadingPhoto = true, photoError = null) }
-    photoUpload =
-        viewModelScope.launch {
-          val succeeded =
-              try {
-                profilePhotoRepository.upload(userId, photo).isSuccess
-              } catch (cancelled: CancellationException) {
-                throw cancelled
-              } catch (_: Exception) {
-                false
-              } finally {
-                mutableState.update { it.copy(isUploadingPhoto = false) }
-              }
-          if (succeeded) {
-            pendingPhoto = null
-            authRepository.refreshSession()
-            withContext(NonCancellable) { photoFiles.delete(photo) }
-          } else {
-            mutableState.update { it.copy(photoError = ProfilePhotoError.UPLOAD_FAILED) }
-          }
-        }
-  }
-
-  /** Also deletes a photo not uploaded yet; this outlives [viewModelScope], cancelled here. */
-  override fun onCleared() {
-    cleared = true
-    val pending = photoUpload
-    pending?.cancel()
-    val photo = pendingPhoto ?: return
-    // Let a cancelled upload stop reading the file before it is deleted.
-    CoroutineScope(Dispatchers.Main.immediate).launch {
-      pending?.join()
-      photoFiles.delete(photo)
-    }
+    if (pseudoJob?.isActive == true) return
+    pseudoJob = viewModelScope.launch { loadPseudo(userId) }
   }
 
   private suspend fun loadPseudo(userId: String) {
     try {
       val pseudo = pseudoRepository.getPseudo(userId)
-      if (currentUserId == userId) {
-        mutableState.update {
-          it.copy(
-              pseudo = pseudo.orEmpty(),
-              savedPseudo = pseudo,
-              isLoadingPseudo = false,
-              pseudoError = null)
-        }
-      }
+      if (currentUserId == userId) mutableState.update { it.copy(savedPseudo = pseudo) }
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (_: Exception) {
-      if (currentUserId == userId) {
-        mutableState.update {
-          it.copy(isLoadingPseudo = false, pseudoError = SettingsPseudoError.LOAD_FAILED)
-        }
-      }
-    } finally {
-      if (currentUserId == userId) {
-        mutableState.update { it.copy(isLoadingPseudo = false) }
-      }
+      // The header falls back to the account name; the Edit profile page reports the failure.
     }
   }
 }
@@ -392,11 +207,6 @@ private fun SettingsUiState.withHousehold(household: Household) =
         inviteCode = household.inviteCode,
         fridgeType = household.type,
     )
-
-private fun String.takeCodePoints(maxCodePoints: Int): String {
-  val count = codePointCount(0, length)
-  return if (count <= maxCodePoints) this else substring(0, offsetByCodePoints(0, maxCodePoints))
-}
 
 private fun AuthError.toAccountError() =
     when (this) {

@@ -33,9 +33,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.sharemate.R
 import com.android.sharemate.ui.components.AppBackButton
+import com.android.sharemate.ui.components.AppBanner
+import com.android.sharemate.ui.components.AppBannerTone
 import com.android.sharemate.ui.components.AppPrimaryButton
 import com.android.sharemate.ui.components.AppScreenTitle
 import com.android.sharemate.ui.components.AppStepIndicator
+import com.android.sharemate.ui.components.ScrollingColumn
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [JoinHouseholdScreen]. */
@@ -101,7 +104,8 @@ private fun JoinForm(
     )
     InviteCodeField(state, viewModel::updateInviteCode)
     state.error?.let { error ->
-      HouseholdErrorBanner(
+      AppBanner(
+          tone = AppBannerTone.ERROR,
           message =
               stringResource(
                   when (error) {

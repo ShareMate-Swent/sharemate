@@ -19,14 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Home
@@ -41,7 +39,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,7 +52,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.android.sharemate.R
@@ -66,7 +62,6 @@ import com.android.sharemate.ui.household.LeaveHouseholdError
 import com.android.sharemate.ui.household.LeaveHouseholdUiState
 import com.android.sharemate.ui.navigation.NavigationTestTags
 import com.android.sharemate.ui.profile.ProfileAvatar
-import com.android.sharemate.ui.profile.ProfilePhotoError
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [SettingsScreen]. */
@@ -77,16 +72,9 @@ object SettingsTestTags {
   const val PROFILE_PLACEHOLDER = "settings_profile_placeholder"
   const val PROFILE_NAME = "settings_profile_name"
   const val PROFILE_EMAIL = "settings_profile_email"
-  const val CHANGE_PHOTO = "settings_change_photo"
-  const val PHOTO_UPLOADING = "settings_photo_uploading"
-  const val PHOTO_ERROR = "settings_photo_error"
-  const val PHOTO_RETRY = "settings_photo_retry"
-  const val PSEUDO_CARD = "settings_pseudo_card"
-  const val PSEUDO_FIELD = "settings_pseudo_field"
-  const val PSEUDO_SAVE = "settings_pseudo_save"
-  const val PSEUDO_LOADING = "settings_pseudo_loading"
-  const val PSEUDO_ERROR = "settings_pseudo_error"
-  const val PSEUDO_RETRY = "settings_pseudo_retry"
+
+  /** Opens the Edit profile page, where the pseudo and the profile photo are changed. */
+  const val EDIT_PROFILE = "settings_edit_profile"
   const val ACCOUNT_CARD = "settings_account_card"
   const val ACCOUNT_TITLE = "settings_account_title"
   const val ACCOUNT_STATUS = "settings_account_status"
@@ -111,7 +99,8 @@ object SettingsTestTags {
 private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
 
 /**
- * Settings of the signed-in user: their profile, their account and their household.
+ * Settings of the signed-in user: their profile, their account and their household. The pseudo and
+ * the profile photo are changed on the Edit profile page.
  *
  * @param state Profile, account and household shown on the screen.
  * @param leaveState State of the leave confirmation. For a private household, leaving deletes it
@@ -122,14 +111,10 @@ private val CardShape = RoundedCornerShape(SettingsLayout.cardCornerRadius)
  * @param onLeft Called once after the user has left the household.
  * @param onShowMembers Opens the household members list.
  * @param onSwitchGoogleAccount Opens the Google account picker; shown only for Google accounts.
- * @param onPseudoChanged Updates the pseudo being edited.
- * @param onSavePseudo Saves the edited pseudo as the public profile name.
- * @param onRetryLoadPseudo Loads the saved pseudo again after a load failure.
  * @param onSignOut Signs out the current user.
  * @param onBack Leaves Settings from the back arrow, the only way back since it has no bottom bar.
  * @param onOpenNotificationSettings Opens the notification settings.
- * @param onChangePhoto Opens the camera/gallery dialog to change the profile photo.
- * @param onRetryPhotoUpload Uploads the photo of a failed upload again.
+ * @param onEditProfile Opens the Edit profile page to change the pseudo and the profile photo.
  */
 @Composable
 fun SettingsScreen(
@@ -141,14 +126,10 @@ fun SettingsScreen(
     onLeft: () -> Unit,
     onShowMembers: () -> Unit,
     onSwitchGoogleAccount: () -> Unit,
-    onPseudoChanged: (String) -> Unit,
-    onSavePseudo: () -> Unit,
-    onRetryLoadPseudo: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
     onOpenNotificationSettings: () -> Unit = {},
-    onChangePhoto: () -> Unit = {},
-    onRetryPhotoUpload: () -> Unit = {},
+    onEditProfile: () -> Unit,
 ) {
   LaunchedEffect(leaveState.left) { if (leaveState.left) onLeft() }
   Column(
@@ -175,9 +156,7 @@ fun SettingsScreen(
       )
     }
     Spacer(Modifier.height(SettingsLayout.sectionSpacing))
-    ProfileHeader(state, onChangePhoto, onRetryPhotoUpload)
-    Spacer(Modifier.height(Dimens.spacingL))
-    PseudoCard(state, onPseudoChanged, onSavePseudo, onRetryLoadPseudo)
+    ProfileHeader(state, onEditProfile)
     Spacer(Modifier.height(Dimens.spacingL))
     AccountCard(state, onSwitchGoogleAccount, onSignOut)
     Spacer(Modifier.height(Dimens.spacingM))
@@ -196,136 +175,22 @@ fun SettingsScreen(
   }
 }
 
-@Composable
-private fun PseudoCard(
-    state: SettingsUiState,
-    onPseudoChanged: (String) -> Unit,
-    onSavePseudo: () -> Unit,
-    onRetryLoadPseudo: () -> Unit,
-) {
-  val loadFailed = state.pseudoError == SettingsPseudoError.LOAD_FAILED
-  Card(
-      shape = CardShape,
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-      border = BorderStroke(Dimens.borderWidth, MaterialTheme.colorScheme.outlineVariant),
-      modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_CARD),
-  ) {
-    Column(
-        Modifier.padding(Dimens.cardPadding),
-        verticalArrangement = Arrangement.spacedBy(Dimens.spacingS),
-    ) {
-      Text(
-          text = stringResource(R.string.settings_pseudo_title),
-          style = MaterialTheme.typography.titleMedium,
-          color = MaterialTheme.colorScheme.onSurface,
-      )
-      OutlinedTextField(
-          value = state.pseudo,
-          onValueChange = onPseudoChanged,
-          enabled = !state.isLoadingPseudo && !state.isSavingPseudo && !loadFailed,
-          label = { Text(stringResource(R.string.settings_pseudo_label)) },
-          singleLine = true,
-          modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_FIELD),
-      )
-      if (state.isLoadingPseudo) {
-        Text(
-            text = stringResource(R.string.settings_pseudo_loading),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.testTag(SettingsTestTags.PSEUDO_LOADING),
-        )
-      }
-      state.pseudoError?.let { error ->
-        Text(
-            text =
-                stringResource(
-                    when (error) {
-                      SettingsPseudoError.LOAD_FAILED -> R.string.settings_pseudo_load_failed
-                      SettingsPseudoError.SAVE_FAILED -> R.string.settings_pseudo_save_failed
-                      SettingsPseudoError.PSEUDO_TAKEN -> R.string.auth_error_pseudo_taken
-                    }),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.testTag(SettingsTestTags.PSEUDO_ERROR),
-        )
-      }
-      if (loadFailed) {
-        OutlinedButton(
-            onClick = onRetryLoadPseudo,
-            modifier = Modifier.fillMaxWidth().testTag(SettingsTestTags.PSEUDO_RETRY),
-        ) {
-          Text(stringResource(R.string.household_retry))
-        }
-      }
-      Button(
-          onClick = onSavePseudo,
-          enabled = state.canSavePseudo,
-          modifier =
-              Modifier.fillMaxWidth()
-                  .height(Dimens.buttonHeight)
-                  .testTag(SettingsTestTags.PSEUDO_SAVE),
-      ) {
-        if (state.isSavingPseudo) {
-          CircularProgressIndicator(
-              modifier = Modifier.size(Dimens.progressSize),
-              strokeWidth = Dimens.progressStrokeWidth,
-          )
-        } else {
-          Text(stringResource(R.string.settings_pseudo_save))
-        }
-      }
-    }
-  }
-}
-
 /**
- * Photo, name and email. Without a name, the email takes its place and is not repeated. Tapping the
- * photo changes it; an upload shows a spinner over it, and a failure shows its message below.
+ * Photo, name and email. Without a name, the email takes its place and is not repeated. The saved
+ * pseudo takes the place of the account name. "Edit profile" opens the page where the pseudo and
+ * the photo are changed.
  */
 @Composable
-private fun ProfileHeader(
-    state: SettingsUiState,
-    onChangePhoto: () -> Unit,
-    onRetryPhotoUpload: () -> Unit,
-) {
+private fun ProfileHeader(state: SettingsUiState, onEditProfile: () -> Unit) {
   val profileName = state.savedPseudo?.takeIf { it.isNotBlank() } ?: state.displayName
-  val changePhoto = stringResource(R.string.settings_change_photo)
-  Box(contentAlignment = Alignment.Center) {
-    ProfileAvatar(
-        photoUrl = state.photoUrl,
-        size = SettingsLayout.avatarSize,
-        iconSize = SettingsLayout.avatarIconSize,
-        contentDescription = stringResource(R.string.settings_profile_photo),
-        photoTestTag = SettingsTestTags.PROFILE_PHOTO,
-        placeholderTestTag = SettingsTestTags.PROFILE_PLACEHOLDER,
-    )
-    // A sibling of the avatar, so the photo keeps its own semantics and test tags.
-    Box(
-        Modifier.matchParentSize()
-            .clip(CircleShape)
-            .clickable(
-                enabled = !state.isUploadingPhoto, role = Role.Button, onClick = onChangePhoto)
-            .semantics { contentDescription = changePhoto }
-            .testTag(SettingsTestTags.CHANGE_PHOTO))
-    if (state.isUploadingPhoto) {
-      CircularProgressIndicator(
-          modifier =
-              Modifier.size(SettingsLayout.avatarSize).testTag(SettingsTestTags.PHOTO_UPLOADING))
-    } else {
-      Icon(
-          imageVector = Icons.Filled.PhotoCamera,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.onPrimary,
-          modifier =
-              Modifier.align(Alignment.BottomEnd)
-                  .size(SettingsLayout.photoBadgeSize)
-                  .clip(CircleShape)
-                  .background(MaterialTheme.colorScheme.primary)
-                  .padding(SettingsLayout.photoBadgePadding),
-      )
-    }
-  }
-  state.photoError?.let { error -> PhotoError(error, onRetryPhotoUpload) }
+  ProfileAvatar(
+      photoUrl = state.photoUrl,
+      size = SettingsLayout.avatarSize,
+      iconSize = SettingsLayout.avatarIconSize,
+      contentDescription = stringResource(R.string.settings_profile_photo),
+      photoTestTag = SettingsTestTags.PROFILE_PHOTO,
+      placeholderTestTag = SettingsTestTags.PROFILE_PLACEHOLDER,
+  )
   Spacer(Modifier.height(Dimens.spacingM))
   Text(
       text = profileName ?: state.email.orEmpty(),
@@ -344,28 +209,8 @@ private fun ProfileHeader(
         modifier = Modifier.testTag(SettingsTestTags.PROFILE_EMAIL),
     )
   }
-}
-
-/** Why the photo could not be changed, with Retry after a failed upload. */
-@Composable
-private fun PhotoError(error: ProfilePhotoError, onRetry: () -> Unit) {
-  Spacer(Modifier.height(Dimens.spacingXs))
-  Text(
-      text =
-          stringResource(
-              when (error) {
-                ProfilePhotoError.INVALID_PHOTO -> R.string.personal_photo_invalid
-                ProfilePhotoError.UPLOAD_FAILED -> R.string.settings_photo_upload_failed
-              }),
-      style = MaterialTheme.typography.bodyMedium,
-      color = MaterialTheme.colorScheme.error,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.testTag(SettingsTestTags.PHOTO_ERROR),
-  )
-  if (error == ProfilePhotoError.UPLOAD_FAILED) {
-    TextButton(onClick = onRetry, modifier = Modifier.testTag(SettingsTestTags.PHOTO_RETRY)) {
-      Text(stringResource(R.string.profile_photo_retry))
-    }
+  TextButton(onClick = onEditProfile, modifier = Modifier.testTag(SettingsTestTags.EDIT_PROFILE)) {
+    Text(stringResource(R.string.edit_profile_title))
   }
 }
 
