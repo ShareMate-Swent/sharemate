@@ -278,4 +278,18 @@ class CommonComponentsTest {
     show { AppListRow(title = "Inge", titleModifier = Modifier.testTag("title")) }
     compose.onNodeWithTag("title").assertTextEquals("Inge")
   }
+
+  @Test
+  fun backHeaderNamesWhereItsBackButtonLeads() {
+    show {
+      AppBackHeader(
+          title = "Edit profile",
+          onBack = { calls += "back" },
+          backTestTag = "back",
+          backContentDescription = "Back to Settings")
+    }
+
+    compose.onNodeWithTag("back").assertContentDescriptionEquals("Back to Settings").performClick()
+    assertEquals(listOf("back"), calls)
+  }
 }

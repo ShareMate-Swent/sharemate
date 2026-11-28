@@ -6,7 +6,6 @@ package com.android.sharemate.ui.household
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -16,12 +15,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -48,9 +44,12 @@ import com.android.sharemate.model.household.FridgeType
 import com.android.sharemate.model.text.TextLimits
 import com.android.sharemate.ui.TextLengthCounter
 import com.android.sharemate.ui.components.AppBackButton
+import com.android.sharemate.ui.components.AppBanner
+import com.android.sharemate.ui.components.AppBannerTone
 import com.android.sharemate.ui.components.AppPrimaryButton
 import com.android.sharemate.ui.components.AppScreenTitle
 import com.android.sharemate.ui.components.AppStepIndicator
+import com.android.sharemate.ui.components.ScrollingColumn
 import com.android.sharemate.ui.theme.Dimens
 
 /** Test tags used by [CreateHouseholdScreen]. */
@@ -91,28 +90,6 @@ fun CreateHouseholdScreen(
         }
       }
     }
-  }
-}
-
-/**
- * A column that fills the screen and scrolls when its content is taller, for example on a small
- * phone or with a large system font, so the last action can always be reached.
- *
- * @param verticalArrangement How the children are placed vertically, such as with a fixed gap.
- * @param content The column's content.
- */
-@Composable
-internal fun ScrollingColumn(
-    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-  BoxWithConstraints(Modifier.fillMaxSize()) {
-    Column(
-        modifier =
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight),
-        verticalArrangement = verticalArrangement,
-        content = content,
-    )
   }
 }
 
@@ -210,8 +187,9 @@ private fun HouseholdNameField(
 @Composable
 private fun CreateErrorBanner(hasCreationOperation: Boolean) {
   Spacer(Modifier.height(Dimens.spacingM))
-  HouseholdErrorBanner(
+  AppBanner(
       message = stringResource(R.string.household_generic_error),
+      tone = AppBannerTone.ERROR,
       testTag = CreateHouseholdTestTags.ERROR,
   )
   if (hasCreationOperation) {
