@@ -63,6 +63,7 @@ fun AppBackButton(
  * @param onBack Called when the back button is tapped.
  * @param backTestTag Test tag of the back button.
  * @param modifier Applied to the header.
+ * @param backContentDescription Accessible label of the back button, naming where it leads.
  */
 @Composable
 fun AppBackHeader(
@@ -70,13 +71,15 @@ fun AppBackHeader(
     onBack: () -> Unit,
     backTestTag: String,
     modifier: Modifier = Modifier,
+    backContentDescription: String = stringResource(R.string.back),
 ) {
   Row(
       modifier = modifier,
       horizontalArrangement = Arrangement.spacedBy(Dimens.spacingM),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    AppBackButton(onBack = onBack, testTag = backTestTag)
+    AppBackButton(
+        onBack = onBack, testTag = backTestTag, contentDescription = backContentDescription)
     SingleLineText(text = title, style = MaterialTheme.typography.headlineSmall)
   }
 }
